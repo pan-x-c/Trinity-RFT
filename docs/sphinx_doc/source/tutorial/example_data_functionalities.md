@@ -8,7 +8,7 @@ In this example, you will learn how to apply the data module of Trinity-RFT to p
 2. how to configure the data module
 3. what the data module can do
 
-Before getting started, you need to prepare the main environment of Trinity-RFT according to the [installation section of the README file](main.md#getting-started), and you need to install [postgresql](https://www.postgresql.org/docs/current/tutorial-install.html) as well.
+Before getting started, you need to prepare the main environment of Trinity-RFT according to the [installation section of the README file](../main.md), and you need to install [postgresql](https://www.postgresql.org/docs/current/tutorial-install.html) as well.
 
 ### Data Preparation
 
