@@ -122,13 +122,13 @@ source .venv/bin/activate
 # for bash
 pip install -e .[dev]
 # for zsh
-# pip install -e .\[dev\]
+pip install -e .\[dev\]
 
 # Install flash-attn after all dependencies are installed
 # Note: flash-attn will take a long time to compile, please be patient.
 pip install flash-attn -v
 # Try the following command if you encounter errors during installation
-# pip install flash-attn --no-build-isolation
+# pip install flash-attn -v --no-build-isolation
 ```
 
 Installation from docker:
@@ -278,18 +278,6 @@ Please refer to [this document](./docs/sphinx_doc/source/tutorial/trinity_progra
 
 
 This project is currently under active development, and we welcome contributions from the community!
-
-
-
-Installation for development:
-
-```shell
-# for bash
-pip install -e .[dev]
-# for zsh
-pip install -e .\[dev\]
-```
-
 
 
 Code style check:

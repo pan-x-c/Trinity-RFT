@@ -1,7 +1,8 @@
-# Build docker image with the following command:
+# Build and run the docker image with the following command:
 #
 # cd <Trinity-RFT root dir>
-# docker build -f scripts/docker/Dockerfile -t trinity-rft:0.0.1 .
+# docker build -f scripts/docker/Dockerfile -t trinity-rft:latest .
+# docker run -it --gpus all --shm-size="64g" --rm -v $PWD:/workspace -v <root_path_of_data_and_checkpoints>:/data trinity-rft:latest
 
 
 FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
@@ -27,7 +28,7 @@ RUN apt update && apt install -y \
 RUN pip config set global.index-url http://mirrors.cloud.aliyuncs.com/pypi/simple/ \
    && pip config set global.trusted-host mirrors.cloud.aliyuncs.com
 
-# copy the Trinity-RFT into the workspace
+# copy the Trinity-RFT dir into the workspace
 COPY . .
 
 RUN pip install --upgrade pip && pip install -e .[dev] && pip install flash-attn
