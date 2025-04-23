@@ -16,6 +16,15 @@ from trinity.common.models.utils import (
 config_dir = os.path.join(os.path.dirname(__file__), "tmp", "template_config.yaml")
 
 
+def get_model_path() -> str:
+    path = os.environ.get("MODEL_PATH")
+    if not path:
+        raise EnvironmentError(
+            "Please set `export MODEL_PATH=<your_model_checkpoint_dir>` before running this test."
+        )
+    return path
+
+
 CHAT_TEMPLATE = r"""
 {%- if tools %}
     {{- '<|im_start|>system\n' }}
@@ -76,7 +85,7 @@ CHAT_TEMPLATE = r"""
 """
 
 
-class TestModelWrapper:
+class BaseTestModelWrapper:
     def test_generate(self):
         prompts = ["Hello, world!", "Hello, my name is"]
         results = self.model_wrapper.generate(prompts)
@@ -117,11 +126,11 @@ class TestModelWrapper:
         self.assertTrue(torch.equal(result_dict["input_ids"][0], exp.tokens))
 
 
-class TestModelWrapperSync(TestModelWrapper, unittest.TestCase):
+class TestModelWrapperSync(BaseTestModelWrapper, unittest.TestCase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = load_config(config_dir)
-        self.config.model.model_path = os.environ.get("MODEL_PATH")
+        self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm"
         self.config.explorer.engine_num = 1
         self.config.explorer.chat_template = CHAT_TEMPLATE
@@ -129,11 +138,11 @@ class TestModelWrapperSync(TestModelWrapper, unittest.TestCase):
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm")
 
 
-class TestModelWrapperAsync(TestModelWrapper, unittest.TestCase):
+class TestModelWrapperAsync(BaseTestModelWrapper, unittest.TestCase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = load_config(config_dir)
-        self.config.model.model_path = os.environ.get("MODEL_PATH")
+        self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm_async"
         self.config.explorer.engine_num = 1
         self.config.explorer.chat_template = CHAT_TEMPLATE
@@ -156,7 +165,7 @@ class TestTokenizer(unittest.TestCase):
                 "content": "You're welcome! If you have any other questions, feel free to ask.",
             },
         ]
-        tokenizer = AutoTokenizer.from_pretrained("/nas/checkpoints/Qwen25-1.5B-instruct")
+        tokenizer = AutoTokenizer.from_pretrained(get_model_path())
         token_ids, action_mask = tokenize_and_mask_messages_default(
             tokenizer=tokenizer,
             messages=messages,
