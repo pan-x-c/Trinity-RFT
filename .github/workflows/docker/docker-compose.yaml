@@ -3,22 +3,19 @@ services:
   trinity-node-1:
     image: trinity-rft:latest-unittest
     pull_policy: never
-    command: tail -f /dev/null
-    # command: pip install -e .[dev] && ray start --head --dashboard-host 0.0.0.0 --include-dashboard true && tail -f /dev/null
+    command: sh -c "pip install -e .[dev] && ray start --head --dashboard-host 0.0.0.0 --include-dashboard true --block"
     environment:
       - HF_ENDPOINT=https://hf-mirror.com
       - RAY_ADDRESS=auto
       - CHECKPOINT_ROOT_DIR=/mnt/checkpoints
       - DATA_ROOT_DIR=/mnt/data
+      - MODEL_PATH=/mnt/checkpoints/Qwen2.5-1.5B-Instruct
     working_dir: /workspace
     networks:
-      - ray-network
+      - trinity-network
     volumes:
       - trinity-volume:/mnt
       - ../../..:/workspace
-    ports:
-      - "6379:6379"
-      - "8265:8265"
     shm_size: "64G"
     deploy:
       resources:
@@ -31,12 +28,12 @@ services:
   trinity-node-2:
     image: trinity-rft:latest-unittest
     pull_policy: never
-    command: tail -f /dev/null
-    # command: pip install -e .[dev] && ray start --address=trinity-node-1:6379 && tail -f /dev/null
+    command: sh -c "pip install -e .[dev] && ray start --address=trinity-node-1:6379 --block"
     environment:
       - HF_ENDPOINT=https://hf-mirror.com
       - CHECKPOINT_ROOT_DIR=/mnt/checkpoints
       - DATA_ROOT_DIR=/mnt/data
+      - MODEL_PATH=/mnt/checkpoints/Qwen2.5-1.5B-Instruct
     working_dir: /workspace
     volumes:
       - trinity-volume:/mnt
@@ -44,7 +41,7 @@ services:
     depends_on:
       - trinity-node-1
     networks:
-      - ray-network
+      - trinity-network
     shm_size: "64G"
     deploy:
       resources:
@@ -55,7 +52,7 @@ services:
             capabilities: [gpu]
 
 networks:
-  ray-network:
+  trinity-network:
     driver: bridge
 
 volumes:
