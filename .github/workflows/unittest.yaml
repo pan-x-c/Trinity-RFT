@@ -10,7 +10,7 @@ permissions:
 jobs:
   unittest:
     # only run on pull request
-    if: ${{ github.event.issue.pull_request && github.event.comment.body == '/run-unittest' && github.event.comment.author_association == 'COLLABORATOR' }}
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/run-unittest') && github.event.comment.author_association == 'COLLABORATOR' }}
     runs-on: self-hosted
 
     steps:
