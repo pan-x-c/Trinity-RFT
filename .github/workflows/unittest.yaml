@@ -1,0 +1,30 @@
+name: unittest
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    # only run on pull request
+    if: ${{ github.event.issue.pull_request && github.event.comment.body == '/run-unittest' && github.event.comment.author_association == 'COLLABORATOR' }}
+    runs-on: self-hosted
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        path: trinity-${{ github.run_id }}
+        fetch-depth: 0
+
+    - name: Setup docker compose
+      working-directory: trinity-${{ github.run_id }}/.github/workflows/docker
+      run: |
+        docker compose up -d
+
+    - name: Run unittest
+      working-directory: trinity-${{ github.run_id }}/.github/workflows/docker
+      run: |
+        docker compose exec trinity-node-1 python -m pytest tests

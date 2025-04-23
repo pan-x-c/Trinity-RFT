@@ -1,0 +1,61 @@
+version: '3'
+services:
+  trinity-node-1:
+    image: trinity-rft:latest-unittest
+    pull_policy: never
+    command: |
+      pip install -e .[dev]
+      ray start --head --dashboard-host 0.0.0.0 --include-dashboard true --block
+    environment:
+      - HF_ENDPOINT=https://hf-mirror.com
+      - RAY_ADDRESS=auto
+    working_dir: /workspace
+    networks:
+      - ray-network
+    volumes:
+      - trinity-volume:/data
+      - ../../..:/workspace
+    ports:
+      - "6379:6379"
+      - "8265:8265"
+    shm_size: "64G"
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids: ['4', '5']
+            capabilities: [gpu]
+
+  trinity-node-2:
+    image: trinity-rft:latest-unittest
+    pull_policy: never
+    command: |
+      pip install -e .[dev]
+      ray start --address=trinity-node-1:6379 --block
+    environment:
+      - HF_ENDPOINT=https://hf-mirror.com
+    working_dir: /workspace
+    volumes:
+      - trinity-volume:/data
+      - ../../..:/workspace
+    depends_on:
+      - trinity-node-1
+    networks:
+      - ray-network
+    shm_size: "64G"
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids: ['6', '7']
+            capabilities: [gpu]
+
+networks:
+  ray-network:
+    driver: bridge
+
+volumes:
+  trinity-volume:
+    external: true
