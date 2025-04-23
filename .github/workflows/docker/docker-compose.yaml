@@ -3,9 +3,8 @@ services:
   trinity-node-1:
     image: trinity-rft:latest-unittest
     pull_policy: never
-    command: |
-      pip install -e .[dev]
-      ray start --head --dashboard-host 0.0.0.0 --include-dashboard true --block
+    command: tail -f /dev/null
+    # command: pip install -e .[dev] && ray start --head --dashboard-host 0.0.0.0 --include-dashboard true && tail -f /dev/null
     environment:
       - HF_ENDPOINT=https://hf-mirror.com
       - RAY_ADDRESS=auto
@@ -32,9 +31,8 @@ services:
   trinity-node-2:
     image: trinity-rft:latest-unittest
     pull_policy: never
-    command: |
-      pip install -e .[dev]
-      ray start --address=trinity-node-1:6379 --block
+    command: tail -f /dev/null
+    # command: pip install -e .[dev] && ray start --address=trinity-node-1:6379 && tail -f /dev/null
     environment:
       - HF_ENDPOINT=https://hf-mirror.com
       - CHECKPOINT_ROOT_DIR=/mnt/checkpoints

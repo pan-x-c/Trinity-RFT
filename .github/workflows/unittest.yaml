@@ -24,6 +24,18 @@ jobs:
       run: |
         docker compose up -d
 
+    - name: Install Trinity-RFT
+      working-directory: trinity-${{ github.run_id }}/.github/workflows/docker
+      run: |
+        docker compose exec trinity-node-1 pip install -e .\[dev\]
+        docker compose exec trinity-node-2 pip install -e .\[dev\]
+
+    - name: Setup Ray
+      working-directory: trinity-${{ github.run_id }}/.github/workflows/docker
+      run: |
+        docker compose exec trinity-node-1 ray start --head --dashboard-host 0.0.0.0 --include-dashboard true
+        docker compose exec trinity-node-2 ray start --address=trinity-node-1:6379
+
     - name: Run unittest
       working-directory: trinity-${{ github.run_id }}/.github/workflows/docker
       run: |
