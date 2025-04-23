@@ -28,8 +28,8 @@ explorer:
   enable_prefix_caching: false
   enforce_eager: true
   dtype: bfloat16
-  temperature: 0.0
-  top_p: 1.0
+  temperature: 0.2
+  top_p: 0.95
   top_k: -1
   seed: 42
   logprobs: 0

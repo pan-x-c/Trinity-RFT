@@ -9,11 +9,13 @@ services:
     environment:
       - HF_ENDPOINT=https://hf-mirror.com
       - RAY_ADDRESS=auto
+      - CHECKPOINT_ROOT_DIR=/mnt/checkpoints
+      - DATA_ROOT_DIR=/mnt/data
     working_dir: /workspace
     networks:
       - ray-network
     volumes:
-      - trinity-volume:/data
+      - trinity-volume:/mnt
       - ../../..:/workspace
     ports:
       - "6379:6379"
@@ -35,9 +37,11 @@ services:
       ray start --address=trinity-node-1:6379 --block
     environment:
       - HF_ENDPOINT=https://hf-mirror.com
+      - CHECKPOINT_ROOT_DIR=/mnt/checkpoints
+      - DATA_ROOT_DIR=/mnt/data
     working_dir: /workspace
     volumes:
-      - trinity-volume:/data
+      - trinity-volume:/mnt
       - ../../..:/workspace
     depends_on:
       - trinity-node-1
