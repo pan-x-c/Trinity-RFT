@@ -11,6 +11,8 @@ config_yaml_path = os.path.join(os.path.dirname(__file__), "tmp", "template_conf
 class TestConfig(unittest.TestCase):
     def test_load_default_config(self):
         config = load_config(config_yaml_path)
+        print(config.data)
+        config.check_and_update()
         self.assertIsNotNone(config.trainer.trainer_config)
         self.assertEqual(config.trainer.trainer_config.trainer.n_gpus_per_node, 4)
         self.assertEqual(config.trainer.trainer_config.trainer.nnodes, 1)

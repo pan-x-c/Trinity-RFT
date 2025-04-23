@@ -1,7 +1,7 @@
 data:
   dataset_path: ''
+  batch_size: 32
 model:
-  model_path: '/nas/checkpoints/Qwen25-7B-Instruct'
   max_prompt_tokens: 2048
   max_response_tokens: 2048
   checkpoint_path: ''
