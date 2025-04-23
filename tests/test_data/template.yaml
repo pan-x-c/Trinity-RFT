@@ -9,8 +9,6 @@ cluster:
   node_num: 1
   gpu_per_node: 8
 buffer:
-  storage_type: dict
-  db_url: ''
   read_batch_size: 32
   max_retry_times: 3
   max_retry_interval: 1
