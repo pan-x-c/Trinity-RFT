@@ -201,6 +201,7 @@ class MonitorConfig:
     # TODO: add more
     project: str = "trinity"
     name: str = "rft"
+    monitor_type: str = "wandb"
 
     # ! DO NOT SET
     # the root directory for cache and meta files, automatically generated
