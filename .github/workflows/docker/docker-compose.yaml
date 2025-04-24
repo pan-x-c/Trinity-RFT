@@ -1,4 +1,3 @@
-version: '3'
 services:
   trinity-node-1:
     image: trinity-rft:latest-unittest
