@@ -24,13 +24,15 @@ class TestConfig(unittest.TestCase):
             config.synchronizer.sync_iteration_interval,
         )
 
-    def test_all_examples_are_valid(self):  # TODO: useless
-        example_dir = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "config")
-        for filename in ["countdown", "gsm8k"]:
-            if filename.endswith(".yaml"):
-                config_path = os.path.join(example_dir, filename)
-                try:
-                    load_config(config_path)
-                except Exception as e:
-                    print(f"Error loading config {config_path}: {e}")
-                    raise e
+    def test_all_examples_are_valid(self):
+        example_dir = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
+        for example_name in os.listdir(example_dir):
+            for filename in os.listdir(os.path.join(example_dir, example_name)):
+                if filename.endswith(".yaml") and not filename.startswith("train"):
+                    print(f"Checking config: {filename}")
+                    config_path = os.path.join(example_dir, example_name, filename)
+                    try:
+                        load_config(config_path)
+                    except Exception as e:
+                        print(f"Error loading config {config_path}: {e}")
+                        raise e
