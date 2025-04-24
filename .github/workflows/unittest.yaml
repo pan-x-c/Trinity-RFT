@@ -23,8 +23,6 @@ jobs:
     - name: Setup docker compose
       working-directory: trinity-${{ github.run_id }}/.github/workflows/docker
       run: |
-        export RUNNER_UID=$(id -u)
-        export RUNNER_GID=$(id -g)
         docker compose up -d
         sleep 5s
 
