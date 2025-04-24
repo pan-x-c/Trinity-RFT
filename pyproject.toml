@@ -34,7 +34,6 @@ dependencies = [
     "fire",
     "flask",
     "requests",
-    "tensorboard",
 ]
 
 [project.scripts]

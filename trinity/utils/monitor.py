@@ -1,11 +1,11 @@
 """Monitor"""
-
+import os
 from typing import Any, List, Optional, Union
 
 import numpy as np
 import pandas as pd
-import tensorboard
 import wandb
+from torch.utils.tensorboard import SummaryWriter
 
 from trinity.common.constants import MonitorType
 from trinity.utils.log import get_logger
@@ -57,7 +57,9 @@ class Monitor:
 
 class TensorboardLogger:
     def __init__(self, project: str, name: str, role: str, config: Any = None) -> None:
-        self.logger = tensorboard.SummaryWriter(config.monitor.job_dir)
+        self.tensorboard_dir = os.path.join(config.monitor.job_dir, "tensorboard")
+        os.makedirs(self.tensorboard_dir, exist_ok=True)
+        self.logger = SummaryWriter(self.tensorboard_dir)
         self.console_logger = get_logger(__name__)
 
     def log_table(self, table_name: str, experiences_table: pd.DataFrame, step: int):
