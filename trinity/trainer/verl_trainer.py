@@ -233,7 +233,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         # collect metrics
         metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
 
-        self.logger.log(data=metrics, step=self.global_steps)
+        self.logger.log(data=metrics, step=self.global_steps, commit=True)
 
         # save checkpoint
         if (
@@ -297,7 +297,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
 
         # TODO: log as sft metrics
         self.sft_iter_num += 1
-        self.logger.log(data=metrics, step=self.global_steps)
+        self.logger.log(data=metrics, step=self.global_steps, commit=True)
         # print(f'{self.sft_iter_num=}, {self.config.synchronizer.sync_iteration_interval * self.config.trainer.sft_warmup_iteration=}')
         if (
             self.sft_iter_num
@@ -305,7 +305,9 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
             * self.config.trainer.sft_warmup_iteration
         ):
             self.logger.log(
-                data={"sft_warmup_iteration": self.sft_iter_num}, step=self.global_steps
+                data={"sft_warmup_iteration": self.sft_iter_num},
+                step=self.global_steps,
+                commit=True,
             )
             with _timer("save_checkpoint", timing_raw):
                 self._save_checkpoint()
@@ -442,10 +444,11 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
             compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus)
         )
 
-        # TODO: make a canonical logger that supports various backend
-        self.logger.log(data=metrics, step=self.global_steps)
         if self.config.enable_preview:
             self._log_experiences(experiences)
+
+        # TODO: make a canonical logger that supports various backend
+        self.logger.log(data=metrics, step=self.global_steps, commit=True)
 
         self.global_steps += 1
 

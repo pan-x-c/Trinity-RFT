@@ -203,7 +203,7 @@ class Explorer:
         log_metrics = self.monitor.calculate_metrics(all_metrics, prefix="rollout")  # type: ignore
         log_metrics["rollout/step_time"] = time.time() - st
         self.iteration += self.config.synchronizer.sync_iteration_interval
-        self.monitor.log(log_metrics, step=self.iteration)
+        self.monitor.log(log_metrics, step=self.iteration, commit=True)
 
         # save explore checkpoint
         self.cache.save_explorer(
@@ -216,6 +216,9 @@ class Explorer:
 
     def eval(self) -> bool:
         """Evaluation on all evaluation data samples."""
+        if self.eval_taskset is None:
+            self.logger.warning("No evaluation data samples. Skip evaluation.")
+            return True
         self.logger.info("Evaluation started.")
         st = time.time()
         all_metrics = defaultdict(list)
@@ -237,7 +240,7 @@ class Explorer:
 
         log_metrics = self.monitor.calculate_metrics(all_metrics, prefix="eval")  # type: ignore
         log_metrics["eval/total_time"] = time.time() - st
-        self.monitor.log(log_metrics, step=self.iteration)  # type: ignore
+        self.monitor.log(log_metrics, step=self.iteration, commit=True)  # type: ignore
         return True
 
     def sync_weight(self) -> None:
