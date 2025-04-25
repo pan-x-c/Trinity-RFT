@@ -105,6 +105,10 @@ class Trainer:
         if self.config.synchronizer.sync_method == "online":
             self.engine.sync_weight()
 
+    def flush_log(self, step: int) -> None:
+        """Flush the log of the current step."""
+        self.engine.logger.log({}, step=step, commit=True)
+
 
 class TrainEngineWrapper(ABC):
     """A wrapper class to wrap various training engines."""

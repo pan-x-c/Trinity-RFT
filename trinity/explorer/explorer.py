@@ -203,7 +203,7 @@ class Explorer:
         log_metrics = self.monitor.calculate_metrics(all_metrics, prefix="rollout")  # type: ignore
         log_metrics["rollout/step_time"] = time.time() - st
         self.iteration += self.config.synchronizer.sync_iteration_interval
-        self.monitor.log(log_metrics, step=self.iteration, commit=True)
+        self.monitor.log(log_metrics, step=self.iteration)
 
         # save explore checkpoint
         self.cache.save_explorer(
@@ -240,7 +240,7 @@ class Explorer:
 
         log_metrics = self.monitor.calculate_metrics(all_metrics, prefix="eval")  # type: ignore
         log_metrics["eval/total_time"] = time.time() - st
-        self.monitor.log(log_metrics, step=self.iteration, commit=True)  # type: ignore
+        self.monitor.log(log_metrics, step=self.iteration)  # type: ignore
         return True
 
     def sync_weight(self) -> None:
@@ -251,6 +251,6 @@ class Explorer:
         else:  # online weights update
             self._online_weights_update()
 
-    def log_finalize(self, step: int) -> None:
-        """Commit the logging results to wandb"""
-        self.monitor.log({"dummy_log_explorer": step}, step=step, commit=True)
+    def flush_log(self, step: int) -> None:
+        """Flush the log of the current step."""
+        self.monitor.log({}, step=step, commit=True)
