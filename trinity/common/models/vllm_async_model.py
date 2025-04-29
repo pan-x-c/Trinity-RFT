@@ -216,7 +216,7 @@ class vLLMAysncRolloutModel(InferenceModel):
         token_ids, action_mask = self.action_mask_method(
             self.tokenizer, messages, self.chat_template
         )
-        logprobs = await self.logprobs_async(token_ids=token_ids)
+        logprobs = await self.logprobs_async(token_ids=token_ids.tolist())
         return Experience(
             tokens=token_ids,
             prompt_length=len(token_ids),
