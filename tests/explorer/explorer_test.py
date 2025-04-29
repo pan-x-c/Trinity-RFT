@@ -5,16 +5,15 @@ from datetime import datetime
 
 import ray
 
-from trinity.cli.launcher import explore
-from trinity.common.constants import MonitorType
-
-from ..tools import (
+from tests.tools import (
     TensorBoardParser,
     get_checkpoint_path,
     get_model_path,
     get_template_config,
     get_unittest_dataset_config,
 )
+from trinity.cli.launcher import explore
+from trinity.common.constants import MonitorType
 
 
 class BaseExplorerCase:

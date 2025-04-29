@@ -21,7 +21,7 @@ requires-python = ">=3.10"
 dependencies = [
     "verl==0.3.0.post1",
     "ray==2.43.0",
-    "vllm==0.8.5",
+    "vllm>=0.8.3",
     "tensordict==0.6.2",
     "wandb",
     "omegaconf",
