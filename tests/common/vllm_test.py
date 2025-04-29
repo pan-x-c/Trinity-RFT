@@ -100,6 +100,9 @@ class BaseTestModelWrapper:
         ]
         results = self.model_wrapper.chat(messages)
         self.assertEqual(len(results), self.config.explorer.repeat_times)
+        for result in results:
+            output_logprobs = result.logprobs[result.prompt_length :]
+            self.assertTrue(torch.all(torch.tensor(output_logprobs) != 0))
         logprobs = self.model_wrapper.logprobs(results[0].tokens)
         self.assertEqual(logprobs.shape[0], results[0].tokens.shape[0])
         messages.append(

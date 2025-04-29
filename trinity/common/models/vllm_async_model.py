@@ -205,10 +205,7 @@ class vLLMAysncRolloutModel(InferenceModel):
                 # request_output.prompt = request.prompt
                 return request_output
 
-        raise RuntimeError(
-            "[vLLM] The request is not finished. This should not happen. "
-            "Please report this issue to the Ray team."
-        )
+        raise RuntimeError("[vLLM] The request is not finished. This should not happen.")
 
     async def convert_messages_to_experience_async(self, messages: List[dict]) -> Experience:
         """Convert a list of messages into an experience."""

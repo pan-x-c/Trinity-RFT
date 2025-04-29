@@ -150,10 +150,13 @@ class Explorer:
     def explore(self) -> None:
         """Explore the entire dataset."""
         while True:
-            explore_status, _ = self.explore_step()
+            explore_status, explore_iter = self.explore_step()
             if not explore_status:
                 break
             self.sync_weight()
+            if explore_iter % self.config.explorer.eval_interval == 0:
+                self.eval()
+                self.logger.info("Evaluation finished.")
         self.logger.info("Explorer finished.")
 
     def explore_step(self) -> Tuple[bool, int]:
