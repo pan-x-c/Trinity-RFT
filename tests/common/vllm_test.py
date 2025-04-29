@@ -5,14 +5,13 @@ import ray
 import torch
 from transformers import AutoTokenizer
 
+from tests.tools import get_template_config
 from trinity.common.models import create_rollout_models
 from trinity.common.models.model import ModelWrapper
 from trinity.common.models.utils import (
     tokenize_and_mask_messages_default,
     tokenize_and_mask_messages_hf,
 )
-
-from ..tools import get_template_config
 
 
 def get_model_path() -> str:
