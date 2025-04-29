@@ -5,7 +5,6 @@ import ray
 import torch
 from transformers import AutoTokenizer
 
-from trinity.common.config import load_config
 from trinity.common.models import create_rollout_models
 from trinity.common.models.model import ModelWrapper
 from trinity.common.models.utils import (
@@ -13,7 +12,7 @@ from trinity.common.models.utils import (
     tokenize_and_mask_messages_hf,
 )
 
-config_dir = os.path.join(os.path.dirname(__file__), "tmp", "template_config.yaml")
+from ..tools import get_template_config
 
 
 def get_model_path() -> str:
@@ -129,7 +128,7 @@ class BaseTestModelWrapper:
 class TestModelWrapperSync(BaseTestModelWrapper, unittest.TestCase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
-        self.config = load_config(config_dir)
+        self.config = get_template_config()
         self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm"
         self.config.explorer.engine_num = 1
@@ -141,7 +140,7 @@ class TestModelWrapperSync(BaseTestModelWrapper, unittest.TestCase):
 class TestModelWrapperAsync(BaseTestModelWrapper, unittest.TestCase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
-        self.config = load_config(config_dir)
+        self.config = get_template_config()
         self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm_async"
         self.config.explorer.engine_num = 1

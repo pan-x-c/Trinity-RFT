@@ -5,13 +5,12 @@ import unittest
 
 from trinity.common.config import load_config
 
-config_yaml_path = os.path.join(os.path.dirname(__file__), "tmp", "template_config.yaml")
+from ..tools import get_template_config
 
 
 class TestConfig(unittest.TestCase):
     def test_load_default_config(self):
-        config = load_config(config_yaml_path)
-        print(config.data)
+        config = get_template_config()
         config.check_and_update()
         self.assertIsNotNone(config.trainer.trainer_config)
         self.assertEqual(config.trainer.trainer_config.trainer.n_gpus_per_node, 4)
