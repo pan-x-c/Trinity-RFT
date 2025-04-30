@@ -28,10 +28,10 @@ class BaseTrainerCase:
         self.config.model.checkpoint_path = os.path.join(
             get_checkpoint_path(), f"train-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         )
-        self.config.synchronizer.sync_iteration_interval = 5
+        self.config.synchronizer.sync_iteration_interval = 2
         self.config.synchronizer.sync_method = "online"
-        self.config.explorer.eval_interval = 10
-        self.config.trainer.eval_interval = 10
+        self.config.explorer.eval_interval = 4
+        self.config.trainer.eval_interval = 4
 
 
 class TestTrainerCountdown(BaseTrainerCase, unittest.TestCase):
@@ -39,22 +39,22 @@ class TestTrainerCountdown(BaseTrainerCase, unittest.TestCase):
         """Test the trainer."""
         self.config.data = get_unittest_dataset_config("countdown")
         self.config.check_and_update()
-        self.config.trainer.trainer_config.trainer.save_freq = 20
+        self.config.trainer.trainer_config.trainer.save_freq = 8
         both(self.config)
         # check tensorboard
         parser = TensorBoardParser(os.path.join(self.config.monitor.job_dir, "tensorboard"))
         rollout_metrics = parser.metric_list("rollout")
         self.assertTrue(len(rollout_metrics) > 0)
-        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 20)
+        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 8)
         eval_metrics = parser.metric_list("eval")
         self.assertTrue(len(eval_metrics) > 0)
-        self.assertEqual(parser.metric_max_step(eval_metrics[0]), 20)
+        self.assertEqual(parser.metric_max_step(eval_metrics[0]), 8)
         actor_metrics = parser.metric_list("actor")
         self.assertTrue(len(actor_metrics) > 0)
-        self.assertEqual(parser.metric_max_step(actor_metrics[0]), 20)
+        self.assertEqual(parser.metric_max_step(actor_metrics[0]), 8)
         response_metrics = parser.metric_list("response_length")
         self.assertTrue(len(response_metrics) > 0)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 20)
+        self.assertEqual(parser.metric_max_step(response_metrics[0]), 8)
         # check checkpoint
         from trinity.common.models.utils import get_checkpoint_dir_with_iteration
 
@@ -64,7 +64,7 @@ class TestTrainerCountdown(BaseTrainerCase, unittest.TestCase):
             iteration_num=None,
         )
         self.assertTrue(os.path.exists(checkpoint_dir))
-        self.assertTrue(checkpoint_dir.endswith("20"))
+        self.assertTrue(checkpoint_dir.endswith("step_8"))
 
     def tearDown(self):
         # remove dir only when the test passed

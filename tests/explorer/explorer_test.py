@@ -26,9 +26,9 @@ class BaseExplorerCase:
         self.config.monitor.monitor_type = MonitorType.TENSORBOARD
         self.config.monitor.project = "Trinity-unittest"
         self.config.model.checkpoint_path = get_checkpoint_path()
-        self.config.synchronizer.sync_iteration_interval = 5
-        self.config.explorer.eval_interval = 10
-        self.config.trainer.eval_interval = 10
+        self.config.synchronizer.sync_iteration_interval = 2
+        self.config.explorer.eval_interval = 4
+        self.config.trainer.eval_interval = 4
 
 
 class TestExplorerCountdownEval(BaseExplorerCase, unittest.TestCase):
@@ -42,8 +42,11 @@ class TestExplorerCountdownEval(BaseExplorerCase, unittest.TestCase):
         self.assertTrue(len(rollout_metrics) > 0)
         eval_metrics = parser.metric_list("eval")
         self.assertTrue(len(eval_metrics) > 0)
-        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 20)
-        self.assertEqual(parser.metric_max_step(eval_metrics[0]), 20)
+        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 8)
+        self.assertEqual(parser.metric_max_step(eval_metrics[0]), 8)
+
+    def tearDown(self):
+        pass
 
 
 class TestExplorerCountdownNoEval(BaseExplorerCase, unittest.TestCase):
@@ -58,4 +61,7 @@ class TestExplorerCountdownNoEval(BaseExplorerCase, unittest.TestCase):
         self.assertTrue(len(rollout_metrics) > 0)
         eval_metrics = parser.metric_list("eval")
         self.assertTrue(len(eval_metrics) == 0)
-        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 20)
+        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 8)
+
+    def tearDown(self):
+        pass

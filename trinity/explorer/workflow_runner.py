@@ -53,6 +53,7 @@ class WorkflowRunner:
 
     def run_task(self, task: Task) -> Status:
         """Run the task and return the states."""
+        print("Start to run test")
         try:
             st = time.time()
             exps = self._run_task(task)
