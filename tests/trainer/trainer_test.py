@@ -1,12 +1,13 @@
 """Tests for trainer."""
 import os
 import shutil
-import unittest
+from abc import abstractmethod
 from datetime import datetime
 
 import ray
 
 from tests.tools import (
+    RayUnittestBase,
     TensorBoardParser,
     get_checkpoint_path,
     get_model_path,
@@ -17,7 +18,7 @@ from trinity.cli.launcher import both
 from trinity.common.constants import MonitorType
 
 
-class BaseTrainerCase:
+class BaseTrainerCase(RayUnittestBase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
@@ -33,8 +34,12 @@ class BaseTrainerCase:
         self.config.explorer.eval_interval = 4
         self.config.trainer.eval_interval = 4
 
+    @abstractmethod
+    def test_trainer(self):
+        """Test the trainer."""
 
-class TestTrainerCountdown(BaseTrainerCase, unittest.TestCase):
+
+class TestTrainerCountdown(BaseTrainerCase):
     def test_trainer(self):
         """Test the trainer."""
         self.config.data = get_unittest_dataset_config("countdown")

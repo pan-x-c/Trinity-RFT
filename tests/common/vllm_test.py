@@ -5,7 +5,7 @@ import ray
 import torch
 from transformers import AutoTokenizer
 
-from tests.tools import get_template_config
+from tests.tools import RayUnittestBase, get_template_config
 from trinity.common.models import create_rollout_models
 from trinity.common.models.model import ModelWrapper
 from trinity.common.models.utils import (
@@ -129,7 +129,7 @@ class BaseTestModelWrapper:
         self.assertTrue(torch.equal(result_dict["input_ids"][0], exp.tokens))
 
 
-class TestModelWrapperSync(BaseTestModelWrapper, unittest.TestCase):
+class TestModelWrapperSync(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
@@ -141,7 +141,15 @@ class TestModelWrapperSync(BaseTestModelWrapper, unittest.TestCase):
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm")
 
 
-class TestModelWrapperAsync(BaseTestModelWrapper, unittest.TestCase):
+class TestModelWrapperAsync(BaseTestModelWrapper, RayUnittestBase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(ignore_reinit_error=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
@@ -154,6 +162,14 @@ class TestModelWrapperAsync(BaseTestModelWrapper, unittest.TestCase):
 
 
 class TestTokenizer(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(ignore_reinit_error=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_assistant_token_mask(self):
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},

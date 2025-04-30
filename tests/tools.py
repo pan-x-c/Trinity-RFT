@@ -1,7 +1,9 @@
 import os
+import unittest
 from collections import defaultdict
 from typing import Dict, List
 
+import ray
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
 from trinity.common.config import Config, DataConfig, FormatConfig, load_config
@@ -91,3 +93,13 @@ class TensorBoardParser:
 
     def metric_list(self, metric_prefix: str) -> List[str]:
         return [name for name in self._metrics if name.startswith(metric_prefix)]
+
+
+class RayUnittestBase(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(ignore_reinit_error=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()

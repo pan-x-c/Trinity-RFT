@@ -31,7 +31,6 @@ class DummyWorkflow(Workflow):
         if "timeout" in self.error_type:
             time.sleep(self.seconds)
         elif self.error_type == "exception":
-            print("rasing exception")
             raise ValueError("Exception occurred")
         elif self.error_type == "exit":
             exit(1)

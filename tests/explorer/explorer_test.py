@@ -1,11 +1,10 @@
 """Tests for explorer."""
 import os
-import unittest
+from abc import abstractmethod
 from datetime import datetime
 
-import ray
-
 from tests.tools import (
+    RayUnittestBase,
     TensorBoardParser,
     get_checkpoint_path,
     get_model_path,
@@ -16,9 +15,8 @@ from trinity.cli.launcher import explore
 from trinity.common.constants import MonitorType
 
 
-class BaseExplorerCase:
+class BaseExplorerCase(RayUnittestBase):
     def setUp(self):
-        ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
         self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm_async"
@@ -30,8 +28,12 @@ class BaseExplorerCase:
         self.config.explorer.eval_interval = 4
         self.config.trainer.eval_interval = 4
 
+    @abstractmethod
+    def test_explorer(self):
+        """Test explorer"""
 
-class TestExplorerCountdownEval(BaseExplorerCase, unittest.TestCase):
+
+class TestExplorerCountdownEval(BaseExplorerCase):
     def test_explorer(self):
         self.config.data = get_unittest_dataset_config("countdown")
         self.config.monitor.name = f"explore-eval-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -45,11 +47,8 @@ class TestExplorerCountdownEval(BaseExplorerCase, unittest.TestCase):
         self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 8)
         self.assertEqual(parser.metric_max_step(eval_metrics[0]), 8)
 
-    def tearDown(self):
-        pass
 
-
-class TestExplorerCountdownNoEval(BaseExplorerCase, unittest.TestCase):
+class TestExplorerCountdownNoEval(BaseExplorerCase):
     def test_explorer(self):
         self.config.data = get_unittest_dataset_config("countdown")
         self.config.monitor.name = f"explore-no-eval-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -62,6 +61,3 @@ class TestExplorerCountdownNoEval(BaseExplorerCase, unittest.TestCase):
         eval_metrics = parser.metric_list("eval")
         self.assertTrue(len(eval_metrics) == 0)
         self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 8)
-
-    def tearDown(self):
-        pass
