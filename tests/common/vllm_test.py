@@ -142,14 +142,6 @@ class TestModelWrapperSync(BaseTestModelWrapper, RayUnittestBase):
 
 
 class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
-    @classmethod
-    def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
@@ -163,14 +155,6 @@ class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
 
 
 class TestModelWrapperAsyncMPV1(BaseTestModelWrapper, RayUnittestBase):
-    @classmethod
-    def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
@@ -185,14 +169,6 @@ class TestModelWrapperAsyncMPV1(BaseTestModelWrapper, RayUnittestBase):
 
 
 class TestModelWrapperAsyncSPV1(BaseTestModelWrapper, RayUnittestBase):
-    @classmethod
-    def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
@@ -207,14 +183,6 @@ class TestModelWrapperAsyncSPV1(BaseTestModelWrapper, RayUnittestBase):
 
 
 class TestModelWrapperAsyncTensorParallel(BaseTestModelWrapper, RayUnittestBase):
-    @classmethod
-    def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
@@ -228,14 +196,6 @@ class TestModelWrapperAsyncTensorParallel(BaseTestModelWrapper, RayUnittestBase)
 
 
 class TestTokenizer(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
     def test_assistant_token_mask(self):
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
