@@ -7,7 +7,7 @@ import asyncio
 import os
 import re
 from contextlib import nullcontext
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import ray
 import torch
@@ -43,6 +43,7 @@ class vLLMAysncRolloutModel(InferenceModel):
     ) -> None:
         self.logger = get_logger(__name__)
         self.config = config
+        self.use_v1 = config.explorer.use_v1
         if config.explorer.tensor_parallel_size != 1:
             os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
         if not vllm.envs.is_set("VLLM_USE_V1"):
@@ -250,10 +251,24 @@ class vLLMAysncRolloutModel(InferenceModel):
                 setattr(params, k, v)
         return params
 
+    async def _collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ):
+        if self.use_v1:
+            return await self.async_llm.collective_rpc(method, timeout, args, kwargs)
+        else:
+            return self.async_llm.engine.model_executor.collective_rpc(
+                method, timeout, args, kwargs
+            )
+
     async def sync_model(self, update_weight_args_list) -> bool:
         """Sync model weights to vLLM."""
         for args in update_weight_args_list:
-            await self.async_llm.collective_rpc("update_weight", args=args)
+            await self._collective_rpc("update_weight", args=args)
         self.logger.info("Sync model weights to vLLM successfully.")
         self.ckp_version += 1
         return True
@@ -269,7 +284,7 @@ class vLLMAysncRolloutModel(InferenceModel):
         timeout: int = 1200,
         update_with_checkpoint: bool = True,
     ):
-        return await self.async_llm.collective_rpc(
+        return await self._collective_rpc(
             "init_process_group",
             args=(
                 master_address,
@@ -284,9 +299,7 @@ class vLLMAysncRolloutModel(InferenceModel):
         )
 
     async def update_weight(self, name, dtype, shape, empty_cache=False):
-        return await self.async_llm.collective_rpc(
-            "update_weight", args=(name, dtype, shape, empty_cache)
-        )
+        return await self._collective_rpc("update_weight", args=(name, dtype, shape, empty_cache))
 
     async def reset_prefix_cache(self) -> None:
         await self.async_llm.reset_prefix_cache()
