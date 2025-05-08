@@ -184,7 +184,7 @@ class TestModelWrapperAsyncTPV1(BaseTestModelWrapper, RayUnittestBase):
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 
 
-class TestModelWrapperAsyncSPV1(BaseTestModelWrapper, RayUnittestBase):
+class TestModelWrapperAsyncV1(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()

@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 
 
 # TODO: merge into vLLMRolloutModel
+# TODO: remove V0 when V1 is stable
 @ray.remote
 class vLLMAysncRolloutModel(InferenceModel):
     """Wrapper around the vLLM engine to handle async requests.
@@ -249,15 +250,15 @@ class vLLMAysncRolloutModel(InferenceModel):
                 setattr(params, k, v)
         return params
 
-    def sync_model(self, update_weight_args_list) -> bool:
+    async def sync_model(self, update_weight_args_list) -> bool:
         """Sync model weights to vLLM."""
         for args in update_weight_args_list:
-            self.async_llm.engine.model_executor.collective_rpc("update_weight", args=args)
+            await self.async_llm.collective_rpc("update_weight", args=args)
         self.logger.info("Sync model weights to vLLM successfully.")
         self.ckp_version += 1
         return True
 
-    def init_process_group(
+    async def init_process_group(
         self,
         master_address: str,
         master_port: int,
@@ -268,7 +269,7 @@ class vLLMAysncRolloutModel(InferenceModel):
         timeout: int = 1200,
         update_with_checkpoint: bool = True,
     ):
-        return self.async_llm.engine.model_executor.collective_rpc(
+        return await self.async_llm.collective_rpc(
             "init_process_group",
             args=(
                 master_address,
@@ -282,24 +283,19 @@ class vLLMAysncRolloutModel(InferenceModel):
             ),
         )
 
-    def update_weight(self, name, dtype, shape, empty_cache=False):
-        return self.async_llm.engine.model_executor.collective_rpc(
+    async def update_weight(self, name, dtype, shape, empty_cache=False):
+        return await self.async_llm.collective_rpc(
             "update_weight", args=(name, dtype, shape, empty_cache)
         )
 
-    def update_weight_cuda_ipc(self, name, dtype, shape, ipc_handles, empty_cache=False):
-        return self.async_llm.engine.model_executor.collective_rpc(
-            "update_weight_cuda_ipc", args=(name, dtype, shape, ipc_handles, empty_cache)
-        )
-
-    def reset_prefix_cache(self):
-        self.async_llm.engine.reset_prefix_cache()
+    async def reset_prefix_cache(self) -> None:
+        await self.async_llm.reset_prefix_cache()
 
     def get_ckp_version(self) -> int:
         return self.ckp_version
 
-    async def sleep(self, level: int = 1):
+    async def sleep(self, level: int = 1) -> None:
         await self.async_llm.sleep(level=level)
 
-    async def wake_up(self):
+    async def wake_up(self) -> None:
         await self.async_llm.wake_up()
