@@ -129,13 +129,14 @@ class BaseTestModelWrapper:
         self.assertTrue(torch.equal(result_dict["input_ids"][0], exp.tokens))
 
 
-class TestModelWrapperSync(BaseTestModelWrapper, RayUnittestBase):
+class TestModelWrapperSyncV0(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
         self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm"
-        self.config.explorer.engine_num = 1
+        self.config.explorer.tensor_parallel_size = 1
+        self.config.explorer.engine_num = 2
         self.config.explorer.chat_template = CHAT_TEMPLATE
         self.engines = create_rollout_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm")
@@ -147,20 +148,35 @@ class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
         self.config = get_template_config()
         self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm_async"
-        self.config.explorer.engine_num = 1
+        self.config.explorer.engine_num = 2
+        self.config.explorer.tensor_parallel_size = 1
         self.config.explorer.use_v1 = False
         self.config.explorer.chat_template = CHAT_TEMPLATE
         self.engines = create_rollout_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 
 
-class TestModelWrapperAsyncMPV1(BaseTestModelWrapper, RayUnittestBase):
+class TestModelWrapperAsyncTPV0(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
         self.config = get_template_config()
         self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm_async"
-        self.config.explorer.engine_num = 1
+        self.config.explorer.engine_num = 2
+        self.config.explorer.tensor_parallel_size = 2
+        self.config.explorer.use_v1 = False
+        self.config.explorer.chat_template = CHAT_TEMPLATE
+        self.engines = create_rollout_models(self.config)
+        self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
+
+
+class TestModelWrapperAsyncTPV1(BaseTestModelWrapper, RayUnittestBase):
+    def setUp(self):
+        ray.init(ignore_reinit_error=True)
+        self.config = get_template_config()
+        self.config.model.model_path = get_model_path()
+        self.config.explorer.engine_type = "vllm_async"
+        self.config.explorer.engine_num = 2
         self.config.explorer.tensor_parallel_size = 2
         self.config.explorer.use_v1 = True
         self.config.explorer.chat_template = CHAT_TEMPLATE
@@ -174,22 +190,9 @@ class TestModelWrapperAsyncSPV1(BaseTestModelWrapper, RayUnittestBase):
         self.config = get_template_config()
         self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm_async"
-        self.config.explorer.engine_num = 1
+        self.config.explorer.engine_num = 2
         self.config.explorer.tensor_parallel_size = 1
         self.config.explorer.use_v1 = True
-        self.config.explorer.chat_template = CHAT_TEMPLATE
-        self.engines = create_rollout_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
-
-
-class TestModelWrapperAsyncTensorParallel(BaseTestModelWrapper, RayUnittestBase):
-    def setUp(self):
-        ray.init(ignore_reinit_error=True)
-        self.config = get_template_config()
-        self.config.model.model_path = get_model_path()
-        self.config.explorer.engine_type = "vllm_async"
-        self.config.explorer.engine_num = 2
-        self.config.explorer.tensor_parallel_size = 2
         self.config.explorer.chat_template = CHAT_TEMPLATE
         self.engines = create_rollout_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
