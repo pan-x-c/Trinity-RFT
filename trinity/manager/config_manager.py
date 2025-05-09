@@ -40,6 +40,8 @@ class ConfigManager:
             self.expert_mode()
         if "config_generated" not in st.session_state:
             st.session_state.config_generated = False
+        if "is_running" not in st.session_state:
+            st.session_state.is_running = False
         self.generate_config()
 
     def _init_default_config(self):
@@ -48,7 +50,7 @@ class ConfigManager:
             "mode": "both",
             "project": "Trinity-RFT",
             "exp_name": "qwen2.5-1.5B",
-            "monitor_type": MonitorType.WANDB.value,
+            "monitor_type": MonitorType.TENSORBOARD.value,
             # Model Configs
             "model_path": "",
             "critic_model_path": "",
@@ -1528,6 +1530,7 @@ if node_num > 1:
             icon=":material/create_new_folder:",
         ):
             st.session_state.config_generated = True
+            st.session_state.is_running = False
         if st.session_state.config_generated:
             config = {
                 "mode": st.session_state["mode"],
@@ -1652,10 +1655,13 @@ if node_num > 1:
                 ),
                 icon=":material/terminal:",
                 use_container_width=True,
+                disabled=st.session_state.is_running,
             )
             st.code(yaml_config, language="yaml")
 
     def run_config(self, parent, yaml_config: str) -> None:
+        st.session_state.is_running = True
+
         import ray
 
         # first check if ray is running
@@ -1700,11 +1706,12 @@ if node_num > 1:
             )
             parent.success(
                 f"Job submitted successfully!\n\n"
-                f"View progress in the Ray Dashboard: {dashboard_url}",
+                f"View progress in the Ray Dashboard: http://{dashboard_url}",
                 icon="✅",
             )
         except subprocess.CalledProcessError as e:
-            parent.error(f"❌ Failed to submit job:\n\n{e.stderr}")
+            parent.error(f"Failed to submit job:\n\n{e.stderr}", icon="❌")
+            st.session_state.is_running = False
 
 
 if __name__ == "__main__":
