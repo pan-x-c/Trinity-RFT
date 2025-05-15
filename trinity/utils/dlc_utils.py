@@ -12,13 +12,13 @@ logger = get_logger(__name__)
 
 def get_dlc_env_vars() -> dict:
     envs = {
-        "RANK": int(os.environ.get("RANK")),  # type: ignore
-        "WORLD_SIZE": int(os.environ.get("WORLD_SIZE")),  # type: ignore
-        "MASTER_ADDR": os.environ.get("MASTER_ADDR"),
-        "MASTER_PORT": os.environ.get("MASTER_PORT"),
+        "RANK": int(os.environ.get("RANK", -1)),  # type: ignore
+        "WORLD_SIZE": int(os.environ.get("WORLD_SIZE", -1)),  # type: ignore
+        "MASTER_ADDR": os.environ.get("MASTER_ADDR", None),
+        "MASTER_PORT": os.environ.get("MASTER_PORT", None),
     }
     for key, value in envs.items():
-        if value is None:
+        if value is None or value == -1:
             logger.error(f"DLC env var `{key}` is not set.")
             raise ValueError(f"DLC env var `{key}` is not set.")
     return envs
@@ -57,17 +57,18 @@ def setup_ray_cluster(namespace: str):
 
     if is_running():
         # reuse existing ray cluster
-        ray.init(namepspace=namespace, ignore_reinit_error=True)
+        ray.init(namespace=namespace, ignore_reinit_error=True)
     else:
         if is_master:
             cmd = f"ray start --head --port={env_vars['MASTER_PORT']}"
         else:
             cmd = f"ray start --address={env_vars['MASTER_ADDR']}:{env_vars['MASTER_PORT']}"
         ret = subprocess.run(cmd, shell=True, capture_output=True)
+        logger.info(f"Starting ray cluster: {cmd}")
         if ret.returncode != 0:
             logger.error(f"Failed to start ray cluster: {cmd}")
-            logger.error(f"ret.stdout: {ret.stdout}")
-            logger.error(f"ret.stderr: {ret.stderr}")
+            logger.error(f"ret.stdout: {ret.stdout!r}")
+            logger.error(f"ret.stderr: {ret.stderr!r}")
             sys.exit(1)
         if is_master:
             wait_for_ray_setup()

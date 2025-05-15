@@ -198,7 +198,7 @@ def main() -> None:
     run_parser = subparsers.add_parser("run", help="Run RFT process.")
     run_parser.add_argument("--config", type=str, required=True, help="Path to the config file.")
     run_parser.add_argument(
-        "--dlc", type=bool, action="store_true", help="Specify when running in Aliyun PAI DLC."
+        "--dlc", action="store_true", help="Specify when running in Aliyun PAI DLC."
     )
 
     # studio command
