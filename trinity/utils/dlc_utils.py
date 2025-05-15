@@ -51,13 +51,13 @@ def wait_for_ray_worker_nodes(world_size: int) -> None:
             time.sleep(1)
 
 
-def setup_ray_cluster():
+def setup_ray_cluster(namespace: str):
     env_vars = get_dlc_env_vars()
     is_master = env_vars["RANK"] == 0
 
     if is_running():
         # reuse existing ray cluster
-        ray.init(ignore_reinit_error=True)
+        ray.init(namepspace=namespace, ignore_reinit_error=True)
     else:
         if is_master:
             cmd = f"ray start --head --port={env_vars['MASTER_PORT']}"
@@ -73,6 +73,7 @@ def setup_ray_cluster():
             wait_for_ray_setup()
             ray.init(
                 address=f"{env_vars['MASTER_ADDR']}:{env_vars['MASTER_PORT']}",
+                namespace=namespace,
                 ignore_reinit_error=True,
             )
             # master wait for worker nodes to join
