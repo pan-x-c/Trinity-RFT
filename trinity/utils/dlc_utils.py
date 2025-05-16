@@ -57,7 +57,8 @@ def setup_ray_cluster(namespace: str):
 
     if is_running():
         # reuse existing ray cluster
-        ray.init(namespace=namespace, ignore_reinit_error=True)
+        if is_master:
+            ray.init(namespace=namespace, ignore_reinit_error=True)
     else:
         if is_master:
             cmd = f"ray start --head --port={env_vars['MASTER_PORT']}"
