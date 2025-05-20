@@ -3,6 +3,7 @@ global_config:
   total_epochs: 20
   batch_size: 96
   eval_interval: 10
+  algorithm_type: grpo
 model:
   model_path: /PATH/TO/MODEL/
   max_prompt_tokens: 256
@@ -23,6 +24,10 @@ buffer:
       format:
         prompt_key: 'question'
         response_key: 'answer'
+      rollout_args:
+        repeat_times: 8
+        temperature: 1.0
+        logprobs: 0
     default_workflow_type: 'math_workflow'
   trainer_input:
     experience_buffer:
@@ -37,10 +42,7 @@ explorer:
   enable_prefix_caching: false
   enforce_eager: true
   dtype: bfloat16
-  temperature: 1.0
   seed: 42
-  logprobs: 0
-  repeat_times: 8
   use_ray: false
   backend: 'nccl'
   max_pending_requests: 32
@@ -50,7 +52,6 @@ synchronizer:
   sync_iteration_interval: 10
 trainer:
   trainer_type: 'verl'
-  algorithm_type: grpo
   trainer_config_path: examples/async_gsm8k/verl_config.yaml
   sft_warmup_steps: 0 # Set to integer to enable sft warmup
 monitor:
