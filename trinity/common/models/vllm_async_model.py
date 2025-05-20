@@ -9,7 +9,7 @@ import re
 from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
-import ray
+import aiohttp
 import torch
 import vllm
 from vllm.sampling_params import RequestOutputKind
@@ -28,7 +28,6 @@ logger = get_logger(__name__)
 
 # TODO: merge into vLLMRolloutModel
 # TODO: remove V0 when V1 is stable
-@ray.remote
 class vLLMAysncRolloutModel(InferenceModel):
     """Wrapper around the vLLM engine to handle async requests.
 
@@ -47,6 +46,7 @@ class vLLMAysncRolloutModel(InferenceModel):
         self.use_v1 = config.explorer.use_v1
         if config.explorer.tensor_parallel_size != 1:
             os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
+            os.environ["VLLM_RAY_BUNDLE_INDICES"] = config.explorer.bundle_indices
         if not vllm.envs.is_set("VLLM_USE_V1"):
             self.logger.info(f"Using vLLM v{int(config.explorer.use_v1)} engine")
             os.environ["VLLM_USE_V1"] = str(int(config.explorer.use_v1))
@@ -110,6 +110,8 @@ class vLLMAysncRolloutModel(InferenceModel):
         else:
             self.semaphore = nullcontext()
         self.ckp_version = 0  # TODO: resume the value from the checkpoint
+        self.api_server_host = None
+        self.api_server_port = None
 
     async def chat_async(self, messages: List[Dict], **kwargs) -> List[Experience]:
         """Chat with the model with a list of messages in async.
@@ -308,6 +310,42 @@ class vLLMAysncRolloutModel(InferenceModel):
 
     async def update_weight(self, name, dtype, shape, empty_cache=False):
         return await self._collective_rpc("update_weight", args=(name, dtype, shape, empty_cache))
+
+    async def run_api_server(self):
+        """Run the OpenAI API server in a Ray actor.
+
+        Note:
+            Do not use `ray.get()` on this method.
+            This method will run forever until the server is shut down.
+        """
+        if not (self.api_server_host is None or self.api_server_port is None):
+            raise RuntimeError("API server is already running.")
+        from trinity.common.models.openai_api import run_api_server_in_ray_actor
+
+        self.api_server_host, self.api_server_port = self.get_available_address()
+        await run_api_server_in_ray_actor(
+            self.async_llm, self.api_server_host, self.api_server_port, self.config.model.model_path
+        )
+
+    async def api_server_ready(self) -> Optional[str]:
+        """Check if the OpenAI API server is ready.
+
+        Returns:
+            str: The URL of the OpenAI API server.
+        """
+        if self.api_server_host is None or self.api_server_port is None:
+            return None
+            # test range(10):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"http://{self.api_server_host}:{self.api_server_port}/health"
+                ) as response:
+                    if response.status == 200:
+                        return f"http://{self.api_server_host}:{self.api_server_port}"
+        except Exception as e:
+            print(e)
+            return None
 
     async def reset_prefix_cache(self) -> None:
         await self.async_llm.reset_prefix_cache()

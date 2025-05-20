@@ -10,7 +10,6 @@ import re
 import threading
 from typing import List
 
-import ray
 import torch
 import vllm
 from vllm import LLM
@@ -26,13 +25,15 @@ from trinity.common.models.utils import (
 from trinity.utils.log import get_logger
 
 
-@ray.remote
 class vLLMRolloutModel(InferenceModel):
     """Actor for vLLM."""
 
     def __init__(self, config: Config, **kwargs):
         self.logger = get_logger(__name__)
         self.config = config
+        if config.explorer.tensor_parallel_size != 1:
+            os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
+            os.environ["VLLM_RAY_BUNDLE_INDICES"] = config.explorer.bundle_indices
         if not vllm.envs.is_set("VLLM_USE_V1"):
             self.logger.info(f"Using vLLM v{int(config.explorer.use_v1)} engine")
             os.environ["VLLM_USE_V1"] = str(int(config.explorer.use_v1))

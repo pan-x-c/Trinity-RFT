@@ -147,7 +147,7 @@ class Explorer:
     def prepare(self) -> None:
         """Preparation before running."""
         if self.use_checkpoint_weights_update:
-            master_address, master_port = ray.get(self.models[0].get_address.remote())
+            master_address, master_port = ray.get(self.models[0].get_available_address.remote())
             self.setup_weight_sync_group(master_address, master_port)
 
     @ray.method(concurrency_group="get_weight")

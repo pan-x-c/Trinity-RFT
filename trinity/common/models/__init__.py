@@ -16,6 +16,7 @@ def create_rollout_models(
     from ray.util.placement_group import placement_group, placement_group_table
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
+    from trinity.common.models.api_model import vLLMAPIModel
     from trinity.common.models.vllm_async_model import vLLMAysncRolloutModel
     from trinity.common.models.vllm_model import vLLMRolloutModel
 
@@ -29,6 +30,8 @@ def create_rollout_models(
         engine_cls = vLLMRolloutModel
     elif config.explorer.engine_type == "vllm_async":
         engine_cls = vLLMAysncRolloutModel
+    elif config.explorer.engine_type == "api":
+        engine_cls = vLLMAPIModel
     else:
         raise ValueError(f"Unknown engine type: {config.explorer.engine_type}")
 
@@ -56,14 +59,16 @@ def create_rollout_models(
             ]
             config.explorer.bundle_indices = ",".join([str(bid) for bid in bundles_for_engine])
             vllm_engines.append(
-                engine_cls.options(
+                ray.remote(engine_cls)
+                .options(
                     num_cpus=0,
                     num_gpus=0 if is_multi_process else 1,
                     scheduling_strategy=PlacementGroupSchedulingStrategy(
                         placement_group=pg,
                         placement_group_bundle_index=bundles_for_engine[0],
                     ),
-                ).remote(
+                )
+                .remote(
                     config=config,
                 )
             )

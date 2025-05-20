@@ -4,6 +4,7 @@ import socket
 from abc import ABC, abstractmethod
 from typing import Any, List, Tuple
 
+import openai
 import ray
 from torch import Tensor
 
@@ -49,7 +50,7 @@ class InferenceModel(ABC):
     def get_ckp_version(self) -> int:
         """Get the checkpoint version."""
 
-    def get_address(self) -> Tuple[str, int]:
+    def get_available_address(self) -> Tuple[str, int]:
         """Get the address of the actor."""
         address = ray.util.get_node_ip_address()
         with socket.socket() as s:
@@ -65,6 +66,7 @@ class ModelWrapper:
     def __init__(self, model: Any, model_type: str = "vllm"):
         self.model = model
         self.use_async = model_type == "vllm_async"
+        self.support_api = model_type == "vllm_async"
 
     def generate(self, prompts: List[str], **kwargs) -> List[Experience]:
         if self.use_async:
@@ -96,3 +98,6 @@ class ModelWrapper:
 
     def get_ckp_version(self) -> int:
         return ray.get(self.model.get_ckp_version.remote())
+
+    def get_openai_client(self) -> openai.OpenAI:
+        pass
