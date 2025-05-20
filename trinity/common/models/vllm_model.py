@@ -272,6 +272,9 @@ class vLLMRolloutModel(InferenceModel):
             action_mask=action_mask,
         )
 
+    def has_api_server(self) -> bool:
+        return False
+
     def sync_model(self, update_weight_args_list) -> bool:
         """Sync model weights to vLLM."""
         with self.lock:

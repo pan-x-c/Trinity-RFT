@@ -344,7 +344,7 @@ class vLLMAysncRolloutModel(InferenceModel):
                     f"http://{self.api_server_host}:{self.api_server_port}/health"
                 ) as response:
                     if response.status == 200:
-                        return f"http://{self.api_server_host}:{self.api_server_port}"
+                        return f"http://{self.api_server_host}:{self.api_server_port}/v1"
                     else:
                         return None
         except Exception as e:

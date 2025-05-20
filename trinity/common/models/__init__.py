@@ -74,7 +74,5 @@ def create_rollout_models(
             )
     if config.explorer.enable_openai_api:
         for engine in vllm_engines:
-            engine.run_api_server.remote(
-                config.explorer.openai_api_host, config.explorer.openai_api_port
-            )
+            engine.run_api_server.remote()
     return vllm_engines
