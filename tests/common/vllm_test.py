@@ -5,7 +5,7 @@ import torch
 from transformers import AutoTokenizer
 
 from tests.tools import RayUnittestBase, get_template_config
-from trinity.common.models import create_rollout_models
+from trinity.common.models import create_inference_models
 from trinity.common.models.model import ModelWrapper
 from trinity.common.models.utils import (
     tokenize_and_mask_messages_default,
@@ -140,7 +140,7 @@ class TestModelWrapperSyncV0(BaseTestModelWrapper, RayUnittestBase):
         self.config.buffer.explorer_input.taskset.rollout_args.repeat_times = 2
         self.config.explorer.use_v1 = False
         self.config.explorer.chat_template = CHAT_TEMPLATE
-        self.engines = create_rollout_models(self.config)
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm")
 
 
@@ -154,7 +154,7 @@ class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
         self.config.buffer.explorer_input.taskset.rollout_args.repeat_times = 2
         self.config.explorer.use_v1 = False
         self.config.explorer.chat_template = CHAT_TEMPLATE
-        self.engines = create_rollout_models(self.config)
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 
 
@@ -167,7 +167,7 @@ class TestModelWrapperAsyncTPV0(BaseTestModelWrapper, RayUnittestBase):
         self.config.explorer.tensor_parallel_size = 2
         self.config.explorer.use_v1 = False
         self.config.explorer.chat_template = CHAT_TEMPLATE
-        self.engines = create_rollout_models(self.config)
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 
 
@@ -181,7 +181,7 @@ class TestModelWrapperAsyncTPV1(BaseTestModelWrapper, RayUnittestBase):
         self.config.buffer.explorer_input.taskset.rollout_args.repeat_times = 2
         self.config.explorer.use_v1 = True
         self.config.explorer.chat_template = CHAT_TEMPLATE
-        self.engines = create_rollout_models(self.config)
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 
 
@@ -194,7 +194,7 @@ class TestModelWrapperAsyncV1(BaseTestModelWrapper, RayUnittestBase):
         self.config.explorer.tensor_parallel_size = 1
         self.config.explorer.use_v1 = True
         self.config.explorer.chat_template = CHAT_TEMPLATE
-        self.engines = create_rollout_models(self.config)
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 
 
@@ -208,7 +208,7 @@ class TestAPIServer(RayUnittestBase):
         self.config.explorer.use_v1 = True
         self.config.explorer.chat_template = CHAT_TEMPLATE
         self.config.explorer.enable_openai_api = True
-        self.engines = create_rollout_models(self.config)
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 
     def test_api(self):

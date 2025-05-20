@@ -3,10 +3,8 @@
 Modified from Ray python/ray/llm/_internal/batch/stages/vllm_engine_stage.py
 """
 
-import asyncio
 import os
 import re
-from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -14,7 +12,7 @@ import torch
 import vllm
 from vllm.sampling_params import RequestOutputKind
 
-from trinity.common.config import Config
+from trinity.common.config import InferenceModelConfig
 from trinity.common.experience import Experience
 from trinity.common.models.model import InferenceModel
 from trinity.common.models.utils import (
@@ -38,59 +36,56 @@ class vLLMAysncRolloutModel(InferenceModel):
 
     def __init__(
         self,
-        config: Config,
-        **kwargs,
+        config: InferenceModelConfig,
     ) -> None:
         self.logger = get_logger(__name__)
         self.config = config
-        self.use_v1 = config.explorer.use_v1
-        if config.explorer.tensor_parallel_size != 1:
+        self.use_v1 = config.use_v1
+        if config.tensor_parallel_size != 1:
             os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
-            os.environ["VLLM_RAY_BUNDLE_INDICES"] = config.explorer.bundle_indices
+            os.environ["VLLM_RAY_BUNDLE_INDICES"] = config.bundle_indices
         if not vllm.envs.is_set("VLLM_USE_V1"):
-            self.logger.info(f"Using vLLM v{int(config.explorer.use_v1)} engine")
-            os.environ["VLLM_USE_V1"] = str(int(config.explorer.use_v1))
-        if config.explorer.use_v1:
-            os.environ["VLLM_RAY_PER_WORKER_GPUS"] = str(int(config.explorer.use_v1))
+            self.logger.info(f"Using vLLM v{int(config.use_v1)} engine")
+            os.environ["VLLM_USE_V1"] = str(int(config.use_v1))
+        if config.use_v1:
+            os.environ["VLLM_RAY_PER_WORKER_GPUS"] = str(int(config.use_v1))
             os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
             os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
         self.default_sampling_params = vllm.SamplingParams(
             n=1,
             temperature=0.0,
-            max_tokens=config.model.max_response_tokens,
+            max_tokens=config.max_response_tokens,
             min_tokens=1,
-            truncate_prompt_tokens=config.model.max_prompt_tokens,
+            truncate_prompt_tokens=config.max_prompt_tokens,
             skip_special_tokens=True,
             include_stop_str_in_output=False,
             output_kind=RequestOutputKind.FINAL_ONLY,
             logprobs=0,
         )
-        self.enable_thinking = config.model.enable_thinking
+        self.enable_thinking = config.enable_thinking
         self.request_id = 0
         engine_args = vllm.AsyncEngineArgs(
-            model=config.model.model_path,
-            enforce_eager=config.explorer.enforce_eager,
+            model=config.model_path,
+            enforce_eager=config.enforce_eager,
             worker_extension_cls="trinity.common.models.vllm_worker.WorkerExtension",
-            tensor_parallel_size=config.explorer.tensor_parallel_size,
-            seed=config.explorer.seed,
-            distributed_executor_backend=(
-                "uni" if config.explorer.tensor_parallel_size == 1 else "ray"
-            ),
-            max_model_len=config.model.max_prompt_tokens + config.model.max_response_tokens,
-            enable_prefix_caching=config.explorer.enable_prefix_caching,
-            dtype=config.explorer.dtype,
+            tensor_parallel_size=config.tensor_parallel_size,
+            seed=config.seed,
+            distributed_executor_backend=("uni" if config.tensor_parallel_size == 1 else "ray"),
+            max_model_len=config.max_prompt_tokens + config.max_response_tokens,
+            enable_prefix_caching=config.enable_prefix_caching,
+            dtype=config.dtype,
             trust_remote_code=True,
             task="generate",
             disable_log_requests=True,
-            gpu_memory_utilization=config.explorer.gpu_memory_utilization,
-            enable_chunked_prefill=config.explorer.enable_chunked_prefill,
+            gpu_memory_utilization=config.gpu_memory_utilization,
+            enable_chunked_prefill=config.enable_chunked_prefill,
             # max_num_batched_tokens=256, # you can further set this parameter to reduce the vllm peak memory usage
         )
         self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
         self.tokenizer = None
         self.chat_template = None
-        if self.config.explorer.chat_template:
-            self.chat_template = self.config.explorer.chat_template
+        if self.config.chat_template:
+            self.chat_template = self.config.chat_template
         if self.chat_template is None or not re.search(
             r"\{\%-?\s*generation\s*-?\%\}", self.chat_template
         ):
@@ -102,13 +97,6 @@ class vLLMAysncRolloutModel(InferenceModel):
             self.action_mask_method = tokenize_and_mask_messages_default
         else:
             self.action_mask_method = tokenize_and_mask_messages_hf
-        # The performance gets really bad if there are too many requests in the pending queue.
-        # We work around it with semaphore to limit the number of concurrent requests in the engine.
-        self.max_pending_requests = config.explorer.max_pending_requests
-        if self.max_pending_requests > 0:
-            self.semaphore = asyncio.Semaphore(self.max_pending_requests)
-        else:
-            self.semaphore = nullcontext()
         self.ckp_version = 0  # TODO: resume the value from the checkpoint
         self.api_server_host = None
         self.api_server_port = None
@@ -154,8 +142,7 @@ class vLLMAysncRolloutModel(InferenceModel):
         Returns:
             A list of experiences.
         """
-        async with self.semaphore:
-            output = await self._generate_internal(prompt=prompt, **kwargs)
+        output = await self._generate_internal(prompt=prompt, **kwargs)
         experiences = [
             Experience(
                 tokens=torch.cat(
@@ -190,13 +177,12 @@ class vLLMAysncRolloutModel(InferenceModel):
 
     async def logprobs_async(self, token_ids: List[int]) -> torch.Tensor:
         """Calculate the logprobs of the given tokens in async."""
-        async with self.semaphore:
-            output = await self._generate_internal(
-                prompt={"prompt_token_ids": token_ids},
-                n=1,
-                max_tokens=1,
-                prompt_logprobs=0,  # vLLM return `prompt_logprobs + 1` logrpobs for each token
-            )
+        output = await self._generate_internal(
+            prompt={"prompt_token_ids": token_ids},
+            n=1,
+            max_tokens=1,
+            prompt_logprobs=0,  # vLLM return `prompt_logprobs + 1` logrpobs for each token
+        )
         return torch.tensor(
             [0]
             + [
@@ -324,7 +310,7 @@ class vLLMAysncRolloutModel(InferenceModel):
 
         self.api_server_host, self.api_server_port = self.get_available_address()
         await run_api_server_in_ray_actor(
-            self.async_llm, self.api_server_host, self.api_server_port, self.config.model.model_path
+            self.async_llm, self.api_server_host, self.api_server_port, self.config.model_path
         )
 
     async def has_api_server(self) -> bool:

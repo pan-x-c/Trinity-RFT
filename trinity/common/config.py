@@ -128,7 +128,6 @@ class ModelConfig:
     # TODO: add more
     # source model path
     model_path: str = ""
-    reward_model_path: str = ""
     critic_model_path: str = ""
     max_prompt_tokens: int = 2048
     max_response_tokens: int = 2048
@@ -136,6 +135,25 @@ class ModelConfig:
     checkpoint_path: str = ""
     # for models support both thinking and non-thinking mode, e.g., Qwen3
     enable_thinking: bool = False
+
+
+@dataclass
+class InferenceModelConfig:
+    # TODO: support setting engine_num
+    model_path: str = ""
+    tensor_parallel_size: int = 1
+    use_v1: bool = True
+    max_prompt_tokens: int = 2048
+    max_response_tokens: int = 2048
+    enable_thinking: bool = False
+    enforce_eager: bool = True
+    enable_prefix_caching: bool = False
+    enable_chunked_prefill: bool = False
+    gpu_memory_utilization: float = 0.9
+    dtype: str = "bfloat16"
+    seed: int = 42
+    chat_template: Optional[str] = None
+    bundle_indices: str = ""  # DO NOT SET this field
 
 
 @dataclass
@@ -200,7 +218,8 @@ class ExplorerConfig:
     # for rollout tokneize
     chat_template: Optional[str] = None
 
-    # for vLLM
+    # TODO: move vllm rollout model related args into
+    # `explorer.rollout_model: InferenceModelConfig`
     tensor_parallel_size: int = 1
     enable_prefix_caching: bool = False
     enforce_eager: bool = True
@@ -219,6 +238,9 @@ class ExplorerConfig:
     max_waiting_steps: int = 1
     max_timeout: int = 900  # wait each task for 15 minutes
     max_retry_times: int = 2  # retry each task for 2 times if it fails or timeout
+
+    # for other models used in the custom workflows
+    auxiliary_models: List[InferenceModelConfig] = field(default_factory=list)
 
 
 @dataclass
