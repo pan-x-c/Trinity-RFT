@@ -38,7 +38,10 @@ class WorkflowRunner:
             self.config.buffer,
         )
         self.model = model
-        self.model_wrapper = ModelWrapper(model, config.explorer.engine_type)
+        self.model_wrapper = ModelWrapper(
+            model,
+            config.explorer.engine_type,
+        )
         self.logger = get_logger(__name__)
 
     def is_alive(self):

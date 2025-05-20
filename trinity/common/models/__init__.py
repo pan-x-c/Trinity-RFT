@@ -16,7 +16,6 @@ def create_rollout_models(
     from ray.util.placement_group import placement_group, placement_group_table
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-    from trinity.common.models.api_model import vLLMAPIModel
     from trinity.common.models.vllm_async_model import vLLMAysncRolloutModel
     from trinity.common.models.vllm_model import vLLMRolloutModel
 
@@ -24,14 +23,15 @@ def create_rollout_models(
     tensor_parallel_size = config.explorer.tensor_parallel_size
     is_multi_process = config.explorer.tensor_parallel_size > 1
 
+    if config.explorer.enable_openai_api and config.explorer.engine_type != "vllm_async":
+        raise ValueError("OpenAI API is only supported for vllm_async engine")
+
     vllm_engines = []
 
     if config.explorer.engine_type == "vllm":
         engine_cls = vLLMRolloutModel
     elif config.explorer.engine_type == "vllm_async":
         engine_cls = vLLMAysncRolloutModel
-    elif config.explorer.engine_type == "api":
-        engine_cls = vLLMAPIModel
     else:
         raise ValueError(f"Unknown engine type: {config.explorer.engine_type}")
 
@@ -71,5 +71,10 @@ def create_rollout_models(
                 .remote(
                     config=config,
                 )
+            )
+    if config.explorer.enable_openai_api:
+        for engine in vllm_engines:
+            engine.run_api_server.remote(
+                config.explorer.openai_api_host, config.explorer.openai_api_port
             )
     return vllm_engines

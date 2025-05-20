@@ -327,15 +327,17 @@ class vLLMAysncRolloutModel(InferenceModel):
             self.async_llm, self.api_server_host, self.api_server_port, self.config.model.model_path
         )
 
+    async def has_api_server(self) -> bool:
+        return self.api_server_host is not None and self.api_server_port is not None
+
     async def api_server_ready(self) -> Optional[str]:
         """Check if the OpenAI API server is ready.
 
         Returns:
             str: The URL of the OpenAI API server.
         """
-        if self.api_server_host is None or self.api_server_port is None:
+        if not await self.has_api_server():
             return None
-            # test range(10):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
@@ -343,8 +345,10 @@ class vLLMAysncRolloutModel(InferenceModel):
                 ) as response:
                     if response.status == 200:
                         return f"http://{self.api_server_host}:{self.api_server_port}"
+                    else:
+                        return None
         except Exception as e:
-            print(e)
+            self.logger.error(e)
             return None
 
     async def reset_prefix_cache(self) -> None:

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Base Model Class"""
 import socket
+import time
 from abc import ABC, abstractmethod
 from typing import Any, List, Tuple
 
@@ -9,6 +10,7 @@ import ray
 from torch import Tensor
 
 from trinity.common.experience import Experience
+from trinity.utils.log import get_logger
 
 
 class InferenceModel(ABC):
@@ -66,7 +68,8 @@ class ModelWrapper:
     def __init__(self, model: Any, model_type: str = "vllm"):
         self.model = model
         self.use_async = model_type == "vllm_async"
-        self.support_api = model_type == "vllm_async"
+        self.openai_client: openai.OpenAI = None
+        self.logger = get_logger(__name__)
 
     def generate(self, prompts: List[str], **kwargs) -> List[Experience]:
         if self.use_async:
@@ -100,4 +103,28 @@ class ModelWrapper:
         return ray.get(self.model.get_ckp_version.remote())
 
     def get_openai_client(self) -> openai.OpenAI:
-        pass
+        if self.openai_client is not None:
+            return self.openai_client
+        if not ray.get(self.model.has_api_server.remote()):
+            raise ValueError(
+                "OpenAI API server is not running on current model."
+                "Please set `explorer.enable_openai_api` to `True`."
+            )
+        api_address = None
+        while True:
+            api_address = ray.get(self.model.api_server_ready.remote())
+            if api_address is not None:
+                break
+            else:
+                self.logger.info("Waiting for OpenAI API server to be ready...")
+                time.sleep(5)
+        if api_address is None:
+            raise RuntimeError(
+                "Failed to connect to the API server. Please check the API server is running."
+            )
+        self.logger.info(f"Successfully connect to API server at {api_address}")
+        self.openai_client = openai.OpenAI(
+            base_url=api_address,
+            api_key="EMPTY",
+        )
+        return self.openai_client

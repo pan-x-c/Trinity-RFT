@@ -115,6 +115,7 @@ class ModelConfig:
     # TODO: add more
     # source model path
     model_path: str = ""
+    reward_model_path: str = ""
     critic_model_path: str = ""
     max_prompt_tokens: int = 2048
     max_response_tokens: int = 2048
@@ -169,10 +170,10 @@ class BufferConfig:
 class ExplorerConfig:
     """Config for explorer."""
 
-    # inference engine type, `vllm` or `vllm_async`
-    engine_type: str = "vllm"
+    # rollout engine type, `vllm` or `vllm_async`
+    engine_type: str = "vllm_async"
 
-    # number of inference engines
+    # number of rollout engines
     engine_num: int = 1
 
     # number of workflow runners.
@@ -201,6 +202,7 @@ class ExplorerConfig:
     gpu_memory_utilization: float = 0.9
     enable_chunked_prefill: bool = False
     use_v1: bool = True
+    enable_openai_api: bool = False
     bundle_indices: str = ""  # DO NOT SET this field
 
     # for workflow runner
@@ -415,6 +417,10 @@ class Config:
             self.model.checkpoint_path = os.path.join(os.getcwd(), self.model.checkpoint_path)
         if not self.model.critic_model_path:
             self.model.critic_model_path = self.model.model_path
+
+        # check explorer
+        if self.explorer.engine_type != "vllm_asyc" and self.explorer.enable_openai_api:
+            raise ValueError("OpenAI API server only support `vllm_async` engine.")
 
         # check synchronizer
         self.synchronizer.explorer_world_size = (
