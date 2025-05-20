@@ -107,6 +107,7 @@
 <h2>Global Config<a class="headerlink" href="#global-config" title="Link to this heading"></a></h2>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">both</span>
 <span class="nt">global_config</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">algorithm_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ppo</span>
 <span class="w">  </span><span class="nt">total_epochs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="w">  </span><span class="nt">batch_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">96</span>
 <span class="w">  </span><span class="nt">eval_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
@@ -115,6 +116,7 @@
 </div>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">mode</span></code>: The mode of the experiment, chosen from <code class="docutils literal notranslate"><span class="pre">both</span></code>, <code class="docutils literal notranslate"><span class="pre">train</span></code>, <code class="docutils literal notranslate"><span class="pre">explore</span></code> or <code class="docutils literal notranslate"><span class="pre">bench</span></code>. <code class="docutils literal notranslate"><span class="pre">both</span></code> means both trainer and explorer are launched; <code class="docutils literal notranslate"><span class="pre">train</span></code> means only trainer is launched; <code class="docutils literal notranslate"><span class="pre">explore</span></code> means only explorer is launched; <code class="docutils literal notranslate"><span class="pre">bench</span></code> conducts benchmark evaluation. Default is <code class="docutils literal notranslate"><span class="pre">both</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">global_config.algorithm_type</span></code>: The type of the algorithm, Support <code class="docutils literal notranslate"><span class="pre">ppo</span></code>, <code class="docutils literal notranslate"><span class="pre">grpo</span></code>, <code class="docutils literal notranslate"><span class="pre">opmd</span></code> and <code class="docutils literal notranslate"><span class="pre">dpo</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">global_config.total_epochs</span></code>: The total number of epochs. It should be checked manually.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">global_config.batch_size</span></code>: The batch size used for training. It should be checked manually.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">global_config.eval_interval</span></code>: The interval steps between two evaluations. Default is <code class="docutils literal notranslate"><span class="pre">1000</span></code>.</p></li>
@@ -205,6 +207,10 @@
 <span class="w">      </span><span class="nt">format</span><span class="p">:</span>
 <span class="w">        </span><span class="nt">prompt_key</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;question&#39;</span>
 <span class="w">        </span><span class="nt">response_key</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;answer&#39;</span>
+<span class="w">      </span><span class="nt">rollout_args</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">repeat_times</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">        </span><span class="nt">temperature</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
+<span class="w">        </span><span class="nt">logprobs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
 <span class="w">    </span><span class="nt">eval_tasksets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
 <span class="w">    </span><span class="nt">default_workflow_type</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;math_workflow&#39;</span>
 <span class="w">    </span><span class="nt">default_reward_fn_type</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;countdown_reward&#39;</span>
@@ -224,6 +230,9 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">buffer.explorer_input.taskset.path</span></code>: The path to the taskset.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">buffer.explorer_input.taskset.split</span></code>: The split name of the taskset used for training. Default is <code class="docutils literal notranslate"><span class="pre">train</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">buffer.explorer_input.taskset.format</span></code>: The format of the taskset. It includes <code class="docutils literal notranslate"><span class="pre">prompt_key</span></code>, <code class="docutils literal notranslate"><span class="pre">response_key</span></code>, <code class="docutils literal notranslate"><span class="pre">workflow_key</span></code> and <code class="docutils literal notranslate"><span class="pre">reward_fn_key</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">buffer.explorer_input.taskset.rollout_args.repeat_times</span></code>: The number of times to repeat each task, used for GRPO-like algorithms. Default is <code class="docutils literal notranslate"><span class="pre">1</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">buffer.explorer_input.taskset.rollout_args.temperature</span></code>: The temperature used in vLLM. Default is <code class="docutils literal notranslate"><span class="pre">1.0</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">buffer.explorer_input.taskset.rollout_args.logprobs</span></code>: The logprobs used in vLLM. Default is <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">buffer.explorer_input.eval_tasksets</span></code>: The configuration of the eval tasksets. It is a list of tasksets which will be used for evaluation. And it is empty by default.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">buffer.explorer_input.default_workflow_type</span></code>: The default workflow type for <code class="docutils literal notranslate"><span class="pre">taskset</span></code> and <code class="docutils literal notranslate"><span class="pre">eval_tasksets</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">buffer.explorer_input.default_reward_fn_type</span></code>: The default reward function type for <code class="docutils literal notranslate"><span class="pre">taskset</span></code> and <code class="docutils literal notranslate"><span class="pre">eval_tasksets</span></code>.</p></li>
@@ -245,10 +254,7 @@
 <span class="w">  </span><span class="nt">enable_prefix_caching</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
 <span class="w">  </span><span class="nt">enforce_eager</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <span class="w">  </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bfloat16</span>
-<span class="w">  </span><span class="nt">temperature</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
 <span class="w">  </span><span class="nt">seed</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">42</span>
-<span class="w">  </span><span class="nt">logprobs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
-<span class="w">  </span><span class="nt">repeat_times</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
 <span class="w">  </span><span class="nt">use_ray</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
 <span class="w">  </span><span class="nt">backend</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;nccl&#39;</span>
 <span class="w">  </span><span class="nt">max_pending_requests</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">32</span>
@@ -263,10 +269,7 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">explorer.enable_prefix_caching</span></code>: Whether to enable prefix caching. Default is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">explorer.enforce_eager</span></code>: Whether to enforce eager mode. Default is <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">explorer.dtype</span></code>: The data type used in vLLM. Default is <code class="docutils literal notranslate"><span class="pre">bfloat16</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">explorer.temperature</span></code>: The temperature used in vLLM. Default is <code class="docutils literal notranslate"><span class="pre">1.0</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">explorer.seed</span></code>: The seed used in vLLM. Default is <code class="docutils literal notranslate"><span class="pre">42</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">explorer.logprobs</span></code>: The logprobs used in vLLM. Default is <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">explorer.repeat_times</span></code>: The number of times to repeat each task, used for GRPO-like algorithms. Default is <code class="docutils literal notranslate"><span class="pre">5</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">explorer.use_ray</span></code>: Whether to use Ray. Default is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">explorer.backend</span></code>: The backend used in vLLM. Default is <code class="docutils literal notranslate"><span class="pre">nccl</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">explorer.max_pending_requests</span></code>: The maximum number of pending requests. Default is <code class="docutils literal notranslate"><span class="pre">32</span></code>.</p></li>
@@ -293,7 +296,6 @@ Support <code class="docutils literal notranslate"><span class="pre">nccl</span>
 <h2>Trainer<a class="headerlink" href="#trainer" title="Link to this heading"></a></h2>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">trainer</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">trainer_type</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;verl&#39;</span>
-<span class="w">  </span><span class="nt">algorithm_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ppo</span>
 <span class="w">  </span><span class="nt">trainer_config_path</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;examples/ppo_countdown/train_countdown.yaml&#39;</span>
 <span class="w">  </span><span class="nt">sft_warmup_steps</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
 <span class="w">  </span><span class="nt">eval_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
@@ -302,7 +304,6 @@ Support <code class="docutils literal notranslate"><span class="pre">nccl</span>
 </div>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">trainer.trainer_type</span></code>: The backend of the trainer, Only <code class="docutils literal notranslate"><span class="pre">verl</span></code> is supported.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">trainer.algorithm_type</span></code>: The type of the algorithm, Support <code class="docutils literal notranslate"><span class="pre">ppo</span></code>, <code class="docutils literal notranslate"><span class="pre">grpo</span></code>, <code class="docutils literal notranslate"><span class="pre">opmd</span></code> and <code class="docutils literal notranslate"><span class="pre">dpo</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">trainer.trainer_config_path</span></code>: The path to the trainer configuration file. It must be set manually.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">trainer.sft_warmup_steps</span></code>: The number of steps to warm up the model. Default is <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">trainer.eval_interval</span></code>: The interval steps between two evaluations. Default is <code class="docutils literal notranslate"><span class="pre">1000</span></code>.</p></li>
