@@ -3,12 +3,14 @@ from typing import List, Tuple
 
 from trinity.common.config import Config, InferenceModelConfig
 from trinity.common.models.model import InferenceModel
+from trinity.utils.log import get_logger
 
 
 class _BundleAllocator:
     """An allocator for bundles."""
 
     def __init__(self, node_bundle_map: dict[str, list]) -> None:
+        self.logger = get_logger(__name__)
         self.node_bundle_list = [value for value in node_bundle_map.values()]
         self.node_list = [key for key in node_bundle_map.keys()]
         self.nid = 0
@@ -16,14 +18,15 @@ class _BundleAllocator:
 
     def allocate(self, num: int) -> list:
         # allocate num bundles from current node
-        if self.bid + num > len(self.node_list[self.nid]):
+        if self.bid + num > len(self.node_bundle_list[self.nid]):
             raise ValueError(
                 "Bundle allocation error, a tensor parallel group"
                 " is allocated across multiple nodes."
             )
         bundle_list = self.node_bundle_list[self.nid][self.bid : self.bid + num]
+        self.logger.info(f"Allocate bundles {bundle_list} on node {self.node_list[self.nid]}.")
         self.bid += num
-        if self.bid == len(self.node_list[self.nid]):
+        if self.bid == len(self.node_bundle_list[self.nid]):
             self.bid = 0
             self.nid += 1
         return bundle_list
