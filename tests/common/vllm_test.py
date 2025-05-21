@@ -220,7 +220,6 @@ class TestAPIServer(RayUnittestBase):
         response = openai_client.chat.completions.create(
             model=self.config.model.model_path, messages=messages, n=1
         )
-        print(response)
         self.assertEqual(1, len(response.choices))
         self.assertTrue(len(response.choices[0].message.content) > 0)
         response = openai_client.chat.completions.create(
@@ -231,7 +230,6 @@ class TestAPIServer(RayUnittestBase):
             logprobs=True,
             top_logprobs=0,
         )
-        print(response)
         self.assertEqual(2, len(response.choices))
         self.assertTrue(response.choices[0].logprobs is not None)
         self.assertEqual(0, len(response.choices[0].logprobs.content[0].top_logprobs))
