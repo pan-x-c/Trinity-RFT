@@ -133,6 +133,7 @@ class BaseTestModelWrapper:
 class TestModelWrapperSyncV0(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         self.config = get_template_config()
+        self.config.mode = "explore"
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm"
         self.config.explorer.rollout_model.tensor_parallel_size = 1
@@ -148,6 +149,7 @@ class TestModelWrapperSyncV0(BaseTestModelWrapper, RayUnittestBase):
 class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         self.config = get_template_config()
+        self.config.mode = "explore"
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm_async"
         self.config.explorer.rollout_model.engine_num = 2
@@ -163,6 +165,7 @@ class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
 class TestModelWrapperAsyncTPV0(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         self.config = get_template_config()
+        self.config.mode = "explore"
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm_async"
         self.config.explorer.rollout_model.engine_num = 2
@@ -177,6 +180,7 @@ class TestModelWrapperAsyncTPV0(BaseTestModelWrapper, RayUnittestBase):
 class TestModelWrapperAsyncTPV1(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         self.config = get_template_config()
+        self.config.mode = "explore"
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm_async"
         self.config.explorer.rollout_model.engine_num = 2
@@ -184,7 +188,7 @@ class TestModelWrapperAsyncTPV1(BaseTestModelWrapper, RayUnittestBase):
         self.config.explorer.rollout_model.use_v1 = True
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.buffer.explorer_input.taskset.rollout_args.n = 2
-        self.check_and_update()
+        self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 
@@ -192,12 +196,14 @@ class TestModelWrapperAsyncTPV1(BaseTestModelWrapper, RayUnittestBase):
 class TestModelWrapperAsyncV1(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         self.config = get_template_config()
+        self.config.mode = "explore"
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm_async"
         self.config.explorer.rollout_model.engine_num = 2
         self.config.explorer.rollout_model.tensor_parallel_size = 1
         self.config.explorer.rollout_model.use_v1 = True
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
+        self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 
@@ -205,6 +211,7 @@ class TestModelWrapperAsyncV1(BaseTestModelWrapper, RayUnittestBase):
 class TestAPIServer(RayUnittestBase):
     def setUp(self):
         self.config = get_template_config()
+        self.config.mode = "explore"
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm_async"
         self.config.explorer.rollout_model.engine_num = 1
@@ -212,6 +219,7 @@ class TestAPIServer(RayUnittestBase):
         self.config.explorer.rollout_model.use_v1 = True
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
 

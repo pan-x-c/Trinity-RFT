@@ -445,12 +445,15 @@ class Config:
         self.checkpoint_job_dir = os.path.join(self.checkpoint_root_dir, self.project, self.name)
         os.makedirs(self.checkpoint_job_dir, exist_ok=True)
 
+        # check and update model path
+        if self.explorer is not None:
+            self.explorer.rollout_model.model_path = self.model.model_path
         if not self.model.critic_model_path:
             self.model.critic_model_path = self.model.model_path
 
         # check explorer
         if (
-            self.explorer.rollout_model.engine_type != "vllm_asyc"
+            self.explorer.rollout_model.engine_type != "vllm_async"
             and self.explorer.rollout_model.enable_openai_api
         ):
             raise ValueError("OpenAI API server only support `vllm_async` engine.")
