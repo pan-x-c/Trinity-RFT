@@ -1643,6 +1643,7 @@ if node_num > 1:
                             "storage_type": st.session_state["storage_type"],
                             "path": experience_buffer_path,
                         },
+                        "sft_warmup_steps": st.session_state["sft_warmup_steps"],
                     },
                 },
                 "explorer": {
@@ -1670,7 +1671,6 @@ if node_num > 1:
                 "trainer": {
                     "trainer_type": st.session_state["trainer_type"],
                     "trainer_config": trainer_config,
-                    "sft_warmup_steps": st.session_state["sft_warmup_steps"],
                     "save_interval": st.session_state["save_interval"],
                 },
                 "monitor": {

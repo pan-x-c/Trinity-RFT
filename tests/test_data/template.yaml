@@ -13,11 +13,12 @@ buffer:
     default_workflow_type: ''
     default_reward_fn_type: ''
 explorer:
-  engine_type: vllm
-  engine_num: 2
   runner_num: 8
-  tensor_parallel_size: 2
-  enable_prefix_caching: false
-  enforce_eager: true
-  dtype: bfloat16
-  seed: 42
+  rollout_model:
+    engine_type: vllm
+    engine_num: 2
+    tensor_parallel_size: 2
+    enable_prefix_caching: false
+    enforce_eager: true
+    dtype: bfloat16
+    seed: 42

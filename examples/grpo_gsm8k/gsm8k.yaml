@@ -1,6 +1,7 @@
 project: "Trinity-RFT-gsm8k"
 name: "qwen2.5-1.5B-gsm8k"
 algorithm_type: grpo
+checkpoint_root_dir: /PATH/TO/CHECKPOINT/
 data_processor:
   # basic info
   source_data_path: 'openai/gsm8k'
@@ -17,9 +18,6 @@ data_processor:
 
 model:
   model_path: '/PATH/TO/MODEL/'
-  max_prompt_tokens: 256
-  max_response_tokens: 1024
-  checkpoint_path: ""
 cluster:
   node_num: 1
   gpu_per_node: 8
@@ -61,18 +59,19 @@ buffer:
     #   name: warmup_data
     #   storage_type: file
     #   path: '/PATH/TO/WARMUP_DATA/'
-    #   kwargs:
-    #     prompt_type: plaintext
 explorer:
   eval_interval: 50
-  engine_type: vllm_async
-  engine_num: 2
   runner_num: 32
-  tensor_parallel_size: 1
-  enable_prefix_caching: false
-  enforce_eager: true
-  dtype: bfloat16
-  seed: 42
+  rollout_model:
+    engine_type: vllm_async
+    engine_num: 2
+    tensor_parallel_size: 1
+    enable_prefix_caching: false
+    enforce_eager: true
+    dtype: bfloat16
+    max_prompt_tokens: 256
+    max_response_tokens: 1024
+    seed: 42
 synchronizer:
   sync_method: 'nccl'
   sync_interval: 2
@@ -80,8 +79,4 @@ synchronizer:
 trainer:
   trainer_type: 'verl'
   trainer_config_path: 'examples/grpo_gsm8k/train_gsm8k.yaml'
-  sft_warmup_steps: 0 # Set to integer to enable sft warmup
   save_interval: 100
-  # get_exp_strategy: 'LFU'
-monitor:
-  cache_root_dir: ""

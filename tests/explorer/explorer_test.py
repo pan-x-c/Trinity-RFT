@@ -25,7 +25,7 @@ class BaseExplorerCase(RayUnittestBase):
         self.config.buffer.explorer_input.taskset.rollout_args.n = 2
         self.config.monitor.monitor_type = MonitorType.TENSORBOARD
         self.config.monitor.project = "Trinity-unittest"
-        self.config.model.checkpoint_path = get_checkpoint_path()
+        self.config.checkpoint_root_dir = get_checkpoint_path()
         self.config.synchronizer.sync_interval = 2
         self.config.explorer.eval_interval = 4
 

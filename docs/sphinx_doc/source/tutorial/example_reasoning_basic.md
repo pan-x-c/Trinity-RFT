@@ -79,19 +79,20 @@ trinity run --config examples/grpo_gsm8k/gsm8k.yaml
 
 ## Optional: RFT with SFT Warmup
 
-Before RFT, we may use SFT as a warmup step. We need to set `trainer.sft_warmup_steps > 0` and prepare the SFT data to `buffer.train_dataset.path=$DATASET_PATH/{sft_data}`.
+Before RFT, we may use SFT as a warmup step. We need to set `buffer.trainer_input.sft_warmup_steps > 0` and prepare the SFT data to `buffer.trainer_input.sft_warmup_dataset.path=$DATASET_PATH/{sft_data}`.
 
 ```yaml
 # Properly set the following configs in gsm8k.yaml
 buffer:
-  sft_warmup_dataset:
-    storage_type: file
-    path: <$DATASET_PATH/{sft_data}>
-    format:
-      prompt_type: <prompt_type> # messages/plaintext/chatpair
-      prompt_key: <prompt_key>
-      response_key: <response_key>
-  sft_warmup_steps: 10
+  trainer_input:
+    sft_warmup_dataset:
+      storage_type: file
+      path: <$DATASET_PATH/{sft_data}>
+      format:
+        prompt_type: <prompt_type> # messages/plaintext/chatpair
+        prompt_key: <prompt_key>
+        response_key: <response_key>
+    sft_warmup_steps: 10
 ```
 
 The following command runs SFT and RFT in sequence:

@@ -30,7 +30,7 @@ class BaseTrainerCase(RayUnittestBase):
         self.config.explorer.use_v1 = False
         self.config.monitor.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         self.config.monitor.monitor_type = MonitorType.TENSORBOARD
-        self.config.model.checkpoint_path = os.path.join(
+        self.config.checkpoint_root_dir = os.path.join(
             get_checkpoint_path(), f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         )
         self.config.synchronizer.sync_interval = 2
@@ -76,12 +76,12 @@ class TestTrainerCountdown(BaseTrainerCase):
         from trinity.common.models.utils import get_checkpoint_dir_with_step_num
 
         checkpoint_step_4 = get_checkpoint_dir_with_step_num(
-            checkpoint_root_path=self.config.model.checkpoint_path,
+            checkpoint_root_path=self.config.checkpoint_job_dir,
             trainer_type=self.config.trainer.trainer_type,
             step_num=4,
         )
         checkpoint_step_8 = get_checkpoint_dir_with_step_num(
-            checkpoint_root_path=self.config.model.checkpoint_path,
+            checkpoint_root_path=self.config.checkpoint_job_dir,
             trainer_type=self.config.trainer.trainer_type,
             step_num=8,
         )

@@ -270,8 +270,15 @@ class veRLConfig:
 
     def synchronize_config(self, config: Config) -> None:
         """Synchronize config."""
-        rollout_gpu_num = config.explorer.tensor_parallel_size * config.explorer.engine_num + sum(
-            [model.tensor_parallel_size for model in config.explorer.auxiliary_models]
+        rollout_gpu_num = (
+            config.explorer.rollout_model.tensor_parallel_size
+            * config.explorer.rollout_model.engine_num
+            + sum(
+                [
+                    model.tensor_parallel_size * model.engine_num
+                    for model in config.explorer.auxiliary_models
+                ]
+            )
         )
         rollout_node_num = rollout_gpu_num // config.cluster.gpu_per_node
         self.trainer.nnodes = config.cluster.node_num - rollout_node_num
@@ -297,11 +304,11 @@ class veRLConfig:
             )
         # TODO: use dynamic read_batch_size to support multi-round scenarios
         # Get the experiences of one explore step
-        self.trainer.project_name = config.monitor.project
-        self.trainer.experiment_name = config.monitor.name
+        self.trainer.project_name = config.project
+        self.trainer.experiment_name = config.name
         self.data.train_batch_size = config.buffer.batch_size
-        self.trainer.default_local_dir = config.model.checkpoint_path
-        self.trainer.sft_warmup_steps = config.trainer.sft_warmup_steps
+        self.trainer.default_local_dir = config.checkpoint_job_dir
+        self.trainer.sft_warmup_steps = config.buffer.trainer_input.sft_warmup_steps
         self.actor_rollout_ref.actor.ppo_mini_batch_size = config.buffer.batch_size
         self.actor_rollout_ref.rollout.temperature = (
             config.buffer.explorer_input.taskset.rollout_args.temperature

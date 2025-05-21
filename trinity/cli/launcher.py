@@ -48,7 +48,7 @@ def train(config: Config) -> None:
     trainer = Trainer.remote(config)
     ray.get(trainer.prepare.remote())
 
-    if config.trainer.sft_warmup_steps > 0:
+    if config.buffer.trainer_input.sft_warmup_steps > 0:
         while True:
             train_continue, train_step_num = ray.get(
                 trainer.train_one_period.remote(AlgorithmType.SFT)
@@ -91,7 +91,7 @@ def both(config: Config) -> None:
     # sync weight before training start
     ray.get([explorer.sync_weight.remote(), trainer.sync_weight.remote()])
 
-    if config.trainer.sft_warmup_steps > 0:
+    if config.buffer.trainer_input.sft_warmup_steps > 0:
         while True:
             train_continue, train_step_num = ray.get(
                 trainer.train_one_period.remote(AlgorithmType.SFT)

@@ -35,7 +35,7 @@ class Trainer:
                 self.config.buffer.trainer_input.sft_warmup_dataset,  # type: ignore
                 self.config.buffer,
             )
-            if self.config.trainer.sft_warmup_steps > 0
+            if self.config.buffer.trainer_input.sft_warmup_steps > 0
             else None
         )
         self.engine = get_trainer_wrapper(config)
@@ -123,7 +123,7 @@ class Trainer:
     def shutdown(self) -> None:
         # if checkpoint not saved, save the last checkpoint
         step_num = self.engine.global_steps - 1
-        path = os.path.join(self.config.model.checkpoint_path, f"global_step_{step_num}")
+        path = os.path.join(self.config.checkpoint_job_dir, f"global_step_{step_num}")
         if not os.path.isdir(path) or len(os.listdir(path)) == 0:
             self.engine.save_checkpoint()
         self.engine.logger.close()

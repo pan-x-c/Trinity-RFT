@@ -118,12 +118,15 @@ class ModelConfig:
     # source model path
     model_path: str = ""
     critic_model_path: str = ""
+    max_prompt_tokens: int = 2048
+    max_response_tokens: int = 2048
 
 
 @dataclass
 class InferenceModelConfig:
     # For Rollout Model: automatically set from config.model.model_path
     model_path: str = ""
+    engine_type: str = "vllm_async"
     engine_num: int = 1
     tensor_parallel_size: int = 1
     use_v1: bool = True
@@ -139,6 +142,8 @@ class InferenceModelConfig:
     chat_template: Optional[str] = None
     # For Qwen3
     enable_thinking: bool = False
+    # For OpenAI API
+    enable_openai_api: bool = False
     # DO NOT SET this field
     bundle_indices: str = ""
 
@@ -203,7 +208,6 @@ class ExplorerConfig:
     """Config for explorer."""
 
     # for workflow runner
-
     # number of workflow runners.
     # For sync engine (vllm), it should be equal to `engine_num`.
     # For async engine (vllm_async), it can be larger than `engine_num`, e.g. 16 * `engine_num`
@@ -216,6 +220,10 @@ class ExplorerConfig:
     rollout_model: InferenceModelConfig = field(default_factory=InferenceModelConfig)
     # for other models used in the custom workflows
     auxiliary_models: List[InferenceModelConfig] = field(default_factory=list)
+
+    # for evaluation
+    eval_interval: int = 100
+    eval_on_latest_ckp: bool = True
 
 
 @dataclass
@@ -261,7 +269,7 @@ class Config:
     mode: str = "both"  # `explore`, `train`, `both` or `bench`
     project: str = "Trinity-RFT"
     name: str = "rft"
-    algorithm: AlgorithmType = AlgorithmType.PPO
+    algorithm_type: AlgorithmType = AlgorithmType.PPO
     # the root dir for checkpoints
     checkpoint_root_dir: str = ""
     # DO NOT SET, automatically generated as `checkpoint_root_dir/project/name`
@@ -289,13 +297,6 @@ class Config:
             )
             self.synchronizer.sync_interval = self.synchronizer.sync_iteration_interval
 
-        if self.trainer.sft_warmup_iteration is not None:
-            logger.warning(
-                f"`trainer.sft_warmup_iteration` is deprecated, please use `trainer.sft_warmup_steps` instead. "
-                f"And `trainer.sft_warmup_steps` will be set to {self.trainer.sft_warmup_iteration} instead."
-            )
-            self.trainer.sft_warmup_steps = self.trainer.sft_warmup_iteration
-
     def _check_interval(self) -> None:
         assert self.synchronizer.sync_interval > 0
 
@@ -303,13 +304,13 @@ class Config:
         if (
             self.mode != "bench"
             and self.algorithm_type != AlgorithmType.DPO
-            and self.buffer.eval_interval % self.synchronizer.sync_interval != 0
+            and self.explorer.eval_interval % self.synchronizer.sync_interval != 0
         ):
             self.buffer.eval_interval = (
-                max(self.buffer.eval_interval // self.synchronizer.sync_interval, 1)
+                max(self.explorer.eval_interval // self.synchronizer.sync_interval, 1)
             ) * self.synchronizer.sync_interval
             logger.warning(
-                f"`eval_interval` is not a multiple of `sync_interval`; adjusted to the nearest integer={self.buffer.eval_interval}."
+                f"`eval_interval` is not a multiple of `sync_interval`; adjusted to the nearest integer={self.explorer.eval_interval}."
             )
 
         # check save_interval
@@ -402,11 +403,11 @@ class Config:
 
         # check trainer_input.sft_warmup_dataset
         if (
-            self.trainer.sft_warmup_steps > 0
+            self.buffer.trainer_input.sft_warmup_steps > 0
             and self.buffer.trainer_input.sft_warmup_dataset is None
         ):
             raise ValueError(
-                "buffer.trainer_input.sft_warmup_dataset is required when trainer.sft_warmup_steps > 0"
+                "buffer.trainer_input.sft_warmup_dataset is required when buffer.trainer_input.sft_warmup_steps > 0"
             )
         if self.buffer.trainer_input.sft_warmup_dataset is not None:
             self.buffer.trainer_input.sft_warmup_dataset.algorithm_type = AlgorithmType.SFT
@@ -441,21 +442,23 @@ class Config:
         if not os.path.isabs(self.checkpoint_root_dir):
             self.checkpoint_root_dir = os.path.join(os.getcwd(), self.checkpoint_root_dir)
         # create a job dir at checkpoint_root_dir/project/name
-        self.checkpoint_job_dir = os.path.join(
-            self.checkpoint_root_dir, self.project_name, self.job_name
-        )
+        self.checkpoint_job_dir = os.path.join(self.checkpoint_root_dir, self.project, self.name)
         os.makedirs(self.checkpoint_job_dir, exist_ok=True)
 
         if not self.model.critic_model_path:
             self.model.critic_model_path = self.model.model_path
 
         # check explorer
-        if self.explorer.engine_type != "vllm_asyc" and self.explorer.enable_openai_api:
+        if (
+            self.explorer.rollout_model.engine_type != "vllm_asyc"
+            and self.explorer.rollout_model.enable_openai_api
+        ):
             raise ValueError("OpenAI API server only support `vllm_async` engine.")
 
         # check synchronizer
         self.synchronizer.explorer_world_size = (
-            self.explorer.engine_num * self.explorer.tensor_parallel_size
+            self.explorer.rollout_model.engine_num
+            * self.explorer.rollout_model.tensor_parallel_size
         )
         if (
             self.mode in ["train", "explore", "bench"]
@@ -482,8 +485,8 @@ class Config:
             os.makedirs(self.monitor.job_dir, exist_ok=True)
         except Exception:
             logger.warning(
-                "Failed to create cache dir, please check "
-                f"your checkpoint path: {self.model.checkpoint_path}"
+                "Failed to create monitor dir, please check "
+                f"your checkpoint directory: {self.checkpoint_root_dir}"
             )
 
         # check buffer

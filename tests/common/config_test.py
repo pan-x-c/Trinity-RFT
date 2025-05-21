@@ -14,9 +14,8 @@ class TestConfig(unittest.TestCase):
         self.assertIsNotNone(config.trainer.trainer_config)
         self.assertEqual(config.trainer.trainer_config.trainer.n_gpus_per_node, 2)
         self.assertEqual(config.trainer.trainer_config.trainer.nnodes, 1)
-        self.assertEqual(config.trainer.trainer_config.trainer.project_name, config.monitor.project)
-        self.assertEqual(config.trainer.trainer_config.trainer.experiment_name, config.monitor.name)
-        self.assertEqual(config.trainer.trainer_config.trainer.project_name, config.monitor.project)
+        self.assertEqual(config.trainer.trainer_config.trainer.project_name, config.project)
+        self.assertEqual(config.trainer.trainer_config.trainer.experiment_name, config.name)
         self.assertEqual(
             config.trainer.trainer_config.trainer.save_freq,
             config.synchronizer.sync_interval,

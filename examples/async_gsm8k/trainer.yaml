@@ -2,11 +2,11 @@ project: "Trinity-RFT-gsm8k"
 name: "async-qwen2.5-1.5B-gsm8k"
 mode: train
 algorithm_type: grpo
+checkpoint_root_dir: /PATH/TO/CHECKPOINT
 model:
-  model_path: /PATH/TO/MODEL/
+  model_path: /PATH/TO/MODEL
   max_prompt_tokens: 256
   max_response_tokens: 1024
-  checkpoint_path: ""
 cluster:
   node_num: 1
   gpu_per_node: 8
@@ -35,20 +35,18 @@ buffer:
       path: 'sqlite:///gsm8k.db'
 explorer:
   eval_interval: 10
-  engine_type: vllm_async
-  engine_num: 2
   runner_num: 32
-  tensor_parallel_size: 1
-  enable_prefix_caching: false
-  enforce_eager: true
-  dtype: bfloat16
-  seed: 42
+  rollout_model:
+    engine_type: vllm_async
+    engine_num: 2
+    tensor_parallel_size: 1
+    enable_prefix_caching: false
+    enforce_eager: true
+    dtype: bfloat16
+    seed: 42
 synchronizer:
   sync_method: 'checkpoint'
   sync_iteration_interval: 10
 trainer:
   trainer_type: 'verl'
   trainer_config_path: examples/async_gsm8k/verl_config.yaml
-  sft_warmup_steps: 0 # Set to integer to enable sft warmup
-monitor:
-  cache_root_dir: ""

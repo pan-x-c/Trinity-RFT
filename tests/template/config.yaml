@@ -2,11 +2,9 @@ project: unittest
 name: test
 mode: both
 algorithm_type: ppo
+checkpoint_root_dir: ''
 model:
   model_path: ''
-  max_prompt_tokens: 2048
-  max_response_tokens: 2048
-  checkpoint_path: ''
 cluster:  # 2 for explorer, 2 for trainer
   node_num: 1
   gpu_per_node: 4
@@ -24,20 +22,22 @@ buffer:
     default_workflow_type: ''
     default_reward_fn_type: ''
 explorer:
-  eval_interval: 1000
-  engine_type: vllm_async
-  engine_num: 2
+  eval_interval: 100
   runner_num: 4
-  tensor_parallel_size: 1
-  enable_prefix_caching: false
-  enforce_eager: true
-  dtype: bfloat16
-  seed: 42
-  use_v1: true
+  rollout_model:
+    engine_type: vllm_async
+    engine_num: 2
+    tensor_parallel_size: 1
+    enable_prefix_caching: false
+    enforce_eager: true
+    dtype: bfloat16
+    max_prompt_tokens: 2048
+    max_response_tokens: 2048
+    seed: 42
+    use_v1: true
 trainer:
   trainer_type: verl
   trainer_config_path: tests/template/verl_config.yaml
-  sft_warmup_steps: 0
   save_interval: 100
 synchronizer:
   sync_method: checkpoint
