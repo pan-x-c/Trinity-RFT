@@ -1,7 +1,6 @@
-global_config:
-  total_epochs: 20
-  batch_size: 4
-  algorithm_type: grpo
+project: "WEBSHOP"
+name: "WEBSHOP_RFT"
+algorithm_type: grpo
 model:
   model_path: '/PATH/TO/MODEL/CHECKPOINT/'
   max_prompt_tokens: 4096
@@ -11,6 +10,8 @@ cluster:
   node_num: 1
   gpu_per_node: 8
 buffer:
+  total_epochs: 20
+  batch_size: 4
   max_retry_times: 3
   max_retry_interval: 1
   explorer_input:
@@ -21,7 +22,7 @@ buffer:
       format:
         prompt_key: 'task_id'
       rollout_args:
-        repeat_times: 8
+        n: 8
         temperature: 1.0
         logprobs: 0
     default_workflow_type: 'webshop_workflow'
@@ -39,10 +40,6 @@ explorer:
   enforce_eager: true
   dtype: bfloat16
   seed: 42
-  use_ray: false
-  backend: 'nccl'
-  max_pending_requests: 32
-  max_waiting_steps: 4
   gpu_memory_utilization: 0.7
   enable_chunked_prefill: true
 synchronizer:
@@ -55,5 +52,3 @@ trainer:
   save_interval: 10
 monitor:
   cache_root_dir: ""
-  project: "WEBSHOP"
-  name: "WEBSHOP_RFT"

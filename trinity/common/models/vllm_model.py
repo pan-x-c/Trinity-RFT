@@ -149,7 +149,7 @@ class vLLMRolloutModel(InferenceModel):
 
         Example:
 
-            >>> # config.buffer.explorer_input.taskset.rollout_args.repeat_times == 2 or kwargs["repeat_times"] == 2
+            >>> # config.buffer.explorer_input.taskset.rollout_args.n == 2 or kwargs["n"] == 2
             >>>
             >>> prompts = [
             >>>     "Hello, world!",

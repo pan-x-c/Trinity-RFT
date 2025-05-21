@@ -45,6 +45,7 @@ We run the experiment in a train mode, as there is no Explorer. To enable this m
 ```yaml
 # In dpo.yaml
 mode: train
+algorithm_type: dpo
 synchronizer:
   sync_method: 'checkpoint'
 buffer:
@@ -56,8 +57,6 @@ buffer:
       prompt_key: <prompt_key>
       chosen_key: <chosen_key>
       rejected_key: <rejected_key>
-global_config:
-  algorithm_type: dpo
 
 # In train_dpo.yaml
 actor_rollout_ref:

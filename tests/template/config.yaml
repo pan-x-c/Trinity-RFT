@@ -1,8 +1,7 @@
+project: unittest
+name: test
 mode: both
-global_config:
-  total_epochs: 1
-  batch_size: 4
-  eval_interval: 1000
+algorithm_type: ppo
 model:
   model_path: ''
   max_prompt_tokens: 2048
@@ -12,6 +11,8 @@ cluster:  # 2 for explorer, 2 for trainer
   node_num: 1
   gpu_per_node: 4
 buffer:
+  total_epochs: 1
+  batch_size: 4
   max_retry_times: 3
   max_retry_interval: 1
   explorer_input:
@@ -23,6 +24,7 @@ buffer:
     default_workflow_type: ''
     default_reward_fn_type: ''
 explorer:
+  eval_interval: 1000
   engine_type: vllm_async
   engine_num: 2
   runner_num: 4
@@ -31,17 +33,12 @@ explorer:
   enforce_eager: true
   dtype: bfloat16
   seed: 42
-  backend: nccl
-  use_ray: false
   use_v1: true
 trainer:
   trainer_type: verl
   trainer_config_path: tests/template/verl_config.yaml
   sft_warmup_steps: 0
   save_interval: 100
-monitor:
-  project: unittest
-  name: test
 synchronizer:
   sync_method: checkpoint
   sync_interval: 10

@@ -18,16 +18,16 @@ from trinity.common.constants import MonitorType
 class BaseExplorerCase(RayUnittestBase):
     def setUp(self):
         self.config = get_template_config()
-        self.config.global_config.total_epochs = 2
-        self.config.global_config.batch_size = 4
+        self.config.buffer.total_epochs = 2
+        self.config.buffer.batch_size = 4
         self.config.model.model_path = get_model_path()
         self.config.explorer.engine_type = "vllm_async"
-        self.config.buffer.explorer_input.taskset.rollout_args.repeat_times = 2
+        self.config.buffer.explorer_input.taskset.rollout_args.n = 2
         self.config.monitor.monitor_type = MonitorType.TENSORBOARD
         self.config.monitor.project = "Trinity-unittest"
         self.config.model.checkpoint_path = get_checkpoint_path()
         self.config.synchronizer.sync_interval = 2
-        self.config.global_config.eval_interval = 4
+        self.config.explorer.eval_interval = 4
 
     @abstractmethod
     def test_explorer(self):

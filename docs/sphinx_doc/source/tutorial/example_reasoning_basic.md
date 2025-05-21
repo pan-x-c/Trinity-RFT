@@ -53,8 +53,11 @@ We use the configurations in [`gsm8k.yaml`](https://github.com/modelscope/Trinit
 
 ```yaml
 # In gsm8k.yaml
-explorer:
-  repeat_times: {number of rollouts for each task}
+buffer:
+  explorer_input:
+    taskset:
+      rollout_args:
+        n: {number of rollouts for each task}
 
 # In train_gsm8k.yaml
 actor_rollout_ref:
@@ -88,7 +91,6 @@ buffer:
       prompt_type: <prompt_type> # messages/plaintext/chatpair
       prompt_key: <prompt_key>
       response_key: <response_key>
-trainer:
   sft_warmup_steps: 10
 ```
 

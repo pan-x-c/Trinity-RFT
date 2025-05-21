@@ -1,8 +1,7 @@
+project: "dpo_example"
+name: "trinity_dpo"
 mode: train
-global_config:
-  total_epochs: 20
-  batch_size: 32 # NOTE
-  algorithm_type: dpo
+algorithm_type: dpo
 model:
   model_path: '/PATH/TO/MODEL/CHECKPOINT/' # NOTE
   max_prompt_tokens: 1792
@@ -12,6 +11,8 @@ cluster:
   node_num: 1
   gpu_per_node: 8
 buffer:
+  total_epochs: 20
+  batch_size: 32 # NOTE
   max_retry_times: 3
   max_retry_interval: 1
   trainer_input:
@@ -34,5 +35,3 @@ trainer:
   save_interval: 30
 monitor:
   cache_root_dir: ""
-  project: "dpo_example"
-  name: "trinity_dpo"

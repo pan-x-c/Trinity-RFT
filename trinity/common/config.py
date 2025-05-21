@@ -10,6 +10,7 @@ from trinity.common.constants import (
     AlgorithmType,
     MonitorType,
     PromptType,
+    ReadStrategy,
     StorageType,
     SyncMethod,
     TaskType,
@@ -52,9 +53,8 @@ class FormatConfig:
 
 @dataclass
 class GenerationConfig:
-    # repeat each task for `repeat_times` times (for GPRO-like algorithms)
-    repeat_times: int = 1
-
+    # repeat each task for `n` times (for GPRO-like algorithms)
+    n: int = 1
     temperature: float = 1.0
     top_p: float = 1.0
     top_k: int = -1
@@ -114,46 +114,33 @@ class DataProcessorConfig:
 
 
 @dataclass
-class GlobalConfig:
-    # downstream loading related
-    total_epochs: int = 1
-    batch_size: int = 1
-    eval_interval: int = 100
-    eval_on_latest_ckp: bool = True
-    algorithm_type: AlgorithmType = AlgorithmType.PPO
-
-
-@dataclass
 class ModelConfig:
-    # TODO: add more
     # source model path
     model_path: str = ""
     critic_model_path: str = ""
-    max_prompt_tokens: int = 2048
-    max_response_tokens: int = 2048
-    # The checkpoint directory, contains a latest dir link and multiple checkpoint dirs.
-    checkpoint_path: str = ""
-    # for models support both thinking and non-thinking mode, e.g., Qwen3
-    enable_thinking: bool = False
 
 
 @dataclass
 class InferenceModelConfig:
-    # TODO: support setting engine_num
+    # For Rollout Model: automatically set from config.model.model_path
     model_path: str = ""
+    engine_num: int = 1
     tensor_parallel_size: int = 1
     use_v1: bool = True
     max_prompt_tokens: int = 2048
     max_response_tokens: int = 2048
-    enable_thinking: bool = False
     enforce_eager: bool = True
     enable_prefix_caching: bool = False
     enable_chunked_prefill: bool = False
     gpu_memory_utilization: float = 0.9
     dtype: str = "bfloat16"
     seed: int = 42
+    # override chat template in model
     chat_template: Optional[str] = None
-    bundle_indices: str = ""  # DO NOT SET this field
+    # For Qwen3
+    enable_thinking: bool = False
+    # DO NOT SET this field
+    bundle_indices: str = ""
 
 
 @dataclass
@@ -183,62 +170,50 @@ class TrainerInput:
 
     experience_buffer: Optional[StorageConfig] = None
     sft_warmup_dataset: Optional[StorageConfig] = None
+    read_experience_strategy: Optional[ReadStrategy] = None
+    sft_warmup_steps: int = 0
 
 
 @dataclass
 class BufferConfig:
-    """Config for experience buffer."""
+    """Config for buffer."""
 
-    read_batch_size: int = 32
-    max_retry_times: int = 3
-    max_retry_interval: int = 1
-    tokenizer_path: Optional[str] = None  # automatically set
-    pad_token_id: Optional[int] = None  # automatically set
+    batch_size: int = 1
+    total_epochs: int = 1
 
+    # for explorer
     explorer_input: ExplorerInput = field(default_factory=ExplorerInput)
     explorer_output: Optional[StorageConfig] = None  # currently do not set
+
+    # for trainer
     trainer_input: TrainerInput = field(default_factory=TrainerInput)
+
+    # for storage connection
+    max_retry_times: int = 3
+    max_retry_interval: int = 1
+
+    # for experience construct, DO NOT SET
+    read_batch_size: int = 1  # automatically set
+    tokenizer_path: Optional[str] = None  # automatically set
+    pad_token_id: Optional[int] = None  # automatically set
 
 
 @dataclass
 class ExplorerConfig:
     """Config for explorer."""
 
-    # rollout engine type, `vllm` or `vllm_async`
-    engine_type: str = "vllm_async"
-
-    # number of rollout engines
-    engine_num: int = 1
+    # for workflow runner
 
     # number of workflow runners.
     # For sync engine (vllm), it should be equal to `engine_num`.
     # For async engine (vllm_async), it can be larger than `engine_num`, e.g. 16 * `engine_num`
     runner_num: int = 1
-
-    # for rollout tokneize
-    chat_template: Optional[str] = None
-
-    # TODO: move vllm rollout model related args into
-    # `explorer.rollout_model: InferenceModelConfig`
-    tensor_parallel_size: int = 1
-    enable_prefix_caching: bool = False
-    enforce_eager: bool = True
-    dtype: str = "bfloat16"
-    seed: int = 42
-    backend: str = "nccl"
-    use_ray: bool = False
-    gpu_memory_utilization: float = 0.9
-    enable_chunked_prefill: bool = False
-    use_v1: bool = True
-    enable_openai_api: bool = False
-    bundle_indices: str = ""  # DO NOT SET this field
-
-    # for workflow runner
-    max_pending_requests: int = 5
-    max_waiting_steps: int = 1
     max_timeout: int = 900  # wait each task for 15 minutes
     max_retry_times: int = 2  # retry each task for 2 times if it fails or timeout
 
+    # for inference models
+    # for rollout model
+    rollout_model: InferenceModelConfig = field(default_factory=InferenceModelConfig)
     # for other models used in the custom workflows
     auxiliary_models: List[InferenceModelConfig] = field(default_factory=list)
 
@@ -251,26 +226,14 @@ class TrainerConfig:
     enable_preview: bool = True  # enable rollout preview in wandb
     trainer_config: Any = field(default_factory=dict)
 
-    # train algorithm
-    get_exp_strategy: Optional[str] = None
-
-    # warmup config
-    sft_warmup_steps: int = 0
-    sft_warmup_iteration: Optional[int] = None  # deprecated
-
 
 @dataclass
 class MonitorConfig:
-    # TODO: add more
-    project: str = "trinity"
-    name: str = "rft"
+    # TODO: support multiple monitors (List[MonitorType])
     monitor_type: MonitorType = MonitorType.WANDB
-
     # ! DO NOT SET
     # the root directory for cache and meta files, automatically generated
     cache_root_dir: Optional[str] = None
-    # directory path for current job, automatically generated
-    job_dir: Optional[str] = None
 
 
 @dataclass
@@ -289,7 +252,6 @@ class SynchronizerConfig:
     master_address: Optional[str] = None
     master_port: Optional[int] = None
     explorer_world_size: Optional[int] = None
-    backend: str = "nccl"
 
 
 @dataclass
@@ -297,8 +259,15 @@ class Config:
     """Global Configuration"""
 
     mode: str = "both"  # `explore`, `train`, `both` or `bench`
+    project: str = "Trinity-RFT"
+    name: str = "rft"
+    algorithm: AlgorithmType = AlgorithmType.PPO
+    # the root dir for checkpoints
+    checkpoint_root_dir: str = ""
+    # DO NOT SET, automatically generated as `checkpoint_root_dir/project/name`
+    checkpoint_job_dir: str = ""
+
     data_processor: DataProcessorConfig = field(default_factory=DataProcessorConfig)
-    global_config: GlobalConfig = field(default_factory=GlobalConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
     buffer: BufferConfig = field(default_factory=BufferConfig)
@@ -333,25 +302,25 @@ class Config:
         # check eval_interval
         if (
             self.mode != "bench"
-            and self.global_config.algorithm_type != AlgorithmType.DPO
-            and self.global_config.eval_interval % self.synchronizer.sync_interval != 0
+            and self.algorithm_type != AlgorithmType.DPO
+            and self.buffer.eval_interval % self.synchronizer.sync_interval != 0
         ):
-            self.global_config.eval_interval = (
-                max(self.global_config.eval_interval // self.synchronizer.sync_interval, 1)
+            self.buffer.eval_interval = (
+                max(self.buffer.eval_interval // self.synchronizer.sync_interval, 1)
             ) * self.synchronizer.sync_interval
             logger.warning(
-                f"`eval_interval` is not a multiple of `sync_interval`; adjusted to the nearest integer={self.global_config.eval_interval}."
+                f"`eval_interval` is not a multiple of `sync_interval`; adjusted to the nearest integer={self.buffer.eval_interval}."
             )
 
         # check save_interval
         if (
             self.mode != "bench"
-            and self.global_config.algorithm_type != AlgorithmType.DPO
+            and self.algorithm_type != AlgorithmType.DPO
             and self.synchronizer.sync_method == SyncMethod.CHECKPOINT
         ):
             if self.trainer.save_interval != self.synchronizer.sync_interval:
                 logger.warning(
-                    f"When `global_config.algorithm_type` != `DPO` and `synchronizer.sync_method` == `checkpoint`, "
+                    f"When `algorithm_type` != `DPO` and `synchronizer.sync_method` == `checkpoint`, "
                     f"`trainer.save_interval` will be set to "
                     f"`synchronizer.sync_interval = {self.synchronizer.sync_interval}`."
                 )
@@ -366,7 +335,7 @@ class Config:
         if not self.buffer.explorer_input.taskset.name:
             self.buffer.explorer_input.taskset.name = "taskset"
         self.buffer.explorer_input.taskset.task_type = TaskType.EXPLORE
-        self.buffer.explorer_input.taskset.total_epochs = self.global_config.total_epochs
+        self.buffer.explorer_input.taskset.total_epochs = self.buffer.total_epochs
         if self.buffer.explorer_input.taskset.default_workflow_type is None:
             self.buffer.explorer_input.taskset.default_workflow_type = (
                 self.buffer.explorer_input.default_workflow_type
@@ -414,24 +383,22 @@ class Config:
                     f"Auto set `buffer.trainer_input.experience_buffer` to {self.buffer.trainer_input.experience_buffer}"
                 )
         elif self.mode == "train":  # TODO: to be check
-            if self.global_config.algorithm_type.is_dpo():
+            if self.algorithm_type.is_dpo():
                 if (
                     self.buffer.trainer_input.experience_buffer is None
                     or not self.buffer.trainer_input.experience_buffer.path
                 ):
                     raise ValueError(
-                        "`buffer.trainer_input.experience_buffer.path` is required when `global_config.algorithm_type == AlgorithmType.DPO`"
+                        "`buffer.trainer_input.experience_buffer.path` is required when `algorithm_type == AlgorithmType.DPO`"
                     )
         if self.buffer.trainer_input.experience_buffer is not None:
-            self.buffer.trainer_input.experience_buffer.algorithm_type = (
-                self.global_config.algorithm_type
-            )
+            self.buffer.trainer_input.experience_buffer.algorithm_type = self.algorithm_type
 
         # set buffer.explorer_output
         if self.buffer.explorer_output is None:
             self.buffer.explorer_output = self.buffer.trainer_input.experience_buffer
         else:
-            self.buffer.explorer_output.algorithm_type = self.global_config.algorithm_type
+            self.buffer.explorer_output.algorithm_type = self.algorithm_type
 
         # check trainer_input.sft_warmup_dataset
         if (
@@ -446,8 +413,7 @@ class Config:
 
         # set read_batch_size / pad_token_id / tokenizer_path
         self.buffer.read_batch_size = (
-            self.global_config.batch_size
-            * self.buffer.explorer_input.taskset.rollout_args.repeat_times
+            self.buffer.batch_size * self.buffer.explorer_input.taskset.rollout_args.n
         )
         if self.buffer.pad_token_id is None:
             from transformers import AutoTokenizer
@@ -468,12 +434,18 @@ class Config:
         # check mode
         if self.mode not in ["explore", "train", "both", "bench"]:
             raise ValueError(f"Invalid mode: {self.mode}")
-        if self.global_config.algorithm_type == AlgorithmType.DPO and self.mode == "both":
+        if self.algorithm_type == AlgorithmType.DPO and self.mode == "both":
             raise ValueError("DPO does not support `both` mode")
 
-        # check model path
-        if not os.path.isabs(self.model.checkpoint_path):
-            self.model.checkpoint_path = os.path.join(os.getcwd(), self.model.checkpoint_path)
+        # prepare for the checkpoint directory
+        if not os.path.isabs(self.checkpoint_root_dir):
+            self.checkpoint_root_dir = os.path.join(os.getcwd(), self.checkpoint_root_dir)
+        # create a job dir at checkpoint_root_dir/project/name
+        self.checkpoint_job_dir = os.path.join(
+            self.checkpoint_root_dir, self.project_name, self.job_name
+        )
+        os.makedirs(self.checkpoint_job_dir, exist_ok=True)
+
         if not self.model.critic_model_path:
             self.model.critic_model_path = self.model.model_path
 
@@ -485,7 +457,6 @@ class Config:
         self.synchronizer.explorer_world_size = (
             self.explorer.engine_num * self.explorer.tensor_parallel_size
         )
-        self.synchronizer.backend = self.explorer.backend
         if (
             self.mode in ["train", "explore", "bench"]
             and self.synchronizer.sync_method != SyncMethod.CHECKPOINT
@@ -495,7 +466,7 @@ class Config:
                 f"`{self.mode}` mode only supports checkpoint synchronization, set `synchronizer.sync_method` to `checkpoint`."
             )
         if (
-            self.global_config.algorithm_type == AlgorithmType.DPO
+            self.algorithm_type == AlgorithmType.DPO
             and self.synchronizer.sync_method != SyncMethod.CHECKPOINT
         ):
             self.synchronizer.sync_method = SyncMethod.CHECKPOINT
@@ -505,14 +476,8 @@ class Config:
 
         self._check_interval()
 
-        # check monitor
-        if not self.monitor.cache_root_dir:
-            # create a cache dir in <checkpoint_path>/.cache
-            self.monitor.cache_root_dir = os.path.join(self.model.checkpoint_path, ".cache")
-        # create a job dir in <checkpoint_path>/.cache/<project>/<name>
-        self.monitor.job_dir = os.path.join(
-            self.monitor.cache_root_dir, self.monitor.project, self.monitor.name
-        )
+        # create a job dir in <checkpoint_job_dir>/monitor
+        self.monitor.job_dir = os.path.join(self.checkpoint_job_dir, "monitor")
         try:
             os.makedirs(self.monitor.job_dir, exist_ok=True)
         except Exception:

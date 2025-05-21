@@ -1,6 +1,8 @@
 """Launch the trainer"""
 import argparse
+import os
 import sys
+from pathlib import Path
 
 import ray
 
@@ -56,7 +58,7 @@ def train(config: Config) -> None:
                 logger.info("SFT warmup finished.")
                 break
 
-    algo_type = config.global_config.algorithm_type
+    algo_type = config.algorithm_type
     try:
         ray.get(trainer.train.remote(algo_type))
         logger.info("Train finished.")
@@ -100,7 +102,7 @@ def both(config: Config) -> None:
                 break
         ray.get([explorer.sync_weight.remote(), trainer.sync_weight.remote()])
 
-    algo_type = config.global_config.algorithm_type
+    algo_type = config.algorithm_type
     while True:
         try:
             ref_explore = explorer.explore_one_period.remote()
@@ -123,7 +125,7 @@ def both(config: Config) -> None:
             logger.error(e)
             logger.error("Training stopped due to exception.")
             raise e
-        if explore_step_num % config.global_config.eval_interval == 0:
+        if explore_step_num % config.explorer.eval_interval == 0:
             try:
                 ray.get(explorer.eval.remote())
                 logger.info("Evaluation finished.")
@@ -181,10 +183,13 @@ def run(config_path: str, dlc: bool = False):
 def studio(port: int = 8501):
     from streamlit.web import cli as stcli
 
+    current_dir = Path(__file__).resolve().parent.parent
+    config_manager_path = os.path.join(current_dir, "manager", "config_manager.py")
+
     sys.argv = [
         "streamlit",
         "run",
-        "trinity/manager/config_manager.py",
+        config_manager_path,
         "--server.port",
         str(port),
         "--server.fileWatcherType",

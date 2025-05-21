@@ -177,7 +177,6 @@ class SimpleWorkflow(Workflow):
             raise ValueError("`reward_fn` must be a subclass of `RewardFn`")
         # Rollout args
         rollout_args = asdict(task.rollout_args)
-        rollout_args["n"] = rollout_args["repeat_times"]
         self.rollout_args = rollout_args
         self.is_eval = task.is_eval
 

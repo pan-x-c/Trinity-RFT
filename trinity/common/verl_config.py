@@ -291,32 +291,30 @@ class veRLConfig:
         self.actor_rollout_ref.synchronizer = config.synchronizer
         self.buffer = config.buffer
         world_size = self.trainer.nnodes * self.trainer.n_gpus_per_node
-        if config.global_config.batch_size % world_size != 0:
+        if config.buffer.batch_size % world_size != 0:
             raise ValueError(
-                f"batch_size ({config.global_config.batch_size}) must be divisible by ({world_size})"
+                f"batch_size ({config.buffer.batch_size}) must be divisible by ({world_size})"
             )
         # TODO: use dynamic read_batch_size to support multi-round scenarios
         # Get the experiences of one explore step
         self.trainer.project_name = config.monitor.project
         self.trainer.experiment_name = config.monitor.name
-        self.data.train_batch_size = config.global_config.batch_size
+        self.data.train_batch_size = config.buffer.batch_size
         self.trainer.default_local_dir = config.model.checkpoint_path
         self.trainer.sft_warmup_steps = config.trainer.sft_warmup_steps
-        self.actor_rollout_ref.actor.ppo_mini_batch_size = config.global_config.batch_size
+        self.actor_rollout_ref.actor.ppo_mini_batch_size = config.buffer.batch_size
         self.actor_rollout_ref.rollout.temperature = (
             config.buffer.explorer_input.taskset.rollout_args.temperature
         )
-        self.actor_rollout_ref.rollout.n = (
-            config.buffer.explorer_input.taskset.rollout_args.repeat_times
-        )
-        self.critic.ppo_mini_batch_size = config.global_config.batch_size
+        self.actor_rollout_ref.rollout.n = config.buffer.explorer_input.taskset.rollout_args.n
+        self.critic.ppo_mini_batch_size = config.buffer.batch_size
         self.critic.rollout_n = self.actor_rollout_ref.rollout.n
 
-        self.actor_rollout_ref.actor.algorithm_type = config.global_config.algorithm_type
-        if config.global_config.algorithm_type == AlgorithmType.PPO:
+        self.actor_rollout_ref.actor.algorithm_type = config.algorithm_type
+        if config.algorithm_type == AlgorithmType.PPO:
             logger.info("Using GAE `adv_estimator` for PPO")
             self.algorithm.adv_estimator = AdvantageEstimator.GAE.value
-        elif config.global_config.algorithm_type == AlgorithmType.GRPO:
+        elif config.algorithm_type == AlgorithmType.GRPO:
             logger.info("Using GRPO `adv_estimator` for GRPO")
             self.algorithm.adv_estimator = AdvantageEstimator.GRPO.value
 

@@ -1,9 +1,7 @@
+project: "Trinity-RFT-gsm8k"
+name: "async-qwen2.5-1.5B-gsm8k"
 mode: train
-global_config:
-  total_epochs: 20
-  batch_size: 96
-  eval_interval: 10
-  algorithm_type: grpo
+algorithm_type: grpo
 model:
   model_path: /PATH/TO/MODEL/
   max_prompt_tokens: 256
@@ -13,6 +11,8 @@ cluster:
   node_num: 1
   gpu_per_node: 8
 buffer:
+  total_epochs: 20
+  batch_size: 96
   max_retry_times: 3
   max_retry_interval: 1
   explorer_input:
@@ -24,7 +24,7 @@ buffer:
         prompt_key: 'question'
         response_key: 'answer'
       rollout_args:
-        repeat_times: 8
+        n: 8
         temperature: 1.0
         logprobs: 0
     default_workflow_type: 'math_workflow'
@@ -34,6 +34,7 @@ buffer:
       storage_type: queue
       path: 'sqlite:///gsm8k.db'
 explorer:
+  eval_interval: 10
   engine_type: vllm_async
   engine_num: 2
   runner_num: 32
@@ -42,10 +43,6 @@ explorer:
   enforce_eager: true
   dtype: bfloat16
   seed: 42
-  use_ray: false
-  backend: 'nccl'
-  max_pending_requests: 32
-  max_waiting_steps: 4
 synchronizer:
   sync_method: 'checkpoint'
   sync_iteration_interval: 10
@@ -55,5 +52,3 @@ trainer:
   sft_warmup_steps: 0 # Set to integer to enable sft warmup
 monitor:
   cache_root_dir: ""
-  project: "Trinity-RFT-gsm8k"
-  name: "async-qwen2.5-1.5B-gsm8k"
