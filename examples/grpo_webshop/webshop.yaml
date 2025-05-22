@@ -24,7 +24,6 @@ buffer:
       format:
         prompt_key: 'task_id'
       rollout_args:
-        n: 8
         temperature: 1.0
         logprobs: 0
     default_workflow_type: 'webshop_workflow'

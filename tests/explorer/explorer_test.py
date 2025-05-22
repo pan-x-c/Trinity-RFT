@@ -22,7 +22,7 @@ class BaseExplorerCase(RayUnittestBase):
         self.config.buffer.batch_size = 4
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm_async"
-        self.config.buffer.explorer_input.taskset.rollout_args.n = 2
+        self.config.algorithm.repeat_times = 2
         self.config.monitor.monitor_type = MonitorType.TENSORBOARD
         self.config.project = "Trinity-unittest"
         self.config.checkpoint_root_dir = get_checkpoint_path()

@@ -26,7 +26,7 @@ class BaseTrainerCase(RayUnittestBase):
         self.config.buffer.batch_size = 4
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm_async"
-        self.config.buffer.explorer_input.taskset.rollout_args.n = 3
+        self.config.algorithm.repeat_times = 3
         self.config.explorer.rollout_model.use_v1 = False
         self.config.project = "Trainer-unittest"
         self.config.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"

@@ -10,12 +10,19 @@ from trinity.common.config import load_config
 class TestConfig(unittest.TestCase):
     def test_load_default_config(self):
         config = get_template_config()
+        config.algorithm.repeat_times = 10
+        config.model.model_path = "Qwen/Qwen3-1.7B"
         config.check_and_update()
         self.assertIsNotNone(config.trainer.trainer_config)
         self.assertEqual(config.trainer.trainer_config.trainer.n_gpus_per_node, 2)
         self.assertEqual(config.trainer.trainer_config.trainer.nnodes, 1)
         self.assertEqual(config.trainer.trainer_config.trainer.project_name, config.project)
         self.assertEqual(config.trainer.trainer_config.trainer.experiment_name, config.name)
+        self.assertEqual(
+            config.buffer.explorer_input.taskset.rollout_args.n, config.algorithm.repeat_times
+        )
+        self.assertEqual(config.model.model_path, config.model.critic_model_path)
+        self.assertEqual(config.model.model_path, config.explorer.rollout_model.model_path)
         self.assertEqual(
             config.trainer.trainer_config.trainer.save_freq,
             config.synchronizer.sync_interval,

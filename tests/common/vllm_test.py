@@ -85,7 +85,7 @@ CHAT_TEMPLATE = r"""
 class BaseTestModelWrapper:
     def test_generate(self):
         prompts = ["Hello, world!", "Hello, my name is"]
-        n = self.config.buffer.explorer_input.taskset.rollout_args.n
+        n = self.config.algorithm.repeat_times
         results = self.model_wrapper.generate(prompts, n=n, temperature=1.0)
         self.assertEqual(len(results), len(prompts) * n)
         messages = [
@@ -140,7 +140,7 @@ class TestModelWrapperSyncV0(BaseTestModelWrapper, RayUnittestBase):
         self.config.explorer.rollout_model.engine_num = 2
         self.config.explorer.rollout_model.use_v1 = False
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        self.config.buffer.explorer_input.taskset.rollout_args.n = 2
+        self.config.algorithm.repeat_times = 2
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm")
@@ -156,7 +156,7 @@ class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
         self.config.explorer.rollout_model.tensor_parallel_size = 1
         self.config.explorer.rollout_model.use_v1 = False
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        self.config.buffer.explorer_input.taskset.rollout_args.n = 2
+        self.config.algorithm.repeat_times = 2
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
@@ -187,7 +187,7 @@ class TestModelWrapperAsyncTPV1(BaseTestModelWrapper, RayUnittestBase):
         self.config.explorer.rollout_model.tensor_parallel_size = 2
         self.config.explorer.rollout_model.use_v1 = True
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        self.config.buffer.explorer_input.taskset.rollout_args.n = 2
+        self.config.algorithm.repeat_times = 2
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")

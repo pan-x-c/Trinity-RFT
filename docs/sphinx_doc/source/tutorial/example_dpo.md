@@ -58,8 +58,6 @@ buffer:
       prompt_key: <prompt_key>
       chosen_key: <chosen_key>
       rejected_key: <rejected_key>
-
-# In train_dpo.yaml
 trainer:
   actor_use_kl_loss: True
   actor_kl_loss_coef: 0.1  # value of beta in DPO

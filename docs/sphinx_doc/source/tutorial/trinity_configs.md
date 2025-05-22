@@ -106,7 +106,6 @@ buffer:
         prompt_key: 'question'
         response_key: 'answer'
       rollout_args:
-        n: 1
         temperature: 1.0
         logprobs: 0
     eval_tasksets: []
@@ -127,7 +126,7 @@ buffer:
 - `buffer.explorer_input.taskset.path`: The path to the taskset.
 - `buffer.explorer_input.taskset.split`: The split name of the taskset used for training. Default is `train`.
 - `buffer.explorer_input.taskset.format`: The format of the taskset. It includes `prompt_key`, `response_key`, `workflow_key` and `reward_fn_key`.
-- `buffer.explorer_input.taskset.rollout_args.n`: The number of times to repeat each task, used for GRPO-like algorithms. Default is `1`.
+- `buffer.explorer_input.taskset.rollout_args.n`: The number of times to repeat each task. This field is automatically set to `algorithm.repeat_times`.
 - `buffer.explorer_input.taskset.rollout_args.temperature`: The temperature used in vLLM. Default is `1.0`.
 - `buffer.explorer_input.taskset.rollout_args.logprobs`: The logprobs used in vLLM. Default is `0`.
 - `buffer.explorer_input.eval_tasksets`: The configuration of the eval tasksets. It is a list of tasksets which will be used for evaluation. And it is empty by default.
