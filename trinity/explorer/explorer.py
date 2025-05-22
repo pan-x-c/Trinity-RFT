@@ -53,8 +53,6 @@ class Explorer:
             role="explorer",
             config=config,
         )
-        self.max_pending_task_num = self.config.explorer.runner_num
-        self.max_waiting_steps = max(1, int(self.config.explorer.max_waiting_steps))
         self.batch_size = config.buffer.batch_size
         self.update_interval = (
             self.config.synchronizer.sync_interval * self.config.buffer.batch_size
@@ -79,7 +77,9 @@ class Explorer:
     ):
         # In checkpoint mode, we use explorer to store the model weights which has no rank
         base_offset = 0 if self.use_checkpoint_weights_update else 1
-        world_size = len(self.models) * self.config.explorer.tensor_parallel_size + base_offset
+        world_size = (
+            len(self.models) * self.config.explorer.rollout_model.tensor_parallel_size + base_offset
+        )
         self.logger.info(
             f"Initialize process group for weight synchronization, "
             f"master_address={master_address}, master_port={master_port}, "
@@ -90,7 +90,8 @@ class Explorer:
             model.init_process_group.remote(
                 master_address=master_address,
                 master_port=master_port,
-                rank_offset=i * self.config.explorer.tensor_parallel_size + base_offset,
+                rank_offset=i * self.config.explorer.rollout_model.tensor_parallel_size
+                + base_offset,
                 world_size=world_size,
                 group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
                 timeout=self.config.synchronizer.sync_timeout,
@@ -101,14 +102,14 @@ class Explorer:
         ray.get(refs)
 
     def _init_runner_pool(self) -> RunnerPool:
-        if self.config.explorer.engine_type != "vllm_async":
+        if self.config.explorer.rollout_model.engine_type != "vllm_async":
             # sync model requires the same number of runners as the number of models
-            self.config.explorer.runner_num = self.config.explorer.engine_num
+            self.config.explorer.runner_num = self.config.explorer.rollout_model.engine_num
             self.logger.info(
                 "Sync vLLM model requires the same number of runners as the number of models"
             )
-        if self.config.explorer.runner_num < self.config.explorer.engine_num:
-            self.config.explorer.runner_num = self.config.explorer.engine_num
+        if self.config.explorer.runner_num < self.config.explorer.rollout_model.engine_num:
+            self.config.explorer.runner_num = self.config.explorer.rollout_model.engine_num
             self.logger.info(
                 f"Number of Runners is less than number of models, set to {self.config.explorer.runner_num}"
             )
@@ -262,7 +263,7 @@ class Explorer:
     def benchmark(self) -> bool:
         """Benchmark the model checkpoints."""
         # benchmark on the latest checkpoint
-        if self.config.explorer.eval_on_latest_ckp:
+        if self.config.explorer.eval_on_latest_checkpoint:
             self._checkpoint_weights_update()
             self.eval()
             return True

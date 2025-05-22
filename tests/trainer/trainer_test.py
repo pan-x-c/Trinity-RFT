@@ -25,10 +25,10 @@ class BaseTrainerCase(RayUnittestBase):
         self.config.buffer.total_epochs = 2
         self.config.buffer.batch_size = 4
         self.config.model.model_path = get_model_path()
-        self.config.explorer.engine_type = "vllm_async"
+        self.config.explorer.rollout_model.engine_type = "vllm_async"
         self.config.buffer.explorer_input.taskset.rollout_args.n = 3
-        self.config.explorer.use_v1 = False
-        self.config.monitor.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        self.config.explorer.rollout_model.use_v1 = False
+        self.config.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         self.config.monitor.monitor_type = MonitorType.TENSORBOARD
         self.config.checkpoint_root_dir = os.path.join(
             get_checkpoint_path(), f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -58,7 +58,7 @@ class TestTrainerCountdown(BaseTrainerCase):
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         self.config.trainer.trainer_config.trainer.max_critic_ckpt_to_keep = 2
         both(self.config)
-        parser = TensorBoardParser(os.path.join(self.config.monitor.job_dir, "tensorboard"))
+        parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
         rollout_metrics = parser.metric_list("rollout")
         self.assertTrue(len(rollout_metrics) > 0)
         self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 8)
@@ -92,10 +92,10 @@ class TestTrainerCountdown(BaseTrainerCase):
         # test bench mode
         self.config.mode = "bench"
         self.config.synchronizer.sync_method = SyncMethod.CHECKPOINT
-        self.config.explorer.eval_on_latest_ckp = False
+        self.config.explorer.eval_on_latest_checkpoint = False
         self.config.check_and_update()
         bench(self.config)
-        parser = TensorBoardParser(os.path.join(self.config.monitor.job_dir, "tensorboard"))
+        parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
         countdown_metrics = parser.metric_list("eval/countdown")
         copy_countdown_metrics = parser.metric_list("eval/copy_countdown")
         self.assertTrue(len(countdown_metrics) > 0)

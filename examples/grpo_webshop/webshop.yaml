@@ -51,5 +51,3 @@ trainer:
   trainer_type: 'verl'
   trainer_config_path: 'examples/grpo_webshop/train_webshop.yaml'
   save_interval: 10
-monitor:
-  cache_root_dir: ""

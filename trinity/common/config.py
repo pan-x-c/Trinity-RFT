@@ -223,7 +223,7 @@ class ExplorerConfig:
 
     # for evaluation
     eval_interval: int = 100
-    eval_on_latest_ckp: bool = True
+    eval_on_latest_checkpoint: bool = True
 
 
 @dataclass
@@ -240,8 +240,8 @@ class MonitorConfig:
     # TODO: support multiple monitors (List[MonitorType])
     monitor_type: MonitorType = MonitorType.WANDB
     # ! DO NOT SET
-    # the root directory for cache and meta files, automatically generated
-    cache_root_dir: Optional[str] = None
+    # the root directory for monitor cache and meta files, automatically generated
+    cache_dir: str = ""
 
 
 @dataclass
@@ -483,12 +483,12 @@ class Config:
         self._check_interval()
 
         # create a job dir in <checkpoint_job_dir>/monitor
-        self.monitor.job_dir = os.path.join(self.checkpoint_job_dir, "monitor")
+        self.monitor.cache_dir = os.path.join(self.checkpoint_job_dir, "monitor")
         try:
-            os.makedirs(self.monitor.job_dir, exist_ok=True)
+            os.makedirs(self.monitor.cache_dir, exist_ok=True)
         except Exception:
             logger.warning(
-                "Failed to create monitor dir, please check "
+                f"Failed to create monitor dir {self.monitor.cache_dir}, please check "
                 f"your checkpoint directory: {self.checkpoint_root_dir}"
             )
 
