@@ -54,14 +54,12 @@ We use the configurations in [`gsm8k.yaml`](https://github.com/modelscope/Trinit
 ```yaml
 # In gsm8k.yaml
 algorithm:
+  algorithm_type: grpo / ppo
   repeat_times: {number of rollouts for each task}
-  adv_estimator: grpo (fro GRPO) / gae (for PPO)
 
-# In train_gsm8k.yaml
-actor_rollout_ref:
-  actor:
-    use_kl_loss: True (fro GRPO) / False (for PPO)
-    kl_loss_coef: 0.001
+trainer:
+  actor_use_kl_loss: True (fro GRPO) / False (for PPO)
+  actort_kl_loss_coef: 0.001
 ```
 
 ### Run the Experiment
