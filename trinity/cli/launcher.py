@@ -165,7 +165,7 @@ def run(config_path: str, dlc: bool = False):
         data_processor_config.dj_config_path or data_processor_config.dj_process_desc
     ):
         activate_data_module(data_processor_config.data_workflow_url, config_path)
-    ray_namespace = f"{config.monitor.project}-{config.monitor.name}"
+    ray_namespace = f"{config.project}-{config.name}"
     if dlc:
         from trinity.utils.dlc_utils import setup_ray_cluster
 

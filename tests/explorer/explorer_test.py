@@ -56,7 +56,7 @@ class TestExplorerCountdownEval(BaseExplorerCase):
 class TestExplorerCountdownNoEval(BaseExplorerCase):
     def test_explorer(self):
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
-        self.config.monitor.name = f"explore-no-eval-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        self.config.name = f"explore-no-eval-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         self.config.explorer.rollout_model.use_v1 = False
         self.config.check_and_update()
         explore(self.config)
