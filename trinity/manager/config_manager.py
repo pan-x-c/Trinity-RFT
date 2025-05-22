@@ -935,7 +935,7 @@ if node_num > 1:
             max_value=1.0,
         )
 
-    def _set_actor_entropy_coeff(self):
+    def _set_actor_entropy_coef(self):
         st.number_input(
             "Entropy Coeff",
             key="actor_entropy_coef",
