@@ -97,7 +97,8 @@ def both(config: Config) -> None:
             train_continue, train_step_num = ray.get(
                 trainer.train_one_period.remote(AlgorithmType.SFT)
             )
-            logger.info(f"SFT warmup step {train_step_num} finished.")
+            if train_step_num <= config.buffer.trainer_input.sft_warmup_steps:
+                logger.info(f"SFT warmup step {train_step_num} finished.")
             if not train_continue:
                 logger.info("SFT warmup finished.")
                 break
@@ -171,6 +172,10 @@ def run(config_path: str, dlc: bool = False):
 
         setup_ray_cluster(namespace=ray_namespace)
     else:
+        from trinity.utils.dlc_utils import is_running
+
+        if not is_running:
+            raise RuntimeError("Ray is not running, please start it by `ray start --head`.")
         ray.init(namespace=ray_namespace, ignore_reinit_error=True)
     if config.mode == "explore":
         explore(config)

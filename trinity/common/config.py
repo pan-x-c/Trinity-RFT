@@ -253,7 +253,7 @@ class ExplorerConfig:
 
     # for evaluation
     eval_interval: int = 100
-    eval_on_latest_checkpoint: bool = True
+    eval_on_latest_checkpoint: bool = False
 
 
 @dataclass
