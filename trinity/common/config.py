@@ -290,11 +290,12 @@ class SynchronizerConfig:
     sync_method: SyncMethod = SyncMethod.NCCL
     # sync weights every `sync_interval` steps
     sync_interval: int = 1
+    # waiting for `sync_timeout` seconds before timeout in `nccl` method
     sync_timeout: int = 1200
     # wait for the lastest checkpoint to be ready
     wait_for_checkpoint: bool = False
-    master_address: Optional[str] = None
-    master_port: Optional[int] = None
+
+    # ! DO NOT SET, automatically calculated
     explorer_world_size: Optional[int] = None
 
 
