@@ -54,7 +54,8 @@ def train(config: Config) -> None:
             train_continue, train_step_num = ray.get(
                 trainer.train_one_period.remote(AlgorithmType.SFT)
             )
-            logger.info(f"SFT warmup step {train_step_num} finished.")
+            if train_step_num <= config.buffer.trainer_input.sft_warmup_steps:
+                logger.info(f"SFT warmup step {train_step_num} finished.")
             if not train_continue:
                 logger.info("SFT warmup finished.")
                 break
