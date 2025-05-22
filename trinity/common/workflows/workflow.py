@@ -156,6 +156,7 @@ class SimpleWorkflow(Workflow):
         super().__init__(
             model=model,
             task=task,
+            auxiliary_models=auxiliary_models,
         )
         self.reset(task)
 
@@ -232,7 +233,15 @@ class MathWorkflow(SimpleWorkflow):
 <think> reasoning process here </think>
 <answer> answer here </answer>.
 """
-        super().__init__(
-            model=model,
-            task=task,
-        )
+        super().__init__(model=model, task=task, auxiliary_models=auxiliary_models)
+
+    def reset(self, task: Task):
+        if task.reward_fn is None:
+            task.reward_fn = MathRewardFn
+        if task.reward_fn == MathRewardFn and task.format_args.system_prompt is None:
+            task.format_args.system_prompt = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e.,
+<think> reasoning process here </think>
+<answer> answer here </answer>.
+"""
+        # call the SimpleWorkflow.reset
+        super().reset(task)

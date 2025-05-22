@@ -519,6 +519,9 @@ class Config:
             logger.warning(
                 "DPO only supports checkpoint synchronization, set `synchronizer.sync_method` to `checkpoint`."
             )
+        if self.algorithm.algorithm_type == AlgorithmType.DPO and self.algorithm.repeat_times != 2:
+            self.algorithm.repeat_times = 2
+            logger.warning("DPO only supports 2 repeat times, set `algorithm.repeat_times` to 2.")
 
         self._check_interval()
 
