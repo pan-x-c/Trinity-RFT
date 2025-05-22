@@ -106,6 +106,7 @@ buffer:
         prompt_key: 'question'
         response_key: 'answer'
       rollout_args:
+        n: 1
         temperature: 1.0
         logprobs: 0
     eval_tasksets: []
