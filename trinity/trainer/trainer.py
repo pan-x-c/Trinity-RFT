@@ -74,8 +74,8 @@ class Trainer:
             bool: Whether to continue training.
         """
         self.engine.set_mode(algo_type)
-        if algo_type.is_rft() and self.config.trainer.get_exp_strategy:
-            strategy = ReadStrategy(self.config.trainer.get_exp_strategy)
+        if algo_type.is_rft() and self.config.buffer.trainer_input.read_experience_strategy:
+            strategy = ReadStrategy(self.config.buffer.trainer_input.read_experience_strategy)
         else:
             strategy = None
         try:

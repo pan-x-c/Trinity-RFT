@@ -28,11 +28,10 @@ class BaseTrainerCase(RayUnittestBase):
         self.config.explorer.rollout_model.engine_type = "vllm_async"
         self.config.buffer.explorer_input.taskset.rollout_args.n = 3
         self.config.explorer.rollout_model.use_v1 = False
+        self.config.project = "Trainer-unittest"
         self.config.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         self.config.monitor.monitor_type = MonitorType.TENSORBOARD
-        self.config.checkpoint_root_dir = os.path.join(
-            get_checkpoint_path(), f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        )
+        self.config.checkpoint_root_dir = get_checkpoint_path()
         self.config.synchronizer.sync_interval = 2
         self.config.synchronizer.sync_method = SyncMethod.NCCL
         self.config.explorer.eval_interval = 4
@@ -109,4 +108,4 @@ class TestTrainerCountdown(BaseTrainerCase):
 
     def tearDown(self):
         # remove dir only when the test passed
-        shutil.rmtree(self.config.model.checkpoint_path)
+        shutil.rmtree(self.config.checkpoint_job_dir)

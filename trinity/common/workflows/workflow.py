@@ -51,11 +51,13 @@ class Task:
             auxiliary_models=auxiliary_models,
         )
 
+    # Deprecated property, will be removed in the future
     @property
     def task_desc(self) -> Union[str, None]:
         prompt_key = self.format_args.prompt_key
         return self.raw_task[prompt_key] if prompt_key in self.raw_task else None  # type: ignore
 
+    # Deprecated property, will be removed in the future
     @property
     def truth(self) -> Union[str, None]:
         response_key = self.format_args.response_key

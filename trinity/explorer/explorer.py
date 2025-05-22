@@ -129,7 +129,7 @@ class Explorer:
         # TODO: support more checkpoint types
         try:
             checkpoint_dir = get_checkpoint_dir_with_step_num(
-                checkpoint_root_path=self.config.model.checkpoint_path,
+                checkpoint_root_path=self.config.checkpoint_job_dir,
                 trainer_type=self.config.trainer.trainer_type,
                 step_num=step_num,
             )
@@ -272,8 +272,8 @@ class Explorer:
         all_ckp_steps = sorted(
             [
                 int(ckp.split("global_step_")[-1])
-                for ckp in os.listdir(self.config.model.checkpoint_path)
-                if os.path.isdir(os.path.join(self.config.model.checkpoint_path, ckp))
+                for ckp in os.listdir(self.config.checkpoint_job_dir)
+                if os.path.isdir(os.path.join(self.config.checkpoint_job_dir, ckp))
                 and ckp.startswith("global_step_")
             ]
         )
