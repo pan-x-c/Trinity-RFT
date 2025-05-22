@@ -34,3 +34,5 @@ trainer:
   trainer_type: 'verl'
   trainer_config_path: 'examples/dpo_humanlike/train_dpo.yaml'
   save_interval: 30
+  actor_use_kl_loss: True
+  actor_kl_loss_coef: 0.1

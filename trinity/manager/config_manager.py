@@ -172,7 +172,7 @@ class ConfigManager:
             "actor_use_uid": False,
             "actor_grad_clip": 1.0,
             "actor_clip_ratio": 0.2,
-            "actor_entropy_coeff": 0.001,
+            "actor_entropy_coef": 0.001,
             "_not_dpo_actor_use_kl_loss": True,
             "actor_use_kl_loss": True,
             "actor_kl_loss_coef": 0.001,
@@ -938,7 +938,7 @@ if node_num > 1:
     def _set_actor_entropy_coeff(self):
         st.number_input(
             "Entropy Coeff",
-            key="actor_entropy_coeff",
+            key="actor_entropy_coef",
             min_value=0.0,
             max_value=1.0,
             format="%.1e",
@@ -1273,7 +1273,7 @@ if node_num > 1:
             )
 
             self._set_configs_with_st_columns(
-                ["actor_grad_clip", "actor_clip_ratio", "actor_entropy_coeff"]
+                ["actor_grad_clip", "actor_clip_ratio", "actor_entropy_coef"]
             )
 
             self._set_actor_use_kl_loss()
@@ -1377,7 +1377,7 @@ if node_num > 1:
                     "ppo_max_token_len_per_gpu": ppo_max_token_len_per_gpu,
                     "grad_clip": st.session_state["actor_grad_clip"],
                     "clip_ratio": st.session_state["actor_clip_ratio"],
-                    "entropy_coeff": st.session_state["actor_entropy_coeff"],
+                    "entropy_coeff": st.session_state["actor_entropy_coef"],
                     "use_kl_loss": st.session_state["actor_use_kl_loss"],
                     "kl_loss_coef": st.session_state["actor_kl_loss_coef"],
                     "kl_loss_type": st.session_state["actor_kl_loss_type"],

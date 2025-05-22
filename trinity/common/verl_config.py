@@ -330,7 +330,7 @@ class veRLConfig:
         self.algorithm.lam = config.algorithm.lam
         self.actor_rollout_ref.actor.use_kl_loss = config.trainer.actor_use_kl_loss
         self.actor_rollout_ref.actor.kl_loss_coef = config.trainer.actor_kl_loss_coef
-        self.actor_rollout_ref.actor.entropy_coeff = config.trainer.actor_entropy_coeff
+        self.actor_rollout_ref.actor.entropy_coeff = config.trainer.actor_entropy_coef
         self.actor_rollout_ref.actor.grad_clip = config.trainer.actor_grad_clip
         self.actor_rollout_ref.actor.clip_ratio = config.trainer.actor_clip_ratio
 
