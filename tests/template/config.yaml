@@ -7,6 +7,8 @@ algorithm:
   repeat_times: 1
 model:
   model_path: ''
+  max_prompt_tokens: 2048
+  max_response_tokens: 2048
 cluster:  # 2 for explorer, 2 for trainer
   node_num: 1
   gpu_per_node: 4
@@ -33,8 +35,6 @@ explorer:
     enable_prefix_caching: false
     enforce_eager: true
     dtype: bfloat16
-    max_prompt_tokens: 2048
-    max_response_tokens: 2048
     seed: 42
     use_v1: true
 trainer:

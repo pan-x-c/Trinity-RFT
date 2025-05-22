@@ -6,6 +6,8 @@ algorithm:
   repeat_times: 8
 model:
   model_path: /PATH/TO/MODEL/
+  max_prompt_tokens: 4096
+  max_response_tokens: 16384
 cluster:
   node_num: 1
   gpu_per_node: 8
@@ -40,8 +42,6 @@ explorer:
     enable_prefix_caching: false
     enforce_eager: true
     dtype: bfloat16
-    max_prompt_tokens: 4096
-    max_response_tokens: 16384
     seed: 42
     gpu_memory_utilization: 0.7
     enable_chunked_prefill: true

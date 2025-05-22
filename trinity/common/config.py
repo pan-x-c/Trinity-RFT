@@ -118,8 +118,8 @@ class ModelConfig:
     # source model path
     model_path: str = ""
     critic_model_path: str = ""
-    max_prompt_tokens: int = 2048
-    max_response_tokens: int = 2048
+    max_prompt_tokens: Optional[int] = None
+    max_response_tokens: Optional[int] = None
 
 
 @dataclass
@@ -130,14 +130,14 @@ class InferenceModelConfig:
     engine_num: int = 1
     tensor_parallel_size: int = 1
     use_v1: bool = True
-    max_prompt_tokens: int = 2048
-    max_response_tokens: int = 2048
     enforce_eager: bool = True
     enable_prefix_caching: bool = False
     enable_chunked_prefill: bool = False
     gpu_memory_utilization: float = 0.9
     dtype: str = "bfloat16"
     seed: int = 42
+    max_prompt_tokens: Optional[int] = None
+    max_response_tokens: Optional[int] = None
     # override chat template in model
     chat_template: Optional[str] = None
     # For Qwen3
@@ -478,6 +478,10 @@ class Config:
             and self.explorer.rollout_model.enable_openai_api
         ):
             raise ValueError("OpenAI API server only support `vllm_async` engine.")
+        if self.explorer.rollout_model.max_prompt_tokens is None:
+            self.explorer.rollout_model.max_prompt_tokens = self.model.max_prompt_tokens
+        if self.explorer.rollout_model.max_response_tokens is None:
+            self.explorer.rollout_model.max_response_tokens = self.model.max_response_tokens
 
         # check synchronizer
         self.synchronizer.explorer_world_size = (
