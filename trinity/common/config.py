@@ -266,7 +266,7 @@ class TrainerConfig:
     # trainer configs
     actor_use_kl_loss: bool = False
     actor_kl_loss_coef: float = 0.001
-    actor_entropy_coef: float = 0.001
+    actor_entropy_coeff: float = 0.001
     actor_grad_clip: float = 1.0
     actor_clip_ratio: float = 0.2
     # TODO: extract more train-related params from underlying trainer engine
