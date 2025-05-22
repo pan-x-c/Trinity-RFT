@@ -24,7 +24,7 @@ buffer:
 
 synchronizer:
   sync_method: 'checkpoint'
-  sync_iteration_interval: <sync_iteration_interval>
+  sync_interval: <sync_iteration_interval>
 ```
 
 You may run this example with the following command:

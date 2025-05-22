@@ -149,6 +149,18 @@ class InferenceModelConfig:
 
 
 @dataclass
+class AlgorithmConfig:
+    """Config for algorithm."""
+
+    algorithm_type: AlgorithmType = AlgorithmType.PPO
+    # for GRPO-like algorithms, repeat each task for `repeat_times` times
+    repeat_times: int = 1
+    gamma: float = 1.0
+    lam: float = 1.0
+    # TODO: add more algorithm params here
+
+
+@dataclass
 class ClusterConfig:
     """Config for the cluster."""
 
@@ -232,6 +244,15 @@ class TrainerConfig:
     trainer_config_path: str = ""
     save_interval: int = 0
     enable_preview: bool = True  # enable rollout preview in wandb
+
+    # trainer configs
+    actor_use_kl_loss: bool = False
+    actor_kl_loss_coef: float = 0.001
+    actor_entropy_coeff: float = 0.001
+    actor_grad_clip: float = 1.0
+    actor_clip_ratio: float = 0.2
+    # TODO: extract more train-related params from underlying trainer engine
+
     trainer_config: Any = field(default_factory=dict)
 
 
@@ -252,8 +273,6 @@ class SynchronizerConfig:
     sync_method: SyncMethod = SyncMethod.NCCL
     # sync weights every `sync_interval` steps
     sync_interval: int = 1
-    # `sync_iteration_interval` is deprecated, use `sync_interval` instead
-    sync_iteration_interval: Optional[int] = None
     sync_timeout: int = 1200
     # wait for the lastest checkpoint to be ready
     wait_for_checkpoint: bool = False
@@ -269,7 +288,7 @@ class Config:
     mode: str = "both"  # `explore`, `train`, `both` or `bench`
     project: str = "Trinity-RFT"
     name: str = "rft"
-    algorithm_type: AlgorithmType = AlgorithmType.PPO
+    algorithm: AlgorithmConfig = field(default_factory=AlgorithmConfig)
     # the root dir for checkpoints
     checkpoint_root_dir: str = ""
     # DO NOT SET, automatically generated as `checkpoint_root_dir/project/name`
@@ -290,12 +309,7 @@ class Config:
             OmegaConf.save(self, f)
 
     def _check_deprecated(self) -> None:
-        if self.synchronizer.sync_iteration_interval is not None:
-            logger.warning(
-                f"`synchronizer.sync_iteration_interval` is deprecated, please use `synchronizer.sync_interval` instead. "
-                f"And `synchronizer.sync_interval` will set to {self.synchronizer.sync_iteration_interval} instead."
-            )
-            self.synchronizer.sync_interval = self.synchronizer.sync_iteration_interval
+        pass
 
     def _check_interval(self) -> None:
         assert self.synchronizer.sync_interval > 0
@@ -303,7 +317,7 @@ class Config:
         # check eval_interval
         if (
             self.mode != "bench"
-            and self.algorithm_type != AlgorithmType.DPO
+            and self.algorithm.algorithm_type != AlgorithmType.DPO
             and self.explorer.eval_interval % self.synchronizer.sync_interval != 0
         ):
             self.buffer.eval_interval = (
@@ -316,12 +330,12 @@ class Config:
         # check save_interval
         if (
             self.mode != "bench"
-            and self.algorithm_type != AlgorithmType.DPO
+            and self.algorithm.algorithm_type != AlgorithmType.DPO
             and self.synchronizer.sync_method == SyncMethod.CHECKPOINT
         ):
             if self.trainer.save_interval != self.synchronizer.sync_interval:
                 logger.warning(
-                    f"When `algorithm_type` != `DPO` and `synchronizer.sync_method` == `checkpoint`, "
+                    f"When `algorithm.algorithm_type` != `DPO` and `synchronizer.sync_method` == `checkpoint`, "
                     f"`trainer.save_interval` will be set to "
                     f"`synchronizer.sync_interval = {self.synchronizer.sync_interval}`."
                 )
@@ -335,6 +349,11 @@ class Config:
             )
         if not self.buffer.explorer_input.taskset.name:
             self.buffer.explorer_input.taskset.name = "taskset"
+        self.buffer.explorer_input.taskset.rollout_args.n = self.algorithm.repeat_times
+        logger.info(
+            "`buffer.explorer_input.taskset.rollout_args.n` is set to `algorithm.repeat_times`"
+            f" (={self.algorithm.repeat_times})."
+        )
         self.buffer.explorer_input.taskset.task_type = TaskType.EXPLORE
         self.buffer.explorer_input.taskset.total_epochs = self.buffer.total_epochs
         if self.buffer.explorer_input.taskset.default_workflow_type is None:
@@ -384,22 +403,24 @@ class Config:
                     f"Auto set `buffer.trainer_input.experience_buffer` to {self.buffer.trainer_input.experience_buffer}"
                 )
         elif self.mode == "train":  # TODO: to be check
-            if self.algorithm_type.is_dpo():
+            if self.algorithm.algorithm_type.is_dpo():
                 if (
                     self.buffer.trainer_input.experience_buffer is None
                     or not self.buffer.trainer_input.experience_buffer.path
                 ):
                     raise ValueError(
-                        "`buffer.trainer_input.experience_buffer.path` is required when `algorithm_type == AlgorithmType.DPO`"
+                        "`buffer.trainer_input.experience_buffer.path` is required when `algorithm.algorithm_type == AlgorithmType.DPO`"
                     )
         if self.buffer.trainer_input.experience_buffer is not None:
-            self.buffer.trainer_input.experience_buffer.algorithm_type = self.algorithm_type
+            self.buffer.trainer_input.experience_buffer.algorithm_type = (
+                self.algorithm.algorithm_type
+            )
 
         # set buffer.explorer_output
         if self.buffer.explorer_output is None:
             self.buffer.explorer_output = self.buffer.trainer_input.experience_buffer
         else:
-            self.buffer.explorer_output.algorithm_type = self.algorithm_type
+            self.buffer.explorer_output.algorithm_type = self.algorithm.algorithm_type
 
         # check trainer_input.sft_warmup_dataset
         if (
@@ -435,7 +456,7 @@ class Config:
         # check mode
         if self.mode not in ["explore", "train", "both", "bench"]:
             raise ValueError(f"Invalid mode: {self.mode}")
-        if self.algorithm_type == AlgorithmType.DPO and self.mode == "both":
+        if self.algorithm.algorithm_type == AlgorithmType.DPO and self.mode == "both":
             raise ValueError("DPO does not support `both` mode")
 
         # prepare for the checkpoint directory
@@ -472,7 +493,7 @@ class Config:
                 f"`{self.mode}` mode only supports checkpoint synchronization, set `synchronizer.sync_method` to `checkpoint`."
             )
         if (
-            self.algorithm_type == AlgorithmType.DPO
+            self.algorithm.algorithm_type == AlgorithmType.DPO
             and self.synchronizer.sync_method != SyncMethod.CHECKPOINT
         ):
             self.synchronizer.sync_method = SyncMethod.CHECKPOINT

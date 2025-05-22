@@ -8,16 +8,24 @@ The following is the main config file for Trinity-RFT. Take `countdown.yaml` as 
 mode: both
 project: Trinity-RFT
 name: example
-algorithm_type: ppo
 checkpoint_root_dir: /PATH/TO/CHECKPOINT_DIR
 ```
 
 - `mode`: The mode of the experiment, chosen from `both`, `train`, `explore` or `bench`. `both` means both trainer and explorer are launched; `train` means only trainer is launched; `explore` means only explorer is launched; `bench` conducts benchmark evaluation. Default is `both`.
 - `project`: The name of the project.
 - `name`: The name of the experiment.
-- `algorithm_type`: The type of the algorithm, Support `ppo`, `grpo`, `opmd` and `dpo`.
 - `checkpoint_root_dir`: The root directory of the checkpoint.
 
+## Algorithm
+
+```yaml
+algorithm:
+  algorithm_type: grpo
+  repeat_times: 1
+```
+
+- `algorithm.algorithm_type`: The type of the algorithm, Support `ppo`, `grpo`, `opmd` and `dpo`.
+- `algorithm.repeat_times`: The number of times to repeat each task. Used for GRPO-like algorithm. Default is `1`.
 
 ## Monitor
 

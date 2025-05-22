@@ -45,7 +45,8 @@ We run the experiment in a train mode, as there is no Explorer. To enable this m
 ```yaml
 # In dpo.yaml
 mode: train
-algorithm_type: dpo
+algorithm:
+  algorithm_type: dpo
 synchronizer:
   sync_method: 'checkpoint'
 buffer:
@@ -59,10 +60,9 @@ buffer:
       rejected_key: <rejected_key>
 
 # In train_dpo.yaml
-actor_rollout_ref:
-  actor:
-    use_kl_loss: True
-    kl_loss_coef: 0.1  # value of beta in DPO
+trainer:
+  actor_use_kl_loss: True
+  actor_kl_loss_coef: 0.1  # value of beta in DPO
 ```
 
 ### Run the Experiment

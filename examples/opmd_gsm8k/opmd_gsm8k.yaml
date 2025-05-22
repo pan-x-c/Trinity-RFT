@@ -1,7 +1,9 @@
 project: "Trinity-RFT-gsm8k-test-opmd"
 name: "opmd_test"
-algorithm_type: opmd
 checkpoint_root_dir: /PATH/TO/CHECKPOINT/
+algorithm:
+  algorithm_type: opmd
+  repeat_times: 8
 model:
   model_path: /PATH/TO/MODEL/
 cluster:

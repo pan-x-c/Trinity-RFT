@@ -1,7 +1,8 @@
 project: "dpo_example"
 name: "trinity_dpo"
 mode: train
-algorithm_type: dpo
+algorithm:
+  algorithm_type: dpo
 checkpoint_root_dir: /PATH/TO/CHECKPOINT
 model:
   model_path: '/PATH/TO/MODEL' # NOTE

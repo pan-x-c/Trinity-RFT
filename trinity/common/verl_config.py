@@ -313,17 +313,26 @@ class veRLConfig:
         self.actor_rollout_ref.rollout.temperature = (
             config.buffer.explorer_input.taskset.rollout_args.temperature
         )
-        self.actor_rollout_ref.rollout.n = config.buffer.explorer_input.taskset.rollout_args.n
+        self.actor_rollout_ref.rollout.n = config.algorithm.repeat_times
         self.critic.ppo_mini_batch_size = config.buffer.batch_size
         self.critic.rollout_n = self.actor_rollout_ref.rollout.n
 
-        self.actor_rollout_ref.actor.algorithm_type = config.algorithm_type
-        if config.algorithm_type == AlgorithmType.PPO:
+        self.actor_rollout_ref.actor.algorithm_type = config.algorithm.algorithm_type
+        if config.algorithm.algorithm_type == AlgorithmType.PPO:
             logger.info("Using GAE `adv_estimator` for PPO")
             self.algorithm.adv_estimator = AdvantageEstimator.GAE.value
-        elif config.algorithm_type == AlgorithmType.GRPO:
+        elif config.algorithm.algorithm_type == AlgorithmType.GRPO:
             logger.info("Using GRPO `adv_estimator` for GRPO")
             self.algorithm.adv_estimator = AdvantageEstimator.GRPO.value
+
+        # copy trainer related config from global config
+        self.algorithm.gamma = config.algorithm.gamma
+        self.algorithm.lam = config.algorithm.lam
+        self.actor_rollout_ref.actor.use_kl_loss = config.trainer.actor_use_kl_loss
+        self.actor_rollout_ref.actor.kl_loss_coef = config.trainer.actor_kl_loss_coef
+        self.actor_rollout_ref.actor.entropy_coeff = config.trainer.actor_entropy_coeff
+        self.actor_rollout_ref.actor.grad_clip = config.trainer.actor_grad_clip
+        self.actor_rollout_ref.actor.clip_ratio = config.trainer.actor_clip_ratio
 
         if self.actor_rollout_ref.actor.algorithm_type.is_dpo():  # for DPO
             if not self.actor_rollout_ref.actor.use_kl_loss:

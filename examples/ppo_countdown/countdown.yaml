@@ -1,7 +1,9 @@
 project: "Trinity-RFT-countdown"
 name: "qwen2.5-1.5B-countdown"
-algorithm_type: ppo
 checkpoint_root_dir: /PATH/TO/CHECKPOINT/
+algorithm:
+  algorithm_type: ppo
+  repeat_times: 5
 model:
   model_path: '/PATH/TO/MODEL/CHECKPOINT/'
 cluster:

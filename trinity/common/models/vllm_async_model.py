@@ -314,7 +314,7 @@ class vLLMAysncRolloutModel(InferenceModel):
         )
 
     async def has_api_server(self) -> bool:
-        return self.api_server_host is not None and self.api_server_port is not None
+        return self.config.enable_openai_api
 
     async def api_server_ready(self) -> Optional[str]:
         """Check if the OpenAI API server is ready.

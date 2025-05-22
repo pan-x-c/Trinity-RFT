@@ -1,8 +1,10 @@
 project: "Trinity-RFT-gsm8k"
 name: "async-qwen2.5-1.5B-gsm8k"
 mode: explore
-algorithm_type: grpo
 checkpoint_root_dir: 'checkpoints/qwen2.5-1.5B-gsm8k'
+algorithm:
+  algorithm_type: grpo
+  repeat_times: 8
 model:
   model_path: /PATH/TO/MODEL/
   max_prompt_tokens: 256
@@ -47,7 +49,7 @@ explorer:
     seed: 42
 synchronizer:
   sync_method: 'checkpoint'
-  sync_iteration_interval: 10
+  sync_interval: 10
 trainer:
   trainer_type: 'verl'
   trainer_config_path: examples/async_gsm8k/verl_config.yaml

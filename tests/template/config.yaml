@@ -1,8 +1,10 @@
 project: unittest
 name: test
 mode: both
-algorithm_type: ppo
 checkpoint_root_dir: ''
+algorithm:
+  algorithm_type: ppo
+  repeat_times: 1
 model:
   model_path: ''
 cluster:  # 2 for explorer, 2 for trainer
