@@ -73,7 +73,6 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         global_config: Config,
     ):
         train_config = global_config.trainer
-        pprint(train_config.trainer_config)
         config = OmegaConf.structured(train_config.trainer_config)
         # download the checkpoint from hdfs
         local_path = copy_local_path_from_hdfs(config.actor_rollout_ref.model.path)

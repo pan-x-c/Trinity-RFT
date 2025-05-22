@@ -53,12 +53,15 @@ class FormatConfig:
 
 @dataclass
 class GenerationConfig:
-    # repeat each task for `n` times (for GPRO-like algorithms)
-    n: int = 1
     temperature: float = 1.0
     top_p: float = 1.0
     top_k: int = -1
     logprobs: int = 0  # vLLM return `logprobs + 1` elements
+    # repeat each task for `n` times (for GPRO-like algorithms)
+    # this field will be automatically set to `algorithm.repeat_times` in
+    # `buffer.explorer_input.taskset.rollout_args`
+    # ! DO NOT SET in `buffer.explorer_input.taskset.rollout_args`
+    n: int = 1
 
 
 @dataclass
@@ -67,7 +70,6 @@ class StorageConfig:
 
     name: str = ""
     storage_type: StorageType = StorageType.FILE
-    algorithm_type: Optional[AlgorithmType] = None  # automatically set
     path: Optional[str] = None
 
     # used for StorageType.FILE
@@ -76,12 +78,19 @@ class StorageConfig:
     format: FormatConfig = field(default_factory=FormatConfig)
     index: int = 0
 
-    # used for algorithm_type is None
-    task_type: TaskType = TaskType.EXPLORE  # automatically set
+    # used for rollout tasks
     default_workflow_type: Optional[str] = None
     default_reward_fn_type: Optional[str] = None
-    total_epochs: int = 1  # automatically set
     rollout_args: GenerationConfig = field(default_factory=GenerationConfig)
+
+    # ! DO NOT SET, automatically set from algorithm.algorithm_type
+    algorithm_type: Optional[AlgorithmType] = None
+
+    # ! DO NOT SET, automatically set from buffer.total_epochs
+    total_epochs: int = 1  # automatically set
+
+    # ! DO NOT SET,  automatically set corresponding to train/eval
+    task_type: TaskType = TaskType.EXPLORE
 
 
 @dataclass
@@ -124,8 +133,10 @@ class ModelConfig:
 
 @dataclass
 class InferenceModelConfig:
-    # For Rollout Model: automatically set from config.model.model_path
+    # ! DO NOT SET in explorer.rollout_model, automatically set from config.model.model_path
     model_path: str = ""
+
+    # support `vllm` or `vllm_async`,
     engine_type: str = "vllm_async"
     engine_num: int = 1
     tensor_parallel_size: int = 1
@@ -136,15 +147,22 @@ class InferenceModelConfig:
     gpu_memory_utilization: float = 0.9
     dtype: str = "bfloat16"
     seed: int = 42
+
+    # if not set, use `model.max_prompt_tokens`
     max_prompt_tokens: Optional[int] = None
+    # if not set, use `model.max_response_tokens`
     max_response_tokens: Optional[int] = None
+
     # override chat template in model
     chat_template: Optional[str] = None
+
     # For Qwen3
     enable_thinking: bool = False
+
     # For OpenAI API
     enable_openai_api: bool = False
-    # DO NOT SET this field
+
+    # ! DO NOT SET
     bundle_indices: str = ""
 
 
@@ -209,7 +227,7 @@ class BufferConfig:
     max_retry_times: int = 3
     max_retry_interval: int = 1
 
-    # for experience construct, DO NOT SET
+    # ! DO NOT SET FOLLOWING FIELDS
     read_batch_size: int = 1  # automatically set
     tokenizer_path: Optional[str] = None  # automatically set
     pad_token_id: Optional[int] = None  # automatically set
@@ -260,8 +278,7 @@ class TrainerConfig:
 class MonitorConfig:
     # TODO: support multiple monitors (List[MonitorType])
     monitor_type: MonitorType = MonitorType.WANDB
-    # ! DO NOT SET
-    # the root directory for monitor cache and meta files, automatically generated
+    # ! DO NOT SET, automatically generated as checkpoint_job_dir/monitor
     cache_dir: str = ""
 
 
@@ -288,12 +305,12 @@ class Config:
     mode: str = "both"  # `explore`, `train`, `both` or `bench`
     project: str = "Trinity-RFT"
     name: str = "rft"
-    algorithm: AlgorithmConfig = field(default_factory=AlgorithmConfig)
     # the root dir for checkpoints
     checkpoint_root_dir: str = ""
-    # DO NOT SET, automatically generated as `checkpoint_root_dir/project/name`
+    # ! DO NOT SET, automatically generated as `checkpoint_root_dir/project/name`
     checkpoint_job_dir: str = ""
 
+    algorithm: AlgorithmConfig = field(default_factory=AlgorithmConfig)
     data_processor: DataProcessorConfig = field(default_factory=DataProcessorConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)

@@ -3,6 +3,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from pprint import pprint
 
 import ray
 
@@ -157,6 +158,7 @@ def activate_data_module(data_workflow_url: str, config_path: str):
 def run(config_path: str, dlc: bool = False):
     config = load_config(config_path)
     config.check_and_update()
+    pprint(config)
     # try to activate data module
     data_processor_config = config.data_processor
     if data_processor_config.data_workflow_url and (
