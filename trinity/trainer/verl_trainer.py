@@ -304,7 +304,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         if self.sft_warmup_step_num == self.config.trainer.sft_warmup_steps:
             self.logger.log(
                 data={"sft_warmup_steps": self.sft_warmup_step_num},
-                step=self.global_steps,
+                step=self.global_steps - 1,
             )
             with _timer("save_checkpoint", timing_raw):
                 self._save_checkpoint()

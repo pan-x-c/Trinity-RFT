@@ -107,7 +107,7 @@ class ConfigManager:
             "runner_num": 32,
             "_grouped_adv_repeat_times": 2,
             "_not_grouped_adv_repeat_times": 1,
-            "n": 1,
+            "repeat_times": 1,
             "tensor_parallel_size": 1,
             "enable_prefix_caching": False,
             "enforce_eager": True,
@@ -787,6 +787,33 @@ if node_num > 1:
     def _set_ppo_epochs(self):
         st.number_input("PPO Epochs", key="ppo_epochs", min_value=1)
 
+    def _set_repeat_times(self):  # TODO
+        grouped_adv_algorithms = [
+            AlgorithmType.GRPO.value,
+            AlgorithmType.OPMD.value,  # TODO: may add rloo
+        ]
+        if st.session_state["algorithm_type"] in grouped_adv_algorithms:
+            min_repeat_times = 2
+            st.session_state["repeat_times"] = st.session_state["_grouped_adv_repeat_times"]
+        else:
+            min_repeat_times = 1
+            st.session_state["repeat_times"] = st.session_state["_not_grouped_adv_repeat_times"]
+
+        def on_change():
+            if st.session_state["algorithm_type"] in grouped_adv_algorithms:
+                st.session_state["_grouped_adv_repeat_times"] = st.session_state["repeat_times"]
+            else:
+                st.session_state["_not_grouped_adv_repeat_times"] = st.session_state["repeat_times"]
+
+        st.number_input(
+            "Repeat Times",
+            key="repeat_times",
+            min_value=min_repeat_times,
+            help="`repeat_times` is used to set how many experiences each task can generate, "
+            "and it must be greater than `1` when `algorithm_type` is `opmd` or `grpo`.",
+            on_change=on_change,
+        )
+
     def _set_training_strategy(self):
         st.selectbox(
             "Training Strategy",
@@ -1099,7 +1126,7 @@ if node_num > 1:
         self._check_engine_num_and_tp_size()
 
         self._set_configs_with_st_columns(
-            ["total_epochs", "train_batch_size", "ppo_epochs", "n"]
+            ["total_epochs", "train_batch_size", "ppo_epochs", "repeat_times"]
             if st.session_state["mode"] == "both"
             else ["total_epochs", "train_batch_size", "ppo_epochs"]
         )
@@ -1187,7 +1214,7 @@ if node_num > 1:
 
     def _expert_explorer_part(self):
         self._set_configs_with_st_columns(
-            ["engine_type", "engine_num", "tensor_parallel_size", "n"]
+            ["engine_type", "engine_num", "tensor_parallel_size", "repeat_times"]
         )
         self._check_engine_num_and_tp_size()
 
@@ -1332,7 +1359,7 @@ if node_num > 1:
         else:
             fsdp_config = {}
 
-        ppo_max_token_len_per_gpu = st.session_state["n"] * (
+        ppo_max_token_len_per_gpu = st.session_state["repeat_times"] * (
             st.session_state["max_prompt_tokens"] + st.session_state["max_response_tokens"]
         )
 
@@ -1349,7 +1376,8 @@ if node_num > 1:
                 "prompt_key": "placeholder",
                 "max_prompt_length": st.session_state["max_prompt_tokens"],
                 "max_response_length": st.session_state["max_response_tokens"],
-                "train_batch_size": st.session_state["train_batch_size"] * st.session_state["n"],
+                "train_batch_size": st.session_state["train_batch_size"]
+                * st.session_state["repeat_times"],
                 "val_batch_size": None,
                 "return_raw_input_ids": False,
                 "return_raw_chat": False,
@@ -1437,7 +1465,7 @@ if node_num > 1:
                     "disable_log_stats": True,
                     "enable_chunked_prefill": True,
                     "do_sample": True,
-                    "n": st.session_state["n"],
+                    "n": st.session_state["repeat_times"],
                 },
             },
             "critic": {
@@ -1596,12 +1624,15 @@ if node_num > 1:
                 "mode": st.session_state["mode"],
                 "project": st.session_state["project"],
                 "name": st.session_state["name"],
-                "algorithm_type": st.session_state["algorithm_type"],
+                "checkpoint_root_dir": st.session_state["checkpoint_path"],
+                "algorithm": {
+                    "algorithm_type": st.session_state["algorithm_type"],
+                    "repeat_times": st.session_state["repeat_times"],
+                },
                 "model": {
                     "model_path": st.session_state["model_path"],
                     "max_prompt_tokens": st.session_state["max_prompt_tokens"],
                     "max_response_tokens": st.session_state["max_response_tokens"],
-                    "checkpoint_path": st.session_state["checkpoint_path"],
                 },
                 "cluster": {
                     "node_num": st.session_state["node_num"],
@@ -1624,7 +1655,7 @@ if node_num > 1:
                                 "response_key": st.session_state["taskset_response_key"],
                             },
                             "rollout_args": {
-                                "n": st.session_state["n"],
+                                "n": st.session_state["repeat_times"],
                                 "temperature": st.session_state["temperature"],
                                 "top_p": st.session_state["top_p"],
                                 "top_k": st.session_state["top_k"],
