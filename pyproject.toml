@@ -101,5 +101,5 @@ exclude = '''
 known_third_party = ["wandb"]
 
 [project.urls]
-"Homepage" = "https://github.com/Trinity-RFT/Trinity-RFT"
+"Homepage" = "https://github.com/modelscope/Trinity-RFT"
 "Documentation" = "https://modelscope.github.io/Trinity-RFT/"
