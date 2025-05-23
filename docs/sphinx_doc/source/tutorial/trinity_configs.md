@@ -303,13 +303,14 @@ Specifies the backend and behavior of the trainer.
 ```yaml
 trainer:
   trainer_type: 'verl'
-  trainer_config_path: 'examples/ppo_countdown/train_countdown.yaml'
   save_interval: 100
+  trainer_config_path: 'examples/ppo_countdown/train_countdown.yaml'
+  trainer_config: null
 ```
 
 - `trainer_type`: Trainer backend implementation. Currently only supports `verl`.
-- `trainer_config_path`: Path to the detailed trainer config file.
 - `save_interval`: Frequency (in steps) at which to save model checkpoints.
+- `trainer_config_path`: Path to the detailed trainer config file. You can also use the `trainer_config` field to directly specify the trainer config.
 
 ---
 
