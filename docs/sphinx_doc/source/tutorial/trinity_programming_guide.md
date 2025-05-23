@@ -87,7 +87,7 @@ The `rollout_args` field contains the parameters for the rollout process, such a
 - `auxiliary_models`: A list of auxiliary models, which will not be trained. All of them provide OpenAI compatible API.
 
 ```{tip}
-The `model` also provided an OpenAI compatible API, you can switch to it by setting `explorer.enable_openai_api` to `true` in your config file and use `model.get_openai_client()` to get an `openai.OpenAI` instance.
+The `model` also provided an OpenAI compatible API, you can switch to it by setting `explorer.rollout_model.enable_openai_api` to `true` in your config file and use `model.get_openai_client()` to get an `openai.OpenAI` instance in your workflow.
 ```
 
 #### Example Code
