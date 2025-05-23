@@ -1,8 +1,53 @@
-# Trinity-RFT Configuration
+# Configuration Guide
 
-The following is the main config file for Trinity-RFT. Take `countdown.yaml` as an example.
+This section provides a detailed description of the configuration files used in Trinity-RFT.
 
-## Global Config
+## Overview
+
+The configuration of Trinity-RFT is a `yaml` file, which is divided into several parts according to different modules. Below is an example of a configuration file:
+
+```yaml
+project: Trinity-RFT
+name: tutorial
+mode: both
+checkpoint_root_dir: /PATH/TO/CHECKPOINT
+
+algorithm:
+  # for algorithm related parameters
+  ...
+model:
+  # models used for training
+  ...
+cluster:
+  # number and specifications of cluster nodes
+  ...
+buffer:
+  # data buffer for explorer and trainer
+  ...
+explorer:
+  # rollout models and workflow runners settings
+  ...
+trainer:
+  # parameters related to specific training engines
+  ...
+synchronizer:
+  # model weights synchronization method and interval
+  ...
+monitor:
+  # monitor settings
+  ...
+data_processor:
+  # settings for process the data before training
+  ...
+```
+
+
+In the following sections, we will provide a detailed description of each part of the configuration.
+Since the RFT process is relatively complex and involves many parameters, this document will focus on those items that require special attention. For other parameters, please refer to the [code](https://github.com/modelscope/Trinity-RFT/blob/main/trinity/common/config.py).
+
+
+## Global Configs
+
 
 ```yaml
 project: Trinity-RFT
@@ -13,70 +58,60 @@ checkpoint_root_dir: /PATH/TO/CHECKPOINT
 
 - `project`: The name of the project.
 - `name`: The name of the experiment.
-- `mode`: The mode of the experiment, chosen from `both`, `train`, `explore` or `bench`. `both` means both trainer and explorer are launched; `train` means only trainer is launched; `explore` means only explorer is launched; `bench` conducts benchmark evaluation. Default is `both`.
-- `checkpoint_root_dir`: The root directory to save the checkpoints. Sepcifically, the generated checkpoints will be saved in `<checkpoint_root_dir>/<project>/<name>/.
+- `mode`: The running mode of Trinity-RFT, chosen from `both`, `train`, `explore` or `bench`.
+  - In `both` mode both trainer and explorer are launched, which is the default mode.
+  - In `train` mode only trainer is launched.
+  - In `train` mode only explorer is launched.
+  - The `bench` mode is used for benchmark evaluation.
+- `checkpoint_root_dir`: The root directory to save checkpoints. This directory is the root path of the workspace and can be used to organize the results of multiple experiments. Sepcifically, the checkpoints of this experiment will be saved in `<checkpoint_root_dir>/<project>/<name>/`.
 
 ## Algorithm
+
+The algorithm configuration is used to specify the algorithm type and other algorithm parameters.
 
 ```yaml
 algorithm:
   algorithm_type: grpo
   repeat_times: 1
+  gamma: 1.0
+  lam: 1.0
 ```
 
 - `algorithm.algorithm_type`: The type of the algorithm. Support `ppo`, `grpo`, `opmd` and `dpo`.
-- `algorithm.repeat_times`: The number of times to repeat each task. Used for GRPO-like algorithm. Default is `1`.
+- `algorithm.repeat_times`: The number of times to repeat each task. Used for GRPO-like algorithm. Default is `1`. In `dpo`, the value of this field will be automatically filled in as `2`.
+- `algorithm.gamma`: The discount factor for the value function. Default is `1.0`.
+- `algorithm.lam`: The lambda for the generalized advantage estimation. Default is `1.0`.
 
 ## Monitor
 
+The monitor is used to log the training process for both explorer and trainer.
+
 ```yaml
 monitor:
-  monitor_type: MonitorType.WANDB
+  monitor_type: wandb
 ```
 
 - `monitor.monitor_type`: The type of the monitor. For now, `MonitorType.WANDB` and `MonitorType.TENSORBOARD` are supported.
+  - When using `wandb`, you need to login to your WandB account and set the environment variable (`WANDB_API_KEY`) properly before running the experiment. The generated wandb experiement's project and name are the same as the `project` and `name` in global configs.
+  - When using `tensorboard`, the generated file will be saved in `<checkpoint_root_dir>/<project>/<name>/monitor/tensorboard`.
 
-
-## Data Processing
-
-<!-- The `data` configuration specifies the data used for training. It includes the total number of epochs, the batch size, the path to the dataset, the default workflow type, the default reward function type, and the format configuration. -->
-
-```yaml
-data_processor:
-  source_data_path: '/PATH/TO/DATASET'
-  load_kwargs:
-    split: 'train'  # only need the train split
-  format:
-    prompt_key: 'question'
-    response_key: 'answer'
-
-  # cleaner related
-  dj_config_path: 'tests/test_configs/active_iterator_test_dj_cfg.yaml'
-  clean_strategy: 'iterative'
-  # db related
-  db_url: 'postgresql://{username}@localhost:5432/{db_name}'
-```
-
-- `data.source_data_path`: The path to the source dataset.
-- `data.load_kwargs`: The kwargs used in `datasets.load_dataset`.
-- `data.format`: The format of the source dataset. It includes `prompt_key` and `response_key`.
-- `data.dj_config_path`: The path to the Data-Juicer configuration.
-- `data.clean_strategy`: The cleaning strategy used for `DataCleaner`, which iteratively cleans dataset until targets are met.
-- `data.db_url`: The URL of the database.
 
 ## Model
 
-The `model` configuration specifies the model used for training. It includes the path to the model checkpoint, the maximum number of tokens in the prompt, the maximum number of tokens in the response, the path to the checkpoint of the model, and whether to load the checkpoint of the model.
+The `model` configuration specifies the model used for training.
 
 ```yaml
 model:
   model_path: '/PATH/TO/MODEL/CHECKPOINT/'
   critic_model_path: ''
+  max_prompt_tokens: 4096
+  max_response_tokens: 16384
 ```
 
-- `model.model_path`: The path to the model checkpoint. It must be set manually.
+- `model.model_path`: The checkpoint path of the model to be trained.
 - `model.critic_model_path`: The path to the critic model checkpoint. If not set, the `model.critic_model_path` will be set to `model.model_path`.
-
+- `model.max_prompt_tokens`: The maximum number of tokens in the prompt of the model.
+- `model.max_response_tokens`: The maximum number of tokens in the response of the model.
 
 ## Cluster
 
@@ -88,84 +123,153 @@ cluster:
   gpu_per_node: 8
 ```
 
-- `cluster.node_num`: The number of nodes used for training.
-- `cluster.gpu_per_node`: The number of GPUs per node used for training.
+- `cluster.node_num`: The number of nodes in the cluster used for training.
+- `cluster.gpu_per_node`: The number of GPUs per node.
 
 ## Buffer
 
+The `buffer` configuration specifies the data buffer for the explorer and trainer. This part is relatively complicated but very important. For ease of understanding, we will introduce the `buffer` configs used by explorer and trainer respectively.
+
+
 ```yaml
 buffer:
-  max_retry_times: 3
-  max_retry_interval: 1
+  batch_size: 32
+  total_epochs: 100
+
   explorer_input:
     taskset:
-      name: countdown
-      path: 'countdown_dataset/oneshot-split'
+      ...
+    eval_tasksets:
+      ...
+
+  trainer_input:
+    experience_buffer:
+      ...
+    sft_warmup_dataset:
+      ...
+
+  default_workflow_type: 'math_workflow'
+  default_reward_fn_type: 'countdown_reward'
+```
+
+- `buffer.batch_size`: The number of data item to be sampled from the buffer for training. *Please do not multiply this value by the `algorithm.repeat_times` manually*.
+- `buffer.total_epochs`: The total number of epochs to train. This parameter will not take effect when using a buffer with streaming data (e.g., buffers of `queue` type).
+
+
+### Explorer Input
+
+This part is used to specify the input of the explorer. The explorer need two different set of data, `taskset` and `eval_tasksets`. Below is an example.
+
+```yaml
+buffer:
+  ...
+  explorer_input:
+    taskset:
+      name: countdown_train
+      storage_type: file
+      path: /PATH/TO/DATA
       split: train
       format:
         prompt_key: 'question'
         response_key: 'answer'
       rollout_args:
-        n: 1
         temperature: 1.0
-        logprobs: 0
-    eval_tasksets: []
-    default_workflow_type: 'math_workflow'
-    default_reward_fn_type: 'countdown_reward'
+      default_workflow_type: 'math_workflow'
+      default_reward_fn_type: 'countdown_reward'
+
+
+    eval_tasksets:
+    - name: countdown_eval
+      storage_type: file
+      path: /PATH/TO/DATA
+      split: test
+      format:
+        prompt_key: 'question'
+        response_key: 'answer'
+      rollout_args:
+        temperature: 0.1
+      default_workflow_type: 'math_workflow'
+      default_reward_fn_type: 'countdown_reward'
+
+
+```
+
+- `buffer.explorer_input.taskset`: The task dataset to use in explorer for training. For now, we only support one taskset here. In the future, we will support multiple tasksets here.
+- `buffer.explorer_input.eval_taskset`: The list of task dataset to use in explorer for evaluation.
+
+
+The configuration for each task dataset is defined as follows:
+
+- `name`: The name of the task dataset. It needs to be globally unique, and data processing module will use this name to load the dataset in future versions.
+- `storage_type`: The storage type of the task dataset. For now, we only support `file`, `queue` and `sql` storage type.
+  - `file`: The task dataset is stored in `jsonl`/`parquet` files. The data file organization is required to meet the huggingface standard. *We recommand using this storage type for most cases.*
+  - `queue`: The task dataset is stored in a queue. The queue is a simple FIFO queue that stores the task dataset. *Do not use this storage type for task dataset unless you know what you are doing.*
+  - `sql`: The task dataset is stored in a SQL database. *This type is unstable and will be optimized in the future versions.*
+- `path`: The path to the task dataset.
+  - For `file` storage type, the path is the path to the directory that contains the task dataset files.
+  - For `queue` storage type, the path is optional. You can back up the data in the queue by specifying a sqlite database path here.
+  - For `sql` storage type, the path is the path to the sqlite database file.
+- `format`: The format of the task dataset. Only for `file` storage type.
+  - `prompt_key`: Specifies which column in the dataset contains the prompt data.
+  - `response_key`: Specifies which column in the dataset contains the response data.
+- `rollout_args`: The parameters for rollout.
+  - `temperature`: The temperature for sampling.
+- `default_workflow_type`: The default workflow type for this task dataset. If not specified, use the `buffer.default_workflow_type`
+- `default_reward_fn_type`: The default reward funtion type for this task dataset. If not specified, use the `buffer.default_reward_fn_type`.
+
+### Trainer Input
+
+```yaml
+buffer:
+  ...
   trainer_input:
     experience_buffer:
       name: countdown_buffer
       storage_type: queue
-      path: 'sqlite:///countdown.db'
-    sft_warmup_dataset: null
+      path: sqlite:///countdown_buffer.db
+    sft_warmup_dataset:
+      name: warmup_data
+      storage_type: file
+      path: /PATH/TO/WARMUP_DATA
+      format:
+        prompt_key: 'question'
+        response_key: 'answer'
+    sft_warmup_steps: 0
 ```
 
-- `buffer.max_retry_times`: The maximum number of retries when loading the data from database.
-- `buffer.max_retry_interval`: The maximum interval between retries when loading the data from database.
-- `buffer.explorer_input.taskset`: The configuration of the taskset.
-- `buffer.explorer_input.taskset.name`: The name of the taskset.
-- `buffer.explorer_input.taskset.path`: The path to the taskset.
-- `buffer.explorer_input.taskset.split`: The split name of the taskset used for training. Default is `train`.
-- `buffer.explorer_input.taskset.format`: The format of the taskset. It includes `prompt_key`, `response_key`, `workflow_key` and `reward_fn_key`.
-- `buffer.explorer_input.taskset.rollout_args.n`: The number of times to repeat each task. This field is automatically set to `algorithm.repeat_times`.
-- `buffer.explorer_input.taskset.rollout_args.temperature`: The temperature used in vLLM. Default is `1.0`.
-- `buffer.explorer_input.taskset.rollout_args.logprobs`: The logprobs used in vLLM. Default is `0`.
-- `buffer.explorer_input.eval_tasksets`: The configuration of the eval tasksets. It is a list of tasksets which will be used for evaluation. And it is empty by default.
-- `buffer.explorer_input.default_workflow_type`: The default workflow type for `taskset` and `eval_tasksets`.
-- `buffer.explorer_input.default_reward_fn_type`: The default reward function type for `taskset` and `eval_tasksets`.
-- `buffer.trainer_input.experience_buffer`: The configuration of experience_buffer.
-- `buffer.trainer_input.experience_buffer.name`: The name of the experience buffer.
-- `buffer.trainer_input.experience_buffer.storage_type`: The storage type of the experience buffer. Default is `queue`.
-- `buffer.trainer_input.experience_buffer.path`: The sql path to store the experience buffer. It can be empty to indicate not saving to the database.
-- `buffer.trainer_input.sft_warmup_dataset`: The configuration of the SFT warmup dataset. The structure of `sft_warmup_dataset` is the similar to `buffer.explorer_input.taskset`.
+- `buffer.trainer_input.experience_buffer`: The experience buffer to use in the trainer.
+- `buffer.trainer_input.experience_buffer.name`: The name of the experience buffer. It should be globally unique.
+- `buffer.trainer_input.experience_buffer.storage_type`: Similar to the `storage_type` in explorer input dataset, but we only recommend `queue` here. `sql` and `file` will be supported in the future.
+- `buffer.trainer_input.sft_warmup_dataset`: The dataset to use for SFT warmup in the trainer. It has the same format as the task dataset in the explorer input. This field is optional, set it only if you want to use SFT warmup.
+- `buffer.trainer_input.sft_warmup_steps`: The number of steps to use for SFT warmup in the trainer. If none-zero, `buffer.trainer_input.sft_warmup_dataset` must be set.
+
 
 ## Explorer
 
-The `explorer` configuration specifies the explorer configuration. It includes the type of the engine, the number of engines, the number of workflow runners, the tensor parallel size, whether to enable prefix caching, whether to enforce eager mode, the data type, the `temperature`, the `top-p`, the `top-k`, the `seed`, the `logprobs`, the number of times to repeat each task, the maximum number of pending requests, and the maximum number of waitingsteps.
+The `explorer` configuration is used to configurate the workflow and rollout related functionality.
 
 ```yaml
 explorer:
   runner_num: 32
   rollout_model:
     engine_type: vllm_async
-    engine_num: 2
+    engine_num: 1
     tensor_parallel_size: 1
     enable_prefix_caching: false
-    enforce_eager: true
     dtype: bfloat16
     seed: 42
 ```
-
-- `explorer.engine_type`: The type of the engine, Support `vllm_async` and `vllm_sync`. Default is `vllm_async`.
-- `explorer.engine_num`: The number of engines. Default is `2`. It should be set manually.
-- `explorer.runner_num`: The number of workflow runners. Default is `32`.
-- `explorer.tensor_parallel_size`: The tensor parallel size used in vLLM. Default is `1`.
-- `explorer.enable_prefix_caching`: Whether to enable prefix caching. Default is `False`.
-- `explorer.enforce_eager`: Whether to enforce eager mode. Default is `True`.
-- `explorer.dtype`: The data type used in vLLM. Default is `bfloat16`.
-- `explorer.seed`: The seed used in vLLM. Default is `42`.
-- `explorer.rollout_model.max_prompt_tokens`: The maximum number of tokens in the prompt. Default is `2048`. It should be set manually.
-- `explorer.rollout_model.max_response_tokens`: The maximum number of tokens in the response. Default is `2048`. It should be set manually.
+- `runner_num`: The number of worklow runners. We recommand to set it to at least 4 times of the number of rollout models to improve the throughput, but at the same time do not exceed the `explorer.batch_size`.
+- `explorer.rollout_model.engine_num`: The number of rollout engines. Default is `1`.
+- `explorer.rollout_model.engine_type`: The type of the engine. support `vllm_async` and `vllm`. Default is `vllm_async`. We recommand using `vllm_async` here, and `vllm` is may be removed in the future.
+- `explorer.rollout_model.tensor_parallel_size`: The tensor parallel size used in vLLM. Default is `1`.
+- `explorer.rollout_model.enable_prefix_caching`: Whether to enable prefix caching. Default is `False`.
+- `explorer.rollout_model.dtype`: The data type used in vLLM. Default is `bfloat16`.
+- `explorer.rollout_model.seed`: The seed used in vLLM. Default is `42`.
+- `explorer.rollout_model.use_v1`: Whether to use v1 of vLLM. Default is `True`. We will remove this item after the v1 engine is stable and use v1 by default.
+- `explorer.rollout_model.enable_openai_api`: Whether to enable OpenAI API. Default is `False`.
+- `explorer.rollout_model.enable_thinking`: For Qwen3, whether to enable thinking. Default is `False`.
+- `explorer.rollout_model.chat_template`: To override the default chat template of the model. If not specified, the default chat template will be used. Default is `None`.
 
 ## Synchronizer
 
@@ -194,6 +298,33 @@ trainer:
 - `trainer.trainer_type`: The backend of the trainer, Only `verl` is supported.
 - `trainer.trainer_config_path`: The path to the trainer configuration file. It must be set manually.
 - `trainer.save_interval`: The interval steps between two checkpoints. Default is `100`.
+
+## Data Processing
+
+<!-- The `data` configuration specifies the data used for training. It includes the total number of epochs, the batch size, the path to the dataset, the default workflow type, the default reward function type, and the format configuration. -->
+
+```yaml
+data_processor:
+  source_data_path: '/PATH/TO/DATASET'
+  load_kwargs:
+    split: 'train'  # only need the train split
+  format:
+    prompt_key: 'question'
+    response_key: 'answer'
+
+  # cleaner related
+  dj_config_path: 'tests/test_configs/active_iterator_test_dj_cfg.yaml'
+  clean_strategy: 'iterative'
+  # db related
+  db_url: 'postgresql://{username}@localhost:5432/{db_name}'
+```
+
+- `data.source_data_path`: The path to the source dataset.
+- `data.load_kwargs`: The kwargs used in `datasets.load_dataset`.
+- `data.format`: The format of the source dataset. It includes `prompt_key` and `response_key`.
+- `data.dj_config_path`: The path to the Data-Juicer configuration.
+- `data.clean_strategy`: The cleaning strategy used for `DataCleaner`, which iteratively cleans dataset until targets are met.
+- `data.db_url`: The URL of the database.
 
 ### veRL Trainer Configuration
 
