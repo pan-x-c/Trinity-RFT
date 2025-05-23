@@ -264,11 +264,11 @@ class TrainerConfig:
     enable_preview: bool = True  # enable rollout preview in wandb
 
     # trainer configs
-    actor_use_kl_loss: bool = False
-    actor_kl_loss_coef: float = 0.001
-    actor_entropy_coef: float = 0.001
-    actor_grad_clip: float = 1.0
-    actor_clip_ratio: float = 0.2
+    actor_use_kl_loss: Optional[bool] = False
+    actor_kl_loss_coef: Optional[float] = 0.001
+    actor_entropy_coef: Optional[float] = 0.001
+    actor_grad_clip: Optional[float] = 1.0
+    actor_clip_ratio: Optional[float] = 0.2
     # TODO: extract more train-related params from underlying trainer engine
 
     trainer_config: Any = field(default_factory=dict)

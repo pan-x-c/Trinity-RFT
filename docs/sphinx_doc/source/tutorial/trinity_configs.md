@@ -258,6 +258,11 @@ explorer:
     enable_prefix_caching: false
     dtype: bfloat16
     seed: 42
+  auxiliary_models:
+  - model_path: /PATH/TO/MODEL
+    tensor_parallel_size: 1
+  - model_path: /PATH/TO/MODEL
+    tensor_parallel_size: 1
 ```
 - `runner_num`: The number of worklow runners. We recommand to set it to at least 4 times of the number of rollout models to improve the throughput, but at the same time do not exceed the `explorer.batch_size`.
 - `explorer.rollout_model.engine_num`: The number of rollout engines. Default is `1`.
@@ -270,6 +275,7 @@ explorer:
 - `explorer.rollout_model.enable_openai_api`: Whether to enable OpenAI API. Default is `False`.
 - `explorer.rollout_model.enable_thinking`: For Qwen3, whether to enable thinking. Default is `False`.
 - `explorer.rollout_model.chat_template`: To override the default chat template of the model. If not specified, the default chat template will be used. Default is `None`.
+- `explorer.auxiliary_models`: A list of models not used for training but used for interaction in your self-designed workflow. Default is `[]`. Auxiliary models is forced to use `vllm_async` and set `use_v1`/`enable_openai_api` to `True`.
 
 ## Synchronizer
 
@@ -280,11 +286,11 @@ synchronizer:
   sync_timeout: 1200
 ```
 
-- `synchronizer.sync_method`: The synchronization method between `trainer` and `explorer`.
-Support `nccl` and `checkpoint`, `nccl` represents that model weights in `explorer` will be synchronized from `trainer` through `nccl`,
-`checkpoint` represents that `explorer` will load the newest checkpoints saved by `trainer` then update its model weights. Default is `nccl`.
-- `synchronizer.sync_interval`: The interval steps between two synchronizations. Default is `10`. It should be set manually.
-- `synchronizer.sync_timeout`: The timeout of the synchronization. Default is `1200`.
+- `synchronizer.sync_method`: The synchronization method between `trainer` and `explorer`. Support `nccl` and `checkpoint`. Default is `nccl`.
+  - `nccl`: model weights in `explorer` will be synchronized from `trainer` through `nccl`.
+  - `checkpoint`: `explorer` will load the newest checkpoints saved by `trainer` then update its model weights.
+- `synchronizer.sync_interval`: The interval steps between two synchronizations. Default is `10`.
+- `synchronizer.sync_timeout`: The timeout seconds of the synchronization. Default is `1200`.
 
 ## Trainer
 
@@ -295,9 +301,11 @@ trainer:
   save_interval: 100
 ```
 
-- `trainer.trainer_type`: The backend of the trainer, Only `verl` is supported.
+- `trainer.trainer_type`: The backend of the trainer, Only `verl` is supported. We will support more backends in the future.
+- `trainer.save_interval`: The interval steps between saving two checkpoints. Default is `100`.
 - `trainer.trainer_config_path`: The path to the trainer configuration file. It must be set manually.
-- `trainer.save_interval`: The interval steps between two checkpoints. Default is `100`.
+Other parameters is used to override the configuration in the trainer configuration file.
+
 
 ## Data Processing
 

@@ -268,7 +268,7 @@ class veRLConfig:
     synchronizer: Optional[SynchronizerConfig] = None
     enable_preview: bool = True
 
-    def synchronize_config(self, config: Config) -> None:
+    def synchronize_config(self, config: Config) -> None:  # noqa: C901
         """Synchronize config."""
         if config.mode != "train":
             rollout_gpu_num = (
@@ -329,13 +329,21 @@ class veRLConfig:
             self.algorithm.adv_estimator = AdvantageEstimator.GRPO.value
 
         # copy trainer related config from global config
-        self.algorithm.gamma = config.algorithm.gamma
-        self.algorithm.lam = config.algorithm.lam
-        self.actor_rollout_ref.actor.use_kl_loss = config.trainer.actor_use_kl_loss
-        self.actor_rollout_ref.actor.kl_loss_coef = config.trainer.actor_kl_loss_coef
-        self.actor_rollout_ref.actor.entropy_coeff = config.trainer.actor_entropy_coef
-        self.actor_rollout_ref.actor.grad_clip = config.trainer.actor_grad_clip
-        self.actor_rollout_ref.actor.clip_ratio = config.trainer.actor_clip_ratio
+        # TODO: use a better way to sync config
+        if config.algorithm.gamma is not None:
+            self.algorithm.gamma = config.algorithm.gamma
+        if config.algorithm.lam is not None:
+            self.algorithm.lam = config.algorithm.lam
+        if config.trainer.actor_use_kl_loss is not None:
+            self.actor_rollout_ref.actor.use_kl_loss = config.trainer.actor_use_kl_loss
+        if config.trainer.actor_kl_loss_coef is not None:
+            self.actor_rollout_ref.actor.kl_loss_coef = config.trainer.actor_kl_loss_coef
+        if config.trainer.actor_entropy_coef is not None:
+            self.actor_rollout_ref.actor.entropy_coeff = config.trainer.actor_entropy_coef
+        if config.trainer.actor_grad_clip is not None:
+            self.actor_rollout_ref.actor.grad_clip = config.trainer.actor_grad_clip
+        if config.trainer.actor_clip_ratio is not None:
+            self.actor_rollout_ref.actor.clip_ratio = config.trainer.actor_clip_ratio
 
         if self.actor_rollout_ref.actor.algorithm_type.is_dpo():  # for DPO
             if not self.actor_rollout_ref.actor.use_kl_loss:
