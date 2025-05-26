@@ -20,12 +20,12 @@ Before starting development, it's important to understand several core concepts:
 
 
 - **Task** ({class}`trinity.common.workflows.Task`): Represents a data structure that can be converted into a `Workflow`. The content of the `Task` varies depending on the task type:
-  - **Math problems**: A `Task` contains the problem description and the standard answer.
+  - **Math problems**: A `Task` contains the problem description and the golden answer.
   - **Programming scenarios**: A `Task` includes the problem description, test cases, runtime environment, and other complex information.
 
 
 - **Workflow** ({class}`trinity.common.workflows.Workflow`): Can be understood as the running state of a `Task`. It defines the interaction flow between Agents and Environments, including logic similar to _Rollout_ and _Reward_ calculations in other frameworks. After execution, it generates a list of `Experience`. Trinity-RFT includes several built-in workflows:
-  - `MathWorkflow` ({class}`trinity.common.workflows.MathWorkflow`): For math scenarios, submits problems to LLM, parses results, and calculates scores (rewards).
+  - `MathWorkflow` ({class}`trinity.common.workflows.MathWorkflow`): For math scenarios, submits problems to LLM, parses LLM responses, and calculates scores (rewards).
   - `WebShopWorkflow` ({class}`trinity.common.workflows.WebShopWorkflow`): For webshop scenarios, it contains multi-turn interaction with environment.
   - `CodeWorkflow` (Coming soon): For coding scenarios, executes returned code, runs tests, and calculates rewards based on test results.
   - ...
@@ -44,7 +44,7 @@ To handle differences in `Task` contents, Trinity-RFT provides a unified `Task` 
   - **`reward_fn`** (`Optional[str]`): The registered name of your reward function. You can specify it in `buffer.explorer_input.taskset.default_reward_fn_type`. Note that some workflows already include built-in reward calculation; in such cases, you can omit this field.
   - **`raw_task`** (`Dict`): An record of raw data in `Dict` format. For highly customized workflow, you can directly use `raw_task` to initialize your `Workflow` instance without relying on the following fields.
   - **`format_args`** ({class}`trinity.common.config.FormatConfig`): Parameters to facilitate the construction of `Workflow` instances. For example, the `prompt_key` and `response_key` can be used to get the prompt and response from `raw_task`. These settings come from the YAML configuration file and can be set in `buffer.explorer_input.task_set.format`.
-  - **`rollout_args`** ({class}`trinity.common.config.GenerationConfig`): Parameters that control the rollout process, such as `temperature`. his field also comes from the YAML configuration file and can be set in `buffer.explorer_input.task_set.rollout_args`.
+  - **`rollout_args`** ({class}`trinity.common.config.GenerationConfig`): Parameters that control the rollout process, such as `temperature`. This field also comes from the YAML configuration file and can be set in `buffer.explorer_input.task_set.rollout_args`.
 
 In the math problem scenario, the `Task` dataset can be a `jsonl` file, where each line contains JSON with `question` and `answer` fields representing the problem description and standard answer, respectively. For example:
 
@@ -190,7 +190,7 @@ class ExampleWorkflow(Workflow):
 
 #### Avoid Re-initialization
 
-For heavy workflows, avoid re-initializing resources every time.
+For heavy workflows, re-initializing every time can incurs extra computational costs.
 In this case, you can implement the `resettable` and `reset` methods to avoid re-initialization.
 
 ```python
