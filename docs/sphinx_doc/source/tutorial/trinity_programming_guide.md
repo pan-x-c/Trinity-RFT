@@ -274,7 +274,11 @@ buffer:
       # Other fields
 ```
 
-Then you can run your workflow in the RFT procesing, through `trinity run --config <your_yaml_file>`.
+Then you can run your workflow in the RFT procesing, through the following command.
+
+```
+trinity run --config <your_yaml_file>
+```
 
 ---
 
