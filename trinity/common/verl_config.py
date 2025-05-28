@@ -327,9 +327,6 @@ class veRLConfig:
             logger.info("Using GRPO `adv_estimator` for GRPO")
             self.algorithm.adv_estimator = AdvantageEstimator.GRPO.value
 
-        self.algorithm.policy_loss_fn = config.algorithm.policy_loss_fn
-        self.algorithm.policy_loss_fn_args = config.algorithm.policy_loss_fn_args
-
         if self.actor_rollout_ref.actor.algorithm_type.is_dpo():  # for DPO
             if not self.actor_rollout_ref.actor.use_kl_loss:
                 self.actor_rollout_ref.actor.use_kl_loss = True

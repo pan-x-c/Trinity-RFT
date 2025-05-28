@@ -31,6 +31,7 @@ from verl.utils.ulysses import gather_outpus_and_unpad, ulysses_pad_and_slice_in
 from verl.workers.actor import BasePPOActor
 
 from trinity.algorithm import POLICY_LOSS_FN
+from trinity.common.config import AlgorithmConfig
 from trinity.common.constants import AlgorithmType
 from trinity.trainer.verl import core_algos
 
@@ -55,12 +56,13 @@ class DataParallelPPOActor(BasePPOActor):
 
         self.compute_entropy_from_logits = torch.compile(verl_F.entropy_from_logits, dynamic=True)
         self.algorithm_type = AlgorithmType.PPO
-        self.policy_loss_fn = POLICY_LOSS_FN.get(config.policy_loss_fn)(
-            **config.policy_loss_fn_args
-        )
+        self.policy_loss_fn = None
 
-    def set_mode(self, algorithm_type: AlgorithmType = AlgorithmType.PPO):
-        self.algorithm_type = algorithm_type
+    def set_algorithm(self, algorithm_config: AlgorithmConfig):
+        self.algorithm_type = algorithm_config.algorithm_type
+        self.policy_loss_fn = POLICY_LOSS_FN.get(algorithm_config.policy_loss_fn)(
+            **algorithm_config.policy_loss_fn_args
+        )
 
     def _forward_micro_batch(self, micro_batch, temperature) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -283,6 +285,7 @@ class DataParallelPPOActor(BasePPOActor):
             "position_ids",
             "old_log_probs",
             "advantages",
+            "response_mask",
         ]
         if self.config.use_kl_loss:
             select_keys.append("ref_log_prob")
@@ -360,7 +363,7 @@ class DataParallelPPOActor(BasePPOActor):
                         micro_batch=data, temperature=temperature
                     )
 
-                    pg_loss, metric = self.policy_loss_fn(
+                    pg_loss, metric = self.policy_loss_fn(  # type: ignore
                         logprob=log_prob,
                         old_logprob=old_log_prob,
                         action_mask=response_mask,
