@@ -26,4 +26,10 @@ class SFTLossFn(PolicyLossFn):
             sft_loss = masked_mean(-logprob, action_mask)
         else:
             sft_loss = masked_mean(-logprob, action_mask, axis=1).mean()
-        return sft_loss, {}
+        return sft_loss, {"sft_loss": sft_loss.detach().item()}
+
+    @classmethod
+    def default_args(cls):
+        return {
+            "use_token_level_loss": True,
+        }

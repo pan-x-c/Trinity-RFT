@@ -50,5 +50,15 @@ class PPOPolicyLossFn(PolicyLossFn):
 
         pg_loss = masked_mean(torch.max(pg_losses, pg_losses2), action_mask)
         pg_clipfrac = masked_mean(torch.gt(pg_losses2, pg_losses).float(), action_mask)
-        metrics = {"pg_clipfrac": pg_clipfrac.detach().item(), "ppo_kl": ppo_kl.detach().item()}
+        metrics = {
+            "pg_clipfrac": pg_clipfrac.detach().item(),
+            "ppo_kl": ppo_kl.detach().item(),
+            "pg_loss": pg_loss.detach().item(),
+        }
         return pg_loss, metrics
+
+    @classmethod
+    def default_args(cls) -> Dict:
+        return {
+            "clip_range": 0.2,
+        }

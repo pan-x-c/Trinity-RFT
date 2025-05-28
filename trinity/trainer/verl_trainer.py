@@ -125,9 +125,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
             ray_worker_group_cls,
         )
         self.init_workers()
-        self.algorithm_type = (
-            AlgorithmType.PPO
-        )  # TODO: initialize algorithm_type according to config
+        self.algorithm_type = AlgorithmType.PPO
         self.logger = Monitor(
             project=config.trainer.project_name,
             name=config.trainer.experiment_name,

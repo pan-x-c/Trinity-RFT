@@ -13,7 +13,7 @@ from trinity.algorithm.utils import masked_sum
 class DPOLossFn(PolicyLossFn):
     def __init__(
         self,
-        beta: float,
+        beta: float = 0.1,
         label_smoothing: float = 0.0,
     ) -> None:
         self.beta = beta
@@ -49,9 +49,19 @@ class DPOLossFn(PolicyLossFn):
             - F.logsigmoid(-self.beta * logits) * self.label_smoothing
         )
         loss = losses.mean()
-        chosen_reward = self.beta * chosen_ratios.detach().item()
-        reject_reward = self.beta * rejected_ratios.detach().item()
+        chosen_reward = self.beta * chosen_ratios.detach().mean().item()
+        rejected_reward = self.beta * rejected_ratios.detach().mean().item()
+        accuracy_mean = (chosen_ratios.detach() > rejected_ratios.detach()).float().mean().item()
         return loss, {
             "chosen_reward": chosen_reward,
-            "reject_reward": reject_reward,
+            "rejected_reward": rejected_reward,
+            "accuracy_mean": accuracy_mean,
+            "dpo_loss": loss.detach().item(),
+        }
+
+    @classmethod
+    def default_args(cls) -> Dict:
+        return {
+            "beta": 0.1,
+            "label_smoothing": 0.0,
         }
