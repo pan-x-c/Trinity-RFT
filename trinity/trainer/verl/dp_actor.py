@@ -129,27 +129,6 @@ class DataParallelPPOActor(BasePPOActor):
                     use_cache=False,
                 )  # prevent model thinks we are generating
                 logits_rmpad = output.logits.squeeze(0)  # (total_nnz, vocab_size)
-                if self.algorithm_type.is_sft():  # SFT
-                    loss_fct = nn.CrossEntropyLoss(reduction="none")
-                    loss = loss_fct(logits_rmpad, input_ids_rmpad_rolled)
-                    if self.use_ulysses_sp:
-                        loss = gather_outpus_and_unpad(
-                            loss, gather_dim=0, unpad_dim=0, padding_size=pad_size
-                        )
-                    response_mask = attention_mask[:, -response_length:].bool()
-                    # pad back to (bsz, seqlen)
-                    full_loss = pad_input(
-                        hidden_states=loss.unsqueeze(-1),
-                        indices=indices,
-                        batch=batch_size,
-                        seqlen=seqlen,
-                    ).squeeze(-1)
-                    full_loss = torch.where(
-                        response_mask, full_loss[:, -response_length - 1 : -1], 0.0
-                    )
-                    full_loss = full_loss.sum(-1) / response_mask.sum(-1)
-                    full_loss = full_loss.mean()
-                    return full_loss
 
                 logits_rmpad.div_(temperature)
 
@@ -201,21 +180,6 @@ class DataParallelPPOActor(BasePPOActor):
                     use_cache=False,
                 )  # prevent model thinks we are generating
                 logits = output.logits
-                if self.algorithm_type.is_sft():
-                    loss_fct = nn.CrossEntropyLoss(reduction="none", ignore_index=-100)
-                    response_mask = attention_mask[:, -response_length:].bool()
-                    response_labels = torch.where(
-                        response_mask, input_ids[:, -response_length:], -100
-                    )
-                    response_logits = logits[:, -response_length - 1 : -1, :]
-                    loss = loss_fct(
-                        response_logits.reshape(-1, response_logits.shape[-1]),
-                        response_labels.reshape(-1),
-                    )
-                    loss = loss.view(response_labels.shape)
-                    loss = loss.sum(-1) / response_mask.sum(-1)
-                    loss = loss.mean()
-                    return loss
                 logits.div_(temperature)
                 logits = logits[
                     :, -response_length - 1 : -1, :
