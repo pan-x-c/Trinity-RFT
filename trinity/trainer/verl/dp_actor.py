@@ -26,11 +26,11 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from verl import DataProto
 from verl.utils.py_functional import append_to_dict
 from verl.utils.seqlen_balancing import get_reverse_idx, rearrange_micro_batches
-from verl.utils.torch_functional import logprobs_from_logits, masked_mean
+from verl.utils.torch_functional import logprobs_from_logits
 from verl.utils.ulysses import gather_outpus_and_unpad, ulysses_pad_and_slice_inputs
 from verl.workers.actor import BasePPOActor
 
-from trinity.algorithm import KL_FN, POLICY_LOSS_FN
+from trinity.algorithm import ENTROPY_LOSS_FN, KL_FN, POLICY_LOSS_FN
 from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import AlgorithmConfig
 from trinity.common.constants import AlgorithmType
@@ -64,6 +64,9 @@ class DataParallelPPOActor(BasePPOActor):
             **algorithm_config.policy_loss_fn_args
         )
         self.kl_loss_fn = KL_FN.get(algorithm_config.kl_loss_fn)(**algorithm_config.kl_loss_fn_args)
+        self.entropy_loss_fn = ENTROPY_LOSS_FN.get(algorithm_config.entropy_loss_fn)(
+            **algorithm_config.entropy_loss_fn_args
+        )
 
     def _forward_micro_batch(self, micro_batch, temperature) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -376,8 +379,15 @@ class DataParallelPPOActor(BasePPOActor):
                     )
 
                     # compute entropy loss from entropy
-                    entropy_loss = masked_mean(entropy, response_mask)
-                    micro_batch_metrics["actor/entropy_loss"] = entropy_loss.detach().item()
+                    entropy_loss, entropy_loss_metrics = self.entropy_loss_fn(
+                        entropy=entropy,
+                        action_mask=response_mask,
+                    )
+                    prefix_metrics(
+                        src_metrics=entropy_loss_metrics,
+                        prefix="actor",
+                        dst_metrics=micro_batch_metrics,
+                    )
 
                     # compute policy loss
                     policy_loss = pg_loss - entropy_loss * entropy_coeff
