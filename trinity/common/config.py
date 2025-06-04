@@ -194,6 +194,10 @@ class AlgorithmConfig:
     # If not set, use entropy_loss_fn.default_args()
     entropy_loss_fn_args: Optional[dict] = None
 
+    # used for SFT warmup
+    # TODO: move this to SFT warmup
+    use_token_level_loss: bool = True
+
 
 @dataclass
 class ClusterConfig:
@@ -461,7 +465,7 @@ class Config:
             and self.buffer.trainer_input.sft_warmup_dataset is None
         ):
             raise ValueError(
-                "buffer.trainer_input.sft_warmup_dataset is required when buffer.trainer_input.sft_warmup_steps > 0"
+                "`buffer.trainer_input.sft_warmup_dataset` is required when `buffer.trainer_input.sft_warmup_steps` > 0"
             )
         if self.buffer.trainer_input.sft_warmup_dataset is not None:
             self.buffer.trainer_input.sft_warmup_dataset.algorithm_type = AlgorithmType.SFT

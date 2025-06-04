@@ -283,16 +283,25 @@ class DataParallelPPOActor(BasePPOActor):
             "temperature"
         ]  # temperature must be in the data.meta_info to avoid slient error
         select_keys = [
-            "responses",
             "input_ids",
-            "attention_mask",
             "position_ids",
-            "old_log_probs",
-            "advantages",
+            "attention_mask",
+            "responses",
             "response_mask",
         ]
+        select_keys_verl2trinity = {
+            "old_log_probs": "old_logprob",
+            "ref_log_prob": "ref_logprob",
+            "response_mask": "action_mask",
+            "advantages": "advantages",
+        }
+        select_keys_trinity2verl = {value: key for key, value in select_keys_verl2trinity.items()}
+        for trinity_key in self.policy_loss_fn.select_keys:
+            verl_key = select_keys_trinity2verl[trinity_key]
+            select_keys.append(verl_key)
         if self.config.use_kl_loss:
             select_keys.append("ref_log_prob")
+        select_keys = list(set(select_keys))
         batch = data.select(batch_keys=select_keys).batch
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
 
@@ -342,6 +351,8 @@ class DataParallelPPOActor(BasePPOActor):
                 self.actor_optimizer.zero_grad()
 
                 for data in micro_batches:
+                    micro_batch_metrics = {}
+
                     # Support all hardwares
                     if isinstance(data, DataProto):
                         data = {
@@ -355,24 +366,23 @@ class DataParallelPPOActor(BasePPOActor):
                     responses = data["responses"]
                     response_length = responses.size(1)
                     attention_mask = data["attention_mask"]
-                    # response_mask = attention_mask[:, -response_length:]
                     response_mask = data["response_mask"]
                     assert response_mask.shape == attention_mask[:, -response_length:].shape
-                    old_log_prob = data["old_log_probs"]
-                    advantages = data["advantages"]
                     entropy_coeff = self.config.entropy_coeff
 
                     # all return: (bsz, response_length)
                     entropy, log_prob = self._forward_micro_batch(
                         micro_batch=data, temperature=temperature
                     )
-                    micro_batch_metrics = {}
+
+                    kwargs = {
+                        select_keys_verl2trinity[verl_key]: value
+                        for verl_key, value in data.items()
+                        if verl_key in select_keys_verl2trinity
+                    }
                     pg_loss, pg_loss_metrics = self.policy_loss_fn(  # type: ignore
                         logprob=log_prob,
-                        old_logprob=old_log_prob,
-                        action_mask=response_mask,
-                        advantages=advantages,
-                        experiences=data,
+                        **kwargs,
                     )
                     prefix_metrics(
                         src_metrics=pg_loss_metrics, prefix="actor", dst_metrics=micro_batch_metrics
