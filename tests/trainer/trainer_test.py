@@ -27,7 +27,7 @@ class BaseTrainerCase(RayUnittestBase):
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm_async"
         self.config.algorithm.repeat_times = 3
-        self.config.explorer.rollout_model.use_v1 = True
+        self.config.explorer.rollout_model.use_v1 = False
         self.config.project = "Trainer-unittest"
         self.config.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         self.config.monitor.monitor_type = MonitorType.TENSORBOARD
@@ -67,6 +67,10 @@ class TestTrainerCountdown(BaseTrainerCase):
         actor_metrics = parser.metric_list("actor")
         self.assertTrue(len(actor_metrics) > 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 8)
+        actor_kl_metrics = parser.metric_list("actor/kl")
+        self.assertTrue(len(actor_kl_metrics) > 0)
+        critic_kl_metrics = parser.metric_list("critic/kl")
+        self.assertTrue(len(critic_kl_metrics) > 0)
         response_metrics = parser.metric_list("response_length")
         self.assertTrue(len(response_metrics) > 0)
         self.assertEqual(parser.metric_max_step(response_metrics[0]), 8)
@@ -86,7 +90,7 @@ class TestTrainerCountdown(BaseTrainerCase):
         )
         self.assertTrue(os.path.exists(checkpoint_step_4))
         self.assertTrue(os.path.exists(checkpoint_step_8))
-
+        # TODO: Reinit will fail when using v1 engine, find a way to fix it
         ray.init(ignore_reinit_error=True)
         # test bench mode
         self.config.mode = "bench"
