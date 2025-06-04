@@ -182,6 +182,10 @@ class AlgorithmConfig:
     # If not set, use AdvantageFn.default_args()
     advantage_fn_args: Optional[dict] = None
 
+    kl_fn_type: str = "k1"  # set to "none" to disable kl penalty
+    # If not set, use KLFn.default_args()
+    kl_fn_args: Optional[dict] = None
+
 
 @dataclass
 class ClusterConfig:
