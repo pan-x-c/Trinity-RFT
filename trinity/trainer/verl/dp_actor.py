@@ -363,17 +363,21 @@ class DataParallelPPOActor(BasePPOActor):
                     entropy, log_prob = self._forward_micro_batch(
                         micro_batch=data, temperature=temperature
                     )
-
-                    pg_loss, metric = self.policy_loss_fn(  # type: ignore
+                    micro_batch_metrics = {}
+                    pg_loss, pg_loss_metrics = self.policy_loss_fn(  # type: ignore
                         logprob=log_prob,
                         old_logprob=old_log_prob,
                         action_mask=response_mask,
                         advantages=advantages,
                         experiences=data,
                     )
+                    prefix_metrics(
+                        src_metrics=pg_loss_metrics, prefix="actor", dst_metrics=micro_batch_metrics
+                    )
 
                     # compute entropy loss from entropy
                     entropy_loss = masked_mean(entropy, response_mask)
+                    micro_batch_metrics["actor/entropy_loss"] = entropy_loss.detach().item()
 
                     # compute policy loss
                     policy_loss = pg_loss - entropy_loss * entropy_coeff
@@ -383,7 +387,9 @@ class DataParallelPPOActor(BasePPOActor):
                         ref_logprob=data["ref_log_prob"],
                         response_mask=response_mask,
                     )
-                    prefix_metrics(src_metrics=kl_loss_metrics, prefix="actor", dst_metrics=metrics)
+                    prefix_metrics(
+                        src_metrics=kl_loss_metrics, prefix="actor", dst_metrics=micro_batch_metrics
+                    )
                     policy_loss += kl_loss
 
                     if self.config.use_dynamic_bsz:
@@ -393,13 +399,11 @@ class DataParallelPPOActor(BasePPOActor):
                         loss = policy_loss / self.gradient_accumulation
                     loss.backward()
 
-                    data = {f"actor/{key}": value for key, value in metric.items()}
                     # TODO: refactor entropy loss
-                    data["actor/entropy_loss"] = entropy_loss.detach().item()
-                    append_to_dict(metrics, data)
+                    append_to_dict(metrics, micro_batch_metrics)
 
                 grad_norm = self._optimizer_step()
                 data = {"actor/grad_norm": grad_norm.detach().item()}
-            append_to_dict(metrics, data)
+                append_to_dict(metrics, data)
         self.actor_optimizer.zero_grad()
         return metrics
