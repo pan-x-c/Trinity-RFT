@@ -69,7 +69,10 @@ class KLFn(ABC):
         return experiences, metrics
 
     def calculate_kl_loss(
-        self, logprob: torch.Tensor, ref_logprob: torch.Tensor, response_mask: torch.Tensor
+        self,
+        logprob: torch.Tensor,
+        ref_logprob: torch.Tensor,
+        response_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, Dict]:
         """Compute KL loss."""
         kl = self.calculate_kl(logprob, ref_logprob)

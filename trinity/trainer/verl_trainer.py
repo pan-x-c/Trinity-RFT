@@ -379,7 +379,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
 
             with _timer("adv", timing_raw):
                 # compute kl penalty
-                batch, kl_metrics = self.kl_fn(batch)
+                batch, kl_metrics = self.kl_fn.apply_kl_penalty_to_reward(batch)
                 metrics.update(prefix_metrics(kl_metrics, prefix="critic"))
                 # compute advantages, executed on the driver process
                 batch, _ = self.advantage_fn(batch)

@@ -379,7 +379,9 @@ class DataParallelPPOActor(BasePPOActor):
                     policy_loss = pg_loss - entropy_loss * entropy_coeff
 
                     kl_loss, kl_loss_metrics = self.kl_loss_fn.calculate_kl_loss(
-                        logprob=log_prob, ref_logprob=data["ref_log_prob"]
+                        logprob=log_prob,
+                        ref_logprob=data["ref_log_prob"],
+                        response_mask=response_mask,
                     )
                     prefix_metrics(src_metrics=kl_loss_metrics, prefix="actor", dst_metrics=metrics)
                     policy_loss += kl_loss
