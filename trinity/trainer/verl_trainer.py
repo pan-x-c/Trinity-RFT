@@ -132,10 +132,12 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         # specify advantage function for various rft algorithms
         algo_config = global_config.algorithm
         if algo_config.algorithm_type.is_rft():
-            adv_fn_type = algo_config.advantage_fn_type
-            adv_fn_args = algo_config.advantage_fn_args
-            self.advantage_fn = ADVANTAGE_FN.get(adv_fn_type)(**adv_fn_args)
-        self.kl_fn = KL_FN.get(algo_config.kl_fn_type)(**algo_config.kl_fn_args)
+            self.advantage_fn = ADVANTAGE_FN.get(algo_config.advantage_fn)(
+                **algo_config.advantage_fn_args
+            )
+        self.kl_fn = KL_FN.get(algo_config.reward_kl_penalty_fn)(
+            **algo_config.reward_kl_penalty_fn_args
+        )
 
         self.logger = Monitor(
             project=config.trainer.project_name,

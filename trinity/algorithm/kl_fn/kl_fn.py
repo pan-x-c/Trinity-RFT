@@ -36,8 +36,8 @@ class KLFn(ABC):
             multiplier = 1 + proportional_error * batch_size / self.horizon
             self.kl_coef *= multiplier
 
-    def __call__(self, experiences: Any) -> Tuple[Any, Dict]:
-        """Compute KL divergence on given experiences. Only support DataProto input for now."""
+    def apply_kl_penalty_to_reward(self, experiences: Any) -> Tuple[Any, Dict]:
+        """Apply KL penalty to reward. Only support DataProto input for now."""
         responses = experiences.batch["responses"]
         response_length = responses.size(1)
         token_level_scores = experiences.batch["token_level_scores"]
@@ -49,7 +49,7 @@ class KLFn(ABC):
         ref_logprob = experiences.batch["ref_log_prob"]
 
         if "ref_log_prob" in experiences.batch.keys():
-            kl = self.kl_fn(logprob, ref_logprob)
+            kl = self.calculate_kl(logprob, ref_logprob)
             kl = kl * response_mask
             kl_coef = self.kl_coef
             experiences.batch["token_level_rewards"] = token_level_scores - kl_coef * kl
@@ -68,14 +68,26 @@ class KLFn(ABC):
 
         return experiences, metrics
 
+    def calculate_kl_loss(
+        self, logprob: torch.Tensor, ref_logprob: torch.Tensor, response_mask: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict]:
+        """Compute KL loss."""
+        kl = self.calculate_kl(logprob, ref_logprob)
+        kl_loss = masked_mean(kl, response_mask)
+        metrics = {
+            "kl_loss": kl_loss.detach().item(),
+            "kl_coef": self.kl_coef,
+        }
+        return kl_loss * self.kl_coef, metrics
+
     @abstractmethod
-    def kl_fn(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
+    def calculate_kl(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
         """Compute KL divergence between logprob and ref_logprob."""
 
     @classmethod
     def default_args(cls):
         """Get the default initialization arguments."""
-        return {"adaptive": False, "coef": 0.001}
+        return {"adaptive": False, "kl_coef": 0.001}
 
 
 @KL_FN.register_module("none")
@@ -84,12 +96,21 @@ class DummyFn(KLFn):
     Dummy KL function.
     """
 
-    def kl_fn(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
+    def calculate_kl(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
         return torch.zeros_like(logprob)
 
-    def __call__(self, experiences: Any) -> Tuple[Any, Dict]:
+    def apply_kl_penalty_to_reward(self, experiences: Any) -> Tuple[Any, Dict]:
         experiences.batch["token_level_rewards"] = experiences.batch["token_level_scores"]
         return experiences, {}
+
+    def calculate_kl_loss(
+        self,
+        logprob: torch.Tensor,
+        ref_logprob: torch.Tensor,
+        response_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, Dict]:
+        # return a zero tensor
+        return torch.tensor(0.0), {}
 
 
 @KL_FN.register_module("k1")
@@ -98,7 +119,7 @@ class K1Fn(KLFn):
     KL K1 function.
     """
 
-    def kl_fn(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
+    def calculate_kl(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
         return logprob - ref_logprob
 
 
@@ -108,7 +129,7 @@ class K2Fn(KLFn):
     KL K2 function.
     """
 
-    def kl_fn(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
+    def calculate_kl(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
         return (logprob - ref_logprob).square() * 0.5
 
 
@@ -118,7 +139,7 @@ class K3Fn(KLFn):
     KL K3 function.
     """
 
-    def kl_fn(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
+    def calculate_kl(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
         logr = ref_logprob - logprob
         return logr.exp() - 1 - logr
 
@@ -129,5 +150,5 @@ class AbsFn(KLFn):
     KL Abs function.
     """
 
-    def kl_fn(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
+    def calculate_kl(self, logprob: torch.Tensor, ref_logprob: torch.Tensor) -> torch.Tensor:
         return torch.abs(logprob - ref_logprob)

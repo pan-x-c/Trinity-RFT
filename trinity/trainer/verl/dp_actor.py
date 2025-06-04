@@ -30,10 +30,10 @@ from verl.utils.torch_functional import logprobs_from_logits, masked_mean
 from verl.utils.ulysses import gather_outpus_and_unpad, ulysses_pad_and_slice_inputs
 from verl.workers.actor import BasePPOActor
 
-from trinity.algorithm import POLICY_LOSS_FN
+from trinity.algorithm import KL_FN, POLICY_LOSS_FN
+from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import AlgorithmConfig
 from trinity.common.constants import AlgorithmType
-from trinity.trainer.verl import core_algos
 
 __all__ = ["DataParallelPPOActor"]
 
@@ -63,6 +63,7 @@ class DataParallelPPOActor(BasePPOActor):
         self.policy_loss_fn = POLICY_LOSS_FN.get(algorithm_config.policy_loss_fn)(
             **algorithm_config.policy_loss_fn_args
         )
+        self.kl_loss_fn = KL_FN.get(algorithm_config.kl_loss_fn)(**algorithm_config.kl_loss_fn_args)
 
     def _forward_micro_batch(self, micro_batch, temperature) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -372,24 +373,16 @@ class DataParallelPPOActor(BasePPOActor):
                     )
 
                     # compute entropy loss from entropy
-                    entropy_loss = verl_F.masked_mean(entropy, response_mask)
+                    entropy_loss = masked_mean(entropy, response_mask)
 
                     # compute policy loss
                     policy_loss = pg_loss - entropy_loss * entropy_coeff
 
-                    if self.config.use_kl_loss:
-                        ref_log_prob = data["ref_log_prob"]
-                        # compute kl loss
-                        kld = core_algos.kl_penalty(
-                            logprob=log_prob,
-                            ref_logprob=ref_log_prob,
-                            kl_penalty=self.config.kl_loss_type,
-                        )
-                        kl_loss = masked_mean(kld, response_mask)
-
-                        policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
-                        metrics["actor/kl_loss"] = kl_loss.detach().item()
-                        metrics["actor/kl_coef"] = self.config.kl_loss_coef
+                    kl_loss, kl_loss_metrics = self.kl_loss_fn.calculate_kl_loss(
+                        logprob=log_prob, ref_logprob=data["ref_log_prob"]
+                    )
+                    prefix_metrics(src_metrics=kl_loss_metrics, prefix="actor", dst_metrics=metrics)
+                    policy_loss += kl_loss
 
                     if self.config.use_dynamic_bsz:
                         # relative to the dynamic bsz

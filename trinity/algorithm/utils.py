@@ -14,5 +14,9 @@ def masked_mean(values, mask, axis=None):
     return (values * mask).sum(axis=axis) / (mask.sum(axis=axis) + 1e-8)
 
 
-def prefix_metrics(metrics: dict, prefix: str):
-    return {f"{prefix}/{k}": v for k, v in metrics.items()}
+def prefix_metrics(src_metrics: dict, prefix: str, dst_metrics: dict = None) -> dict:
+    if dst_metrics is None:
+        dst_metrics = {}
+    for k, v in src_metrics.items():
+        dst_metrics[f"{prefix}/{k}"] = v
+    return dst_metrics

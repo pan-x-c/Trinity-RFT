@@ -178,13 +178,16 @@ class AlgorithmConfig:
     # If not set, use PolicyLossFn.default_args()
     policy_loss_fn_args: Optional[dict] = None
 
-    advantage_fn_type: str = "ppo_adv_fn"
+    advantage_fn: str = "ppo_adv_fn"
     # If not set, use AdvantageFn.default_args()
     advantage_fn_args: Optional[dict] = None
 
-    kl_fn_type: str = "k1"  # set to "none" to disable kl penalty
+    reward_kl_penalty_fn: str = "k1"  # set to "none" to disable kl penalty in reward
     # If not set, use KLFn.default_args()
-    kl_fn_args: Optional[dict] = None
+    reward_kl_penalty_fn_args: Optional[dict] = None
+
+    kl_loss_fn: str = "k3"  # set to "none" to disable kl loss
+    kl_loss_fn_args: Optional[dict] = None
 
 
 @dataclass
@@ -272,8 +275,6 @@ class TrainerConfig:
     enable_preview: bool = True  # enable rollout preview in wandb
 
     # trainer configs
-    actor_use_kl_loss: Optional[bool] = None
-    actor_kl_loss_coef: Optional[float] = None
     actor_entropy_coef: Optional[float] = None
     actor_grad_clip: Optional[float] = None
     actor_clip_ratio: Optional[float] = None
@@ -476,7 +477,7 @@ class Config:
         self.buffer.tokenizer_path = self.model.model_path
 
     def _check_algorithm(self) -> None:
-        from trinity.algorithm import ADVANTAGE_FN, POLICY_LOSS_FN
+        from trinity.algorithm import ADVANTAGE_FN, KL_FN, POLICY_LOSS_FN
 
         policy_fn_cls = POLICY_LOSS_FN.get(self.algorithm.policy_loss_fn)
         if policy_fn_cls is None:
@@ -484,11 +485,23 @@ class Config:
         if self.algorithm.policy_loss_fn_args is None:
             self.algorithm.policy_loss_fn_args = policy_fn_cls.default_args()
 
-        advantage_fn_cls = ADVANTAGE_FN.get(self.algorithm.advantage_fn_type)
+        advantage_fn_cls = ADVANTAGE_FN.get(self.algorithm.advantage_fn)
         if advantage_fn_cls is None:
-            raise ValueError(f"Invalid advantage_fn_type: {self.algorithm.advantage_fn_type}")
+            raise ValueError(f"Invalid advantage_fn: {self.algorithm.advantage_fn}")
         if self.algorithm.advantage_fn_args is None:
             self.algorithm.advantage_fn_args = advantage_fn_cls.default_args()
+
+        kl_loss_fn_cls = KL_FN.get(self.algorithm.kl_loss_fn)
+        if kl_loss_fn_cls is None:
+            raise ValueError(f"Invalid kl_loss_fn: {self.algorithm.kl_loss_fn}")
+        if self.algorithm.kl_loss_fn_args is None:
+            self.algorithm.kl_loss_fn_args = kl_loss_fn_cls.default_args()
+
+        reward_kl_penalty_fn_cls = KL_FN.get(self.algorithm.reward_kl_penalty_fn)
+        if reward_kl_penalty_fn_cls is None:
+            raise ValueError(f"Invalid reward_kl_penalty_fn: {self.algorithm.reward_kl_penalty_fn}")
+        if self.algorithm.reward_kl_penalty_fn_args is None:
+            self.algorithm.reward_kl_penalty_fn_args = reward_kl_penalty_fn_cls.default_args()
 
     def check_and_update(self) -> None:  # noqa: C901
         """Check and update the config."""
