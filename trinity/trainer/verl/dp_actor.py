@@ -409,7 +409,7 @@ class DataParallelPPOActor(BasePPOActor):
                     prefix_metrics(
                         src_metrics=kl_loss_metrics, prefix="actor", dst_metrics=micro_batch_metrics
                     )
-                    policy_loss += kl_loss
+                    policy_loss = policy_loss + kl_loss
 
                     if self.config.use_dynamic_bsz:
                         # relative to the dynamic bsz
