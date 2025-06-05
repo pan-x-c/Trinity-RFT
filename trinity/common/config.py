@@ -279,6 +279,8 @@ class TrainerConfig:
 class MonitorConfig:
     # TODO: support multiple monitors (List[MonitorType])
     monitor_type: MonitorType = MonitorType.WANDB
+    # the default args for monitor
+    monitor_args: Dict = field(default_factory=dict)
     # ! DO NOT SET, automatically generated as checkpoint_job_dir/monitor
     cache_dir: str = ""
 
