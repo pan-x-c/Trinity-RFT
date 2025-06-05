@@ -28,7 +28,7 @@ class KLFn(ABC):
         if adaptive and (target_kl is None or horizon is None):
             raise ValueError("Target KL and horizon must be provided for adaptive KL.")
 
-    def update(self, current_kl: float, batch_size: int) -> None:
+    def update_kl_coef(self, current_kl: float, batch_size: int) -> None:
         """Update kl coefficient."""
         if self.adaptive:
             target_kl = self.target_kl
@@ -59,7 +59,7 @@ class KLFn(ABC):
             experiences.batch["token_level_rewards"] = token_level_scores
 
         current_kl = masked_mean(kl, mask=response_mask, axis=-1).mean(dim=0).item()
-        self.update(current_kl=current_kl, batch_size=batch_size)
+        self.update_kl_coef(current_kl=current_kl, batch_size=batch_size)
 
         metrics = {
             "kl": current_kl,

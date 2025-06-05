@@ -186,7 +186,7 @@ class AlgorithmConfig:
     # If not set, use kl_penalty_fn.default_args()
     kl_penalty_fn_args: Optional[dict] = None
 
-    kl_loss_fn: str = "none"  # set to "none" to disable kl loss
+    kl_loss_fn: str = "k2"  # set to "none" to disable kl loss
     # If not set, use kl_loss_fn.default_args()
     kl_loss_fn_args: Optional[dict] = None
 
