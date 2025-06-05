@@ -66,7 +66,7 @@ class Monitor(ABC):
         return metrics
 
 
-@MONITOR.register("tensorboard")
+@MONITOR.register_module("tensorboard")
 class TensorboardMonitor(Monitor):
     def __init__(self, project: str, name: str, role: str, config: Config = None) -> None:
         self.tensorboard_dir = os.path.join(config.monitor.cache_dir, "tensorboard")
