@@ -182,9 +182,9 @@ class AlgorithmConfig:
     # If not set, use AdvantageFn.default_args()
     advantage_fn_args: Optional[dict] = None
 
-    reward_kl_penalty_fn: str = "none"  # set to "none" to disable kl penalty in reward
-    # If not set, use reward_kl_penalty_fn.default_args()
-    reward_kl_penalty_fn_args: Optional[dict] = None
+    kl_penalty_fn: str = "none"  # set to "none" to disable kl penalty in reward
+    # If not set, use kl_penalty_fn.default_args()
+    kl_penalty_fn_args: Optional[dict] = None
 
     kl_loss_fn: str = "none"  # set to "none" to disable kl loss
     # If not set, use kl_loss_fn.default_args()
@@ -510,11 +510,11 @@ class Config:
         if self.algorithm.kl_loss_fn_args is None:
             self.algorithm.kl_loss_fn_args = kl_loss_fn_cls.default_args()
 
-        reward_kl_penalty_fn_cls = KL_FN.get(self.algorithm.reward_kl_penalty_fn)
-        if reward_kl_penalty_fn_cls is None:
-            raise ValueError(f"Invalid reward_kl_penalty_fn: {self.algorithm.reward_kl_penalty_fn}")
-        if self.algorithm.reward_kl_penalty_fn_args is None:
-            self.algorithm.reward_kl_penalty_fn_args = reward_kl_penalty_fn_cls.default_args()
+        kl_penalty_fn_cls = KL_FN.get(self.algorithm.kl_penalty_fn)
+        if kl_penalty_fn_cls is None:
+            raise ValueError(f"Invalid kl_penalty_fn: {self.algorithm.kl_penalty_fn}")
+        if self.algorithm.kl_penalty_fn_args is None:
+            self.algorithm.kl_penalty_fn_args = kl_penalty_fn_cls.default_args()
 
         entropy_loss_fn_cls = ENTROPY_LOSS_FN.get(self.algorithm.entropy_loss_fn)
         if entropy_loss_fn_cls is None:

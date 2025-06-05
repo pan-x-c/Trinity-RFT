@@ -12,7 +12,7 @@ algorithm:
   advantage_fn_args:
     gamma: 1.0
     lam: 1.0
-  reward_kl_penalty_fn: k3
+  kl_penalty_fn: k3
   kl_loss_fn: k2
 
 model:

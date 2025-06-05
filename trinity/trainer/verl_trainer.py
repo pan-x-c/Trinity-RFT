@@ -136,9 +136,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
             self.advantage_fn = ADVANTAGE_FN.get(algo_config.advantage_fn)(
                 **algo_config.advantage_fn_args
             )
-        self.kl_fn = KL_FN.get(algo_config.reward_kl_penalty_fn)(
-            **algo_config.reward_kl_penalty_fn_args
-        )
+        self.kl_fn = KL_FN.get(algo_config.kl_penalty_fn)(**algo_config.kl_penalty_fn_args)
 
         self.logger = Monitor(
             project=config.trainer.project_name,

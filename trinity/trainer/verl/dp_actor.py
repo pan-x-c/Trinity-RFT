@@ -368,7 +368,6 @@ class DataParallelPPOActor(BasePPOActor):
                     attention_mask = data["attention_mask"]
                     response_mask = data["response_mask"]
                     assert response_mask.shape == attention_mask[:, -response_length:].shape
-                    entropy_coeff = self.config.entropy_coeff
 
                     # all return: (bsz, response_length)
                     entropy, log_prob = self._forward_micro_batch(
@@ -400,7 +399,7 @@ class DataParallelPPOActor(BasePPOActor):
                     )
 
                     # compute policy loss
-                    policy_loss = pg_loss - entropy_loss * entropy_coeff
+                    policy_loss = pg_loss - entropy_loss
 
                     kl_loss, kl_loss_metrics = self.kl_loss_fn.calculate_kl_loss(
                         logprob=log_prob,
@@ -419,7 +418,6 @@ class DataParallelPPOActor(BasePPOActor):
                         loss = policy_loss / self.gradient_accumulation
                     loss.backward()
 
-                    # TODO: refactor entropy loss
                     append_to_dict(metrics, micro_batch_metrics)
 
                 grad_norm = self._optimizer_step()
