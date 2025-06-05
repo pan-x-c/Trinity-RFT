@@ -178,7 +178,7 @@ class AlgorithmConfig:
     # If not set, use PolicyLossFn.default_args()
     policy_loss_fn_args: Optional[dict] = None
 
-    advantage_fn: str = "ppo_adv_fn"
+    advantage_fn: str = "ppo"
     # If not set, use AdvantageFn.default_args()
     advantage_fn_args: Optional[dict] = None
 
