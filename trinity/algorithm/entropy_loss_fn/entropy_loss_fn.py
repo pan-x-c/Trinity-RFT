@@ -60,4 +60,4 @@ class BasicEntropyLossFn(EntropyLossFn):
 
     @classmethod
     def default_args(cls) -> Dict:
-        return {"entropy_coef": 0.001}
+        return {"entropy_coef": 0.0}
