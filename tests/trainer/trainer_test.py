@@ -122,7 +122,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.algorithm.algorithm_type = AlgorithmType.GRPO
         self.config.algorithm.repeat_times = 4
         # self.config.algorithm.repeat_times = 8  # TODO: used for real testing
-        self.config.algorithm.advantage_fn_type = "grpo_adv_fn"
+        self.config.algorithm.advantage_fn = "grpo_adv_fn"
         self.config.algorithm.advantage_fn_args = {}
         # self.config.buffer.batch_size = 96  # TODO: used for real testing
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
@@ -147,8 +147,6 @@ class TestTrainerGSM8K(BaseTrainerCase):
         # self.assertTrue(0.4 < rewards[1] < 0.55)
         # self.assertTrue(0.6 < rewards[2] < 0.7)
         # self.assertTrue(0.6 < rewards[3] < 0.7)
-        ray.shutdown(_exiting_interpreter=True)
-        # check checkpoint
 
     def tearDown(self):
         # remove dir only when the test passed
@@ -161,7 +159,7 @@ class TestTrainerGSM8KWithSFT(BaseTrainerCase):
         # test both mode
         self.config.algorithm.algorithm_type = AlgorithmType.GRPO
         self.config.algorithm.repeat_times = 4
-        self.config.algorithm.advantage_fn_type = "grpo_adv_fn"
+        self.config.algorithm.advantage_fn = "grpo_adv_fn"
         self.config.algorithm.advantage_fn_args = {}
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.buffer.trainer_input.sft_warmup_steps = 2
@@ -184,8 +182,6 @@ class TestTrainerGSM8KWithSFT(BaseTrainerCase):
         response_metrics = parser.metric_list("response_length")
         self.assertTrue(len(response_metrics) > 0)
         self.assertEqual(parser.metric_max_step(response_metrics[0]), 4)
-        ray.shutdown(_exiting_interpreter=True)
-        # check checkpoint
 
     def tearDown(self):
         # remove dir only when the test passed
@@ -211,8 +207,6 @@ class TestTrainerDPO(BaseTrainerCase):
         actor_metrics = parser.metric_list("actor")
         self.assertTrue(len(actor_metrics) > 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 4)
-        ray.shutdown(_exiting_interpreter=True)
-        # check checkpoint
 
     def tearDown(self):
         # remove dir only when the test passed

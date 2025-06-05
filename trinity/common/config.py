@@ -182,11 +182,11 @@ class AlgorithmConfig:
     # If not set, use AdvantageFn.default_args()
     advantage_fn_args: Optional[dict] = None
 
-    reward_kl_penalty_fn: str = "k1"  # set to "none" to disable kl penalty in reward
+    reward_kl_penalty_fn: str = "none"  # set to "none" to disable kl penalty in reward
     # If not set, use reward_kl_penalty_fn.default_args()
     reward_kl_penalty_fn_args: Optional[dict] = None
 
-    kl_loss_fn: str = "k3"  # set to "none" to disable kl loss
+    kl_loss_fn: str = "none"  # set to "none" to disable kl loss
     # If not set, use kl_loss_fn.default_args()
     kl_loss_fn_args: Optional[dict] = None
 
