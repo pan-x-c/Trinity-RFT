@@ -15,6 +15,16 @@ from trinity.utils.log import get_logger
 
 
 class DBWrapper:
+    """
+    A wrapper of a SQL database.
+
+    If `wrap_in_ray` in `StorageConfig` is `True`, this class will be run as a Ray Actor,
+    and provide a remote interface to the local database.
+
+    For databases that do not support multi-processing read/write (e.g. sqlite, duckdb), we
+    recommend setting `wrap_in_ray` to `True`
+    """
+
     def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
         self.logger = get_logger(__name__)
         self.engine = create_engine(storage_config.path, poolclass=NullPool)
