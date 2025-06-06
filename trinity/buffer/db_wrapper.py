@@ -7,18 +7,20 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
-from trinity.common.config import BufferConfig, StorageConfig
 from trinity.buffer.schema import Base, create_dynamic_table
 from trinity.buffer.utils import retry_session
+from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.constants import ReadStrategy
 from trinity.utils.log import get_logger
 
-class DBWrapper:
 
+class DBWrapper:
     def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
         self.logger = get_logger(__name__)
         self.engine = create_engine(storage_config.path, poolclass=NullPool)
-        self.table_model_cls = create_dynamic_table(storage_config.algorithm_type, storage_config.name)
+        self.table_model_cls = create_dynamic_table(
+            storage_config.algorithm_type, storage_config.name
+        )
 
         try:
             Base.metadata.create_all(self.engine, checkfirst=True)
@@ -33,10 +35,14 @@ class DBWrapper:
     @classmethod
     def get_wrapper(cls, storage_config: StorageConfig, config: BufferConfig):
         if storage_config.wrap_in_ray:
-            return ray.remote(cls).options(
-                name=f"db-{storage_config.name}",
-                get_if_exists=True,
-            ).remote(storage_config, config)
+            return (
+                ray.remote(cls)
+                .options(
+                    name=f"db-{storage_config.name}",
+                    get_if_exists=True,
+                )
+                .remote(storage_config, config)
+            )
         else:
             return cls(storage_config, config)
 
