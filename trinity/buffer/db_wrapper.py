@@ -48,7 +48,7 @@ class DBWrapper:
             return (
                 ray.remote(cls)
                 .options(
-                    name=f"db-{storage_config.name}",
+                    name=f"sql-{storage_config.name}",
                     get_if_exists=True,
                 )
                 .remote(storage_config, config)
@@ -57,11 +57,9 @@ class DBWrapper:
             return cls(storage_config, config)
 
     def write(self, data: list) -> None:
-        """_summary_
-
-        Args:
-            data (list): _description_
-        """
+        with retry_session(self.session, self.max_retry_times, self.max_retry_interval) as session:
+            experience_models = [self.table_model_cls.from_experience(exp) for exp in data]
+            session.add_all(experience_models)
 
     def read(self, strategy: Optional[ReadStrategy] = None) -> List:
         if strategy is None:
