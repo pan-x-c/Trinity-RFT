@@ -3,6 +3,7 @@
 import importlib
 import os
 import sys
+import shutil
 from pathlib import Path
 
 from trinity.utils.log import get_logger
@@ -59,5 +60,6 @@ def load_from_file(file_path: str):
     if full_module_name in sys.modules:
         raise ImportError(f"Module {module_name} already exists.")
     sys.modules[full_module_name] = module
-    logger.info(f"Loaded {file_path} as {full_module_name}")
+    shutil.copy2(file_path, Path(__file__).parent.parent / "plugins")
+    logger.info(f"Load {file_path} as {full_module_name}")
     return module
