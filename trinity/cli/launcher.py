@@ -2,6 +2,7 @@
 import argparse
 import os
 import sys
+from importlib import import_module
 from pathlib import Path
 from pprint import pprint
 
@@ -157,7 +158,35 @@ def activate_data_module(data_workflow_url: str, config_path: str):
         return
 
 
-def run(config_path: str, dlc: bool = False):
+def load_custom_modules(custom_dir: str) -> None:
+    if custom_dir is None:
+        return
+    if not os.path.exists(custom_dir):
+        logger.error(f"--custom-dir [{custom_dir}] does not exist.")
+        return None
+    if not os.path.isdir(custom_dir):
+        logger.error(f"--custom-dir [{custom_dir}] is not a directory.")
+        return None
+
+    logger.info(f"Loading custom modules from [{custom_dir}]...")
+    custom_dir = os.path.abspath(custom_dir)
+    if custom_dir not in sys.path:
+        sys.path.insert(0, custom_dir)
+
+    for file_path in Path(custom_dir).glob("*.py"):
+        if file_path.name.startswith("__"):
+            continue
+
+        module_name = file_path.stem
+        try:
+            import_module(module_name)
+            print(f"Successfully imported module from {file_path}")
+
+        except Exception as e:
+            print(f"Fail to import module from {file_path}: {e}")
+
+
+def run(config_path: str, dlc: bool = False, custom_dir: str = None):
     config = load_config(config_path)
     config.check_and_update()
     pprint(config)
@@ -219,6 +248,9 @@ def main() -> None:
     # run command
     run_parser = subparsers.add_parser("run", help="Run RFT process.")
     run_parser.add_argument("--config", type=str, required=True, help="Path to the config file.")
+    run_parser.add_argument(
+        "--custom-dir", type=str, default=None, help="Path to the custom module directory."
+    )
     run_parser.add_argument(
         "--dlc", action="store_true", help="Specify when running in Aliyun PAI DLC."
     )
