@@ -15,15 +15,13 @@ def load_plugins(plugin_dir: str) -> None:
     Load plugin modules from a directory.
     """
     if plugin_dir is None:
-        return
+        plugin_dir = Path(__file__).parent.parent / "plugins"
     if not os.path.exists(plugin_dir):
         logger.error(f"--plugin-dir [{plugin_dir}] does not exist.")
         return None
     if not os.path.isdir(plugin_dir):
         logger.error(f"--plugin-dir [{plugin_dir}] is not a directory.")
         return None
-
-    plugin_dir = os.path.abspath(plugin_dir)
 
     logger.info(f"Loading plugin modules from [{plugin_dir}]...")
     for file in Path(plugin_dir).glob("*.py"):
@@ -61,6 +59,5 @@ def load_from_file(file_path: str):
     if full_module_name in sys.modules:
         raise ImportError(f"Module {module_name} already exists.")
     sys.modules[full_module_name] = module
-    setattr(sys.modules["trinity.plugins"], module_name, module)
-    logger.info(f"Loaded {file_path} as {full_module_name}.")
+    logger.info(f"Loaded {file_path} as {full_module_name}")
     return module
