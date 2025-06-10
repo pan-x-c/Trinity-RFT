@@ -105,16 +105,9 @@ def setup_ray_cluster(namespace: str):
                 if ray.get(cluster_status.running.remote()):
                     ret = subprocess.run("ray status", shell=True, capture_output=True)
                     print(ret.stdout.decode())
-                    pgs = ray.util.placement_group_table()
-                    for pg_id, pg_info in pgs.items():
-                        print(f"PG {pg_id[:8]}...")
-                        print(f"  State: {pg_info.get('state', 'unknown')}")
-                        print(f"  Bundles: {pg_info.get('bundles', [])}")
-                        print(f"  Strategy: {pg_info.get('strategy', 'unknown')}")
-                        print(f"  Members: {pg_info.get('members', [])}")
-                        print()
                     time.sleep(5)
                 else:
+                    logger.info("Ray cluster is not running, exiting.")
                     break
             sys.exit(0)
 
@@ -128,3 +121,4 @@ def stop_ray_cluster():
         get_if_exists=True,
     ).remote()
     ray.get(cluster_status.finish.remote())
+    logger.info("Stopping ray cluster...")
