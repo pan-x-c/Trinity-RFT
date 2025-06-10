@@ -216,7 +216,7 @@ class RolloutDataReader(BufferReader):
             if self.reward_fn_key in sample
             else self.default_reward_fn_cls
         )
-        assert workflow_class is not None, "`default_reward_fn_type` or `workflow_key` is required"
+        assert workflow_class is not None, "`default_workflow_type` or `workflow_key` is required"
         task = Task(
             workflow=workflow_class,
             format_args=self.meta.format,
