@@ -1,11 +1,21 @@
 import unittest
-from pathlib import Path
 
-from trinity.common.workflows import WORKFLOWS
+import ray
+
+from pathlib import Path
 from trinity.utils.plugin_loader import load_plugins
+from trinity.common.workflows import WORKFLOWS
+
+@ray.remote
+class RemoteActor:
+
+    def run(self):
+        my_plugin_cls = WORKFLOWS.get("my_workflow")
+        return my_plugin_cls().run()
 
 
 class TestPluginLoader(unittest.TestCase):
+
     def test_load_plugins(self):
         my_plugin_cls = WORKFLOWS.get("my_workflow")
         self.assertIsNone(my_plugin_cls)
@@ -17,3 +27,8 @@ class TestPluginLoader(unittest.TestCase):
         res = my_plugin.run()
         self.assertEqual(res[0], "Hello world")
         self.assertEqual(res[1], "Hi")
+        ray.init(ignore_reinit_error=True)
+        remote_res = ray.get(RemoteActor().run.remote())
+        self.assertEqual(remote_res[0], "Hello world")
+        self.assertEqual(remote_res[1], "Hi")
+        ray.shutdown(_exiting_interpreter=True)
