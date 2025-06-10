@@ -2,8 +2,8 @@
 
 import importlib
 import os
-import sys
 import shutil
+import sys
 from pathlib import Path
 
 from trinity.utils.log import get_logger
