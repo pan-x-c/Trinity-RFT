@@ -62,6 +62,7 @@ class SFTAlgorithm(AlgorithmType):
     @classmethod
     def get_default_config(cls) -> Dict:
         return {
+            "sample_strategy": "default",
             "policy_loss_fn": "sft",
             "kl_loss_fn": "none",
             "entropy_loss_fn": "none",
@@ -83,6 +84,7 @@ class PPOAlgorithm(AlgorithmType):
     def get_default_config(cls) -> Dict:
         return {
             "repeat_times": 1,
+            "sample_strategy": "warmup",
             "policy_loss_fn": "ppo",
             "advantage_fn": "ppo",
             "kl_penalty_fn": "none",
@@ -106,6 +108,7 @@ class GRPOAlgorithm(AlgorithmType):
     def get_default_config(cls) -> Dict:
         return {
             "repeat_times": 2,
+            "sample_strategy": "warmup",
             "policy_loss_fn": "ppo",
             "advantage_fn": "grpo",
             "kl_penalty_fn": "none",
@@ -129,6 +132,7 @@ class OPMDAlgorithm(AlgorithmType):
     def get_default_config(cls) -> Dict:
         return {
             "repeat_times": 2,
+            "sample_strategy": "warmup",
             "policy_loss_fn": "opmd",
             "advantage_fn": "opmd",
             "kl_penalty_fn": "none",
@@ -156,6 +160,7 @@ class DPOAlgorithm(AlgorithmType):
     def get_default_config(cls) -> Dict:
         return {
             "repeat_times": 2,  # fake repeat times
+            "sample_strategy": "warmup",
             "policy_loss_fn": "dpo",
             "kl_loss_fn": "k2",
             "entropy_loss_fn": "basic",

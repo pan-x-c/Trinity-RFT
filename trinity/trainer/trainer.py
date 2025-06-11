@@ -12,9 +12,9 @@ from typing import Tuple
 
 import ray
 
-from trinity.algorithm.algorithm import ALGORITHM_TYPE, SFTAlgorithm
+from trinity.algorithm.algorithm import ALGORITHM_TYPE
 from trinity.algorithm.algorithm_manager import AlgorithmManager
-from trinity.buffer import get_buffer_reader
+from trinity.algorithm.sample_strategy import SAMPLE_STRATEGY
 from trinity.common.config import Config
 from trinity.common.constants import SyncMethod
 from trinity.utils.log import get_logger
@@ -28,17 +28,9 @@ class Trainer:
         self.config = config
         self.logger = get_logger(__name__)
         self.algorithm_manager = AlgorithmManager(config)
-        self.train_buffer = get_buffer_reader(
-            self.config.buffer.trainer_input.experience_buffer,  # type: ignore
-            self.config.buffer,
-        )
-        self.sft_warmup_buffer = (
-            get_buffer_reader(
-                self.config.buffer.trainer_input.sft_warmup_dataset,  # type: ignore
-                self.config.buffer,
-            )
-            if self.config.buffer.trainer_input.sft_warmup_steps > 0
-            else None
+        self.sample_strategy = SAMPLE_STRATEGY.get(config.algorithm.sample_strategy)(
+            buffer_config=config.buffer,
+            **config.algorithm.sample_strategy_args,
         )
         self.engine = get_trainer_wrapper(config)
 
@@ -76,15 +68,8 @@ class Trainer:
         )
         algo_type = algo_config.algorithm_type
         algorithm = ALGORITHM_TYPE.get(algo_type)
-        if algorithm.use_rollout:
-            strategy = self.config.buffer.trainer_input.read_experience_strategy
-        else:
-            strategy = None
         try:
-            if algorithm == SFTAlgorithm:
-                exps = self.sft_warmup_buffer.read()
-            else:
-                exps = self.train_buffer.read(strategy=strategy)
+            exps = self.sample_strategy.sample(self.engine.train_step_num + 1)
         except StopIteration:
             self.logger.warning("No more data to train. Stop training.")
             return False, self.engine.train_step_num
