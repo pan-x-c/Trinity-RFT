@@ -2,7 +2,6 @@
 import argparse
 import os
 import sys
-from importlib import import_module
 from pathlib import Path
 from pprint import pprint
 
@@ -157,34 +156,6 @@ def activate_data_module(data_workflow_url: str, config_path: str):
     if res["return_code"] != 0:
         logger.error(f"Failed to activate data module: {res['return_msg']}.")
         return
-
-
-def load_custom_modules(custom_dir: str) -> None:
-    if custom_dir is None:
-        return
-    if not os.path.exists(custom_dir):
-        logger.error(f"--custom-dir [{custom_dir}] does not exist.")
-        return None
-    if not os.path.isdir(custom_dir):
-        logger.error(f"--custom-dir [{custom_dir}] is not a directory.")
-        return None
-
-    logger.info(f"Loading custom modules from [{custom_dir}]...")
-    custom_dir = os.path.abspath(custom_dir)
-    if custom_dir not in sys.path:
-        sys.path.insert(0, custom_dir)
-
-    for file_path in Path(custom_dir).glob("*.py"):
-        if file_path.name.startswith("__"):
-            continue
-
-        module_name = file_path.stem
-        try:
-            import_module(module_name)
-            print(f"Successfully imported module from {file_path}")
-
-        except Exception as e:
-            print(f"Fail to import module from {file_path}: {e}")
 
 
 def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
