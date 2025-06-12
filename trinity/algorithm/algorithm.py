@@ -84,7 +84,7 @@ class PPOAlgorithm(AlgorithmType):
             "advantage_fn": "ppo",
             "kl_penalty_fn": "none",
             "kl_loss_fn": "k2",
-            "entropy_loss_fn": "basic",
+            "entropy_loss_fn": "default",
         }
 
 
@@ -108,7 +108,7 @@ class GRPOAlgorithm(AlgorithmType):
             "advantage_fn": "grpo",
             "kl_penalty_fn": "none",
             "kl_loss_fn": "k2",
-            "entropy_loss_fn": "basic",
+            "entropy_loss_fn": "default",
         }
 
 
@@ -132,7 +132,7 @@ class OPMDAlgorithm(AlgorithmType):
             "advantage_fn": "opmd",
             "kl_penalty_fn": "none",
             "kl_loss_fn": "k2",
-            "entropy_loss_fn": "basic",
+            "entropy_loss_fn": "default",
         }
 
 
@@ -154,7 +154,7 @@ class DPOAlgorithm(AlgorithmType):
             "sample_strategy": "dpo",
             "policy_loss_fn": "dpo",
             "kl_loss_fn": "k2",
-            "entropy_loss_fn": "basic",
+            "entropy_loss_fn": "default",
         }
 
     @classmethod

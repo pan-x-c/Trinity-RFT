@@ -504,7 +504,7 @@ class Config:
             "advantage_fn": "ppo",
             "kl_penalty_fn": "none",
             "kl_loss_fn": "k2",
-            "entropy_loss_fn": "basic",
+            "entropy_loss_fn": "default",
         }
         default_config.update(algorithm.get_default_config())
         for key, value in default_config.items():

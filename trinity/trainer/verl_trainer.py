@@ -272,13 +272,13 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
 
     def train_step(self) -> Tuple[bool, int]:  # noqa C901
         metrics = {}
-        self.global_steps += 1
         try:
-            batch, sample_metrics, exp_samples = self.sample_strategy.sample(self.global_steps)
+            batch, sample_metrics, exp_samples = self.sample_strategy.sample(self.global_steps + 1)
             prefix_metrics(sample_metrics, "sample", metrics)
         except StopIteration:
             print("No more data to train. Stop training.")
             return False, self.global_steps
+        self.global_steps += 1
         timing_raw = {}
         algorithm_config = self.algorithm_manager.get_current_algorithm_config(self.global_steps)
         algorithm = ALGORITHM_TYPE.get(algorithm_config.algorithm_type)
