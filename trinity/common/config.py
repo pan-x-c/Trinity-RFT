@@ -195,7 +195,7 @@ class AlgorithmConfig:
     # If not set, use kl_loss_fn.default_args()
     kl_loss_fn_args: Optional[dict] = None
 
-    entropy_loss_fn: Optional[str] = None  # "basic"
+    entropy_loss_fn: Optional[str] = None  # "default"
     # If not set, use entropy_loss_fn.default_args()
     entropy_loss_fn_args: Optional[dict] = None
 

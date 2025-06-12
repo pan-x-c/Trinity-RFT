@@ -12,9 +12,7 @@ from typing import Tuple
 
 import ray
 
-from trinity.algorithm.algorithm import ALGORITHM_TYPE
 from trinity.algorithm.algorithm_manager import AlgorithmManager
-from trinity.algorithm.sample_strategy import SAMPLE_STRATEGY
 from trinity.common.config import Config
 from trinity.common.constants import SyncMethod
 from trinity.utils.log import get_logger
@@ -28,10 +26,6 @@ class Trainer:
         self.config = config
         self.logger = get_logger(__name__)
         self.algorithm_manager = AlgorithmManager(config)
-        self.sample_strategy = SAMPLE_STRATEGY.get(config.algorithm.sample_strategy)(
-            buffer_config=config.buffer,
-            **config.algorithm.sample_strategy_args,
-        )
         self.engine = get_trainer_wrapper(config)
 
     def prepare(self) -> None:
@@ -63,22 +57,7 @@ class Trainer:
         Returns:
             bool: Whether to continue training.
         """
-        algo_config = self.algorithm_manager.get_current_algorithm_config(
-            self.engine.train_step_num + 1
-        )
-        algo_type = algo_config.algorithm_type
-        algorithm = ALGORITHM_TYPE.get(algo_type)
-        try:
-            exps = self.sample_strategy.sample(self.engine.train_step_num + 1)
-        except StopIteration:
-            self.logger.warning("No more data to train. Stop training.")
-            return False, self.engine.train_step_num
-
-        experiences = algorithm.gather_experience(
-            exps,
-            pad_token_id=self.config.buffer.pad_token_id,  # type: ignore
-        )
-        return self.engine.train_step(experiences)
+        return self.engine.train_step()
 
     def sync_weight(self) -> None:
         """Sync the model weight."""
@@ -111,7 +90,7 @@ class TrainEngineWrapper(ABC):
         """Get the current training step number."""
 
     @abstractmethod
-    def train_step(self, experiences) -> Tuple[bool, int]:
+    def train_step(self) -> Tuple[bool, int]:
         """Training."""
 
     @abstractmethod
