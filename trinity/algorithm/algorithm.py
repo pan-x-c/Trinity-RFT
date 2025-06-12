@@ -160,7 +160,7 @@ class DPOAlgorithm(AlgorithmType):
     def get_default_config(cls) -> Dict:
         return {
             "repeat_times": 2,  # fake repeat times
-            "sample_strategy": "warmup",
+            "sample_strategy": "dpo",
             "policy_loss_fn": "dpo",
             "kl_loss_fn": "k2",
             "entropy_loss_fn": "basic",
