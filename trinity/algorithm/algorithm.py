@@ -7,7 +7,6 @@ from typing import Dict
 from trinity.buffer.schema.sql_schema import DPODataModel, ExperienceModel, SFTDataModel
 from trinity.common.config import Config
 from trinity.common.constants import SyncMethod
-from trinity.common.experience import Experience, Experiences
 from trinity.utils.log import get_logger
 from trinity.utils.registry import Registry
 
@@ -30,10 +29,6 @@ class AlgorithmType(ABC, metaclass=ConstantMeta):
     use_rollout: bool
     can_balance_batch: bool
     schema: type
-
-    @classmethod
-    def gather_experience(cls, exps: list[Experience], pad_token_id: int = 0) -> Experiences:
-        return Experiences.gather_experiences(exps, pad_token_id)
 
     @classmethod
     def get_default_config(cls) -> Dict:
@@ -151,10 +146,6 @@ class DPOAlgorithm(AlgorithmType):
     use_rollout: bool = False
     can_balance_batch: bool = False
     schema: type = DPODataModel
-
-    @classmethod
-    def gather_experience(cls, exps: list[Experience], pad_token_id: int = 0) -> Experiences:
-        return Experiences.gather_dpo_experiences(exps, pad_token_id)
 
     @classmethod
     def get_default_config(cls) -> Dict:
