@@ -1,11 +1,12 @@
 import random
 from typing import List
 
-import torch
 import numpy as np
+import torch
 from verl.trainer.ppo.ray_trainer import DataProto
 
 from trinity.common.experience import Experience, Experiences
+
 
 def to_data_proto(experiences: Experiences) -> DataProto:
     attention_mask = experiences.attention_masks
@@ -24,9 +25,7 @@ def to_data_proto(experiences: Experiences) -> DataProto:
         ),
     }
     if experiences.rewards is not None:
-        token_level_rewards = torch.zeros(
-            attention_mask.shape, dtype=experiences.rewards.dtype
-        )
+        token_level_rewards = torch.zeros(attention_mask.shape, dtype=experiences.rewards.dtype)
         eos_mask_idx = cumsum.argmax(dim=-1)
         token_level_rewards[
             torch.arange(experiences.batch_size), eos_mask_idx
@@ -61,15 +60,19 @@ def representative_sample(experiences: List[Experience]) -> List[dict]:
         if max_reward_sample is None or exp.reward > max_reward_sample.reward:
             max_reward_sample = exp
     if min_reward_sample is not None:
-        samples.append({
-            "prompt": min_reward_sample.prompt_text,
-            "response": min_reward_sample.response_text,
-            "reward": min_reward_sample.reward,
-        })
+        samples.append(
+            {
+                "prompt": min_reward_sample.prompt_text,
+                "response": min_reward_sample.response_text,
+                "reward": min_reward_sample.reward,
+            }
+        )
     if max_reward_sample is not None:
-        samples.append({
-            "prompt": max_reward_sample.prompt_text,
-            "response": max_reward_sample.response_text,
-            "reward": max_reward_sample.reward,
-        })
+        samples.append(
+            {
+                "prompt": max_reward_sample.prompt_text,
+                "response": max_reward_sample.response_text,
+                "reward": max_reward_sample.reward,
+            }
+        )
     return samples

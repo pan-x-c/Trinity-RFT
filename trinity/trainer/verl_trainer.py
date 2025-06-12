@@ -270,10 +270,12 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         # TODO: compute total training steps
         self.total_training_steps = self.config.trainer.total_training_steps or sys.maxsize
 
-    def train_step(self) -> Tuple[bool, int]:
+    def train_step(self) -> Tuple[bool, int]:  # noqa C901
+        metrics = {}
         self.global_steps += 1
         try:
-            batch, metrics, exp_samples = self.sample_strategy.sample(self.global_steps)
+            batch, sample_metrics, exp_samples = self.sample_strategy.sample(self.global_steps)
+            prefix_metrics(sample_metrics, "sample", metrics)
         except StopIteration:
             self.logger.warning("No more data to train. Stop training.")
             return False, self.global_steps
