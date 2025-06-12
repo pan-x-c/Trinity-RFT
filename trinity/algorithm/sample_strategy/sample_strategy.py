@@ -35,8 +35,8 @@ class WarmupSampleStrategy(SampleStrategy):
         self.exp_buffer = get_buffer_reader(
             buffer_config.trainer_input.experience_buffer, buffer_config  # type: ignore
         )
-        self.sft_warmup_step = buffer_config.trainer_input.sft_warmup_steps
-        if self.sft_warmup_step > 0 and buffer_config.trainer_input.sft_warmup_dataset is None:
+        self.sft_warmup_steps = buffer_config.trainer_input.sft_warmup_steps
+        if self.sft_warmup_steps > 0 and buffer_config.trainer_input.sft_warmup_dataset is None:
             raise ValueError("sft_warmup_dataset is required when sft_warmup_steps > 0")
         if buffer_config.trainer_input.sft_warmup_dataset is not None:
             self.sft_buffer = get_buffer_reader(
@@ -46,7 +46,7 @@ class WarmupSampleStrategy(SampleStrategy):
             self.sft_buffer = None
 
     def sample(self, step: int, **kwargs) -> List[Experience]:
-        if step <= self.sft_warmup_step:
+        if step <= self.sft_warmup_steps:
             return self.sft_buffer.read()
         else:
             return self.exp_buffer.read()
