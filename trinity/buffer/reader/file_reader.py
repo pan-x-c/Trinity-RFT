@@ -1,6 +1,5 @@
 """Filed based buffer reader."""
 
-from itertools import islice
 from typing import List, Optional
 
 import datasets
@@ -18,19 +17,39 @@ from trinity.utils.registry import Registry
 FILE_READERS = Registry("file_readers")
 
 
-@FILE_READERS.register_module(AlgorithmType.SFT.value)
 class _HFBatchReader:
-    def __init__(self, dataset: Dataset):
+    def __init__(self, dataset: Dataset, max_epoch: int = 1, offset: int = 0):
         self.dataset = dataset
+        self.dataset_size = len(dataset)
         self.current_batch_size = None
+        self.max_epoch = max_epoch
+        if offset >= self.dataset_size:
+            self.current_epoch = offset // self.dataset_size
+            self.current_offset = offset % self.dataset_size
+        else:
+            self.current_epoch = 0
+            self.current_offset = offset
+        self.iter = iter(self.dataset)
 
-    def set_offset(self, offset: int) -> None:
-        self.iter = self.dataset.iter(offset)
+        for _ in range(self.current_offset):
+            next(self.iter)
 
     def read_batch(self, batch_size: int) -> List:
-        batch = list(islice(self.dataset, batch_size))
-        if not batch or batch_size != len(batch):
-            raise StopIteration
+        batch = []
+
+        while len(batch) < batch_size:
+            try:
+                item = next(self.iter)
+                batch.append(item)
+                self.current_offset += 1
+
+            except StopIteration:
+                self.current_epoch += 1
+                self.current_offset = 0
+
+                if self.current_epoch >= self.max_epoch:
+                    raise StopIteration
+                self.iter = iter(self.dataset)
         return batch
 
 
@@ -195,10 +214,11 @@ class RolloutDataReader(BufferReader):
         # disable datasets caching to avoid reuse old-version dataset
         self.epoch = 0
         datasets.disable_caching()
-        self.dataset = _HFBatchReader(load_dataset(meta.path, name=subset_name, split=self.split))
-        if self.meta.index > 0:
-            # offset the dataset to the correct index
-            self.dataset.read_batch(self.meta.index)
+        self.dataset = _HFBatchReader(
+            load_dataset(meta.path, name=subset_name, split=self.split),
+            max_epoch=self.meta.total_epochs if meta.task_type == TaskType.EXPLORE else 1,
+            offset=self.meta.index,
+        )
         self.read_batch_size = config.batch_size
         self.prompt_key = meta.format.prompt_key
         self.response_key = meta.format.response_key
@@ -208,22 +228,13 @@ class RolloutDataReader(BufferReader):
         self.task_type = meta.task_type
         self.default_workflow_cls = WORKFLOWS.get(meta.default_workflow_type)  # type: ignore
         self.default_reward_fn_cls = REWARD_FUNCTIONS.get(meta.default_reward_fn_type)  # type: ignore
-        self.total_epochs = meta.total_epochs if self.task_type == TaskType.EXPLORE else 1
-
-    def __len__(self):
-        return len(self.dataset)
 
     def read(
         self, batch_size: Optional[int] = None, strategy: Optional[ReadStrategy] = None
     ) -> List:
         batch_size = batch_size or self.read_batch_size
         tasks = []
-        try:
-            samples = self.dataset.read_batch(batch_size)
-        except StopIteration:
-            self.epoch += 1
-            if self.epoch >= self.total_epochs:
-                raise StopIteration
+        samples = self.dataset.read_batch(batch_size)
         for sample in samples:
             workflow_class = (
                 WORKFLOWS.get(sample[self.workflow_key])
