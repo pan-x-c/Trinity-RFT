@@ -63,3 +63,7 @@ class TestQueueBuffer(RayUnittestBase):
         self.assertRaises(StopIteration, reader.read)
         with open(file_path, "r") as f:
             self.assertEqual(len(f.readlines()), total_num + put_batch_size * 2)
+
+    def setUp(self):
+        if os.path.exists(file_path):
+            os.remove(file_path)

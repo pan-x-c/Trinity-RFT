@@ -1,8 +1,6 @@
-from typing import List
-import os
-
 import json
-import jsonlines
+import os
+from typing import List
 
 from trinity.buffer.buffer_writer import BufferWriter
 from trinity.common.config import BufferConfig, StorageConfig
@@ -21,7 +19,6 @@ class _Encoder(json.JSONEncoder):
 
 
 class JSONWriter(BufferWriter):
-
     def __init__(self, meta: StorageConfig, config: BufferConfig):
         assert meta.storage_type == StorageType.FILE
         if meta.path is None:
@@ -29,12 +26,14 @@ class JSONWriter(BufferWriter):
         ext = os.path.splitext(meta.path)[-1]
         if ext != ".jsonl" and ext != ".json":
             raise ValueError(f"File path must end with .json or .jsonl, got {meta.path}")
-        self.writer = jsonlines.open(
-            meta.path, mode="a", dumps=_Encoder(ensure_ascii=False).encode, flush=True
-        )
+        self.file = open(meta.path, "a", encoding="utf-8")
+        self.encoder = _Encoder(ensure_ascii=False)
 
     def write(self, data: List) -> None:
-        self.writer.write_all(data)
+        for item in data:
+            json_str = self.encoder.encode(item)
+            self.file.write(json_str + "\n")
+        self.file.flush()
 
     def finish(self):
-        self.writer.close()
+        self.file.close()
