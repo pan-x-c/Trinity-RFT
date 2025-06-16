@@ -234,6 +234,7 @@ class BufferConfig:
     read_batch_size: int = 1  # automatically set
     tokenizer_path: Optional[str] = None  # automatically set
     pad_token_id: Optional[int] = None  # automatically set
+    cache_dir: Optional[str] = None  # automatically set
 
 
 @dataclass
@@ -470,6 +471,15 @@ class Config:
                 logger.warning(f"Failed to get pad token id from model {self.model.model_path}")
                 self.buffer.pad_token_id = 0
         self.buffer.tokenizer_path = self.model.model_path
+        # create buffer.cache_dir at <checkpoint_root_dir>/<project>/<name>/buffer
+        self.buffer.cache_dir = os.path.join(self.checkpoint_job_dir, "buffer")
+        try:
+            os.makedirs(self.buffer.cache_dir, exist_ok=True)
+        except Exception:
+            logger.warning(
+                f"Failed to create buffer dir {self.buffer.cache_dir}, please check "
+                f"your checkpoint directory: {self.checkpoint_job_dir}"
+            )
 
     def check_and_update(self) -> None:  # noqa: C901
         """Check and update the config."""
@@ -532,14 +542,14 @@ class Config:
 
         self._check_interval()
 
-        # create a job dir in <checkpoint_job_dir>/monitor
+        # create a job dir in <checkpoint_root_dir>/<project>/<name>/monitor
         self.monitor.cache_dir = os.path.join(self.checkpoint_job_dir, "monitor")
         try:
             os.makedirs(self.monitor.cache_dir, exist_ok=True)
         except Exception:
             logger.warning(
                 f"Failed to create monitor dir {self.monitor.cache_dir}, please check "
-                f"your checkpoint directory: {self.checkpoint_root_dir}"
+                f"your checkpoint directory: {self.checkpoint_job_dir}"
             )
 
         # check buffer

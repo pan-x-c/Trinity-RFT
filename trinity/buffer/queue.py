@@ -1,5 +1,6 @@
 """A queue implemented by Ray Actor."""
 import asyncio
+import os
 from copy import deepcopy
 from typing import List
 
@@ -9,6 +10,7 @@ from trinity.buffer.writer.file_writer import JSONWriter
 from trinity.buffer.writer.sql_writer import SQLWriter
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.constants import StorageType
+from trinity.utils.log import get_logger
 
 
 def is_database_url(path: str) -> bool:
@@ -26,25 +28,28 @@ class QueueActor:
     FINISH_MESSAGE = "$FINISH$"
 
     def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
+        self.logger = get_logger(__name__)
         self.config = config
         self.capacity = getattr(config, "capacity", 10000)
         self.queue = asyncio.Queue(self.capacity)
-        if storage_config.path is not None and len(storage_config.path) > 0:
-            if is_database_url(storage_config.path):
-                storage_config.storage_type = StorageType.SQL
-                sql_config = deepcopy(storage_config)
-                sql_config.storage_type = StorageType.SQL
-                sql_config.wrap_in_ray = False
-                self.writer = SQLWriter(sql_config, self.config)
-            elif is_json_file(storage_config.path):
-                storage_config.storage_type = StorageType.FILE
-                json_config = deepcopy(storage_config)
-                json_config.storage_type = StorageType.FILE
-                self.writer = JSONWriter(json_config, self.config)
+        st_config = deepcopy(storage_config)
+        if st_config.path is not None and len(st_config.path) > 0:
+            if is_database_url(st_config.path):
+                st_config.storage_type = StorageType.SQL
+                st_config.wrap_in_ray = False
+                self.writer = SQLWriter(st_config, self.config)
+            elif is_json_file(st_config.path):
+                st_config.storage_type = StorageType.FILE
+                self.writer = JSONWriter(st_config, self.config)
             else:
-                self.writer = None
+                self.logger.warning("Unknown supported storage path: %s", st_config.path)
+                st_config.path = os.path.join(config.cache_dir, f"{st_config.name}.jsonl")  # type: ignore
+                self.logger.warning(f"Using {st_config.path} instead.")
+                self.writer = JSONWriter(st_config, self.config)
         else:
-            self.writer = None
+            st_config.path = os.path.join(config.cache_dir, f"{st_config.name}.jsonl")  # type: ignore
+            self.logger.warning(f"No storage path provided, using cache dir {st_config.path}.")
+            self.writer = JSONWriter(st_config, self.config)
 
     def length(self) -> int:
         """The length of the queue."""
