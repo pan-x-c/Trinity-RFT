@@ -20,6 +20,7 @@ class TestFileReader(unittest.TestCase):
                 break
         self.assertEqual(len(tasks), 16)
 
+        # test epoch and offset
         config.buffer.explorer_input.taskset.total_epochs = 2
         config.buffer.explorer_input.taskset.index = 4
         reader = get_buffer_reader(config.buffer.explorer_input.taskset, config.buffer)
@@ -30,3 +31,15 @@ class TestFileReader(unittest.TestCase):
             except StopIteration:
                 break
         self.assertEqual(len(tasks), 16 * 2 - 4)
+
+        # test offset > dataset_len
+        config.buffer.explorer_input.taskset.total_epochs = 3
+        config.buffer.explorer_input.taskset.index = 20
+        reader = get_buffer_reader(config.buffer.explorer_input.taskset, config.buffer)
+        tasks = []
+        while True:
+            try:
+                tasks.extend(reader.read())
+            except StopIteration:
+                break
+        self.assertEqual(len(tasks), 16 * 3 - 20)
