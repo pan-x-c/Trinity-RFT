@@ -14,7 +14,7 @@ from trinity.common.config import StorageConfig
 from trinity.common.constants import StorageType
 
 
-class TestFileReader(unittest.TestCase):
+class TestFileBuffer(unittest.TestCase):
     def test_file_reader(self):
         """Test file reader."""
         reader = get_buffer_reader(self.config.buffer.explorer_input.taskset, self.config.buffer)
