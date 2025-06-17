@@ -8,9 +8,9 @@ Below is a table summarizing the modules that different types of developers need
 
 | Developer Type | Focus Module | Key Component |
 |----------------|--------------|---------------|
-| Developers aiming to extend existing RL algorithms to new environments | *Explorer* | `Workflow` |
-| Developers needing to design and implement new RL algorithms for comparing training effectiveness | *Trainer* | `Algorithm` |
-| Developers seeking to enhance training performance from the data perspective | *Buffer* | Data Processing Module (Coming soon) |
+| Extend existing RL algorithms to new environments. | *Explorer* | `Workflow` |
+| Design new RL algorithms for higher model performance. | *Trainer* | `Algorithm` |
+| Enhance model performance from the data perspective. | *Buffer* | Data Processing Module (Coming soon) |
 
 ```{note}
 Trinity-RFT is still under development, and the following interfaces may change. Please read this section in conjunction with the latest code.
@@ -340,6 +340,8 @@ Trinity-RFT allows developers to customize all the above modules. Developers onl
 
 The main difference between OPMD and PPO algorithms lies in the calculation of Advantage and Policy Loss. Therefore, only new Advantage Fn and Policy Loss Fn modules need to be implemented.
 
+---
+
 #### Step 1.1: Implementing `AdvantageFn`
 
 Developers need to implement the {class}`trinity.algorithm.AdvantageFn` interface, which mainly includes two methods:
@@ -424,11 +426,13 @@ class OPMDPolicyLossFn(PolicyLossFn):
         return {"tau": 1.0}
 ```
 
+---
+
 ### Step 2: Register Your Algorithm
 
 The above steps implement the components needed for the algorithm, but these components are scattered and need to be configured in multiple places to take effect.
 
-To simplify configuration, Trinity-RFT provides {class}`trinity.algorithm.AlgorithmType` to describe a complete algorithm and registers it in {class}`trinity.algorithm.ALGORITHM_TYPE`, enabling one-click configuration.
+To simplify configuration, Trinity-RFT provides {class}`trinity.algorithm.AlgorithmType` to describe a complete algorithm and registers it in {object}`trinity.algorithm.ALGORITHM_TYPE`, enabling one-click configuration.
 
 The `AlgorithmType` class includes the following attributes and methods:
 
@@ -437,9 +441,9 @@ The `AlgorithmType` class includes the following attributes and methods:
 - `use_advantage`: Whether to calculate Advantage; if False, the `AdvantageFn` call will be skipped
 - `can_balance_batch`: Whether the algorithm can automatically balance batches
 - `schema`: The format of experience data corresponding to the algorithm
-- `get_default_config`: Gets the default configuration of the algorithm, which will override attributes with the same name in `trinity.algorithm.ALGORITHM_TYPE`
+- `get_default_config`: Gets the default configuration of the algorithm, which will override attributes with the same name in `ALGORITHM_TYPE`
 
-Similarly, after implementation, you need to register this module through {class}`trinity.algorithm.ALGORITHM_TYPE`.
+Similarly, after implementation, you need to register this module through `ALGORITHM_TYPE`.
 
 Below is the implementation for the OPMD algorithm.
 Since the OPMD algorithm doesn't need to use the Critic model, `use_critic` is set to `False`.
@@ -469,6 +473,8 @@ class OPMDAlgorithm(AlgorithmType):
         }
 ```
 
+---
+
 ### Step 3: Use Your Algorithm
 
 After completing all the above steps, you can use the newly registered algorithm through a YAML configuration file.
@@ -482,7 +488,7 @@ algorithm:
 # some other configs
 ```
 
-If you need to modify certain parameters, you can simply add the corresponding parameters within the `algorithm` section. For example, if you need to modify `repeat_times` and the initialization parameters of `AdvantageFn`, the modified `config.yaml` file would be as follows:
+If you need to modify certain parameters, you can simply add the corresponding parameters within the `algorithm` section. For example, if you need to modify `repeat_times` and the initialization parameters of `AdvantageFn` and `PolicyLossFn`, the modified `config.yaml` file would be as follows:
 
 ```yaml
 # some other configs
@@ -491,6 +497,8 @@ algorithm:
   repeat_times: 8
   advantage_fn_args:
     opmd_baseline: "logavgexp"
+    tau: 0.99
+  policy_loss_fn_args:
     tau: 0.99
 # some other configs
 ```
