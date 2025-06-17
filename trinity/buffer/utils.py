@@ -1,6 +1,9 @@
+import os
 import time
 from contextlib import contextmanager
 
+from trinity.common.config import BufferConfig, StorageConfig
+from trinity.common.constants import StorageType
 from trinity.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -31,3 +34,16 @@ def retry_session(session_maker, max_retry_times: int, max_retry_interval: float
                 raise e
         finally:
             session.close()
+
+
+def default_storage_path(storage_config: StorageConfig, buffer_config: BufferConfig) -> str:
+    if storage_config.storage_type == StorageType.SQL:
+        return "sqlite:///" + os.path.join(
+            buffer_config.cache_dir,  # type: ignore
+            f"{storage_config.name}.db",
+        )
+    else:
+        return os.path.join(
+            buffer_config.cache_dir,  # type: ignore
+            f"{storage_config.name}.jsonl",
+        )

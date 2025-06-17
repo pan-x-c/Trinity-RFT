@@ -1,6 +1,5 @@
 """A queue implemented by Ray Actor."""
 import asyncio
-import os
 from copy import deepcopy
 from typing import List
 
@@ -33,23 +32,22 @@ class QueueActor:
         self.capacity = getattr(config, "capacity", 10000)
         self.queue = asyncio.Queue(self.capacity)
         st_config = deepcopy(storage_config)
-        if st_config.path is not None and len(st_config.path) > 0:
+        st_config.wrap_in_ray = False
+        if st_config.path is not None:
             if is_database_url(st_config.path):
                 st_config.storage_type = StorageType.SQL
-                st_config.wrap_in_ray = False
                 self.writer = SQLWriter(st_config, self.config)
             elif is_json_file(st_config.path):
                 st_config.storage_type = StorageType.FILE
                 self.writer = JSONWriter(st_config, self.config)
             else:
                 self.logger.warning("Unknown supported storage path: %s", st_config.path)
-                st_config.path = os.path.join(config.cache_dir, f"{st_config.name}.jsonl")  # type: ignore
-                self.logger.warning(f"Using {st_config.path} instead.")
+                st_config.storage_type = StorageType.FILE
                 self.writer = JSONWriter(st_config, self.config)
         else:
-            st_config.path = os.path.join(config.cache_dir, f"{st_config.name}.jsonl")  # type: ignore
-            self.logger.warning(f"No storage path provided, using cache dir {st_config.path}.")
+            st_config.storage_type = StorageType.FILE
             self.writer = JSONWriter(st_config, self.config)
+        self.logger.warning(f"Save experiences in {st_config.path}.")
 
     def length(self) -> int:
         """The length of the queue."""
