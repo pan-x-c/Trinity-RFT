@@ -42,8 +42,7 @@ class QueueActor:
                 self.writer = JSONWriter(st_config, self.config)
             else:
                 self.logger.warning("Unknown supported storage path: %s", st_config.path)
-                st_config.storage_type = StorageType.FILE
-                self.writer = JSONWriter(st_config, self.config)
+                self.writer = None
         else:
             st_config.storage_type = StorageType.FILE
             self.writer = JSONWriter(st_config, self.config)

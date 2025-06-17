@@ -37,13 +37,15 @@ def retry_session(session_maker, max_retry_times: int, max_retry_interval: float
 
 
 def default_storage_path(storage_config: StorageConfig, buffer_config: BufferConfig) -> str:
+    if buffer_config.cache_dir is None:
+        raise ValueError("Please call config.check_and_update() before using.")
     if storage_config.storage_type == StorageType.SQL:
         return "sqlite:///" + os.path.join(
-            buffer_config.cache_dir,  # type: ignore
+            buffer_config.cache_dir,
             f"{storage_config.name}.db",
         )
     else:
         return os.path.join(
-            buffer_config.cache_dir,  # type: ignore
+            buffer_config.cache_dir,
             f"{storage_config.name}.jsonl",
         )
