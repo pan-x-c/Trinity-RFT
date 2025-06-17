@@ -1,6 +1,6 @@
 # Developer Guide
 
-This guide introduces how to develop new modules to Trinity-RFT and provides relevant development guidelines.
+This guide introduces how to develop new modules in Trinity-RFT and provides relevant development guidelines.
 
 Trinity-RFT consists of three main modules: **Explorer**, **Trainer** and **Buffer**.
 We decouple the RL pipeline into three modules to make it easier to customize and extend.
@@ -336,7 +336,7 @@ We provide several implementations of above modules in `trinity/algorithm`.
 ### Step 1: Implementing Algorithm Components
 
 
-Trinity-RFT allows developers to customize all the above modules. Developers only need to implement specific modules according to the requirements of their new algorithm. This section will provide a simple introduction using the OPMD algorithm as an example.
+Trinity-RFT allows developers to customize all the above modules. Developers only need to implement specific modules according to the requirements of their new algorithm. This section will provide a simple introduction using the [OPMD](example_reasoning_advanced.md#opmd-a-native-off-policy-rl-algorithm) algorithm as an example.
 
 The main difference between OPMD and PPO algorithms lies in the calculation of Advantage and Policy Loss. Therefore, only new Advantage Fn and Policy Loss Fn modules need to be implemented.
 
@@ -429,9 +429,6 @@ class OPMDPolicyLossFn(PolicyLossFn):
 The above steps implement the components needed for the algorithm, but these components are scattered and need to be configured in multiple places to take effect.
 
 To simplify configuration, Trinity-RFT provides {class}`trinity.algorithm.AlgorithmType` to describe a complete algorithm and registers it in {class}`trinity.algorithm.ALGORITHM_TYPE`, enabling one-click configuration.
-
-上述步骤实现了算法所需要的各项组件，但这些组件较为分散，需要在多处进行配置才能生效。
-为了简化配置，Trinity-RFT 提供了 {class}`trinity.algorithm.algorithm.AlgorithmType` 用于描述完整的算法，并注册到 {class}`trinity.algorithm.ALGORITHM_TYPE` 中，从而实现一键式配置。
 
 The `AlgorithmType` class includes the following attributes and methods:
 
