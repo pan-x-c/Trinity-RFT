@@ -8,9 +8,9 @@ Below is a table summarizing the modules and components that developers with dif
 
 | Development Target | Core Module | Key Component |
 |--------------------|-------------|---------------|
-| Extend existing RL algorithms to new environments. | *Explorer* | `Workflow` |
-| Design new RL algorithms for higher model performance. | *Trainer* | `Algorithm` |
-| Enhance model performance from the data perspective. | *Buffer* | Data Processing Module (Coming soon) |
+| Apply existing RL algorithms to new environments. | *Explorer* | `Workflow` |
+| Design new RL algorithms. | *Trainer* | `Algorithm` |
+| Enhance the RL process from the data perspective. | *Buffer* | Data Processing Module (Coming soon) |
 
 ```{note}
 Trinity-RFT is still under development, and the following interfaces may change. Please read this section in conjunction with the latest code.
@@ -315,6 +315,7 @@ trinity run --config <your_yaml_file>
 
 ---
 
+(Algorithms)=
 ## Algorithms (For RL Algorithm Developers)
 
 Trinity-RFT provides a standardized process for implementing new algorithms.
@@ -324,19 +325,20 @@ Trinity-RFT provides a standardized process for implementing new algorithms.
 In Trinity-RFT, the algorithm module is primarily responsible for extracting experience data from the Replay Buffer during the RL process and calculating the loss to update models based on this data.
 To avoid implementing a new Trainer class each time a new algorithm is added, we have decomposed the representative PPO algorithm process into multiple sub-modules to adapt to various algorithms.
 
-- **Sample Strategy** ({class}`trinity.algorithm.SampleStrategy`): Responsible for reading experience data from the buffer module. By customizing this module, you can implement requirements like filtering experience data or mixed sampling from multiple data sources.
+- **Sample Strategy** ({class}`trinity.algorithm.SampleStrategy`): Responsible for sampling experience data from the buffer module. By customizing this module, you can implement functionalities like filtering experience data or mixed sampling from multiple data sources.
 - **Advantage Fn**({class}`trinity.algorithm.AdvantageFn`): Responsible for calculating the Advantage and Returns of experience data.
-- **Policy Loss Fn**({class}`trinity.algorithm.PolicyLossFn`): Responsible for calculating the loss of the policy network.
+- **Policy Loss Fn**({class}`trinity.algorithm.PolicyLossFn`): Responsible for calculating the core training loss of the policy network.
 - **KL Fn**({class}`trinity.algorithm.KLFn`): Responsible for calculating KL Divergence, which is generally used in two places in existing RL algorithms: Reward Penalty and Actor Loss.
 - **Entropy Loss Fn**({class}`trinity.algorithm.EntropyLossFn`): Responsible for calculating the entropy loss of the policy network.
 
 We provide several implementations of above modules in `trinity/algorithm`.
 
+---
 
 ### Step 1: Implement Algorithm Components
 
 
-Trinity-RFT allows developers to customize all the above modules. Developers only need to implement specific modules according to the requirements of their new algorithm. This section will provide a simple introduction using the [OPMD](example_reasoning_advanced.md#opmd-a-native-off-policy-rl-algorithm) algorithm as an example.
+Trinity-RFT allows developers to customize all the above modules. Developers only need to implement specific modules according to the requirements of their new algorithm. This section will provide a simple introduction using the {ref}`OPMD <OPMD>` algorithm as an example.
 
 The main difference between OPMD and PPO algorithms lies in the calculation of Advantage and Policy Loss. Therefore, only new Advantage Fn and Policy Loss Fn modules need to be implemented.
 
@@ -346,7 +348,7 @@ The main difference between OPMD and PPO algorithms lies in the calculation of A
 
 Developers need to implement the {class}`trinity.algorithm.AdvantageFn` interface, which mainly includes two methods:
 
-- `__call__`: Calculates advantages and returns based on input experience data, records observable metrics during the calculation process, and returns the experience data containing advantages and returns as well as a metrics dictionary. The input experience data format is `verl`'s `DataProto`.
+- `__call__`: Calculates advantages and returns based on input experience data, records observable metrics during the calculation process, and returns the experience data containing advantages and returns as well as a metrics dictionary. The input experience data format is [verl](https://github.com/volcengine/verl)'s `DataProto`.
 - `default_args`: Returns default initialization parameters in dictionary form, which will be used by default when users don't specify initialization parameters in the configuration file.
 
 After implementation, you need to register this module through {class}`trinity.algorithm.ADVANTAGE_FN`. Once registered, the module can be configured in the configuration file using the registered name.
@@ -439,7 +441,7 @@ The `AlgorithmType` class includes the following attributes and methods:
 - `use_critic`: Whether to use the Critic model
 - `use_reference`: Whether to use the Reference model
 - `use_advantage`: Whether to calculate Advantage; if False, the `AdvantageFn` call will be skipped
-- `can_balance_batch`: Whether the algorithm can automatically balance batches
+- `can_balance_batch`: Whether the algorithm allows automatic balancing when splitting a batch into microbatches (which permute the order of samples)
 - `schema`: The format of experience data corresponding to the algorithm
 - `get_default_config`: Gets the default configuration of the algorithm, which will override attributes with the same name in `ALGORITHM_TYPE`
 

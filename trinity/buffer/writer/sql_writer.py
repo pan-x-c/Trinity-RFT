@@ -2,7 +2,6 @@
 
 import ray
 
-from trinity.algorithm.algorithm import ALGORITHM_TYPE
 from trinity.buffer.buffer_writer import BufferWriter
 from trinity.buffer.db_wrapper import DBWrapper
 from trinity.common.config import BufferConfig, StorageConfig
