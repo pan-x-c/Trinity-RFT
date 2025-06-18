@@ -24,7 +24,7 @@ from trinity.utils.log import get_logger
 from trinity.utils.monitor import MONITOR
 
 
-@ray.remote(name="explorer", concurrency_groups={"get_weight": 32, "setup_weight_sync_group": 1})
+@ray.remote(name="explorer")
 class Explorer:
     """Responsible for exploring the taskset."""
 
@@ -70,8 +70,7 @@ class Explorer:
             self.state_dict_meta = []
         self.logger.info("Finished initializing Explorer.")
 
-    @ray.method(concurrency_group="setup_weight_sync_group")
-    def setup_weight_sync_group(
+    async def setup_weight_sync_group(
         self, master_address: str, master_port: int, state_dict_meta: List = None
     ):
         # In checkpoint mode, we use explorer to store the model weights which has no rank
@@ -144,14 +143,13 @@ class Explorer:
     def _nccl_weights_update(self):
         ray.get([model.sync_model.remote(self.state_dict_meta) for model in self.models])
 
-    def prepare(self) -> None:
+    async def prepare(self) -> None:
         """Preparation before running."""
         if self.use_checkpoint_weights_update:
             master_address, master_port = ray.get(self.models[0].get_available_address.remote())
-            self.setup_weight_sync_group(master_address, master_port)
+            await self.setup_weight_sync_group(master_address, master_port)
 
-    @ray.method(concurrency_group="get_weight")
-    def get_weight(self, name: str) -> torch.Tensor:
+    async def get_weight(self, name: str) -> torch.Tensor:
         """Get the weight of the loaded model (For checkpoint weights update)."""
         return self.state_dict[name]
 
