@@ -33,6 +33,7 @@ Welcome to Trinity-RFT's documentation!
    build_api/trinity.buffer
    build_api/trinity.explorer
    build_api/trinity.trainer
+   build_api/trinity.algorithm
    build_api/trinity.manager
    build_api/trinity.common
    build_api/trinity.utils

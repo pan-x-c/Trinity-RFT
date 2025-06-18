@@ -4,10 +4,10 @@ This guide introduces how to develop new modules in Trinity-RFT and provides rel
 
 Trinity-RFT consists of three main modules: **Explorer**, **Trainer** and **Buffer**.
 We decouple the RL pipeline into three modules to make it easier to customize and extend.
-Below is a table summarizing the modules that different types of developers need to focus on.
+Below is a table summarizing the modules and components that developers with different tragets need to focus on.
 
-| Developer Type | Focus Module | Key Component |
-|----------------|--------------|---------------|
+| Development Target | Core Module | Key Component |
+|--------------------|-------------|---------------|
 | Extend existing RL algorithms to new environments. | *Explorer* | `Workflow` |
 | Design new RL algorithms for higher model performance. | *Trainer* | `Algorithm` |
 | Enhance model performance from the data perspective. | *Buffer* | Data Processing Module (Coming soon) |
@@ -33,7 +33,7 @@ Before starting development, it's important to understand several core concepts:
   - **Math problems**: A `Task` contains the problem description and the golden answer.
   - **Programming scenarios**: A `Task` includes the problem description, test cases, runtime environment, and other complex information.
 
-- **Workflow** ({class}`trinity.common.workflows.Workflow`): Can be understood as the running state of a `Task`. It defines the interaction flow between Agents and Environments, including logic similar to *Rollout* and *Reward* calculations in other frameworks. After execution, it generates a list of `Experience`. Trinity-RFT includes several built-in workflows:
+- **Workflow** ({class}`trinity.common.workflows.Workflow`): Describes how a `Task` is executed. It defines the interaction flow between Agents and Environments, including logic similar to *Rollout* and *Reward* calculations in other frameworks. After execution, it generates a list of `Experience`. Trinity-RFT includes several built-in workflows:
   - `MathWorkflow` ({class}`trinity.common.workflows.MathWorkflow`): For math scenarios, submits problems to LLM, parses LLM responses, and calculates scores (rewards).
   - `WebShopWorkflow` ({class}`trinity.common.workflows.WebShopWorkflow`): For webshop scenarios, it contains multi-turn interaction with environment.
   - `CodeWorkflow` (Coming soon): For coding scenarios, executes returned code, runs tests, and calculates rewards based on test results.
@@ -50,7 +50,7 @@ To handle differences in `Task` contents, Trinity-RFT provides a unified `Task` 
 
 - **`workflow`** (`str`): The registered name of your workflow class. You can specify it in `buffer.explorer_input.taskset.default_workflow_type` of your YAML config file.
 - **`reward_fn`** (`Optional[str]`): The registered name of your reward function. You can specify it in `buffer.explorer_input.taskset.default_reward_fn_type`. Note that some workflows already include built-in reward calculation; in such cases, you can omit this field.
-- **`raw_task`** (`Dict`): An record of raw data in `Dict` format. For highly customized workflow, you can directly use `raw_task` to initialize your `Workflow` instance without relying on the following fields.
+- **`raw_task`** (`Dict`): A record of raw data in `Dict` format. For highly customized workflow, you can directly use `raw_task` to initialize your `Workflow` instance without relying on the following fields.
 - **`format_args`** ({class}`trinity.common.config.FormatConfig`): Parameters to facilitate the construction of `Workflow` instances. For example, the `prompt_key` and `response_key` can be used to get the prompt and response from `raw_task`. These settings come from the YAML configuration file and can be set in `buffer.explorer_input.task_set.format`.
 - **`rollout_args`** ({class}`trinity.common.config.GenerationConfig`): Parameters that control the rollout process, such as `temperature`. This field also comes from the YAML configuration file and can be set in `buffer.explorer_input.task_set.rollout_args`.
 - **`workflow_args`** (`Dict`): A dictionary of parameters to facilitate the construction of `Workflow` instances. Provides more flexibility than `format_args` and `rollout_args` by using a dictionary. This field also comes from the YAML configuration file and can be set in `buffer.explorer_input.task_set.workflow_args`. Normally, you do not need to set this field.
@@ -113,7 +113,7 @@ class Workflow(ABC):
         """Run the workflow and return a list of Experiences."""
 ```
 
-#### Initializing Your Workflow
+#### Initialize Your Workflow
 
 During initialization, `Workflow` receives the following parameters:
 
@@ -324,16 +324,16 @@ Trinity-RFT provides a standardized process for implementing new algorithms.
 In Trinity-RFT, the algorithm module is primarily responsible for extracting experience data from the Replay Buffer during the RL process and calculating the loss to update models based on this data.
 To avoid implementing a new Trainer class each time a new algorithm is added, we have decomposed the representative PPO algorithm process into multiple sub-modules to adapt to various algorithms.
 
-- **Sample Strategy**: Responsible for reading experience data from the buffer module. By customizing this module, you can implement requirements like filtering experience data or mixed sampling from multiple data sources.
-- **Advantage Fn**: Responsible for calculating the Advantage and Returns of experience data.
-- **Policy Loss Fn**: Responsible for calculating the loss of the policy network.
-- **KL Fn**: Responsible for calculating KL Divergence, which is generally used in two places in existing RL algorithms: Reward Penalty and Actor Loss.
-- **Entropy Loss Fn**: Responsible for calculating the entropy loss of the policy network.
+- **Sample Strategy** ({class}`trinity.algorithm.SampleStrategy`): Responsible for reading experience data from the buffer module. By customizing this module, you can implement requirements like filtering experience data or mixed sampling from multiple data sources.
+- **Advantage Fn**({class}`trinity.algorithm.AdvantageFn`): Responsible for calculating the Advantage and Returns of experience data.
+- **Policy Loss Fn**({class}`trinity.algorithm.PolicyLossFn`): Responsible for calculating the loss of the policy network.
+- **KL Fn**({class}`trinity.algorithm.KLFn`): Responsible for calculating KL Divergence, which is generally used in two places in existing RL algorithms: Reward Penalty and Actor Loss.
+- **Entropy Loss Fn**({class}`trinity.algorithm.EntropyLossFn`): Responsible for calculating the entropy loss of the policy network.
 
 We provide several implementations of above modules in `trinity/algorithm`.
 
 
-### Step 1: Implementing Algorithm Components
+### Step 1: Implement Algorithm Components
 
 
 Trinity-RFT allows developers to customize all the above modules. Developers only need to implement specific modules according to the requirements of their new algorithm. This section will provide a simple introduction using the [OPMD](example_reasoning_advanced.md#opmd-a-native-off-policy-rl-algorithm) algorithm as an example.
@@ -342,7 +342,7 @@ The main difference between OPMD and PPO algorithms lies in the calculation of A
 
 ---
 
-#### Step 1.1: Implementing `AdvantageFn`
+#### Step 1.1: Implement `AdvantageFn`
 
 Developers need to implement the {class}`trinity.algorithm.AdvantageFn` interface, which mainly includes two methods:
 
@@ -391,7 +391,7 @@ class OPMDAdvantageFn(AdvantageFn):
         }
 ```
 
-#### Step 1.2: Implementing `PolicyLossFn`
+#### Step 1.2: Implement `PolicyLossFn`
 
 Developers need to implement the {class}`trinity.algorithm.PolicyLossFn` interface, which is similar to `AdvantageFn` and includes two methods:
 
