@@ -312,6 +312,7 @@ class Explorer:
             current_step=self.explore_step_num,
             current_task_index=self.explore_step_num * self.config.buffer.batch_size,
         )
+        self.logger.info(f"Explorer synchronizing at step {self.explore_step_num} finished")
 
     def flush_log(self, step: int) -> None:
         """Flush the log of the current step."""

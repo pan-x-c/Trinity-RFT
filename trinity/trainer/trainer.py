@@ -49,18 +49,6 @@ class Trainer:
             if not train_continue:
                 break
 
-    # def train_one_period(self) -> Tuple[bool, int]:
-    #     """Train for one period. Each period contains `sync_interval` steps.
-    #     Returns:
-    #         train_status: Whether to continue training.
-    #         train_step_num: The number of training steps"""
-    #     for _ in range(self.config.synchronizer.sync_interval):
-    #         train_status, train_step_num = self.train_step()
-    #         if not train_status:
-    #             return False, train_step_num
-    #     self.logger.info(f"Train step {train_step_num} finished.")
-    #     return True, train_step_num
-
     def train_step(self) -> bool:
         """Train one step.
 

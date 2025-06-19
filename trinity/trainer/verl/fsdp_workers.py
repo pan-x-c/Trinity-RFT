@@ -605,8 +605,10 @@ class ActorRolloutRefWorker(Worker):
                         if isinstance(param, FlatParameter):
                             continue
                         torch.distributed.broadcast(param, 0, group=self._model_update_group)
+                        print(f"Trainer send weight {name_prefix}.{name}")
                 param = None
             torch.cuda.empty_cache()
+            torch.dsitributed.barrier()
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def set_algorithm(self, algo_config: AlgorithmConfig):
