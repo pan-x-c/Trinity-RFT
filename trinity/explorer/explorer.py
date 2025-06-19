@@ -165,9 +165,7 @@ class Explorer:
 
     async def _nccl_weights_update(self):
         assert self.state_dict_meta is not None
-        await asyncio.gather(
-            *[model.sync_model.remote() for model in self.models]
-        )
+        await asyncio.gather(*[model.sync_model.remote() for model in self.models])
 
     async def prepare(self) -> None:
         """Preparation before running."""
