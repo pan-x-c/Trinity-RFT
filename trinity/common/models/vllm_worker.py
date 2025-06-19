@@ -26,17 +26,14 @@ class WorkerExtension:
         assert torch.distributed.is_initialized(), "default torch process group must be initialized"
         assert group_name != "", "group name must not be empty"
         self._update_with_checkpoint = update_with_checkpoint
-        if self._update_with_checkpoint:
-            logger.info(
-                f"init_process_group (checkpoint): address={master_address}:{master_port}, rank={torch.distributed.get_rank()}, rank_offset={rank_offset}, world_size={world_size}"
-            )
-            self._weight_update_rank = torch.distributed.get_rank() + rank_offset
-        else:
-            logger.info(
-                f"init_process_group (nccl): rank={torch.distributed.get_rank()}, rank_offset={rank_offset}, world_size={world_size}"
-            )
-            self._weight_update_rank = torch.distributed.get_rank() + rank_offset
-
+        self._weight_update_rank = torch.distributed.get_rank() + rank_offset
+        logger.info(
+            f"vLLM starting init_process_group ({'checkpoint' if self._update_with_checkpoint else 'nccl'}):\n"
+            f"  > address={master_address}:{master_port}\n"
+            f"  > rank={torch.distributed.get_rank()}\n"
+            f"  > rank_offset={rank_offset}\n"
+            f"  > world_size={world_size}"
+        )
         if is_ipv6_address(master_address):
             # using tcp://ipv6:port will lead to ValueError
             init_method = f"tcp://[{master_address}]:{master_port}"
@@ -51,10 +48,7 @@ class WorkerExtension:
             rank=self._weight_update_rank,
             group_name=group_name,
         )
-        logger.info(
-            f"init_process_group: master_address={master_address}, master_port={master_port}, "
-            f"rank={self._weight_update_rank}, world_size={world_size}, group_name={group_name}"
-        )
+        logger.info("vLLM init_process_group finished.")
         self._explorer_actor = None
 
     def update_weight(self, name: str, dtype_str: str, shape: tuple, empty_cache=False):

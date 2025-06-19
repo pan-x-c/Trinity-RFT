@@ -1,5 +1,6 @@
 """Launch the trainer"""
 import argparse
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -31,31 +32,12 @@ def bench(config: Config) -> None:
 
 def explore(config: Config) -> None:
     """Run explorer."""
-    explorer = Explorer.remote(config)
-    try:
-        ray.get(explorer.prepare.remote())
-        ray.get(explorer.sync_weight.remote())
-        ray.get(explorer.explore.remote())
-        logger.info("Explore finished.")
-        ray.get(explorer.shutdown.remote())
-    except Exception as e:
-        logger.error(f"Explore failed: {e}")
-        raise e
+    asyncio.run(Explorer.run(config))
 
 
 def train(config: Config) -> None:
     """Run trainer."""
-
-    trainer = Trainer.remote(config)
-    ray.get(trainer.prepare.remote())
-
-    try:
-        ray.get(trainer.train.remote())
-        logger.info("Train finished.")
-        ray.get(trainer.shutdown.remote())
-    except Exception as e:
-        logger.error(f"Train failed {e}.")
-        raise e
+    asyncio.run(Trainer.run(config))
 
 
 def both(config: Config) -> None:

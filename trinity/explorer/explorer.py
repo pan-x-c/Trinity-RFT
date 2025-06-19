@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """The explorer module"""
+from __future__ import annotations
+
 import os
 import time
 from collections import defaultdict
@@ -24,9 +26,22 @@ from trinity.utils.log import get_logger
 from trinity.utils.monitor import MONITOR
 
 
-@ray.remote(name="explorer")
 class Explorer:
     """Responsible for exploring the taskset."""
+
+    @classmethod
+    async def run(cls, config: Config) -> None:
+        """Launch the explorer."""
+        logger = get_logger(__name__)
+        try:
+            explorer = ray.remote(cls).remote(config)
+            await explorer.prepare.remote()
+            await explorer.sync_weight.remote()
+            await explorer.explore.remote()
+            await explorer.shutdown.remote()
+        except Exception as e:
+            logger.error(f"Explore failed: {e}")
+            raise e
 
     def __init__(self, config: Config):
         self.logger = get_logger(__name__)
@@ -138,7 +153,7 @@ class Explorer:
             self._update_model_weight(model_weights)
             self.old_checkpoint = checkpoint_dir
         except Exception as e:
-            self.logger.error(f"Error when loading state_dict: {e}")
+            self.logger.warning(f"Fail to load checkpoint: {e}")
 
     def _nccl_weights_update(self):
         ray.get([model.sync_model.remote(self.state_dict_meta) for model in self.models])
