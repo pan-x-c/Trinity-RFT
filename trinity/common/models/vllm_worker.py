@@ -63,7 +63,6 @@ class WorkerExtension:
             weight = torch.empty(shape, dtype=dtype, device=self.device)
         torch.distributed.broadcast(weight, 0, group=self._model_update_group)
         print(f"vLLM receive weight {name}")
-        
         weight = weight.type(self.model_config.dtype)
 
         self.model_runner.model.load_weights(weights=[(name, weight)])
