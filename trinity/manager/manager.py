@@ -48,10 +48,10 @@ class CacheManager:
                 with open(self.explorer_meta_path, "r", encoding="utf-8") as f:
                     explorer_meta = json.load(f)
                 logger.info(
-                    "----------------------------------"
+                    "----------------------------------\n"
                     "Found existing explorer checkpoint:\n"
-                    f"  > {explorer_meta}"
-                    "Continue exploring from this point."
+                    f"  > {explorer_meta}\n"
+                    "Continue exploring from this point.\n"
                     "----------------------------------"
                 )
                 return explorer_meta
@@ -69,10 +69,10 @@ class CacheManager:
                 with open(self.trainer_meta_path, "r", encoding="utf-8") as f:
                     trainer_meta = json.load(f)
                 logger.info(
-                    "----------------------------------"
+                    "----------------------------------\n"
                     "Found existing trainer checkpoint:\n"
-                    f"  > {trainer_meta}"
-                    "Continue training from this point."
+                    f"  > {trainer_meta}\n"
+                    "Continue training from this point.\n"
                     "----------------------------------"
                 )
                 return trainer_meta
