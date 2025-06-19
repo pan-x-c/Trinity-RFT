@@ -43,11 +43,16 @@ class Trainer:
     def train(self):
         """Train the model."""
         while True:
-            train_continue = self.train_step()
-            if self.need_sync():
-                self.sync_weight()
-            if not train_continue:
+            try:
+                train_continue = self.train_step()
+                if self.need_sync():
+                    self.sync_weight()
+                if not train_continue:
+                    break
+            except Exception as e:
+                self.logger.error(f"Error in Trainer: {e}")
                 break
+        self.logger.info("--------------------\n> Trainer finished.\n--------------------\n")
 
     def train_step(self) -> bool:
         """Train one step.

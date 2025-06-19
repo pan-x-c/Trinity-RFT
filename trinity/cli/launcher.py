@@ -72,22 +72,15 @@ def both(config: Config) -> None:
             trainer.sync_weight.remote(),
         ]
     )
-    ray.get(
+    _, _ = ray.wait(
         [
             explorer.explore.remote(),
             trainer.train.remote(),
-        ]
+        ],
+        num_returns=1,
     )
-    ray.get(
-        [
-            explorer.shutdown.remote(),
-            trainer.shutdown.remote(),
-        ]
-    )
-    ray.get(trainer.train.remote())
-    ray.get(trainer.shutdown.remote())
-    ray.get(explorer.explore.remote())
-    ray.get(explorer.shutdown.remote())
+    explorer.shutdown.remote(),
+    trainer.shutdown.remote(),
 
 
 def activate_data_module(data_workflow_url: str, config_path: str):
