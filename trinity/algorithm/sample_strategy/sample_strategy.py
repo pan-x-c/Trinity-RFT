@@ -12,12 +12,7 @@ SAMPLE_STRATEGY = Registry("sample_strategy")
 
 
 class SampleStrategy(ABC):
-    def __init__(
-        self,
-        buffer_config: BufferConfig,
-        trainer_type: str,
-        **kwargs
-    ) -> None:
+    def __init__(self, buffer_config: BufferConfig, trainer_type: str, **kwargs) -> None:
         self.pad_token_id = buffer_config.pad_token_id
         self.trainer_type = trainer_type
 
@@ -119,9 +114,10 @@ class DefaultSampleStrategy(SampleStrategy):
         else:
             raise NotImplementedError(f"backend {self.trainer_type} is not supported")
 
-    def warmup_state(self, step: int) -> Tuple[int, int]:
+    def warmup_state(self, step: int) -> Tuple[bool, bool]:
         return False, False
 
+    @classmethod
     def default_args(cls) -> dict:
         return {}
 

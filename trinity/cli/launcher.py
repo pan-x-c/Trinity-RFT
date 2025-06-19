@@ -1,6 +1,5 @@
 """Launch the trainer"""
 import argparse
-import asyncio
 import os
 import sys
 from pathlib import Path
@@ -32,12 +31,20 @@ def bench(config: Config) -> None:
 
 def explore(config: Config) -> None:
     """Run explorer."""
-    asyncio.run(Explorer.run(config))
+    explorer = ray.remote(Explorer).options(name="explorer").remote(config)
+    ray.get(explorer.prepare.remote())
+    ray.get(explorer.sync_weight.remote())
+    ray.get(explorer.explore.remote())
+    ray.get(explorer.shutdown.remote())
 
 
 def train(config: Config) -> None:
     """Run trainer."""
-    asyncio.run(Trainer.run(config))
+    trainer = ray.remote(Trainer).options(name="trainer").remote(config)
+    ray.get(trainer.prepare.remote())
+    ray.get(trainer.sync_weight.remote())
+    ray.get(trainer.train.remote())
+    ray.get(trainer.shutdown.remote())
 
 
 def both(config: Config) -> None:
@@ -50,54 +57,37 @@ def both(config: Config) -> None:
     the latest step. The specific number of experiences may vary for different
     algorithms and tasks.
     """
-    explorer = Explorer.remote(config)
-    trainer = Trainer.remote(config)
+    explorer = ray.remote(Explorer).options(name="explorer").remote(config)
+    trainer = ray.remote(Trainer).options(name="trainer").remote(config)
     ray.get([explorer.__ray_ready__.remote(), trainer.__ray_ready__.remote()])
-    logger.info("Setup explorer and trainer finished.")
     ray.get(
         [
             explorer.prepare.remote(),
             trainer.prepare.remote(),
         ]
     )
-    # sync weight before training start
-    ray.get([explorer.sync_weight.remote(), trainer.sync_weight.remote()])
-
-    while True:
-        try:
-            ref_explore = explorer.explore_one_period.remote()
-            ref_train = trainer.train_one_period.remote()
-            explore_continue, explore_step_num = ray.get(ref_explore)
-            train_continue, train_step_num = ray.get(ref_train)
-            if not explore_continue:
-                # If explore finished, the trainer may not have enough experiences to continue,
-                # which will cause the trainer be blocked. So we stop the training process
-                # immediately.
-                # TODO: use a more elegant way to stop the training process.
-                logger.info("Explorer finished, stopping...")
-                break
-            if not train_continue:
-                logger.info("Trainer finished, stopping...")
-                break
-            ray.get([explorer.sync_weight.remote(), trainer.sync_weight.remote()])
-            logger.info("Model weight synchronized.")
-        except Exception as e:
-            logger.error(e)
-            logger.error("Training stopped due to exception.")
-            raise e
-        if explore_step_num % config.explorer.eval_interval == 0:
-            try:
-                ray.get(explorer.eval.remote())
-                logger.info("Evaluation finished.")
-            except Exception as e:
-                logger.error(e)
-                logger.error("Evaluation failed.")
-                raise e
-        ray.get(explorer.flush_log.remote(step=explore_step_num))
-        ray.get(trainer.flush_log.remote(step=train_step_num))
-
-    ray.get(explorer.shutdown.remote())
+    ray.get(
+        [
+            explorer.sync_weight.remote(),
+            trainer.sync_weight.remote(),
+        ]
+    )
+    ray.get(
+        [
+            explorer.explore.remote(),
+            trainer.train.remote(),
+        ]
+    )
+    ray.get(
+        [
+            explorer.shutdown.remote(),
+            trainer.shutdown.remote(),
+        ]
+    )
+    ray.get(trainer.train.remote())
     ray.get(trainer.shutdown.remote())
+    ray.get(explorer.explore.remote())
+    ray.get(explorer.shutdown.remote())
 
 
 def activate_data_module(data_workflow_url: str, config_path: str):
