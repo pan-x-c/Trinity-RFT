@@ -14,7 +14,6 @@ from typing import Tuple
 
 import ray
 
-from trinity.algorithm.algorithm_manager import AlgorithmManager
 from trinity.common.config import Config
 from trinity.common.constants import SyncMethod
 from trinity.utils.log import get_logger
@@ -40,7 +39,6 @@ class Trainer:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.logger = get_logger(__name__)
-        self.algorithm_manager = AlgorithmManager(config)
         self.engine = get_trainer_wrapper(config)
 
     def prepare(self) -> None:

@@ -168,7 +168,7 @@ class Explorer:
         """Get the weight of the loaded model (For checkpoint weights update)."""
         return self.state_dict[name]
 
-    def explore(self) -> None:
+    def explore_backup(self) -> None:
         """Explore the entire dataset."""
         while True:
             explore_status, explore_iter = self.explore_one_period()
@@ -179,6 +179,49 @@ class Explorer:
                 self.eval()
                 self.logger.info("Evaluation finished.")
         self.logger.info("Explorer finished.")
+
+    def explore(self) -> None:
+        while True:
+            try:
+                explore_contionue = self.explore_step()
+                if self.need_sync():
+                    self.wait_for_workflow_done()
+                    self.sync_weight()
+                if self.step_num % self.config.explorer.eval_interval == 0:
+                    self.wait_for_workflow_done()
+                    self.eval()
+                if not explore_contionue:
+                    break
+            except Exception as e:
+                self.logger.error(f"Error in Explorer: {e}")
+                break
+        self.logger.info(
+            "--------------------\n"
+            "> Explorer finished.\n"
+            "--------------------\n"
+        )
+
+    def explore_step(self) -> bool:
+        self.step_num += 1
+        algo_config = self.algorithm_manager.get_current_algorithm_config(self.step_num)
+        # skip warmup
+        if algo_config.algorithm_type == "sft":
+            return True
+        try:
+            tasks = self.taskset.read()
+            self.logger.info(f"Read {len(tasks)} from taskset.")
+        except StopIteration:
+            self.logger.warning("No more tasks to explore. Stop exploring.")
+            return False
+        self.runner_pool.run_tasks(tasks)
+        return True
+
+
+    def need_sync(self) -> bool:
+        if self.step_num <= self.config.synchronizer.sync_offset:
+            return False
+        return (self.step_num - self.config.synchronizer.sync_offset) % self.config.synchronizer.sync_interval == 0
+
 
     def explore_one_period(self) -> Tuple[bool, int]:
         """Explore for one period.
@@ -287,6 +330,7 @@ class Explorer:
             log_metrics[f"eval/{eval_taskset.name}/time"] = time.time() - st
         log_metrics["eval/total_time"] = time.time() - all_st
         self.monitor.log(log_metrics, step=self.step_num)  # type: ignore
+        self.logger.info("Evaluation finished.")
         return True, self.step_num
 
     def benchmark(self) -> bool:
@@ -312,6 +356,29 @@ class Explorer:
             self.eval()
         return True
 
+    def wait_for_workflow_done(self) -> None:
+        """Wait for workflow to finish."""
+        all_metrics = defaultdict(list)
+        # wait for all tasks of this step to finish
+        while self.runner_pool.has_next():
+            status_list = self.runner_pool.get_next_unorder()
+            if not isinstance(status_list, list):
+                status_list = [status_list]
+            for status in status_list:
+                if not status.ok:
+                    self.logger.error(f"Error when running task: {status.message}")
+                    # submit another task to replace the failed task
+                    self.runner_pool.run_tasks(self.taskset.read(batch_size=1))
+                else:
+                    for metric_name, metric_value in status.metric.items():
+                        all_metrics[metric_name].append(metric_value)
+        # calculate metrics
+        log_metrics = self.monitor.calculate_metrics(all_metrics, prefix="rollout")  # type: ignore
+        self.monitor.log(log_metrics, step=self.step_num)
+
+        self.logger.info(f"Explore step {self.step_num} finished.")
+
+
     def sync_weight(self) -> None:
         """Synchronize model weights."""
         # call this method before training start to load the latest model weights
@@ -319,6 +386,11 @@ class Explorer:
             self._checkpoint_weights_update()
         else:  # nccl weights update
             self._nccl_weights_update()
+        # save explore checkpoint
+        self.cache.save_explorer(
+            current_step=self.step_num,
+            current_task_index=self.step_num * self.config.buffer.batch_size,
+        )
 
     def flush_log(self, step: int) -> None:
         """Flush the log of the current step."""
