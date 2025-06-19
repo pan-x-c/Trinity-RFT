@@ -2,6 +2,7 @@
 import argparse
 import os
 import sys
+import traceback
 from pathlib import Path
 from pprint import pprint
 
@@ -18,33 +19,41 @@ logger = get_logger(__name__)
 
 def bench(config: Config) -> None:
     """Evaluate model."""
-    explorer = Explorer.remote(config)
+    explorer = ray.remote(Explorer).options(name="explorer").remote(config)
     try:
         ray.get(explorer.prepare.remote())
         ray.get(explorer.benchmark.remote())
         logger.info("Benchmark finished.")
         ray.get(explorer.shutdown.remote())
-    except Exception as e:
-        logger.error(f"Benchmark failed: {e}")
-        raise e
+    except Exception:
+        error_msg = traceback.format_exc()
+        logger.error(f"Benchmark failed:\n{error_msg}")
 
 
 def explore(config: Config) -> None:
     """Run explorer."""
-    explorer = ray.remote(Explorer).options(name="explorer").remote(config)
-    ray.get(explorer.prepare.remote())
-    ray.get(explorer.sync_weight.remote())
-    ray.get(explorer.explore.remote())
-    ray.get(explorer.shutdown.remote())
+    try:
+        explorer = ray.remote(Explorer).options(name="explorer").remote(config)
+        ray.get(explorer.prepare.remote())
+        ray.get(explorer.sync_weight.remote())
+        ray.get(explorer.explore.remote())
+        ray.get(explorer.shutdown.remote())
+    except Exception:
+        error_msg = traceback.format_exc()
+        logger.error(f"Explorer failed:\n{error_msg}")
 
 
 def train(config: Config) -> None:
     """Run trainer."""
-    trainer = ray.remote(Trainer).options(name="trainer").remote(config)
-    ray.get(trainer.prepare.remote())
-    ray.get(trainer.sync_weight.remote())
-    ray.get(trainer.train.remote())
-    ray.get(trainer.shutdown.remote())
+    try:
+        trainer = ray.remote(Trainer).options(name="trainer").remote(config)
+        ray.get(trainer.prepare.remote())
+        ray.get(trainer.sync_weight.remote())
+        ray.get(trainer.train.remote())
+        ray.get(trainer.shutdown.remote())
+    except Exception:
+        error_msg = traceback.format_exc()
+        logger.error(f"Trainer failed:\n{error_msg}")
 
 
 def both(config: Config) -> None:

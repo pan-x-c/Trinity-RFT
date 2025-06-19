@@ -7,8 +7,6 @@ from __future__ import annotations
 import os
 from abc import ABC, abstractmethod
 
-import ray
-
 from trinity.common.config import Config
 from trinity.common.constants import SyncMethod
 from trinity.utils.log import get_logger
@@ -16,20 +14,6 @@ from trinity.utils.log import get_logger
 
 class Trainer:
     """Consume the experience and train the model."""
-
-    @classmethod
-    async def run(cls, config: Config) -> ray.actor.ActorHandle[Trainer]:
-        """Launch the trainer."""
-        logger = get_logger(__name__)
-        try:
-            trainer = ray.remote(cls).remote(config)
-            await trainer.prepare.remote()
-            await trainer.sync_weight.remote()
-            await trainer.train.remote()
-            await trainer.shutdown.remote()
-        except Exception as e:
-            logger.error(f"Trainer failed {e}.")
-            raise e
 
     def __init__(self, config: Config) -> None:
         self.config = config

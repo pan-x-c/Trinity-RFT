@@ -8,7 +8,6 @@ import time
 from collections import defaultdict
 from typing import List, Optional, Tuple
 
-import ray
 import torch
 
 from trinity.algorithm.algorithm_manager import AlgorithmManager
@@ -29,20 +28,6 @@ from trinity.utils.monitor import MONITOR
 
 class Explorer:
     """Responsible for exploring the taskset."""
-
-    @classmethod
-    async def setup(cls, config: Config) -> None:
-        """Launch the explorer."""
-        logger = get_logger(__name__)
-        try:
-            explorer = ray.remote(cls).remote(config)
-            await explorer.prepare.remote()
-            await explorer.sync_weight.remote()
-            await explorer.explore.remote()
-            await explorer.shutdown.remote()
-        except Exception as e:
-            logger.error(f"Explore failed: {e}")
-            raise e
 
     def __init__(self, config: Config):
         self.logger = get_logger(__name__)
