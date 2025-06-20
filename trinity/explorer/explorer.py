@@ -190,6 +190,7 @@ class Explorer:
         algo_config = self.algorithm_manager.get_current_algorithm_config(self.explore_step_num + 1)
         # skip warmup
         if algo_config.algorithm_type == "sft":
+            self.explore_step_num += 1
             return True
         try:
             tasks = self.taskset.read()

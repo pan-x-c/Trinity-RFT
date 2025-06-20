@@ -115,7 +115,7 @@ class TestTrainerCountdown(BaseTrainerCase):
         shutil.rmtree(self.config.checkpoint_job_dir)
 
 
-class TestExploreStepAheadTrainer(BaseTrainerCase):
+class TestStepAheadAsyncRL(BaseTrainerCase):
     def test_trainer(self):
         """Test the explore step ahead trainer"""
         # train 4 step, sync_offset=1, sync_interval=2
@@ -162,8 +162,7 @@ class TestExploreStepAheadTrainer(BaseTrainerCase):
 
     def tearDown(self):
         # remove dir only when the test passed
-        pass
-        # shutil.rmtree(self.config.checkpoint_job_dir)
+        shutil.rmtree(self.config.checkpoint_job_dir)
 
 
 class TestTrainerGSM8K(BaseTrainerCase):
@@ -204,7 +203,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
         shutil.rmtree(self.config.checkpoint_job_dir)
 
 
-class TestTrainerGSM8KWithSFT(BaseTrainerCase):
+class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
     def test_trainer(self):
         """Test GSM8K With SFT."""
         # test both mode
