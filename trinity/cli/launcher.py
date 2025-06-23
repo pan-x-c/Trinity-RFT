@@ -88,11 +88,12 @@ def both(config: Config) -> None:
     the latest step. The specific number of experiences may vary for different
     algorithms and tasks.
     """
+    namespace = ray.get_runtime_context().namespace
     explorer = (
         ray.remote(Explorer)
         .options(
             name=EXPLORER_NAME,
-            namespace=ray.get_runtime_context().namespace,
+            namespace=namespace,
         )
         .remote(config)
     )
@@ -100,7 +101,7 @@ def both(config: Config) -> None:
         ray.remote(Trainer)
         .options(
             name=TRAINER_NAME,
-            namespace=ray.get_runtime_context().namespace,
+            namespace=namespace,
         )
         .remote(config)
     )
@@ -226,17 +227,16 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
         activate_data_module(
             f"{data_processor_config.data_processor_url}/experience_pipeline", config_path
         )
-    ray_namespace = ray.get_runtime_context().namespace
     if dlc:
         from trinity.utils.dlc_utils import setup_ray_cluster
 
-        setup_ray_cluster(namespace=ray_namespace)
+        setup_ray_cluster(namespace=config.ray_namespace)
     else:
         from trinity.utils.dlc_utils import is_running
 
         if not is_running:
             raise RuntimeError("Ray is not running, please start it by `ray start --head`.")
-        ray.init(namespace=ray_namespace, ignore_reinit_error=True)
+        ray.init(namespace=config.ray_namespace, ignore_reinit_error=True)
     if config.mode == "explore":
         explore(config)
     elif config.mode == "train":
@@ -249,7 +249,7 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
     if dlc:
         from trinity.utils.dlc_utils import stop_ray_cluster
 
-        stop_ray_cluster(namespace=ray_namespace)
+        stop_ray_cluster(namespace=config.ray_namespace)
 
 
 def studio(port: int = 8501):
