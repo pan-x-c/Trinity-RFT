@@ -10,6 +10,7 @@ import re
 import threading
 from typing import List, Optional, Tuple
 
+import ray
 import torch
 import vllm
 from vllm import LLM
@@ -112,6 +113,7 @@ class vLLMRolloutModel(InferenceModel):
                 timeout,
                 update_with_checkpoint,
                 state_dict_meta,
+                ray.get_runtime_context().namespace,
             ),
         )
 
