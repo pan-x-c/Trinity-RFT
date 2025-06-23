@@ -20,7 +20,14 @@ logger = get_logger(__name__)
 
 def bench(config: Config) -> None:
     """Evaluate model."""
-    explorer = ray.remote(Explorer).options(name=EXPLORER_NAME).remote(config)
+    explorer = (
+        ray.remote(Explorer)
+        .options(
+            name=EXPLORER_NAME,
+            namespace=config.ray_namespace,
+        )
+        .remote(config)
+    )
     try:
         ray.get(explorer.prepare.remote())
         ray.get(explorer.benchmark.remote())
@@ -34,7 +41,14 @@ def bench(config: Config) -> None:
 def explore(config: Config) -> None:
     """Run explorer."""
     try:
-        explorer = ray.remote(Explorer).options(name=EXPLORER_NAME).remote(config)
+        explorer = (
+            ray.remote(Explorer)
+            .options(
+                name=EXPLORER_NAME,
+                namespace=config.ray_namespace,
+            )
+            .remote(config)
+        )
         ray.get(explorer.prepare.remote())
         ray.get(explorer.sync_weight.remote())
         ray.get(explorer.explore.remote())
@@ -47,7 +61,14 @@ def explore(config: Config) -> None:
 def train(config: Config) -> None:
     """Run trainer."""
     try:
-        trainer = ray.remote(Trainer).options(name=TRAINER_NAME).remote(config)
+        trainer = (
+            ray.remote(Trainer)
+            .options(
+                name=TRAINER_NAME,
+                namespace=config.ray_namespace,
+            )
+            .remote(config)
+        )
         ray.get(trainer.prepare.remote())
         ray.get(trainer.sync_weight.remote())
         ray.get(trainer.train.remote())
@@ -67,8 +88,22 @@ def both(config: Config) -> None:
     the latest step. The specific number of experiences may vary for different
     algorithms and tasks.
     """
-    explorer = ray.remote(Explorer).options(name=EXPLORER_NAME).remote(config)
-    trainer = ray.remote(Trainer).options(name=TRAINER_NAME).remote(config)
+    explorer = (
+        ray.remote(Explorer)
+        .options(
+            name=EXPLORER_NAME,
+            namespace=config.ray_namespace,
+        )
+        .remote(config)
+    )
+    trainer = (
+        ray.remote(Trainer)
+        .options(
+            name=TRAINER_NAME,
+            namespace=config.ray_namespace,
+        )
+        .remote(config)
+    )
     ray.get([explorer.__ray_ready__.remote(), trainer.__ray_ready__.remote()])
     ray.get(
         [
@@ -214,7 +249,7 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
     if dlc:
         from trinity.utils.dlc_utils import stop_ray_cluster
 
-        stop_ray_cluster()
+        stop_ray_cluster(namespace=ray_namespace)
 
 
 def studio(port: int = 8501):

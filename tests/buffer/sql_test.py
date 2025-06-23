@@ -63,5 +63,5 @@ class TestSQLBuffer(unittest.TestCase):
         )
         exps = sql_reader.read(batch_size=put_batch_size * 2)
         self.assertEqual(len(exps), put_batch_size * 2)
-        db_wrapper = ray.get_actor("sql-test_buffer")
+        db_wrapper = ray.get_actor("sql-test_buffer", ray.get_runtime_context().namespace)
         self.assertIsNotNone(db_wrapper)
