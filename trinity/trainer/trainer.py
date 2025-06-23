@@ -27,6 +27,7 @@ class Trainer:
         self.logger = get_logger(__name__)
         self.engine = get_trainer_wrapper(config)
         self.explorer_ref = None
+        self._namespace = ray.get_runtime_context().namespace
 
     def prepare(self) -> None:
         """Prepare the trainer."""
@@ -63,7 +64,7 @@ class Trainer:
         """Sync the model weight."""
         if self.config.synchronizer.sync_method == SyncMethod.NCCL:
             if self.explorer_ref is None:
-                self.explorer_ref = ray.get_actor(EXPLORER_NAME)
+                self.explorer_ref = ray.get_actor(EXPLORER_NAME, namespace=self._namespace)
             explorer_status = ray.get(self.explorer_ref.running_status.remote())
             if explorer_status == RunningStatus.STOPPED:
                 self.logger.warning("Explorer has already stopped. Skipping sync weight.")

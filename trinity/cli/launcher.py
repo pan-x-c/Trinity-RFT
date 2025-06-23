@@ -24,7 +24,7 @@ def bench(config: Config) -> None:
         ray.remote(Explorer)
         .options(
             name=EXPLORER_NAME,
-            namespace=config.ray_namespace,
+            namespace=ray.get_runtime_context().namespace,
         )
         .remote(config)
     )
@@ -45,7 +45,7 @@ def explore(config: Config) -> None:
             ray.remote(Explorer)
             .options(
                 name=EXPLORER_NAME,
-                namespace=config.ray_namespace,
+                namespace=ray.get_runtime_context().namespace,
             )
             .remote(config)
         )
@@ -65,7 +65,7 @@ def train(config: Config) -> None:
             ray.remote(Trainer)
             .options(
                 name=TRAINER_NAME,
-                namespace=config.ray_namespace,
+                namespace=ray.get_runtime_context().namespace,
             )
             .remote(config)
         )
@@ -92,7 +92,7 @@ def both(config: Config) -> None:
         ray.remote(Explorer)
         .options(
             name=EXPLORER_NAME,
-            namespace=config.ray_namespace,
+            namespace=ray.get_runtime_context().namespace,
         )
         .remote(config)
     )
@@ -100,7 +100,7 @@ def both(config: Config) -> None:
         ray.remote(Trainer)
         .options(
             name=TRAINER_NAME,
-            namespace=config.ray_namespace,
+            namespace=ray.get_runtime_context().namespace,
         )
         .remote(config)
     )
@@ -226,7 +226,7 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
         activate_data_module(
             f"{data_processor_config.data_processor_url}/experience_pipeline", config_path
         )
-    ray_namespace = config.ray_namespace
+    ray_namespace = ray.get_runtime_context().namespace
     if dlc:
         from trinity.utils.dlc_utils import setup_ray_cluster
 
