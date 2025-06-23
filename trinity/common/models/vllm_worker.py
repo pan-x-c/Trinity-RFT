@@ -52,7 +52,6 @@ class WorkerExtension:
             group_name=group_name,
         )
         logger.info("vLLM init_process_group finished.")
-        self._namespace = ray.get_runtime_context().namespace
         self._explorer_actor = None
 
     def set_state_dict_meta(self, state_dict_meta):
@@ -62,7 +61,7 @@ class WorkerExtension:
         """Broadcast weight to all vllm workers from source rank 0 (actor model)"""
         assert self._state_dict_meta is not None
         if self._explorer_actor is None:
-            self._explorer_actor = ray.get_actor(name=EXPLORER_NAME, namespace=self._namespace)
+            self._explorer_actor = ray.get_actor(name=EXPLORER_NAME)
         for name, dtype_str, shape in self._state_dict_meta:
             if self._weight_update_rank == 0:
                 weight = ray.get(self._explorer_actor.get_weight.remote(name))

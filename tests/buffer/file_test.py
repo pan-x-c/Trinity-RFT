@@ -103,9 +103,7 @@ class TestFileBuffer(unittest.TestCase):
                 {"prompt": "hi"},
             ]
         )
-        file_wrapper = ray.get_actor(
-            "json-test_buffer", namespace=ray.get_runtime_context().namespace
-        )
+        file_wrapper = ray.get_actor("json-test_buffer")
         self.assertIsNotNone(file_wrapper)
         file_path = default_storage_path(
             self.config.buffer.trainer_input.experience_buffer, self.config.buffer

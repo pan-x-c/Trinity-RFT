@@ -577,9 +577,7 @@ class ActorRolloutRefWorker(Worker):
                 master_address, master_port = self.get_availale_master_addr_port()
                 world_size = self.config.synchronizer.explorer_world_size + 1
                 print(f"Trainer init_process_group {master_address}:{master_port} ({world_size}).")
-                explorer = ray.get_actor(
-                    EXPLORER_NAME, namespace=ray.get_runtime_context().namespace
-                )
+                explorer = ray.get_actor(EXPLORER_NAME)
                 setup_ref = explorer.setup_weight_sync_group.remote(
                     master_address, master_port, self.state_dict_meta
                 )
