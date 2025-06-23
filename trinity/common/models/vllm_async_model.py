@@ -298,7 +298,6 @@ class vLLMAysncRolloutModel(InferenceModel):
                 timeout,
                 update_with_checkpoint,
                 state_dict_meta,
-                self.config.ray_namespace,
             ),
         )
 
