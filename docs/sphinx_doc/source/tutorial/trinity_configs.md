@@ -223,7 +223,7 @@ buffer:
 
 The configuration for each task dataset is defined as follows:
 
-- `name`: Name of the dataset. Name must be unique.
+- `name`: Name of the dataset. This name will be used as the Ray actor's name, so it must be unique.
 - `storage_type`: How the dataset is stored. Options: `file`, `queue`, `sql`.
   - `file`: The dataset is stored in `jsonl`/`parquet` files. The data file organization is required to meet the huggingface standard. *We recommand using this storage type for most cases.*
   - `queue`: The dataset is stored in a queue. The queue is a simple FIFO queue that stores the task dataset. *Do not use this storage type for task dataset unless you know what you are doing.*
@@ -258,7 +258,6 @@ buffer:
     storage_type: queue
     path: sqlite:///countdown_buffer.db
     wrap_in_ray: True
-    ray_namespace: Trinity-RFT/example
 ```
 
 - `name`: The name of the experience buffer. This name will be used as the Ray actor's name, so it must be unique.
@@ -269,10 +268,7 @@ buffer:
   - For `queue` storage type, this field is optional. You can specify a SQLite database or JSON file path here to back up the queue data.
   - For `file` storage type, the path points to the directory containing the dataset files.
   - For `sql` storage type, the path points to the SQLite database file.
-
 - `wrap_in_ray`: Whether to wrap the experience buffer in a Ray actor. Only take effect when `storage_type` is `sql` or `file`. The `queue` storage always uses a Ray actor.
-
-- `ray_namespace`: The Ray namespace of the experience buffer. If you want to connect to an existing experience buffer launched by another experiment, set this value to the `ray_namespace` of the target experiment and provide the corresponding buffer’s `name`. Otherwise, this field can be omitted.
 
 
 ### Trainer Input
@@ -311,6 +307,7 @@ Controls the rollout models and workflow execution.
 
 ```yaml
 explorer:
+  name: explorer
   runner_num: 32
   rollout_model:
     engine_type: vllm_async
@@ -321,11 +318,13 @@ explorer:
     tensor_parallel_size: 1
 ```
 
+- `name`: Name of the explorer. This name will be used as the Ray actor's name, so it must be unique.
 - `runner_num`: Number of parallel workflow runners.
 - `rollout_model.engine_type`: Type of inference engine. Options: `vllm_async` (recommended), `vllm`.
 - `rollout_model.engine_num`: Number of inference engines.
 - `rollout_model.tensor_parallel_size`: Degree of tensor parallelism.
 - `auxiliary_models`: Additional models used for custom workflows.
+
 ---
 
 ## Synchronizer Configuration
@@ -355,12 +354,14 @@ Specifies the backend and behavior of the trainer.
 
 ```yaml
 trainer:
+  name: trainer
   trainer_type: 'verl'
   save_interval: 100
   trainer_config_path: 'examples/ppo_countdown/train_countdown.yaml'
   trainer_config: null
 ```
 
+- `name`: Name of the trainer. This name will be used as the Ray actor's name, so it must be unique.
 - `trainer_type`: Trainer backend implementation. Currently only supports `verl`.
 - `save_interval`: Frequency (in steps) at which to save model checkpoints.
 - `trainer_config_path`: The path to the trainer configuration file.

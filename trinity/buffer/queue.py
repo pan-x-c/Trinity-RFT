@@ -85,19 +85,12 @@ class QueueActor:
     @classmethod
     def get_actor(cls, storage_config: StorageConfig, config: BufferConfig):
         """Get the queue actor."""
-        if storage_config.ray_namespace:
-            queue_actor = ray.get_actor(
-                f"queue-{storage_config.name}",
-                namespace=storage_config.ray_namespace,
+        return (
+            ray.remote(cls)
+            .options(
+                name=f"queue-{storage_config.name}",
+                namespace=ray.get_runtime_context().namespace,
+                get_if_exists=True,
             )
-        else:
-            queue_actor = (
-                ray.remote(cls)
-                .options(
-                    name=f"queue-{storage_config.name}",
-                    namespace=ray.get_runtime_context().namespace,
-                    get_if_exists=True,
-                )
-                .remote(storage_config, config)
-            )
-        return queue_actor
+            .remote(storage_config, config)
+        )

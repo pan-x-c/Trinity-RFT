@@ -297,7 +297,7 @@ class TestFullyAsyncMode(unittest.TestCase):
             wrap_in_ray=True,
         )
         config.synchronizer.sync_method = SyncMethod.CHECKPOINT
-        config.synchronizer.sync_interval = 4
+        config.synchronizer.sync_interval = 8
         config.monitor.monitor_type = "tensorboard"
         trainer_config = deepcopy(config)
         trainer_config.mode = "train"

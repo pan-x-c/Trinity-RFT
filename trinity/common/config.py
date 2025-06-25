@@ -87,10 +87,6 @@ class StorageConfig:
     # used for StorageType.QUEUE
     capacity: int = 10000
 
-    # used in Fully Async Mode,
-    # the explorer started later can connect to an existing buffer in different namespace
-    ray_namespace: Optional[str] = None
-
     # used for rollout tasks
     default_workflow_type: Optional[str] = None
     default_reward_fn_type: Optional[str] = None

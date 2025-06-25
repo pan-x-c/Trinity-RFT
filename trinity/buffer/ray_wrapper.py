@@ -53,10 +53,6 @@ class DBWrapper:
     @classmethod
     def get_wrapper(cls, storage_config: StorageConfig, config: BufferConfig):
         if storage_config.wrap_in_ray:
-            if storage_config.ray_namespace:
-                return ray.get_actor(
-                    f"sql-{storage_config.name}", namespace=storage_config.ray_namespace
-                )
             return (
                 ray.remote(cls)
                 .options(
@@ -171,10 +167,6 @@ class FileWrapper:
     @classmethod
     def get_wrapper(cls, storage_config: StorageConfig, config: BufferConfig):
         if storage_config.wrap_in_ray:
-            if storage_config.ray_namespace:
-                return ray.get_actor(
-                    f"json-{storage_config.name}", namespace=storage_config.ray_namespace
-                )
             return (
                 ray.remote(cls)
                 .options(
