@@ -321,8 +321,6 @@ class TestFullyAsyncMode(unittest.TestCase):
 
         import multiprocessing
 
-        multiprocessing.set_start_method("spawn")
-
         trainer_process = multiprocessing.Process(target=run_trainer, args=(trainer_config,))
         trainer_process.start()
 
