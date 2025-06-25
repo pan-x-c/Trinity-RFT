@@ -114,8 +114,8 @@ class vLLMRolloutModel(InferenceModel):
                 timeout,
                 update_with_checkpoint,
                 state_dict_meta,
-                ray.get_runtime_context().namespace,
                 explorer_name,
+                ray.get_runtime_context().namespace,
             ),
         )
 
