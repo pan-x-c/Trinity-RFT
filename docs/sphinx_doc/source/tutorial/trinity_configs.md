@@ -246,7 +246,7 @@ The configuration for each task dataset is defined as follows:
 
 ### Explorer Output
 
-In [`explore` mode](#global-configuration), since there is no trainer, users can configure an experience buffer via `buffer.explorer_input`, rather than using `buffer.trainer_input`, which will be introduced in the next section.
+In [`explore` mode](#global-configuration), since there is no trainer, users can configure an experience buffer via `buffer.explorer_output`, rather than using `buffer.trainer_input`, which will be introduced in the next section.
 
 > For `both` and `train` modes, users should use `buffer.trainer_input` instead of `buffer.explorer_output`.
 
@@ -265,6 +265,7 @@ buffer:
   - `queue`: Experience data is stored in a queue. This storage type is recommended for most use cases.
   - `sql`: Experience data is stored in a SQL database. If your database only supports local access (e.g., SQLite), set `wrap_in_ray` to `True` to wrap the database in a Ray actor, enabling remote access from other nodes.
   - `file`: Experience data is stored in a JSON file. This storage type should be used only for debugging purposes in `explore` mode.
+- `path`: The path to the experience buffer.
   - For `queue` storage type, this field is optional. You can specify a SQLite database or JSON file path here to back up the queue data.
   - For `file` storage type, the path points to the directory containing the dataset files.
   - For `sql` storage type, the path points to the SQLite database file.
