@@ -79,11 +79,15 @@ class StorageConfig:
     format: FormatConfig = field(default_factory=FormatConfig)
     index: int = 0
 
-    # used for StorageType.SQL
+    # used for StorageType.SQL/FILE
     wrap_in_ray: bool = True
 
     # used for StorageType.QUEUE
     capacity: int = 10000
+
+    # used in Fully Async Mode,
+    # the explorer started later can connect to an existing buffer in different namespace
+    ray_namespace: Optional[str] = None
 
     # used for rollout tasks
     default_workflow_type: Optional[str] = None
@@ -582,7 +586,7 @@ class Config:
 
         # set namespace
         if self.ray_namespace is None or len(self.ray_namespace) == 0:
-            self.ray_namespace = f"{self.project}-{self.name}"
+            self.ray_namespace = f"{self.project}/{self.name}"
 
         # check algorithm
         self._check_algorithm()

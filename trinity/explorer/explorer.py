@@ -47,6 +47,7 @@ class Explorer:
                 self.config.buffer.explorer_output,  # type: ignore
                 self.config.buffer,
             )
+            self.experience_buffer.acquire()
         self.config.buffer.explorer_input.taskset.index = explorer_meta.get("latest_task_index", 0)
         self.taskset = get_buffer_reader(
             self.config.buffer.explorer_input.taskset, self.config.buffer
@@ -202,7 +203,7 @@ class Explorer:
             )
             self.status = RunningStatus.STOPPED
             self.wait_for_workflow_done()
-            self.experience_buffer.finish()
+            self.experience_buffer.release()
             return False
         self.runner_pool.run_tasks(tasks)
         self.explore_step_num += 1

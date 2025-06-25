@@ -68,6 +68,7 @@ checkpoint_root_dir: /PATH/TO/CHECKPOINT
   - `explore`: Only launches the explorer.
   - `bench`: Used for benchmarking.
 - `checkpoint_root_dir`: Root directory where all checkpoints and logs will be saved. Checkpoints for this experiment will be stored in `<checkpoint_root_dir>/<project>/<name>/`.
+- `ray_namespace`: Namespace for the modules launched in the current experiment. If not specified, it will be set to `<project>/<name>`.
 
 ---
 
@@ -166,6 +167,9 @@ buffer:
     eval_tasksets:
       ...
 
+  explorer_output:
+    ...
+
   trainer_input:
     experience_buffer:
       ...
@@ -225,9 +229,9 @@ The configuration for each task dataset is defined as follows:
   - `queue`: The dataset is stored in a queue. The queue is a simple FIFO queue that stores the task dataset. *Do not use this storage type for task dataset unless you know what you are doing.*
   - `sql`: The dataset is stored in a SQL database. *This type is unstable and will be optimized in the future versions.*
 - `path`: The path to the task dataset.
-  - For `file` storage type, the path is the path to the directory that contains the task dataset files.
+  - For `file` storage type, the path points to the directory that contains the task dataset files.
   - For `queue` storage type, the path is optional. You can back up the data in the queue by specifying a sqlite database path here.
-  - For `sql` storage type, the path is the path to the sqlite database file.
+  - For `sql` storage type, the path points to the sqlite database file.
 - `subset_name`: The subset name of the task dataset. Default is `None`.
 - `split`: The split of the task dataset. Default is `train`.
 - `format`: Defines keys for prompts and responses in the dataset.
@@ -238,6 +242,37 @@ The configuration for each task dataset is defined as follows:
 - `default_workflow_type`: Type of workflow logic applied to this dataset. If not specified, the `buffer.default_workflow_type` is used.
 - `default_reward_fn_type`: Reward function used during exploration. If not specified, the `buffer.default_reward_fn_type` is used.
 - `workflow_args`: A dictionary of arguments used to supplement dataset-level parameters.
+
+
+### Explorer Output
+
+In [`explore` mode](#global-configuration), since there is no trainer, users can configure an experience buffer via `buffer.explorer_input`, rather than using `buffer.trainer_input`, which will be introduced in the next section.
+
+> For `both` and `train` modes, users should use `buffer.trainer_input` instead of `buffer.explorer_output`.
+
+```yaml
+buffer:
+  ...
+  explorer_output:
+    name: countdown_buffer
+    storage_type: queue
+    path: sqlite:///countdown_buffer.db
+    wrap_in_ray: True
+    ray_namespace: Trinity-RFT/example
+```
+
+- `name`: The name of the experience buffer. This name will be used as the Ray actor's name, so it must be unique.
+- `storage_type`: The storage type for the experience buffer.
+  - `queue`: Experience data is stored in a queue. This storage type is recommended for most use cases.
+  - `sql`: Experience data is stored in a SQL database. If your database only supports local access (e.g., SQLite), set `wrap_in_ray` to `True` to wrap the database in a Ray actor, enabling remote access from other nodes.
+  - `file`: Experience data is stored in a JSON file. This storage type should be used only for debugging purposes in `explore` mode.
+  - For `queue` storage type, this field is optional. You can specify a SQLite database or JSON file path here to back up the queue data.
+  - For `file` storage type, the path points to the directory containing the dataset files.
+  - For `sql` storage type, the path points to the SQLite database file.
+
+- `wrap_in_ray`: Whether to wrap the experience buffer in a Ray actor. Only take effect when `storage_type` is `sql` or `file`. The `queue` storage always uses a Ray actor.
+
+- `ray_namespace`: The Ray namespace of the experience buffer. If you want to connect to an existing experience buffer launched by another experiment, set this value to the `ray_namespace` of the target experiment and provide the corresponding buffer’s `name`. Otherwise, this field can be omitted.
 
 
 ### Trainer Input
@@ -264,7 +299,7 @@ buffer:
     sft_warmup_steps: 0
 ```
 
-- `experience_buffer`: Experience replay buffer used by the trainer.
+- `experience_buffer`: Experience buffer used by the trainer, which is logically equivalent to `buffer.explorer_output`.
 - `sft_warmup_dataset`: Optional dataset used for pre-training (SFT warmup).
 - `sft_warmup_steps`: Number of steps to use SFT warm-up before RL begins.
 
@@ -301,6 +336,7 @@ Controls how model weights are synchronized between trainer and explorer.
 synchronizer:
   sync_method: 'nccl'
   sync_interval: 10
+  sync_offset: 0
   sync_timeout: 1200
 ```
 
@@ -308,6 +344,7 @@ synchronizer:
   - `nccl`: Uses NCCL for fast synchronization. Supported for `both` mode.
   - `checkpoint`: Loads latest model from disk. Supported for `train`, `explore`, or `bench` mode.
 - `sync_interval`: Interval (in steps) of model weight synchronization between trainer and explorer.
+- `sync_offset`: Offset (in steps) of model weight synchronization between trainer and explorer. The explorer can run `sync_offset` steps before the trainer starts training.
 - `sync_timeout`: Timeout duration for synchronization.
 
 ---
