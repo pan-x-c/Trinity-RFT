@@ -1,4 +1,5 @@
 """Tests for trainer."""
+import multiprocessing
 import os
 import shutil
 import time
@@ -280,6 +281,10 @@ def run_explorer(config: Config) -> None:
 
 
 class TestFullyAsyncMode(unittest.TestCase):
+    def setUp(self):
+        if multiprocessing.get_start_method(allow_none=True) != "spawn":
+            multiprocessing.set_start_method("spawn", force=True)
+
     def test_fully_async_mode(self):
         config = get_template_config()
         config.project = "unittest"
@@ -318,8 +323,6 @@ class TestFullyAsyncMode(unittest.TestCase):
         )
         explorer2_config = deepcopy(explorer1_config)
         explorer1_config.check_and_update()
-
-        import multiprocessing
 
         trainer_process = multiprocessing.Process(target=run_trainer, args=(trainer_config,))
         trainer_process.start()
