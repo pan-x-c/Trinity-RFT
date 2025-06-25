@@ -20,6 +20,8 @@ from tests.tools import (
 from trinity.cli.launcher import bench, both, explore, train
 from trinity.common.config import Config, StorageConfig
 from trinity.common.constants import StorageType, SyncMethod
+from trinity.common.models.utils import get_checkpoint_dir_with_step_num
+from trinity.manager.manager import CacheManager
 
 
 class BaseTrainerCase(RayUnittestBase):
@@ -166,8 +168,7 @@ class TestStepAheadAsyncRL(BaseTrainerCase):
 
     def tearDown(self):
         # remove dir only when the test passed
-        pass
-        # shutil.rmtree(self.config.checkpoint_job_dir)
+        shutil.rmtree(self.config.checkpoint_job_dir)
 
 
 class TestTrainerGSM8K(BaseTrainerCase):
@@ -280,9 +281,9 @@ def run_explorer(config: Config) -> None:
 
 class TestFullyAsyncMode(unittest.TestCase):
     def test_fully_async_mode(self):
-        trainer_name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         config = get_template_config()
         config.project = "unittest"
+        config.name = f"fully_async_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         config.checkpoint_root_dir = get_checkpoint_path()
         config.buffer.total_epochs = 1
         config.buffer.batch_size = 4
@@ -300,22 +301,20 @@ class TestFullyAsyncMode(unittest.TestCase):
         config.monitor.monitor_type = "tensorboard"
         trainer_config = deepcopy(config)
         trainer_config.mode = "train"
-        trainer_config.name = trainer_name
         trainer_config.check_and_update()
 
         explorer1_config = deepcopy(config)
         explorer1_config.mode = "explore"
+        explorer1_config.explorer.name = "explorer1"
         config.cluster.gpu_per_node = 1
         config.cluster.node_num = 1
         explorer1_config.explorer.rollout_model.engine_num = 1
         explorer1_config.explorer.rollout_model.tensor_parallel_size = 1
         explorer1_config.explorer.runner_num = 4
-        explorer1_config.name = f"explorer1-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         explorer1_config.buffer.explorer_output = StorageConfig(
             name="exp_buffer",
             storage_type=StorageType.QUEUE,
             wrap_in_ray=True,
-            ray_namespace=f"unittest/{trainer_config.name}",
         )
         explorer2_config = deepcopy(explorer1_config)
         explorer1_config.check_and_update()
@@ -339,9 +338,57 @@ class TestFullyAsyncMode(unittest.TestCase):
         explorer_process_1 = multiprocessing.Process(target=run_explorer, args=(explorer1_config,))
         explorer_process_1.start()
 
+        time.sleep(20)
+        explorer2_config.explorer.name = "explorer2"
+        explorer2_config.check_and_update()
         explorer_process_2 = multiprocessing.Process(target=run_explorer, args=(explorer2_config,))
         explorer_process_2.start()
 
         explorer_process_1.join()
         explorer_process_2.join()
-        trainer_process.join()
+
+        # wait for trainer process to finish.
+        trainer_process.join(timeout=200)
+
+        # check the tensorboard
+        parser = TensorBoardParser(
+            os.path.join(trainer_config.monitor.cache_dir, "tensorboard", "trainer")
+        )
+        actor_metrics = parser.metric_list("actor")
+        self.assertEqual(parser.metric_max_step(actor_metrics[0]), 8)
+        parser = TensorBoardParser(
+            os.path.join(explorer1_config.monitor.cache_dir, "tensorboard", "explorer1")
+        )
+        rollout_metrics = parser.metric_list("rollout")
+        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 4)
+        parser = TensorBoardParser(
+            os.path.join(explorer2_config.monitor.cache_dir, "tensorboard", "explorer2")
+        )
+        rollout_metrics = parser.metric_list("rollout")
+        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 4)
+        # check the checkpoint
+        explorer1_cache = CacheManager(explorer1_config)
+        cache = explorer1_cache.load_explorer()
+        self.assertEqual(cache["latest_iteration"], 4)
+        explorer2_cache = CacheManager(explorer2_config)
+        cache = explorer2_cache.load_explorer()
+        self.assertEqual(cache["latest_iteration"], 4)
+        self.assertIsNotNone(
+            get_checkpoint_dir_with_step_num(
+                checkpoint_root_path=explorer1_config.checkpoint_job_dir,
+                trainer_type="verl",
+                step_num=8,
+            )
+        )
+        self.assertIsNotNone(
+            get_checkpoint_dir_with_step_num(
+                checkpoint_root_path=explorer2_config.checkpoint_job_dir,
+                trainer_type="verl",
+                step_num=8,
+            )
+        )
+        ray.shutdown()
+
+    def tearDown(self):
+        checkpoint_path = get_checkpoint_path()
+        shutil.rmtree(os.path.join(checkpoint_path, "unittest"))

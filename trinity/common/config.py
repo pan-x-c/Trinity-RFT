@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 from omegaconf import OmegaConf
 
 from trinity.common.constants import (
+    EXPLORER_NAME,
+    TRAINER_NAME,
     PromptType,
     ReadStrategy,
     StorageType,
@@ -283,6 +285,7 @@ class BufferConfig:
 class ExplorerConfig:
     """Config for explorer."""
 
+    name: str = EXPLORER_NAME
     # for workflow runner
     # number of workflow runners.
     # For sync engine (vllm), it should be equal to `engine_num`.
@@ -304,6 +307,7 @@ class ExplorerConfig:
 
 @dataclass
 class TrainerConfig:
+    name: str = TRAINER_NAME
     trainer_type: str = "verl"
     save_interval: int = 0
     enable_preview: bool = True  # enable rollout preview in wandb

@@ -282,6 +282,7 @@ class vLLMAysncRolloutModel(InferenceModel):
         rank_offset: int,
         world_size: int,
         group_name: str,
+        explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
         update_with_checkpoint: bool = True,
@@ -300,6 +301,7 @@ class vLLMAysncRolloutModel(InferenceModel):
                 update_with_checkpoint,
                 state_dict_meta,
                 ray.get_runtime_context().namespace,
+                explorer_name,
             ),
         )
 

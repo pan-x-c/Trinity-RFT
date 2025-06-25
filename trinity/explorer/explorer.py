@@ -15,7 +15,6 @@ from trinity.buffer import get_buffer_writer
 from trinity.buffer.buffer import get_buffer_reader
 from trinity.common.config import Config
 from trinity.common.constants import (
-    EXPLORER_NAME,
     ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
     RunningStatus,
     SyncMethod,
@@ -56,7 +55,7 @@ class Explorer:
         self.monitor = MONITOR.get(self.config.monitor.monitor_type)(
             project=self.config.project,
             name=self.config.name,
-            role=EXPLORER_NAME,
+            role=self.config.explorer.name,
             config=config,
         )
         self.batch_size = config.buffer.batch_size
@@ -101,6 +100,7 @@ class Explorer:
                 + base_offset,
                 world_size=world_size,
                 group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
+                explorer_name=self.config.explorer.name,
                 timeout=self.config.synchronizer.sync_timeout,
                 update_with_checkpoint=self.use_checkpoint_weights_update,
                 state_dict_meta=state_dict_meta,
@@ -185,7 +185,7 @@ class Explorer:
                 self.logger.error(f"Error in Explorer: {e}")
                 break
         self.logger.info("--------------------\n> Explorer finished.\n--------------------")
-        return EXPLORER_NAME
+        return self.config.explorer.name
 
     def explore_step(self) -> bool:
         algo_config = self.algorithm_manager.get_current_algorithm_config(self.explore_step_num + 1)
