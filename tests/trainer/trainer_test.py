@@ -158,11 +158,11 @@ class TestStepAheadAsyncRL(BaseTrainerCase):
         ray.shutdown(_exiting_interpreter=True)
         # check checkpoint
 
-        checkpoint_step_4, _ = get_checkpoint_dir_with_step_num(
+        checkpoint_step_4, step_num = get_checkpoint_dir_with_step_num(
             checkpoint_root_path=self.config.checkpoint_job_dir,
             trainer_type=self.config.trainer.trainer_type,
-            step_num=4,
         )
+        self.assertEqual(step_num, 4)
         self.assertTrue(os.path.exists(checkpoint_step_4))
 
     def tearDown(self):
