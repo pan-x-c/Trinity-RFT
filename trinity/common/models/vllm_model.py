@@ -286,7 +286,7 @@ class vLLMRolloutModel(InferenceModel):
             self._collective_rpc("set_state_dict_meta", args=(update_weight_args_list,))
         self._collective_rpc("update_weight")
         self.logger.info("Sync model weights to vLLM successfully.")
-        self.model_version += model_version
+        self.model_version = model_version
         return True
 
     def get_model_version(self) -> int:
