@@ -836,7 +836,7 @@ class CriticWorker(Worker):
         if not torch.distributed.is_initialized():
             torch.distributed.init_process_group(
                 backend="nccl" if is_cuda_available else "hccl",
-                timeout=timedelta(self.config.synchronizer.sync_timeout),
+                timeout=timedelta(seconds=self.config.synchronizer.sync_timeout),
             )
         self.config = config
 
