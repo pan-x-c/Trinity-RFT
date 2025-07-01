@@ -178,6 +178,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.algorithm.advantage_fn = "grpo"
         self.config.algorithm.advantage_fn_args = {}
         # self.config.buffer.batch_size = 96  # TODO: used for real testing
+        self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.check_and_update()
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
@@ -213,6 +214,7 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         self.config.algorithm.repeat_times = 4
         self.config.algorithm.advantage_fn = "grpo"
         self.config.algorithm.advantage_fn_args = {}
+        self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.synchronizer.sync_interval = 1
         self.config.buffer.trainer_input.sft_warmup_steps = 2

@@ -82,7 +82,6 @@ def get_unittest_dataset_config(
             name=dataset_name,
             path=os.path.join(os.path.dirname(__file__), "template", "data", "gsm8k"),
             split="train",
-            subset_name="main",
             format=FormatConfig(
                 prompt_key="question",
                 response_key="answer",
