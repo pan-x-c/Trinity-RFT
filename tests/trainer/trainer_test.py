@@ -269,6 +269,8 @@ class TestTrainerDPO(BaseTrainerCase):
         self.config.algorithm.policy_loss_fn_args = {}
         # self.config.buffer.batch_size = 32
         self.config.buffer.trainer_input.experience_buffer = get_unittest_dataset_config("dpo")
+        self.config.cluster.node_num = 1
+        self.config.cluster.gpu_per_node = 4
         self.config.check_and_update()
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         self.config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr = 5e-7

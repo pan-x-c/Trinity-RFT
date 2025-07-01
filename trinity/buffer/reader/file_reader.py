@@ -56,30 +56,31 @@ class _HFBatchReader:
 
     def read_batch(self, batch_size: int) -> List:
         if self.current_epoch >= self.max_epoch:
-            self.progress_bar.close()
             raise StopIteration
         batch = []
 
         while len(batch) < batch_size:
             try:
-                self.progress_bar.update(1)
                 item = next(self.iter)
                 batch.append(item)
                 self.current_offset += 1
-
             except StopIteration:
                 self.current_epoch += 1
                 self.current_offset = 0
 
                 if self.current_epoch >= self.max_epoch:
                     if not self.drop_last and len(batch) > 0:
+                        self.progress_bar.update(len(batch))
                         return batch
                     else:
-                        self.progress_bar.close()
                         raise StopIteration
                 # Step to the next epoch
                 self.iter = iter(self.dataset)
+        self.progress_bar.update(batch_size)
         return batch
+
+    def __del__(self):
+        self.progress_bar.close()
 
 
 @FILE_READERS.register_module(SFTAlgorithm.name())
@@ -93,7 +94,7 @@ class SFTDataReader(BufferReader):
         self.messages_key = meta.format.messages_key
         self.prompt_key = meta.format.prompt_key
         self.response_key = meta.format.response_key
-        self.read_batch_size = config.read_batch_size
+        self.read_batch_size = config.batch_size
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=subset_name, split=self.split, trust_remote_code=True),
             name=meta.name,
@@ -172,7 +173,7 @@ class DPODataReader(BufferReader):
         self.prompt_key = meta.format.prompt_key
         self.chosen_key = meta.format.chosen_key
         self.rejected_key = meta.format.rejected_key
-        self.read_batch_size = config.read_batch_size
+        self.read_batch_size = config.batch_size
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=subset_name, split=self.split, trust_remote_code=True),
             name=meta.name,
