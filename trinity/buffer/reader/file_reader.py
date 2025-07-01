@@ -56,6 +56,7 @@ class _HFBatchReader:
 
     def read_batch(self, batch_size: int) -> List:
         if self.current_epoch >= self.max_epoch:
+            self.progress_bar.close()
             raise StopIteration
         batch = []
 
@@ -73,14 +74,12 @@ class _HFBatchReader:
                         self.progress_bar.update(len(batch))
                         return batch
                     else:
+                        self.progress_bar.close()
                         raise StopIteration
                 # Step to the next epoch
                 self.iter = iter(self.dataset)
         self.progress_bar.update(batch_size)
         return batch
-
-    def __del__(self):
-        self.progress_bar.close()
 
 
 @FILE_READERS.register_module(SFTAlgorithm.name())
@@ -194,6 +193,7 @@ class DPODataReader(BufferReader):
         self, batch_size: Optional[int] = None, strategy: Optional[ReadStrategy] = None
     ) -> List:
         batch_data = self.dataset.read_batch(batch_size or self.read_batch_size)
+        print(f"Read {len(batch_data)} item from dpo dataset.")
         exp_list = []
         for sample in batch_data:
             prompt = sample[self.prompt_key]
