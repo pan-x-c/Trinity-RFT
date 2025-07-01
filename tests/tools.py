@@ -154,6 +154,9 @@ class TensorBoardParser:
     def metric_exist(self, metric_name: str) -> bool:
         return metric_name in self._metrics
 
+    def metric_min_step(self, metric_name: str) -> int:
+        return min(self.metric_steps(metric_name))
+
     def metric_max_step(self, metric_name: str) -> int:
         return max(self.metric_steps(metric_name))
 
