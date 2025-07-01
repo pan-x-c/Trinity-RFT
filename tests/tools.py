@@ -80,8 +80,8 @@ def get_unittest_dataset_config(
     elif dataset_name == "gsm8k":
         return StorageConfig(
             name=dataset_name,
-            path="openai/gsm8k",
-            split=split,
+            path=os.path.join(os.path.dirname(__file__), "template", "data", "gsm8k"),
+            split="train",
             subset_name="main",
             format=FormatConfig(
                 prompt_key="question",
@@ -109,7 +109,7 @@ def get_unittest_dataset_config(
     elif dataset_name == "dpo":
         return StorageConfig(
             name=dataset_name,
-            path="HumanLLMs/Human-Like-DPO-Dataset",
+            path=os.path.join(os.path.dirname(__file__), "template", "data", "human_like"),
             split="train",
             format=FormatConfig(
                 prompt_type=PromptType.PLAINTEXT,

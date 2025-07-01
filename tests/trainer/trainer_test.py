@@ -180,7 +180,6 @@ class TestTrainerGSM8K(BaseTrainerCase):
         # self.config.buffer.batch_size = 96  # TODO: used for real testing
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.check_and_update()
-        self.config.trainer.trainer_config.trainer.total_training_steps = 4
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         self.config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr = 1e-5
         both(self.config)
@@ -215,12 +214,12 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         self.config.algorithm.advantage_fn = "grpo"
         self.config.algorithm.advantage_fn_args = {}
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
+        self.config.synchronizer.sync_interval = 1
         self.config.buffer.trainer_input.sft_warmup_steps = 2
         self.config.buffer.trainer_input.sft_warmup_dataset = get_unittest_dataset_config(
             "sft_for_gsm8k"
         )
         self.config.check_and_update()
-        self.config.trainer.trainer_config.trainer.total_training_steps = 4
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         self.config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr = 1e-5
         both(self.config)
@@ -252,7 +251,6 @@ class TestTrainerDPO(BaseTrainerCase):
         # self.config.buffer.batch_size = 32
         self.config.buffer.trainer_input.experience_buffer = get_unittest_dataset_config("dpo")
         self.config.check_and_update()
-        self.config.trainer.trainer_config.trainer.total_training_steps = 4
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         self.config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr = 5e-7
         train(self.config)
