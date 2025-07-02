@@ -52,6 +52,7 @@ class RunnerWrapper:
             `int`: The runner_id of current runner.
         """
         last_exception_msg = None
+        await self.runner.__ray_ready__.remote()
         start_time = time.time()
         status = Status(ok=False, metric=dict())
         try:
@@ -63,11 +64,11 @@ class RunnerWrapper:
                     else:
                         self.logger.error(status.message)
                 except asyncio.TimeoutError:
-                    self.logger.error(f"Timeout when running task: {task}")
-                    self.restart_runner()
-                    status = Status(
-                        ok=False, metric=dict(), message=f"Timeout when running task: {task}"
+                    last_exception_msg = (
+                        f"Timeout when running task at runner {self.runner_id}: {task}"
                     )
+                    self.logger.error(last_exception_msg)
+                    status = Status(ok=False, metric=dict(), message=last_exception_msg)
                 except Exception:
                     last_exception_msg = traceback.format_exc()
                     self.logger.warning(
@@ -80,11 +81,12 @@ class RunnerWrapper:
         return status, self.runner_id
 
     def restart_runner(self):
+        old_runner = self.runner
+        self.runner = self._create_runner()
         try:
-            ray.kill(self.runner)
+            ray.kill(old_runner)
         except Exception:
             pass
-        self.runner = self._create_runner()
 
 
 class Scheduler:
@@ -107,8 +109,8 @@ class Scheduler:
 
         self.runner_num = len(rollout_model) * config.explorer.runner_per_model
         self.runners: Dict[int, RunnerWrapper] = dict()
-        self.idle_runners = set()
-        self.busy_runners = dict()
+        self.idle_runners = set()  # runner_id
+        self.busy_runners = dict()  # runner_id -> (task, step)
 
         self.pending_tasks: Dict[int, deque] = defaultdict(deque)  # step -> tasks
         self.running_tasks: Dict[int, set[asyncio.Future]] = defaultdict(set)  # step -> futures
@@ -142,7 +144,9 @@ class Scheduler:
 
         if runner_id in self.busy_runners:
             task, idx = self.busy_runners.pop(runner_id)
-            self.logger.warning(f"Runner failed to run task at step {idx}: {task.raw_task}")
+            self.logger.warning(
+                f"Runner {runner_id} failed to run task at step {idx}: {task.raw_task}"
+            )
 
         self.idle_runners.add(runner_id)
         self.logger.info(f"Runner {runner_id} restarted.")
@@ -199,6 +203,16 @@ class Scheduler:
 
             if not futures:
                 del self.running_tasks[step]
+
+    def _clear_timeout_tasks(self, step: int) -> None:
+        if step in self.pending_tasks:
+            self.logger.info(f"Clear timeout pending tasks at step {step}.")
+            del self.pending_tasks[step]
+        if step in self.running_tasks:
+            self.logger.info(f"Clear timeout running tasks at step {step}.")
+            for future in self.running_tasks[step]:
+                future.cancel()
+            del self.running_tasks[step]
 
     async def start(self) -> None:
         if self.running:
@@ -275,9 +289,10 @@ class Scheduler:
 
         if time.time() - start_time > timeout:
             self.logger.error(f"Timed out waiting for tasks to complete after {timeout} seconds")
-            busy_runner_ids = list(self.busy_runners.keys())
-            for runner_id in busy_runner_ids:
-                self._restart_runner(runner_id)
+            self._clear_timeout_tasks(step=step)
+            for runner_id in list(self.busy_runners.keys()):
+                if self.busy_runners[runner_id][1] == step:
+                    self._restart_runner(runner_id)
 
         results = []
         for _ in range(min_num):
@@ -324,8 +339,10 @@ class Scheduler:
 
         pending_count = sum(len(tasks) for tasks in self.pending_tasks.values())
         running_count = sum(len(futures) for futures in self.running_tasks.values())
+        for step in self.pending_tasks.keys() | self.running_tasks.keys():
+            self._clear_timeout_tasks(step)
 
-        error_msg = f"Timeout after {timeout} seconds. Still have {pending_count} pending tasks and {running_count} running tasks"
+        error_msg = f"Timeout after {timeout} seconds. Still have {pending_count} pending tasks and {running_count} running tasks."
         self.logger.error(error_msg)
 
         busy_runner_ids = list(self.busy_runners.keys())

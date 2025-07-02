@@ -1,3 +1,4 @@
+import asyncio
 import time
 import unittest
 from typing import List, Tuple
@@ -23,7 +24,12 @@ class DummyWorkflow(Workflow):
         self.error_type = task.raw_task.get("error_type", "")
         self.seconds = None
         if "timeout" in self.error_type:
-            self.seconds = int(self.error_type.split("_")[-1])
+            # 提取超时时间，格式如 "timeout_5"
+            parts = self.error_type.split("_")
+            if len(parts) > 1:
+                self.seconds = int(parts[-1])
+            else:
+                self.seconds = 10  # 默认超时时间
 
     def run(self) -> List[Experience]:
         if "timeout" in self.error_type:
@@ -34,7 +40,13 @@ class DummyWorkflow(Workflow):
             exit(1)
         elif self.error_type == "auxiliary_models":
             assert self.auxiliary_models is not None and len(self.auxiliary_models) == 2
-        return [Experience(tokens=torch.zeros(5), prompt_length=2, prompt_text=self.error_type)]
+
+        # 返回一个成功的结果
+        return [
+            Experience(
+                tokens=torch.zeros(5), prompt_length=2, prompt_text=self.error_type or "success"
+            )
+        ]
 
 
 @ray.remote
@@ -87,17 +99,29 @@ class DummyAuxiliaryModel(InferenceModel):
         return "http://localhosts:12345", "placeholder"
 
 
-def generate_tasks(total_num: int, timeout_num: int = 0, exception_num: int = 0):
+def generate_tasks(
+    total_num: int, timeout_num: int = 0, exception_num: int = 0, timeout_seconds: int = 10
+):
+    """Generate some tasks for testing
+
+    Args:
+        total_num: number of normal tasks
+        timeout_num: number of timeout tasks
+        exception_num: number of exception tasks
+        timeout_seconds: the timeout for timeout tasks
+    """
     tasks = [Task(workflow=DummyWorkflow, raw_task={}) for _ in range(total_num)]
+
     tasks.extend(
         [
             Task(
                 workflow=DummyWorkflow,
-                raw_task={"error_type": "timeout", "timeout": 5},
+                raw_task={"error_type": f"timeout_{timeout_seconds}"},
             )
             for _ in range(timeout_num)
         ]
     )
+
     tasks.extend(
         [
             Task(
@@ -107,6 +131,7 @@ def generate_tasks(total_num: int, timeout_num: int = 0, exception_num: int = 0)
             for _ in range(exception_num)
         ]
     )
+
     return tasks
 
 
@@ -131,7 +156,154 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
             self.config.buffer.trainer_input.experience_buffer, self.config.buffer
         )
 
-    async def test_scheduler(self):
+    async def test_get_results(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+
+        # tasks = generate_tasks(8)
+        # scheduler.schedule(tasks, step=0)
+
+        # results = await scheduler.get_results(step=0, min_num=8, timeout=20)
+        # self.assertEqual(len(results), 8)
+
+        # for result in results:
+        #     self.assertTrue(result.ok)
+
+        # for step in range(1, 4):
+        #     tasks = generate_tasks(4)
+        #     scheduler.schedule(tasks, step=step)
+
+        # for step in range(1, 4):
+        #     self.assertTrue(scheduler.has_step(step))
+        #     results = await scheduler.get_results(step=step, min_num=4, timeout=10)
+        #     self.assertEqual(len(results), 4)
+        #     self.assertFalse(scheduler.has_step(step))
+
+        # tasks = generate_tasks(3)
+        # scheduler.schedule(tasks, step=4)
+        # self.assertTrue(scheduler.has_step(4))
+        # results = await scheduler.get_results(step=4)
+        # self.assertEqual(len(results), 3)
+        # self.assertFalse(scheduler.has_step(4))
+
+        # test timeout
+        tasks = generate_tasks(2, timeout_num=2, timeout_seconds=10)
+        scheduler.schedule(tasks, step=0)
+
+        start_time = time.time()
+        results = await scheduler.get_results(step=0, min_num=4, timeout=3)
+        end_time = time.time()
+
+        self.assertLessEqual(end_time - start_time, 5)
+        self.assertEqual(len(results), 2)
+
+        # test run tasks after timeout
+        tasks = generate_tasks(4)
+        scheduler.schedule(tasks, step=0)
+
+        # actor restart is slow, set a big timeout
+        results = await scheduler.get_results(step=0, timeout=20)
+        self.assertEqual(len(results), 4)
+
+        success_count = sum(1 for r in results if r.ok)
+
+        self.assertEqual(success_count, sum(1 for r in results if r.ok))
+
+        # test exception tasks
+        tasks = generate_tasks(1, exception_num=3)
+        scheduler.schedule(tasks, step=1)
+        results = await scheduler.get_results(step=1, timeout=5)
+        self.assertEqual(len(results), 4)
+
+        success_count = sum(1 for r in results if r.ok)
+        self.assertEqual(success_count, 1)
+
+        await scheduler.stop()
+
+    async def test_wait_all(self):
+        """Test wait all"""
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+
+        tasks1 = generate_tasks(4)
+        tasks2 = generate_tasks(3)
+        scheduler.schedule(tasks1, step=0)
+        scheduler.schedule(tasks2, step=1)
+
+        start_time = time.time()
+        await scheduler.wait_all(timeout=10.0)
+        end_time = time.time()
+
+        self.assertLess(end_time - start_time, 5.0)
+
+        self.assertEqual(len(scheduler.pending_tasks), 0)
+        self.assertEqual(len(scheduler.running_tasks), 0)
+
+        results0 = await scheduler.get_results(step=0, min_num=4, timeout=1)
+        results1 = await scheduler.get_results(step=1, min_num=3, timeout=1)
+        self.assertEqual(len(results0), 4)
+        self.assertEqual(len(results1), 3)
+
+        # test timeout
+        tasks = generate_tasks(2, timeout_num=2, timeout_seconds=10)
+        scheduler.schedule(tasks, step=0)
+
+        start_time = time.time()
+        with self.assertRaises(TimeoutError):
+            await scheduler.wait_all(timeout=3.0)
+        end_time = time.time()
+
+        self.assertGreaterEqual(end_time - start_time, 2.8)
+        self.assertLessEqual(end_time - start_time, 4.0)
+
+        # test empty scenario
+
+        start_time = time.time()
+        await scheduler.wait_all(timeout=5.0)
+        end_time = time.time()
+
+        self.assertLess(end_time - start_time, 1.0)
+        await scheduler.stop()
+
+    async def test_concurrent_operations(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+
+        async def schedule_tasks(step, num_tasks):
+            tasks = generate_tasks(num_tasks)
+            scheduler.schedule(tasks, step=step)
+            return await scheduler.get_results(step=step, min_num=num_tasks, timeout=10)
+
+        results = await asyncio.gather(
+            schedule_tasks(0, 3),
+            schedule_tasks(1, 4),
+            schedule_tasks(2, 2),
+        )
+
+        self.assertEqual(len(results[0]), 3)
+        self.assertEqual(len(results[1]), 4)
+        self.assertEqual(len(results[2]), 2)
+
+        await scheduler.stop()
+
+    async def test_scheduler_restart_after_stop(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote()])
+
+        await scheduler.start()
+        tasks = generate_tasks(2)
+        scheduler.schedule(tasks, step=0)
+        results = await scheduler.get_results(step=0, min_num=2, timeout=10)
+        self.assertEqual(len(results), 2)
+        await scheduler.stop()
+
+        await scheduler.start()
+        tasks = generate_tasks(3)
+        scheduler.schedule(tasks, step=1)
+        results = await scheduler.get_results(step=1, min_num=3, timeout=10)
+        self.assertEqual(len(results), 3)
+        await scheduler.stop()
+
+    async def test_scheduler_all_methods(self):
         scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
         tasks = generate_tasks(8)
@@ -163,3 +335,9 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), 4)
         self.assertFalse(scheduler.has_step(2))
         await scheduler.stop()
+
+    def tearDown(self):
+        try:
+            ray.shutdown()
+        except Exception:
+            pass
