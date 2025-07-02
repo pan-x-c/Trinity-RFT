@@ -2,49 +2,74 @@
 
 import asyncio
 import time
-from typing import List, Dict, Tuple, Optional
-from collections import defaultdict, deque
 import traceback
+from collections import defaultdict, deque
+from typing import Dict, List, Optional, Tuple
 
 import ray
 
-from trinity.common.models import InferenceModel
 from trinity.common.config import Config
+from trinity.common.models import InferenceModel
 from trinity.common.workflows import Task
-from trinity.explorer.workflow_runner import WorkflowRunner, Status
+from trinity.explorer.workflow_runner import Status, WorkflowRunner
 from trinity.utils.log import get_logger
 
 
-
 class RunnerWrapper:
+    """A wrapper for a WorkflowRunner"""
 
-    def __init__(self, runner: WorkflowRunner, runner_id: int):
+    def __init__(
+        self,
+        runner_id: int,
+        rollout_model: InferenceModel,
+        auxiliary_models: List[InferenceModel],
+        config: Config,
+    ):
         self.logger = get_logger(__name__)
-        self.runner = runner
         self.runner_id = runner_id
-        self.is_busy = False
-        self.current_task: Task = None
+        self.rollout_model = rollout_model
+        self.auxiliary_models = auxiliary_models
+        self.config = config
+        self.retry_times = config.explorer.max_retry_times
+        self.timeout = config.explorer.max_timeout
+        self.namespace = ray.get_runtime_context().namespace
+        self.runner = self._create_runner()
 
-    async def run_with_retry(self, task: Task, retry_times: int) -> Tuple[Status, int]:
+    def _create_runner(self):
+        return (
+            ray.remote(WorkflowRunner)
+            .options(
+                namespace=self.namespace,
+                scheduling_strategy="SPREAD",
+            )
+            .remote(self.config, self.rollout_model, self.auxiliary_models)
+        )
+
+    async def run_with_retry(self, task: Task) -> Tuple[Status, int]:
         """
         Returns:
             `Status`: The return status of the task.
             `int`: The runner_id of current runner.
         """
         last_exception_msg = None
-        self.is_busy = True
-        self.current_task = task
         start_time = time.time()
+        status = Status(ok=False, metric=dict())
         try:
-            for attempt in range(retry_times + 1):
+            for attempt in range(self.retry_times + 1):
                 try:
-                    status = await self.runner.run.remote(task)
+                    status = await asyncio.wait_for(self.runner.run_task.remote(task), self.timeout)
                     if status.ok:
                         break
                     else:
                         self.logger.error(status.message)
+                except asyncio.TimeoutError:
+                    self.logger.error(f"Timeout when running task: {task}")
+                    self.restart_runner()
+                    status = Status(
+                        ok=False, metric=dict(), message=f"Timeout when running task: {task}"
+                    )
                 except Exception:
-                    last_exception_msg = traceback.format_exception()
+                    last_exception_msg = traceback.format_exc()
                     self.logger.warning(
                         f"Task execution attempt {attempt + 1} failed:\n{last_exception_msg}"
                     )
@@ -52,9 +77,14 @@ class RunnerWrapper:
         finally:
             end_time = time.time()
             status.metric["task_run_time"] = end_time - start_time
-            self.is_busy = False
-            self.current_task = None
         return status, self.runner_id
+
+    def restart_runner(self):
+        try:
+            ray.kill(self.runner)
+        except Exception:
+            pass
+        self.runner = self._create_runner()
 
 
 class Scheduler:
@@ -89,43 +119,33 @@ class Scheduler:
 
         self.total_scheduled = 0
         self.total_completed = 0
-        for i in range(self.runner_num):
-            self._create_runner(i)
 
-    async def _create_runner(
+    def _create_runner(
         self,
         runner_id: int,
-    ) -> None:
+    ):
         runner = RunnerWrapper(
-            runner=(
-                ray.remote(WorkflowRunner)
-                .options(
-                    namespace=self.namespace,
-                    scheduling_strategy="SPREAD",
-                )
-                .remote(
-                    self.config,
-                    self.rollout_model[runner_id % len(self.rollout_model)],
-                    [
-                        self.auxiliary_models[j][runner_id % len(self.auxiliary_models[j])]
-                        for j in range(len(self.auxiliary_models))
-                    ],
-                )
-            ),
             runner_id=runner_id,
+            rollout_model=self.rollout_model[runner_id % len(self.rollout_model)],
+            auxiliary_models=[
+                self.auxiliary_models[j][runner_id % len(self.auxiliary_models[j])]
+                for j in range(len(self.auxiliary_models))
+            ],
+            config=self.config,
         )
         self.runners[runner_id] = runner
         self.idle_runners.add(runner_id)
 
     def _restart_runner(self, runner_id: int):
         """Restart a runner."""
-        try:
-            ray.kill(self.runners[runner_id])
-        except:
-            pass
-        
-        self.create_runner(runner_id)
+        self.runners[runner_id].restart_runner()
 
+        if runner_id in self.busy_runners:
+            task, idx = self.busy_runners.pop(runner_id)
+            self.logger.warning(f"Runner failed to run task at step {idx}: {task.raw_task}")
+
+        self.idle_runners.add(runner_id)
+        self.logger.info(f"Runner {runner_id} restarted.")
 
     async def _scheduler_loop(self) -> None:
         self.logger.info("Scheduler loop started.")
@@ -171,7 +191,7 @@ class Scheduler:
                         self.idle_runners.add(runner_id)
 
                         self.logger.debug(
-                            f"Task completed (step {step}), success: {task_result.success}"
+                            f"Task completed (step {step}), success: {task_result.ok}"
                         )
 
                     except Exception as e:
@@ -184,8 +204,12 @@ class Scheduler:
         if self.running:
             return
         self.running = True
-        await asyncio.gather([self._create_runner(i) for i in range(self.runner_num)])
+        for i in range(self.runner_num):
+            self._create_runner(i)
         self.scheduler_task = asyncio.create_task(self._scheduler_loop())
+        for _, runner in self.runners.items():
+            await runner.runner.__ray_ready__.remote()
+        self.logger.info(f"Starting Scheduler with {self.runner_num} runners")
 
     async def stop(self) -> None:
         if not self.running:
@@ -206,7 +230,6 @@ class Scheduler:
                 await self.scheduler_task
             except asyncio.CancelledError:
                 pass
-
         self.logger.info("Scheduler stopped")
 
     def schedule(self, tasks: List[Task], step: int) -> None:
@@ -221,10 +244,9 @@ class Scheduler:
         for task in tasks:
             self.pending_tasks[step].appendleft(task)
 
-
     async def get_results(
         self, step: int, min_num: Optional[int] = None, timeout: Optional[float] = None
-    ) -> List[Dict]:
+    ) -> List[Status]:
         """Get the result of tasks at the specific step.
 
         Args:
@@ -235,7 +257,14 @@ class Scheduler:
         timeout = timeout or self.timeout
         start_time = time.time()
         if min_num is None:
-            min_num = len(self.pending_tasks[step]) + len(self.running_tasks[step]) + len(self.completed_tasks[step])
+            min_num = 0
+            if step in self.pending_tasks:
+                min_num += len(self.pending_tasks[step])
+            if step in self.running_tasks:
+                min_num += len(self.running_tasks[step])
+            if step in self.completed_tasks:
+                min_num += len(self.completed_tasks[step])
+
         self.logger.debug(f"Waiting for {min_num} tasks to complete...")
 
         while time.time() - start_time < timeout:
@@ -243,6 +272,12 @@ class Scheduler:
             if completed_count >= min_num:
                 break
             await asyncio.sleep(0.1)
+
+        if time.time() - start_time > timeout:
+            self.logger.error(f"Timed out waiting for tasks to complete after {timeout} seconds")
+            busy_runner_ids = list(self.busy_runners.keys())
+            for runner_id in busy_runner_ids:
+                self._restart_runner(runner_id)
 
         results = []
         for _ in range(min_num):
@@ -259,3 +294,42 @@ class Scheduler:
             )
 
         return results
+
+    def has_step(self, step: int) -> bool:
+        return (
+            step in self.completed_tasks or step in self.pending_tasks or step in self.running_tasks
+        )
+
+    async def wait_all(self, timeout: Optional[float] = None) -> None:
+        """Wait for all tasks to complete without poping results. If timeout reached, raise TimeoutError."""
+        timeout = timeout or self.timeout
+        start_time = time.time()
+
+        self.logger.debug("Waiting for all tasks to complete...")
+
+        while time.time() - start_time < timeout:
+            has_pending = bool(self.pending_tasks)
+            has_running = bool(self.running_tasks)
+
+            if not has_pending and not has_running:
+                self.logger.debug("All tasks completed successfully")
+                return
+
+            pending_count = sum(len(tasks) for tasks in self.pending_tasks.values())
+            running_count = sum(len(futures) for futures in self.running_tasks.values())
+
+            self.logger.debug(f"Pending tasks: {pending_count}, Running tasks: {running_count}")
+
+            await asyncio.sleep(0.1)
+
+        pending_count = sum(len(tasks) for tasks in self.pending_tasks.values())
+        running_count = sum(len(futures) for futures in self.running_tasks.values())
+
+        error_msg = f"Timeout after {timeout} seconds. Still have {pending_count} pending tasks and {running_count} running tasks"
+        self.logger.error(error_msg)
+
+        busy_runner_ids = list(self.busy_runners.keys())
+        for runner_id in busy_runner_ids:
+            self._restart_runner(runner_id)
+
+        raise TimeoutError(error_msg)
