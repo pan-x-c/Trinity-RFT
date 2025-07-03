@@ -123,23 +123,3 @@ class WandbMonitor(Monitor):
 
     def close(self) -> None:
         self.logger.finish()
-
-
-if __name__ == "__main__":
-    metric_list = [
-        {
-            "rollout/reward": 1.0,
-            "rollout/time": 12.0,
-        },
-        {
-            "rollout/reward": 2.0,
-            "rollout/time": 13.0,
-        },
-        {
-            "rollout/reward": 2.0,
-        },
-        {
-            "rollout/time": 14.0,
-        },
-    ]
-    print(gather_metrics(metric_list, prefix="explorer"))

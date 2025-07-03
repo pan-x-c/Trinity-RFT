@@ -167,6 +167,7 @@ class Scheduler:
         if not self.idle_runners:
             return
 
+        # TODO: Support more advanced scheduling strategies
         for batch_id in sorted(self.pending_tasks.keys()):
             task_queue = self.pending_tasks[batch_id]
 
@@ -258,7 +259,6 @@ class Scheduler:
         batch_id = str(batch_id)
         for task in tasks:
             self.pending_tasks[batch_id].appendleft(task)
-        self.logger.info(f"Scheduled {len(tasks)} tasks for batch {batch_id}")
 
     async def get_results(
         self,

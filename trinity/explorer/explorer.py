@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+import traceback
 from collections import deque
 from typing import List, Optional
 
@@ -196,8 +197,8 @@ class Explorer:
                     self.eval()
                 if self.need_sync():
                     await self.sync_weight()
-            except Exception as e:
-                self.logger.error(f"Error in Explorer: {e}")
+            except Exception:
+                self.logger.error(f"Error in Explorer: {traceback.format_exc()}")
                 break
         self.logger.info("--------------------\n> Explorer finished.\n--------------------")
         return self.config.explorer.name
@@ -314,8 +315,9 @@ class Explorer:
 
     async def _log_explore_metrics(self, step: int) -> None:
         results = await self.scheduler.get_results(batch_id=step)
-        metric = gather_metrics([status.metric for status in results], "rollout")
-        self.monitor.log(metric, step=step)
+        if results:
+            metric = gather_metrics([status.metric for status in results], "rollout")
+            self.monitor.log(metric, step=step)
 
     async def _log_eval_metrics(self, step: Optional[int] = None) -> None:
         if not self.pending_eval_tasks:

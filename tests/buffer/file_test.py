@@ -97,12 +97,14 @@ class TestFileBuffer(unittest.TestCase):
         writer = get_buffer_writer(
             self.config.buffer.trainer_input.experience_buffer, self.config.buffer
         )
+        writer.acquire()
         writer.write(
             [
                 {"prompt": "hello world"},
                 {"prompt": "hi"},
             ]
         )
+        writer.release()
         file_wrapper = ray.get_actor("json-test_buffer")
         self.assertIsNotNone(file_wrapper)
         file_path = default_storage_path(

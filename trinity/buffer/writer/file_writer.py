@@ -22,7 +22,7 @@ class JSONWriter(BufferWriter):
 
     def acquire(self) -> int:
         if self.wrap_in_ray:
-            return ray.get(self.writer.acquire())
+            return ray.get(self.writer.acquire.remote())
         else:
             return 0
 
