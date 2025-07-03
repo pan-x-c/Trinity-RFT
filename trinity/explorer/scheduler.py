@@ -1,6 +1,7 @@
 """Scheduler for rollout tasks."""
 
 import asyncio
+import re
 import time
 import traceback
 from collections import defaultdict, deque
@@ -89,6 +90,20 @@ class RunnerWrapper:
             pass
 
 
+def sort_batch_id(batch_id: Union[int, str]):
+    """Priority of batch_id"""
+    # TODO: avoid sort the batch_id every time
+    if isinstance(batch_id, int):
+        return (batch_id, 0)
+    else:
+        match = re.match(r"^(\d+)", batch_id)
+        if match:
+            num = int(match.group(1))
+            return (num, 1)
+        else:
+            return (float("inf"), 1)
+
+
 class Scheduler:
     """Scheduler for rollout tasks."""
 
@@ -112,9 +127,14 @@ class Scheduler:
         self.idle_runners = set()  # runner_id
         self.busy_runners = dict()  # runner_id -> (task, batch_id)
 
-        self.pending_tasks: Dict[str, deque] = defaultdict(deque)  # batch_id -> tasks
-        self.running_tasks: Dict[str, set[asyncio.Future]] = defaultdict(set)  # batch_id -> futures
-        self.completed_tasks: Dict[str, deque[Status]] = defaultdict(deque)  # batch_id -> results
+        self.pending_tasks_heap = []
+        self.pending_tasks: Dict[Union[int, str], deque] = defaultdict(deque)  # batch_id -> tasks
+        self.running_tasks: Dict[Union[int, str], set[asyncio.Future]] = defaultdict(
+            set
+        )  # batch_id -> futures
+        self.completed_tasks: Dict[Union[int, str], deque[Status]] = defaultdict(
+            deque
+        )  # batch_id -> results
 
         self.scheduler_task: Optional[asyncio.Task] = None
         self.running = False
@@ -168,7 +188,7 @@ class Scheduler:
             return
 
         # TODO: Support more advanced scheduling strategies
-        for batch_id in sorted(self.pending_tasks.keys()):
+        for batch_id in sorted(self.pending_tasks.keys(), key=sort_batch_id):
             task_queue = self.pending_tasks[batch_id]
 
             while task_queue and self.idle_runners:
@@ -205,7 +225,7 @@ class Scheduler:
             if not futures:
                 del self.running_tasks[batch_id]
 
-    def _clear_timeout_tasks(self, batch_id: str) -> None:
+    def _clear_timeout_tasks(self, batch_id: Union[int, str]) -> None:
         if batch_id in self.pending_tasks:
             self.logger.info(f"Clear timeout pending tasks at batch_id {batch_id}.")
             del self.pending_tasks[batch_id]
@@ -252,11 +272,11 @@ class Scheduler:
 
         Args:
             tasks (`List[Task]`): The tasks to schedule.
-            batch_id (`Union[int, str]`): The id of provided tasks.
+            batch_id (`Union[int, str]`): The id of provided tasks. It should be an integer or a string
+                starting with an integer (e.g., 123, "123/my_task")
         """
         if not tasks:
             return
-        batch_id = str(batch_id)
         for task in tasks:
             self.pending_tasks[batch_id].appendleft(task)
 
@@ -276,7 +296,6 @@ class Scheduler:
             clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
         """
         timeout = timeout or self.timeout
-        batch_id = str(batch_id)
         start_time = time.time()
         if min_num is None:
             min_num = 0
@@ -320,7 +339,6 @@ class Scheduler:
         return results
 
     def has_step(self, batch_id: Union[int, str]) -> bool:
-        batch_id = str(batch_id)
         return (
             batch_id in self.completed_tasks
             or batch_id in self.pending_tasks
@@ -353,8 +371,8 @@ class Scheduler:
             running_count = sum(len(futures) for futures in self.running_tasks.values())
 
             self.logger.debug(f"Pending tasks: {pending_count}, Running tasks: {running_count}")
-
             await asyncio.sleep(0.1)
+
         pending_count = sum(len(tasks) for tasks in self.pending_tasks.values())
         running_count = sum(len(futures) for futures in self.running_tasks.values())
         error_msg = f"Timeout after {timeout} seconds. Still have {pending_count} pending tasks and {running_count} running tasks."

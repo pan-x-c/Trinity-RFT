@@ -39,7 +39,7 @@ class Explorer:
         self.cache = CacheManager(config)
         explorer_meta = self.cache.load_explorer()
         self.explore_step_num = explorer_meta.get("latest_iteration", 0)
-        self.last_sync_step = self.explore_step_num
+        self.last_sync_step = self.explore_step_num if self.explore_step_num > 0 else -1
         self.config = config
         self.algorithm_manager = AlgorithmManager(config)
         self.models, self.auxiliary_models = create_inference_models(config)
@@ -169,6 +169,8 @@ class Explorer:
                 asyncio.create_task(self.setup_weight_sync_group(master_address, master_port))
             )
         asyncio.gather(*futures, return_exceptions=True)
+        if self.config.explorer.eval_on_startup and self.explore_step_num == 0:
+            self.eval()
 
     async def get_weight(self, name: str) -> torch.Tensor:
         """Get the weight of the loaded model (For checkpoint weights update)."""
@@ -177,21 +179,21 @@ class Explorer:
     async def explore(self) -> str:
         """
         The timeline of the exploration process:
-        explorer | <--------------------------------- one period -------------------------------------> |
-                 | <------------------------------ eval -------------------------------> | <-- sync --> |
-                 | <---------------- step_1 --------------> |                                           |
+                 | <--------------------------------- one period -------------------------------------> |
+        explorer | <---------------- step_1 --------------> |                                           |
                  |   | <---------------- step_2 --------------> |                                       |
                  |      ...                                                                             |
                  |          | <---------------- step_n ---------------> |                               |
                  |                  | <---------------------- eval --------------------> | <-- sync --> |
-        trainer  |--------------------------------------------------------------------------------------|
-                 | <-- idle --> | <-- step_1 --> | <-- step_2 --> | ... | <-- step_n --> | <-- sync --> |
+                 |--------------------------------------------------------------------------------------|
+        trainer  | <-- idle --> | <-- step_1 --> | <-- step_2 --> | ... | <-- step_n --> | <-- sync --> |
         """
         while True:
             try:
                 self.logger.info(f"Explore step {self.explore_step_num + 1} started.")
                 explore_contionue = await self.explore_step()
                 if not explore_contionue:
+                    # TODO: support eval on last checkpoint
                     break
                 if self.need_eval():
                     self.eval()
@@ -253,7 +255,7 @@ class Explorer:
     async def benchmark(self) -> bool:
         """Benchmark the model checkpoints."""
         # benchmark on the latest checkpoint
-        if self.config.explorer.eval_on_latest_checkpoint:
+        if self.config.explorer.bench_on_latest_checkpoint:
             self.explore_step_num = await self._checkpoint_weights_update()
             self.eval()
             await self._log_eval_metrics()
