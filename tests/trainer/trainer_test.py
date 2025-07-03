@@ -60,7 +60,7 @@ class TestTrainerCountdown(BaseTrainerCase):
         self.config.buffer.explorer_input.eval_tasksets.append(
             get_unittest_dataset_config("copy_countdown", "test")
         )
-        self.config.trainer.save_interval = 6
+        self.config.trainer.save_interval = 4
         self.config.check_and_update()
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         self.config.trainer.trainer_config.trainer.max_critic_ckpt_to_keep = 2
@@ -84,17 +84,17 @@ class TestTrainerCountdown(BaseTrainerCase):
         self.assertEqual(parser.metric_max_step(response_metrics[0]), 8)
         ray.shutdown(_exiting_interpreter=True)
         # check checkpoint
-        checkpoint_step_6, _ = get_checkpoint_dir_with_step_num(
+        checkpoint_step_4, _ = get_checkpoint_dir_with_step_num(
             checkpoint_root_path=self.config.checkpoint_job_dir,
             trainer_type=self.config.trainer.trainer_type,
-            step_num=6,
+            step_num=4,
         )
         # check save lastest checkpoint
         checkpoint_step_8, step_num = get_checkpoint_dir_with_step_num(
             checkpoint_root_path=self.config.checkpoint_job_dir,
             trainer_type=self.config.trainer.trainer_type,
         )
-        self.assertTrue(len(os.listdir(os.path.join(checkpoint_step_6, "actor"))) > 0)
+        self.assertTrue(len(os.listdir(os.path.join(checkpoint_step_4, "actor"))) > 0)
         self.assertTrue(len(os.listdir(os.path.join(checkpoint_step_8, "actor"))) > 0)
         self.assertEqual(step_num, 8)
         # TODO: Reinit will fail when using v1 engine, find a way to fix it
