@@ -16,7 +16,7 @@ from trinity.common.config import StorageConfig
 from trinity.common.constants import StorageType
 
 
-class TestFileBuffer(unittest.TestCase):
+class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
     temp_output_path = "tmp/test_file_buffer/"
 
     @classmethod
@@ -93,25 +93,31 @@ class TestFileBuffer(unittest.TestCase):
                 break
         self.assertEqual(len(tasks), 16 * 3 - 20)
 
-    def test_file_writer(self):
+    async def test_file_writer(self):
         writer = get_buffer_writer(
             self.config.buffer.trainer_input.experience_buffer, self.config.buffer
         )
-        writer.acquire()
+        await writer.acquire()
         writer.write(
             [
                 {"prompt": "hello world"},
                 {"prompt": "hi"},
             ]
         )
-        writer.release()
+        await writer.write_async(
+            [
+                {"prompt": "My name is"},
+                {"prompt": "What is your name?"},
+            ]
+        )
+        await writer.release()
         file_wrapper = ray.get_actor("json-test_buffer")
         self.assertIsNotNone(file_wrapper)
         file_path = default_storage_path(
             self.config.buffer.trainer_input.experience_buffer, self.config.buffer
         )
         with open(file_path, "r") as f:
-            self.assertEqual(len(f.readlines()), 2)
+            self.assertEqual(len(f.readlines()), 4)
 
     def setUp(self):
         self.config = get_template_config()

@@ -43,12 +43,12 @@ class Explorer:
         self.config = config
         self.algorithm_manager = AlgorithmManager(config)
         self.models, self.auxiliary_models = create_inference_models(config)
+        self.experience_buffer = None
         if self.config.mode != "bench":
             self.experience_buffer = get_buffer_writer(
                 self.config.buffer.explorer_output,  # type: ignore
                 self.config.buffer,
             )
-            self.experience_buffer.acquire()
         self.config.buffer.explorer_input.taskset.index = explorer_meta.get("latest_task_index", 0)
         self.taskset = get_buffer_reader(
             self.config.buffer.explorer_input.taskset, self.config.buffer
@@ -169,6 +169,8 @@ class Explorer:
                 asyncio.create_task(self.setup_weight_sync_group(master_address, master_port))
             )
         asyncio.gather(*futures, return_exceptions=True)
+        if self.experience_buffer:
+            await self.experience_buffer.acquire()
         if self.config.explorer.eval_on_startup and self.explore_step_num == 0:
             self.eval()
 
@@ -217,7 +219,7 @@ class Explorer:
             self.logger.warning("No more tasks to explore. Stop exploring.")
             await self.save_checkpoint(sync_weight=False)
             self.status = RunningStatus.STOPPED
-            self.experience_buffer.release()
+            await self.experience_buffer.release()
             return False
         self.scheduler.schedule(tasks, batch_id=self.explore_step_num + 1)
         self.explore_step_num += 1
