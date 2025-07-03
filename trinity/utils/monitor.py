@@ -2,7 +2,7 @@
 
 import os
 from abc import ABC, abstractmethod
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,18 @@ from trinity.utils.log import get_logger
 from trinity.utils.registry import Registry
 
 MONITOR = Registry("monitor")
+
+
+def gather_metrics(metric_list: List[Dict], prefix: str) -> Dict:
+    df = pd.DataFrame(metric_list)
+    numeric_df = df.select_dtypes(include=[np.number])
+    stats_df = numeric_df.agg(["mean", "max", "min"])
+    metric = {}
+    for col in stats_df.columns:
+        metric[f"{prefix}/{col}/mean"] = stats_df.loc["mean", col]
+        metric[f"{prefix}/{col}/max"] = stats_df.loc["max", col]
+        metric[f"{prefix}/{col}/min"] = stats_df.loc["min", col]
+    return metric
 
 
 class Monitor(ABC):
@@ -111,3 +123,23 @@ class WandbMonitor(Monitor):
 
     def close(self) -> None:
         self.logger.finish()
+
+
+if __name__ == "__main__":
+    metric_list = [
+        {
+            "rollout/reward": 1.0,
+            "rollout/time": 12.0,
+        },
+        {
+            "rollout/reward": 2.0,
+            "rollout/time": 13.0,
+        },
+        {
+            "rollout/reward": 2.0,
+        },
+        {
+            "rollout/time": 14.0,
+        },
+    ]
+    print(gather_metrics(metric_list, prefix="explorer"))

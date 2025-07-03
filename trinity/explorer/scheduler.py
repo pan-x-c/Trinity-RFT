@@ -4,7 +4,7 @@ import asyncio
 import time
 import traceback
 from collections import defaultdict, deque
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import ray
 
@@ -110,11 +110,11 @@ class Scheduler:
         self.runner_num = len(rollout_model) * config.explorer.runner_per_model
         self.runners: Dict[int, RunnerWrapper] = dict()
         self.idle_runners = set()  # runner_id
-        self.busy_runners = dict()  # runner_id -> (task, step)
+        self.busy_runners = dict()  # runner_id -> (task, batch_id)
 
-        self.pending_tasks: Dict[int, deque] = defaultdict(deque)  # step -> tasks
-        self.running_tasks: Dict[int, set[asyncio.Future]] = defaultdict(set)  # step -> futures
-        self.completed_tasks: Dict[int, deque[Status]] = defaultdict(deque)  # step -> results
+        self.pending_tasks: Dict[str, deque] = defaultdict(deque)  # batch_id -> tasks
+        self.running_tasks: Dict[str, set[asyncio.Future]] = defaultdict(set)  # batch_id -> futures
+        self.completed_tasks: Dict[str, deque[Status]] = defaultdict(deque)  # batch_id -> results
 
         self.scheduler_task: Optional[asyncio.Task] = None
         self.running = False
@@ -145,7 +145,7 @@ class Scheduler:
         if runner_id in self.busy_runners:
             task, idx = self.busy_runners.pop(runner_id)
             self.logger.warning(
-                f"Runner {runner_id} failed to run task at step {idx}: {task.raw_task}"
+                f"Runner {runner_id} failed to run task at batch_id {idx}: {task.raw_task}"
             )
 
         self.idle_runners.add(runner_id)
@@ -167,52 +167,52 @@ class Scheduler:
         if not self.idle_runners:
             return
 
-        for step in sorted(self.pending_tasks.keys()):
-            task_queue = self.pending_tasks[step]
+        for batch_id in sorted(self.pending_tasks.keys()):
+            task_queue = self.pending_tasks[batch_id]
 
             while task_queue and self.idle_runners:
                 task = task_queue.pop()
                 runner_id = self.idle_runners.pop()
-                self.busy_runners[runner_id] = (task, step)
-                self.running_tasks[step].add(
+                self.busy_runners[runner_id] = (task, batch_id)
+                self.running_tasks[batch_id].add(
                     asyncio.create_task(self.runners[runner_id].run_with_retry(task))
                 )
 
             if not task_queue:
-                del self.pending_tasks[step]
+                del self.pending_tasks[batch_id]
 
     async def _check_completed_tasks(self) -> None:
-        for step in list(self.running_tasks.keys()):
-            futures = self.running_tasks[step]
+        for batch_id in list(self.running_tasks.keys()):
+            futures = self.running_tasks[batch_id]
 
             for future in list(futures):
                 if future.done():
                     futures.remove(future)
                     try:
                         task_result, runner_id = await future
-                        self.completed_tasks[step].appendleft(task_result)
+                        self.completed_tasks[batch_id].appendleft(task_result)
                         self.busy_runners.pop(runner_id)
                         self.idle_runners.add(runner_id)
 
                         self.logger.debug(
-                            f"Task completed (step {step}), success: {task_result.ok}"
+                            f"Task completed (batch_id {batch_id}), success: {task_result.ok}"
                         )
 
                     except Exception as e:
                         self.logger.error(f"Error getting task result: {e}")
 
             if not futures:
-                del self.running_tasks[step]
+                del self.running_tasks[batch_id]
 
-    def _clear_timeout_tasks(self, step: int) -> None:
-        if step in self.pending_tasks:
-            self.logger.info(f"Clear timeout pending tasks at step {step}.")
-            del self.pending_tasks[step]
-        if step in self.running_tasks:
-            self.logger.info(f"Clear timeout running tasks at step {step}.")
-            for future in self.running_tasks[step]:
+    def _clear_timeout_tasks(self, batch_id: str) -> None:
+        if batch_id in self.pending_tasks:
+            self.logger.info(f"Clear timeout pending tasks at batch_id {batch_id}.")
+            del self.pending_tasks[batch_id]
+        if batch_id in self.running_tasks:
+            self.logger.info(f"Clear timeout running tasks at batch_id {batch_id}.")
+            for future in self.running_tasks[batch_id]:
                 future.cancel()
-            del self.running_tasks[step]
+            del self.running_tasks[batch_id]
 
     async def start(self) -> None:
         if self.running:
@@ -246,61 +246,70 @@ class Scheduler:
                 pass
         self.logger.info("Scheduler stopped")
 
-    def schedule(self, tasks: List[Task], step: int) -> None:
+    def schedule(self, tasks: List[Task], batch_id: Union[int, str]) -> None:
         """Schedule the provided tasks.
 
         Args:
             tasks (`List[Task]`): The tasks to schedule.
-            step (`int`): The step number of provided tasks.
+            batch_id (`Union[int, str]`): The id of provided tasks.
         """
         if not tasks:
             return
+        batch_id = str(batch_id)
         for task in tasks:
-            self.pending_tasks[step].appendleft(task)
+            self.pending_tasks[batch_id].appendleft(task)
+        self.logger.info(f"Scheduled {len(tasks)} tasks for batch {batch_id}")
 
     async def get_results(
-        self, step: int, min_num: Optional[int] = None, timeout: Optional[float] = None
+        self,
+        batch_id: Union[int, str],
+        min_num: Optional[int] = None,
+        timeout: Optional[float] = None,
+        clear_timeout_tasks: bool = True,
     ) -> List[Status]:
-        """Get the result of tasks at the specific step.
+        """Get the result of tasks at the specific batch_id.
 
         Args:
-            step (`int`): Only wait for tasks at this step.
-            min_num (`int`): The minimum number of tasks to wait for. If `None`, wait for all tasks at `step`.
+            batch_id (`Union[int, str]`): Only wait for tasks at this batch.
+            min_num (`int`): The minimum number of tasks to wait for. If `None`, wait for all tasks at `batch_id`.
             timeout (`float`): The timeout for waiting for tasks to finish. If `None`, wait for default timeout.
+            clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
         """
         timeout = timeout or self.timeout
+        batch_id = str(batch_id)
         start_time = time.time()
         if min_num is None:
             min_num = 0
-            if step in self.pending_tasks:
-                min_num += len(self.pending_tasks[step])
-            if step in self.running_tasks:
-                min_num += len(self.running_tasks[step])
-            if step in self.completed_tasks:
-                min_num += len(self.completed_tasks[step])
+            if batch_id in self.pending_tasks:
+                min_num += len(self.pending_tasks[batch_id])
+            if batch_id in self.running_tasks:
+                min_num += len(self.running_tasks[batch_id])
+            if batch_id in self.completed_tasks:
+                min_num += len(self.completed_tasks[batch_id])
 
         self.logger.debug(f"Waiting for {min_num} tasks to complete...")
 
         while time.time() - start_time < timeout:
-            completed_count = len(self.completed_tasks[step])
+            completed_count = len(self.completed_tasks[batch_id])
             if completed_count >= min_num:
                 break
             await asyncio.sleep(0.1)
 
         if time.time() - start_time > timeout:
             self.logger.error(f"Timed out waiting for tasks to complete after {timeout} seconds")
-            self._clear_timeout_tasks(step=step)
-            for runner_id in list(self.busy_runners.keys()):
-                if self.busy_runners[runner_id][1] == step:
-                    self._restart_runner(runner_id)
+            if clear_timeout_tasks:
+                self._clear_timeout_tasks(batch_id=batch_id)
+                for runner_id in list(self.busy_runners.keys()):
+                    if self.busy_runners[runner_id][1] == batch_id:
+                        self._restart_runner(runner_id)
 
         results = []
         for _ in range(min_num):
-            if len(self.completed_tasks[step]) > 0:
-                results.append(self.completed_tasks[step].pop())
+            if len(self.completed_tasks[batch_id]) > 0:
+                results.append(self.completed_tasks[batch_id].pop())
 
-        if not self.completed_tasks[step]:
-            del self.completed_tasks[step]
+        if not self.completed_tasks[batch_id]:
+            del self.completed_tasks[batch_id]
 
         completed_count = len(results)
         if completed_count < min_num:
@@ -310,13 +319,23 @@ class Scheduler:
 
         return results
 
-    def has_step(self, step: int) -> bool:
+    def has_step(self, batch_id: Union[int, str]) -> bool:
+        batch_id = str(batch_id)
         return (
-            step in self.completed_tasks or step in self.pending_tasks or step in self.running_tasks
+            batch_id in self.completed_tasks
+            or batch_id in self.pending_tasks
+            or batch_id in self.running_tasks
         )
 
-    async def wait_all(self, timeout: Optional[float] = None) -> None:
-        """Wait for all tasks to complete without poping results. If timeout reached, raise TimeoutError."""
+    async def wait_all(
+        self, timeout: Optional[float] = None, clear_timeout_tasks: bool = True
+    ) -> None:
+        """Wait for all tasks to complete without poping results. If timeout reached, raise TimeoutError.
+
+        Args:
+            timeout (`float`): timeout in seconds.
+            clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
+        """
         timeout = timeout or self.timeout
         start_time = time.time()
 
@@ -336,17 +355,16 @@ class Scheduler:
             self.logger.debug(f"Pending tasks: {pending_count}, Running tasks: {running_count}")
 
             await asyncio.sleep(0.1)
-
         pending_count = sum(len(tasks) for tasks in self.pending_tasks.values())
         running_count = sum(len(futures) for futures in self.running_tasks.values())
-        for step in self.pending_tasks.keys() | self.running_tasks.keys():
-            self._clear_timeout_tasks(step)
-
         error_msg = f"Timeout after {timeout} seconds. Still have {pending_count} pending tasks and {running_count} running tasks."
         self.logger.error(error_msg)
 
-        busy_runner_ids = list(self.busy_runners.keys())
-        for runner_id in busy_runner_ids:
-            self._restart_runner(runner_id)
+        if clear_timeout_tasks:
+            for batch_id in self.pending_tasks.keys() | self.running_tasks.keys():
+                self._clear_timeout_tasks(batch_id)
+            busy_runner_ids = list(self.busy_runners.keys())
+            for runner_id in busy_runner_ids:
+                self._restart_runner(runner_id)
 
         raise TimeoutError(error_msg)
