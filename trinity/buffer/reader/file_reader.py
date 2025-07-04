@@ -24,38 +24,36 @@ class _HFBatchReader:
         self,
         dataset: Dataset,
         name: str,
-        max_epoch: int = 1,
+        total_epochs: int = 1,
         offset: int = 0,
         drop_last: bool = True,
+        total_steps: Optional[int] = None,
     ):
         self.dataset = dataset
         self.dataset_size = len(dataset)
         self.name = name
         self.current_batch_size = None
-        self.max_epoch = max_epoch
         self.drop_last = drop_last
-        if offset >= self.dataset_size:
-            self.current_epoch = offset // self.dataset_size
-            self.current_offset = offset % self.dataset_size
-        else:
-            self.current_epoch = 0
-            self.current_offset = offset
+
+        self.current_offset = offset
         self.iter = iter(self.dataset)
 
-        for _ in range(self.current_offset):
+        for _ in range(self.current_offset % self.dataset_size):
             next(self.iter)
 
-        # Initialize tqdm progress bar
-        self.total_steps = self.dataset_size * self.max_epoch
+        # convert epochs/steps to sample number
+        if total_steps:
+            self.total_samples = total_steps * self.dataset_size
+        else:
+            self.total_samples = self.dataset_size * total_epochs
         self.progress_bar = tqdm(
-            total=self.total_steps,
+            total=self.total_samples,
             desc=f"Dataset [{self.name}] Progressing",
         )
-        initial = self.current_epoch * self.dataset_size + self.current_offset
-        self.progress_bar.update(initial)
+        self.progress_bar.update(self.current_offset)
 
     def read_batch(self, batch_size: int) -> List:
-        if self.current_epoch >= self.max_epoch:
+        if self.current_offset >= self.total_samples:
             self.progress_bar.close()
             raise StopIteration
         batch = []
@@ -66,11 +64,10 @@ class _HFBatchReader:
                 batch.append(item)
                 self.current_offset += 1
             except StopIteration:
-                self.current_epoch += 1
-                self.current_offset = 0
-
-                if self.current_epoch >= self.max_epoch:
+                if self.current_offset >= self.total_samples:
+                    # No more data to read
                     if not self.drop_last and len(batch) > 0:
+                        # return last batch
                         self.progress_bar.update(len(batch))
                         return batch
                     else:
@@ -97,9 +94,10 @@ class SFTDataReader(BufferReader):
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=subset_name, split=self.split, trust_remote_code=True),
             name=meta.name,
-            max_epoch=meta.total_epochs,
+            total_epochs=meta.total_epochs,
             drop_last=True,
-        )  # TODO: support resume
+            total_steps=config.total_steps,
+        )
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
 
     def read(
@@ -176,8 +174,9 @@ class DPODataReader(BufferReader):
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=subset_name, split=self.split, trust_remote_code=True),
             name=meta.name,
-            max_epoch=meta.total_epochs,
+            total_epochs=meta.total_epochs,
             drop_last=True,
+            total_steps=meta.total_steps,
         )  # TODO: support resume
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
 
@@ -251,9 +250,10 @@ class RolloutDataReader(BufferReader):
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=subset_name, split=self.split, trust_remote_code=True),
             name=meta.name,
-            max_epoch=self.meta.total_epochs if meta.task_type == TaskType.EXPLORE else 1,
+            total_epochs=self.meta.total_epochs if meta.task_type == TaskType.EXPLORE else 1,
             offset=self.meta.index,
             drop_last=self.meta.task_type == TaskType.EXPLORE,
+            total_steps=meta.total_steps,
         )
         self.read_batch_size = config.batch_size
         self.prompt_key = meta.format.prompt_key
@@ -296,9 +296,6 @@ class RolloutDataReader(BufferReader):
             )
             tasks.append(task)
         return tasks
-
-    def reset(self):
-        self.dataset.reset()
 
 
 @FILE_READERS.register_module("raw")
