@@ -163,7 +163,7 @@ class TensorBoardParser:
     def metric_steps(self, metric_name: str) -> List[int]:
         if not self.metric_exist(metric_name):
             raise ValueError(f"Metric '{metric_name}' does not exist.")
-        return list(sorted(self._metrics[metric_name].keys()))
+        return list(self._metrics[metric_name].keys())
 
     def metric_values(self, metric_name: str) -> List:
         if not self.metric_exist(metric_name):

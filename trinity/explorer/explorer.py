@@ -260,12 +260,13 @@ class Explorer:
         if self.config.explorer.bench_on_latest_checkpoint:
             self.explore_step_num = await self._checkpoint_weights_update()
             self.eval()
-            await self._log_eval_metrics()
+            await self._log_eval_metrics(prefix="bench")
             return True
 
         # benchmark on base model
-        self.eval()
-        await self._log_eval_metrics()
+        if self.config.explorer.eval_on_startup:
+            await self._log_eval_metrics(prefix="bench")
+
         # benchmark on all checkoints
         all_ckp_steps = sorted(
             [
@@ -278,7 +279,7 @@ class Explorer:
         for step_num in all_ckp_steps:
             self.explore_step_num = await self._checkpoint_weights_update(step_num=step_num)
             self.eval()
-            await self._log_eval_metrics()
+            await self._log_eval_metrics(prefix="bench")
         return True
 
     async def save_checkpoint(self, sync_weight: bool = False) -> None:
@@ -323,7 +324,7 @@ class Explorer:
             metric = gather_metrics([status.metric for status in results], "rollout")
             self.monitor.log(metric, step=step)
 
-    async def _log_eval_metrics(self, step: Optional[int] = None) -> None:
+    async def _log_eval_metrics(self, step: Optional[int] = None, prefix: str = "eval") -> None:
         if not self.pending_eval_tasks:
             return
         step = step or self.explore_step_num
@@ -336,9 +337,11 @@ class Explorer:
             self.pending_eval_tasks.popleft()
             eval_results = await self.scheduler.get_results(f"{step}/{eval_task_name}")
             metric.update(
-                gather_metrics([status.metric for status in eval_results], f"eval/{eval_task_name}")
+                gather_metrics(
+                    [status.metric for status in eval_results], f"{prefix}/{eval_task_name}"
+                )
             )
-        metric["eval/total_time"] = time.time() - st
+        metric[f"{prefix}/total_time"] = time.time() - st
         self.monitor.log(metric, step)
 
     async def running_status(self) -> RunningStatus:

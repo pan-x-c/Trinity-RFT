@@ -30,7 +30,7 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
         if os.path.exists(cls.temp_output_path):
             os.system(f"rm -rf {cls.temp_output_path}")
 
-    def test_file_buffer(self):
+    async def test_file_buffer(self):
         meta = StorageConfig(
             name="test_buffer",
             path=os.path.join(self.temp_output_path, "buffer.jsonl"),
@@ -46,8 +46,9 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
 
         # test writer
         writer = JSONWriter(meta, None)
+        await writer.acquire()
         writer.write(data)
-        writer.release()
+        await writer.release()
 
         # test reader
         meta.path = self.temp_output_path

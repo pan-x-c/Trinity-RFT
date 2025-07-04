@@ -106,14 +106,15 @@ class TestTrainerCountdown(BaseTrainerCase):
         self.config.check_and_update()
         bench(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
-        countdown_metrics = parser.metric_list("eval/countdown")
-        copy_countdown_metrics = parser.metric_list("eval/copy_countdown")
-        self.assertTrue(len(countdown_metrics) > 0)
-        self.assertTrue(len(copy_countdown_metrics) > 0)
-        countdown_metric_steps = parser.metric_steps(countdown_metrics[0])
-        countdown_copy_metric_steps = parser.metric_steps(copy_countdown_metrics[0])
-        self.assertEqual([0, 4, 8], countdown_metric_steps)
-        self.assertEqual([0, 4, 8], countdown_copy_metric_steps)
+        for prefix in ["eval", "bench"]:
+            countdown_metrics = parser.metric_list(f"{prefix}/countdown")
+            copy_countdown_metrics = parser.metric_list(f"{prefix}/copy_countdown")
+            self.assertTrue(len(countdown_metrics) > 0)
+            self.assertTrue(len(copy_countdown_metrics) > 0)
+            countdown_metric_steps = parser.metric_steps(countdown_metrics[0])
+            countdown_copy_metric_steps = parser.metric_steps(copy_countdown_metrics[0])
+            self.assertEqual([0, 4, 8], countdown_metric_steps)
+            self.assertEqual([0, 4, 8], countdown_copy_metric_steps)
 
     def tearDown(self):
         # remove dir only when the test passed
@@ -352,7 +353,7 @@ class TestFullyAsyncMode(unittest.TestCase):
         explorer_process_1 = multiprocessing.Process(target=run_explorer, args=(explorer1_config,))
         explorer_process_1.start()
 
-        time.sleep(20)
+        time.sleep(5)
         explorer2_config.explorer.name = "explorer2"
         explorer2_config.check_and_update()
         explorer_process_2 = multiprocessing.Process(target=run_explorer, args=(explorer2_config,))
