@@ -24,6 +24,7 @@ class _HFBatchReader:
         self,
         dataset: Dataset,
         name: str,
+        default_batch_size: int,
         total_epochs: int = 1,
         offset: int = 0,
         drop_last: bool = True,
@@ -43,7 +44,7 @@ class _HFBatchReader:
 
         # convert epochs/steps to sample number
         if total_steps:
-            self.total_samples = total_steps * self.dataset_size
+            self.total_samples = default_batch_size * total_steps
         else:
             self.total_samples = self.dataset_size * total_epochs
         self.progress_bar = tqdm(
@@ -94,9 +95,10 @@ class SFTDataReader(BufferReader):
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=subset_name, split=self.split, trust_remote_code=True),
             name=meta.name,
+            default_batch_size=self.read_batch_size,
             total_epochs=meta.total_epochs,
             drop_last=True,
-            total_steps=config.total_steps,
+            total_steps=meta.total_steps,
         )
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
 
@@ -174,6 +176,7 @@ class DPODataReader(BufferReader):
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=subset_name, split=self.split, trust_remote_code=True),
             name=meta.name,
+            default_batch_size=self.read_batch_size,
             total_epochs=meta.total_epochs,
             drop_last=True,
             total_steps=meta.total_steps,
@@ -247,15 +250,16 @@ class RolloutDataReader(BufferReader):
         # disable datasets caching to avoid reuse old-version dataset
         self.epoch = 0
         datasets.disable_caching()
+        self.read_batch_size = config.batch_size
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=subset_name, split=self.split, trust_remote_code=True),
             name=meta.name,
+            default_batch_size=self.read_batch_size,
             total_epochs=self.meta.total_epochs if meta.task_type == TaskType.EXPLORE else 1,
             offset=self.meta.index,
             drop_last=self.meta.task_type == TaskType.EXPLORE,
             total_steps=meta.total_steps,
         )
-        self.read_batch_size = config.batch_size
         self.prompt_key = meta.format.prompt_key
         self.response_key = meta.format.response_key
         self.workflow_key = meta.format.workflow_key
