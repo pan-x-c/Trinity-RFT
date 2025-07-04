@@ -287,7 +287,9 @@ class Explorer:
         self.logger.info("Waiting for all tasks to complete")
         await self.scheduler.wait_all()
         self.logger.info(f"All tasks before step {self.explore_step_num} have completed.")
-        await self._log_metrics(self.last_sync_step + 1, self.explore_step_num)
+        log_task = asyncio.create_task(
+            self._log_metrics(self.last_sync_step + 1, self.explore_step_num)
+        )
 
         if sync_weight:
             # sync weights
@@ -300,6 +302,9 @@ class Explorer:
             self.status = RunningStatus.RUNNING
             self.last_sync_step = self.explore_step_num
             self.logger.info(f"Explorer sync_weights at step {self.explore_step_num} finished")
+
+        # overlay log and weight sync
+        await log_task
 
         # save explore checkpoint
         self.cache.save_explorer(
