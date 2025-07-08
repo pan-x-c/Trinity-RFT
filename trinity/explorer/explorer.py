@@ -77,6 +77,8 @@ class Explorer:
             self.state_dict_meta = []
         self.status = RunningStatus.RUNNING
         self.logger.info("Finished initializing Explorer.")
+        self._nccl_ready = False
+        self._nccl_ready_condition = asyncio.Condition()
 
     async def setup_weight_sync_group(
         self, master_address: str, master_port: int, state_dict_meta: List = None
@@ -156,11 +158,20 @@ class Explorer:
         except Exception as e:
             self.logger.warning(f"Fail to load checkpoint: {e}")
 
+    async def notify_nccl_ready(self):
+        async with self._nccl_ready_condition:
+            self._nccl_ready = True
+            self._nccl_ready_condition.notify_all()
+
     async def _nccl_weights_update(self):
         assert self.state_dict_meta is not None
-        await asyncio.gather(
-            *[model.sync_model.remote(self.explore_step_num) for model in self.models]
-        )
+        async with self._nccl_ready_condition:
+            if not self._nccl_ready:
+                await self._nccl_ready_condition.wait_for(lambda: self._nccl_ready)
+            self._nccl_ready = False
+            await asyncio.gather(
+                *[model.sync_model.remote(self.explore_step_num) for model in self.models]
+            )
 
     async def prepare(self) -> None:
         """Preparation before running."""
