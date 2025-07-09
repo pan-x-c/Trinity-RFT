@@ -42,6 +42,9 @@ class RunnerWrapper:
             .options(
                 namespace=self.namespace,
                 scheduling_strategy="SPREAD",
+                runtime_env={
+                    "env_vars": self.config.explorer.env_vars,
+                },
             )
             .remote(self.config, self.rollout_model, self.auxiliary_models)
         )

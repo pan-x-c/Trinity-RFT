@@ -310,6 +310,8 @@ class ExplorerConfig:
     runner_per_model: int = 8  # number of runners per each rollout model
     max_timeout: int = 900  # wait each task for 15 minutes
     max_retry_times: int = 2  # retry each task for 2 times if it fails or timeout
+    env_vars: dict = field(default_factory=dict)  # environment variables for workflow runner
+
     runner_num: Optional[int] = None  # deprecated
 
     # for inference models
