@@ -173,6 +173,7 @@ class Explorer:
         await asyncio.gather(
             *[model.sync_model.remote(self.explore_step_num) for model in self.models]
         )
+        self.status = RunningStatus.RUNNING
 
     async def ready_to_sync(self):
         async with self._ready_to_sync_condition:
@@ -313,12 +314,10 @@ class Explorer:
         if sync_weight:
             # sync weights
             self.logger.info(f"Explorer sync_weights at step {self.explore_step_num} started.")
-            self.status = RunningStatus.WAITING_SYNC
             if self.use_checkpoint_weights_update:
                 await self._checkpoint_weights_update()
             else:  # nccl weights update
                 await self._nccl_weights_update()
-            self.status = RunningStatus.RUNNING
             self.last_sync_step = self.explore_step_num
             self.logger.info(f"Explorer sync_weights at step {self.explore_step_num} finished")
 
@@ -328,16 +327,7 @@ class Explorer:
     async def sync_weight(self) -> None:
         """Synchronize model weights."""
         # call this method before training start to load the latest model weights
-        self.logger.info(f"Explorer sync weights at step {self.explore_step_num}.")
-        if self.use_checkpoint_weights_update:
-            await self._checkpoint_weights_update()
-        else:  # nccl weights update
-            await self._nccl_weights_update()
-        # save explore checkpoint
-        self.cache.save_explorer(
-            current_step=self.explore_step_num,
-            current_task_index=self.explore_step_num * self.config.buffer.batch_size,
-        )
+        await self.save_checkpoint(sync_weight=True)
 
     async def _log_metrics(self, start_step: int, end_step: int) -> None:
         for step in range(start_step, end_step + 1):
