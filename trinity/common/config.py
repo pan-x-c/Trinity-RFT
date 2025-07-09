@@ -311,6 +311,7 @@ class ExplorerConfig:
     max_timeout: int = 900  # wait each task for 15 minutes
     max_retry_times: int = 2  # retry each task for 2 times if it fails or timeout
     env_vars: dict = field(default_factory=dict)  # environment variables for workflow runner
+    max_repeat_times: Optional[int] = None  # the number of time to repeat each task in a single workflow runner (for GRPO-like algorithms)
 
     runner_num: Optional[int] = None  # deprecated
 
