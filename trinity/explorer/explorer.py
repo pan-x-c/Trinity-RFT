@@ -287,7 +287,7 @@ class Explorer:
         if self.config.explorer.eval_on_startup:
             await self._log_eval_metrics(prefix="bench")
 
-        # benchmark on all checkoints
+        # benchmark on all checkpoints
         all_ckp_steps = sorted(
             [
                 int(ckp.split("global_step_")[-1])
@@ -323,6 +323,12 @@ class Explorer:
 
         # overlay log and weight sync
         await log_task
+
+        # save explore checkpoint
+        self.cache.save_explorer(
+            current_step=self.explore_step_num,
+            current_task_index=self.explore_step_num * self.config.buffer.batch_size,
+        )
 
     async def sync_weight(self) -> None:
         """Synchronize model weights."""
@@ -363,10 +369,6 @@ class Explorer:
 
     async def running_status(self) -> RunningStatus:
         return self.status
-
-    def flush_log(self, step: int) -> None:
-        """Flush the log of the current step."""
-        self.monitor.log({}, step=step, commit=True)
 
     async def shutdown(self) -> None:
         self.monitor.close()
