@@ -370,15 +370,12 @@ class Scheduler:
                 self.logger.debug("All tasks completed successfully")
                 return
 
-            pending_count = sum(len(tasks) for tasks in self.pending_tasks.values())
-            running_count = sum(len(futures) for futures in self.running_tasks.values())
             completed_count = sum(len(tasks) for tasks in self.completed_tasks.values())
             if completed_count != last_completed_count:
                 # flush timeout when new tasks are completed
                 start_time = time.time()
                 last_completed_count = completed_count
 
-            self.logger.debug(f"Pending tasks: {pending_count}, Running tasks: {running_count}")
             await asyncio.sleep(0.1)
 
         pending_count = sum(len(tasks) for tasks in self.pending_tasks.values())
