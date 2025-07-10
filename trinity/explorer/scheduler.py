@@ -354,14 +354,14 @@ class Scheduler:
         """Wait for all tasks to complete without poping results. If timeout reached, raise TimeoutError.
 
         Args:
-            timeout (`float`): timeout in seconds.
+            timeout (`float`): timeout in seconds. Raise `TimeoutError` when no new tasks is completed within timeout.
             clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
         """
         timeout = timeout or self.default_timeout
         start_time = time.time()
 
         self.logger.debug("Waiting for all tasks to complete...")
-
+        last_completed_count = 0
         while time.time() - start_time < timeout:
             has_pending = bool(self.pending_tasks)
             has_running = bool(self.running_tasks)
@@ -372,6 +372,11 @@ class Scheduler:
 
             pending_count = sum(len(tasks) for tasks in self.pending_tasks.values())
             running_count = sum(len(futures) for futures in self.running_tasks.values())
+            completed_count = sum(len(tasks) for tasks in self.completed_tasks.values())
+            if completed_count != last_completed_count:
+                # flush timeout when new tasks are completed
+                start_time = time.time()
+                last_completed_count = completed_count
 
             self.logger.debug(f"Pending tasks: {pending_count}, Running tasks: {running_count}")
             await asyncio.sleep(0.1)

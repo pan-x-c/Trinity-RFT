@@ -271,6 +271,30 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(end_time - start_time, 1.0)
         await scheduler.stop()
 
+    async def test_wait_all_timeout_with_multi_batch(self):
+        self.config.explorer.max_timeout = 5
+        self.config.explorer.rollout_model.engine_num = 4
+        self.config.explorer.runner_per_model = 1
+
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+
+        tasks = generate_tasks(1, timeout_num=3, timeout_seconds=3)
+        scheduler.schedule(tasks, batch_id=0)
+        tasks = generate_tasks(2, timeout_num=2, timeout_seconds=3)
+        scheduler.schedule(tasks, batch_id=1)
+        tasks = generate_tasks(3, timeout_num=1, timeout_seconds=3)
+        scheduler.schedule(tasks, batch_id=2)
+        start_time = time.time()
+        await scheduler.wait_all()
+        end_time = time.time()
+        self.assertTrue(
+            end_time - start_time > 9,
+            f"wait time should be greater than 9, but got {end_time - start_time}",
+        )
+
+        await scheduler.stop()
+
     async def test_concurrent_operations(self):
         scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
