@@ -28,7 +28,7 @@ class QueueActor:
     def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
         self.logger = get_logger(__name__)
         self.config = config
-        self.capacity = getattr(config, "capacity", 10000)
+        self.capacity = storage_config.capacity
         self.queue = asyncio.Queue(self.capacity)
         st_config = deepcopy(storage_config)
         st_config.wrap_in_ray = False

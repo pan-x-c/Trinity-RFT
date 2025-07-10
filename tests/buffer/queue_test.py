@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 
 import torch
@@ -70,6 +71,34 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
         self.assertRaises(StopIteration, reader.read, batch_size=1)
         et = time.time()
         self.assertTrue(et - st > 2)
+
+        # test queue capacity
+        meta = StorageConfig(
+            name="test_buffer_small",
+            algorithm_type="ppo",
+            storage_type=StorageType.QUEUE,
+            max_read_timeout=3,
+            capacity=4,
+            path=BUFFER_FILE_PATH,
+        )
+        writer = QueueWriter(meta, config)
+        reader = QueueReader(meta, config)
+        writer.write([{"content": "hello"}])
+        writer.write([{"content": "hi"}])
+        writer.write([{"content": "hello"}])
+        writer.write([{"content": "hi"}])
+
+        # should be blocked
+        def write_blocking_call():
+            writer.write([{"content": "blocked"}])
+
+        thread = threading.Thread(target=write_blocking_call)
+        thread.start()
+        thread.join(timeout=2)
+        self.assertTrue(thread.is_alive(), "write() did not block as expected")
+        reader.read()
+        thread.join(timeout=1)
+        self.assertFalse(thread.is_alive())
 
     def setUp(self):
         if os.path.exists(BUFFER_FILE_PATH):
