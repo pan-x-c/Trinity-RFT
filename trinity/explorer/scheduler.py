@@ -121,7 +121,7 @@ class Scheduler:
         self.rollout_model = rollout_model
         self.auxiliary_models = auxiliary_models or []
         self.namespace = ray.get_runtime_context().namespace
-        self.timeout = config.explorer.max_timeout
+        self.default_timeout = config.explorer.max_timeout * (config.explorer.max_retry_times + 1)
         self.max_retry_times = config.explorer.max_retry_times
         self.running = False
 
@@ -298,7 +298,7 @@ class Scheduler:
             timeout (`float`): The timeout for waiting for tasks to finish. If `None`, wait for default timeout.
             clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
         """
-        timeout = timeout or self.timeout
+        timeout = timeout or self.default_timeout
         start_time = time.time()
         if min_num is None:
             min_num = 0
@@ -357,7 +357,7 @@ class Scheduler:
             timeout (`float`): timeout in seconds.
             clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
         """
-        timeout = timeout or self.timeout
+        timeout = timeout or self.default_timeout
         start_time = time.time()
 
         self.logger.debug("Waiting for all tasks to complete...")
