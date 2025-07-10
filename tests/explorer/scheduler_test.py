@@ -399,7 +399,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         await scheduler.stop()
 
     async def test_split_tasks(self):
-        self.config.explorer.max_repeat_times = 2
+        self.config.explorer.max_repeat_times_per_runner = 2
         self.config.check_and_update()
         scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()

@@ -134,7 +134,7 @@ class Scheduler:
         self.namespace = ray.get_runtime_context().namespace
         self.default_timeout = config.explorer.max_timeout * (config.explorer.max_retry_times + 1)
         self.max_retry_times = config.explorer.max_retry_times
-        self.max_repeat_times = config.explorer.max_repeat_times
+        self.max_repeat_times = config.explorer.max_repeat_times_per_runner
         self.running = False
 
         self.runner_num = len(rollout_model) * config.explorer.runner_per_model
