@@ -4,7 +4,7 @@ import asyncio
 import socket
 import time
 from abc import ABC, abstractmethod
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Union
 
 import openai
 import ray
@@ -46,22 +46,52 @@ class InferenceModel(ABC):
         return address, port
 
 
+def _history_recorder(func):
+    """Decorator to record history of the model calls."""
+
+    async def async_wrapper(self, *args, **kwargs):
+        result = await func(self, *args, **kwargs)
+        if self.enable_history:
+            self.history.append(result)
+        return result
+
+    def sync_wrapper(self, *args, **kwargs):
+        result = func(self, *args, **kwargs)
+        if self.enable_history:
+            self._record_history(result)
+        return result
+
+    return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+
+
 class ModelWrapper:
     """A wrapper for the InferenceModel Ray Actor"""
 
     # TODO: check model_type inside __init__
-    def __init__(self, model: Any, model_type: str = "vllm", record_history: bool = True):
+    def __init__(self, model: Any, model_type: str = "vllm", enable_history: bool = True):
         assert model_type.startswith("vllm"), "Only vLLM model is supported for now."
         self.model = model
         self.openai_client: openai.OpenAI = None
         self.logger = get_logger(__name__)
-        self.record_history = record_history
+        self.enable_history = enable_history
+        self.history = []
 
+    def _record_history(self, exps: Union[Experience, List[Experience]]) -> None:
+        """Record experiences to history."""
+        if isinstance(exps, Experience):
+            self.history.append(exps)
+        elif isinstance(exps, list):
+            self.history.extend(exps)
+        else:
+            raise TypeError("Expected Experience or List[Experience], got {}".format(type(exps)))
+
+    @_history_recorder
     def generate(self, prompts: List[str], **kwargs) -> List[Experience]:
         """Generate a list of experiences from a list of prompts."""
         results = ray.get([self.model.generate.remote(prompt, **kwargs) for prompt in prompts])
         return [exp for exps in results for exp in exps]
 
+    @_history_recorder
     async def generate_async(self, prompts: List[str], **kwargs) -> List[Experience]:
         """Generate a list of experiences from a list of prompts in async."""
         results = await asyncio.gather(
@@ -69,10 +99,12 @@ class ModelWrapper:
         )
         return [exp for exps in results for exp in exps]
 
+    @_history_recorder
     def chat(self, messages: List[dict], **kwargs) -> List[Experience]:
         """Generate a list of experiences from a list of messages."""
         return ray.get(self.model.chat.remote(messages, **kwargs))
 
+    @_history_recorder
     async def chat_async(self, messages: List[dict], **kwargs) -> List[Experience]:
         """Generate a list of experiences from a list of messages in async."""
         return await self.model.chat.remote(messages, **kwargs)
@@ -124,7 +156,7 @@ class ModelWrapper:
                 "Failed to connect to the API server. Please check the API server is running."
             )
         self.logger.info(f"Successfully connect to API server at {api_address}")
-        if self.record_history:
+        if self.enable_history:
             # add a decorator to the openai client to record history
             self.openai_client = openai.OpenAI(
                 base_url=api_address,
@@ -136,3 +168,12 @@ class ModelWrapper:
                 api_key="EMPTY",
             )
         return self.openai_client
+
+    def extract_experience_from_history(self, clear_history: bool = True) -> List[Experience]:
+        """Extract experiences from the history."""
+        if not self.enable_history:
+            raise ValueError("History recording is not enabled.")
+        exps = [exp for exp in self.history]
+        if clear_history:
+            self.history.clear()
+        return exps
