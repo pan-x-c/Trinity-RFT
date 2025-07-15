@@ -50,11 +50,12 @@ class ModelWrapper:
     """A wrapper for the InferenceModel Ray Actor"""
 
     # TODO: check model_type inside __init__
-    def __init__(self, model: Any, model_type: str = "vllm"):
+    def __init__(self, model: Any, model_type: str = "vllm", record_history: bool = True):
         assert model_type.startswith("vllm"), "Only vLLM model is supported for now."
         self.model = model
         self.openai_client: openai.OpenAI = None
         self.logger = get_logger(__name__)
+        self.record_history = record_history
 
     def generate(self, prompts: List[str], **kwargs) -> List[Experience]:
         """Generate a list of experiences from a list of prompts."""
@@ -110,9 +111,9 @@ class ModelWrapper:
                 "OpenAI API server is not running on current model."
                 "Please set `enable_openai_api` to `True`."
             )
-        api_address, model_path = None, None
+        api_address = None
         while True:
-            api_address, model_path = ray.get(self.model.api_server_ready.remote())
+            api_address = ray.get(self.model.api_server_ready.remote())
             if api_address is not None:
                 break
             else:
@@ -123,9 +124,15 @@ class ModelWrapper:
                 "Failed to connect to the API server. Please check the API server is running."
             )
         self.logger.info(f"Successfully connect to API server at {api_address}")
-        self.openai_client = openai.OpenAI(
-            base_url=api_address,
-            api_key="EMPTY",
-        )
-        setattr(self.openai_client, "model_path", model_path)  # TODO: may be removed
+        if self.record_history:
+            # add a decorator to the openai client to record history
+            self.openai_client = openai.OpenAI(
+                base_url=api_address,
+                api_key="EMPTY",
+            )
+        else:
+            self.openai_client = openai.OpenAI(
+                base_url=api_address,
+                api_key="EMPTY",
+            )
         return self.openai_client

@@ -323,30 +323,26 @@ class vLLMRolloutModel(InferenceModel):
     async def has_api_server(self) -> bool:
         return self.config.enable_openai_api
 
-    async def api_server_ready(self) -> Tuple[Union[str, None], Union[str, None]]:
+    async def api_server_ready(self) -> Union[str, None]:
         """Check if the OpenAI API server is ready.
 
         Returns:
             api_url (str): The URL of the OpenAI API server.
-            model_path (str): The path of the model.
         """
         if not await self.has_api_server():
-            return None, None
+            return None
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"http://{self.api_server_host}:{self.api_server_port}/health"
                 ) as response:
                     if response.status == 200:
-                        return (
-                            f"http://{self.api_server_host}:{self.api_server_port}/v1",
-                            self.config.model_path,
-                        )
+                        return f"http://{self.api_server_host}:{self.api_server_port}/v1"
                     else:
-                        return None, None
+                        return None
         except Exception as e:
             self.logger.error(e)
-            return None, None
+            return None
 
     async def reset_prefix_cache(self) -> None:
         await self.async_llm.reset_prefix_cache()

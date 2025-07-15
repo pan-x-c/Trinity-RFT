@@ -213,13 +213,12 @@ class TestAPIServer(RayUnittestBase):
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "What is your name?"},
         ]
-        response = openai_client.chat.completions.create(
-            model=self.config.model.model_path, messages=messages, n=1
-        )
+        model_id = openai_client.models.list().data[0].id
+        response = openai_client.chat.completions.create(model=model_id, messages=messages, n=1)
         self.assertEqual(1, len(response.choices))
         self.assertTrue(len(response.choices[0].message.content) > 0)
         response = openai_client.chat.completions.create(
-            model=self.config.model.model_path,
+            model=model_id,
             messages=messages,
             n=2,
             temperature=0.5,
