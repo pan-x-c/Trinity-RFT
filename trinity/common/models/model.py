@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Base Model Class"""
+import asyncio
 import socket
 import time
 from abc import ABC, abstractmethod
@@ -16,35 +17,19 @@ from trinity.utils.log import get_logger
 class InferenceModel(ABC):
     """A model for high performance for rollout inference."""
 
-    def generate(self, prompts: List[str], **kwargs) -> List[Experience]:
-        """Generate a batch of responses from a batch of prompts."""
-        raise NotImplementedError
-
-    def chat(self, messages: List[dict], **kwargs) -> List[Experience]:
-        """Generate experiences from a list of history chat messages."""
-        raise NotImplementedError
-
-    def logprobs(self, token_ids: List[int]) -> Tensor:
-        """Generate logprobs for a list of tokens."""
-        raise NotImplementedError
-
-    def convert_messages_to_experience(self, messages: List[dict]) -> Experience:
-        """Convert a list of messages into an experience."""
-        raise NotImplementedError
-
-    async def generate_async(self, prompt: str, **kwargs) -> List[Experience]:
+    async def generate(self, prompt: str, **kwargs) -> List[Experience]:
         """Generate a responses from a prompt in async."""
         raise NotImplementedError
 
-    async def chat_async(self, messages: List[dict], **kwargs) -> List[Experience]:
+    async def chat(self, messages: List[dict], **kwargs) -> List[Experience]:
         """Generate experiences from a list of history chat messages in async."""
         raise NotImplementedError
 
-    async def logprobs_async(self, tokens: List[int]) -> Tensor:
+    async def logprobs(self, tokens: List[int]) -> Tensor:
         """Generate logprobs for a list of tokens in async."""
         raise NotImplementedError
 
-    async def convert_messages_to_experience_async(self, messages: List[dict]) -> Experience:
+    async def convert_messages_to_experience(self, messages: List[dict]) -> Experience:
         """Convert a list of messages into an experience in async."""
         raise NotImplementedError
 
@@ -66,38 +51,46 @@ class ModelWrapper:
 
     # TODO: check model_type inside __init__
     def __init__(self, model: Any, model_type: str = "vllm"):
+        assert model_type.startswith("vllm"), "Only vLLM model is supported for now."
         self.model = model
-        self.use_async = model_type == "vllm_async"
         self.openai_client: openai.OpenAI = None
         self.logger = get_logger(__name__)
 
     def generate(self, prompts: List[str], **kwargs) -> List[Experience]:
-        if self.use_async:
-            results = ray.get(
-                [self.model.generate_async.remote(prompt, **kwargs) for prompt in prompts]
-            )
-            return [exp for exps in results for exp in exps]
-        else:
-            return ray.get(self.model.generate.remote(prompts, **kwargs))
+        """Generate a list of experiences from a list of prompts."""
+        results = ray.get([self.model.generate.remote(prompt, **kwargs) for prompt in prompts])
+        return [exp for exps in results for exp in exps]
+
+    async def generate_async(self, prompts: List[str], **kwargs) -> List[Experience]:
+        """Generate a list of experiences from a list of prompts in async."""
+        results = await asyncio.gather(
+            *[self.model.generate.remote(prompt, **kwargs) for prompt in prompts]
+        )
+        return [exp for exps in results for exp in exps]
 
     def chat(self, messages: List[dict], **kwargs) -> List[Experience]:
-        if self.use_async:
-            return ray.get(self.model.chat_async.remote(messages, **kwargs))
-        else:
-            return ray.get(self.model.chat.remote(messages, **kwargs))
+        """Generate a list of experiences from a list of messages."""
+        return ray.get(self.model.chat.remote(messages, **kwargs))
+
+    async def chat_async(self, messages: List[dict], **kwargs) -> List[Experience]:
+        """Generate a list of experiences from a list of messages in async."""
+        return await self.model.chat.remote(messages, **kwargs)
 
     def logprobs(self, tokens: List[int]) -> Tensor:
-        if self.use_async:
-            return ray.get(self.model.logprobs_async.remote(tokens))
-        else:
-            return ray.get(self.model.logprobs.remote(tokens))
+        """Calculate the logprobs of the given tokens."""
+        return ray.get(self.model.logprobs.remote(tokens))
+
+    async def logprobs_async(self, tokens: List[int]) -> Tensor:
+        """Calculate the logprobs of the given tokens in async."""
+        return await self.model.logprobs.remote(tokens)
 
     def convert_messages_to_experience(self, messages: List[dict]) -> Experience:
         """Convert a list of messages into an experience."""
-        if self.use_async:
-            return ray.get(self.model.convert_messages_to_experience_async.remote(messages))
-        else:
-            return ray.get(self.model.convert_messages_to_experience.remote(messages))
+        return ray.get(self.model.convert_messages_to_experience.remote(messages))
+
+    async def convert_messages_to_experience_async(self, messages: List[dict]) -> Experience:
+        """Convert a list of messages into an experience in async."""
+        return await self.model.convert_messages_to_experience.remote(messages)
 
     @property
     def model_version(self) -> int:

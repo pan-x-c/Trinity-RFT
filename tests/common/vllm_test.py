@@ -130,22 +130,6 @@ class BaseTestModelWrapper:
         self.assertRaises(ValueError, self.model_wrapper.get_openai_client)
 
 
-class TestModelWrapperSyncV0(BaseTestModelWrapper, RayUnittestBase):
-    def setUp(self):
-        self.config = get_template_config()
-        self.config.mode = "explore"
-        self.config.model.model_path = get_model_path()
-        self.config.explorer.rollout_model.engine_type = "vllm"
-        self.config.explorer.rollout_model.tensor_parallel_size = 1
-        self.config.explorer.rollout_model.engine_num = 2
-        self.config.explorer.rollout_model.use_v1 = False
-        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        self.config.algorithm.repeat_times = 2
-        self.config.check_and_update()
-        self.engines, self.auxiliary_engines = create_inference_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm")
-
-
 class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
     def setUp(self):
         self.config = get_template_config()
