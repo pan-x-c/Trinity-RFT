@@ -324,6 +324,7 @@ explorer:
     engine_type: vllm_async
     engine_num: 1
     tensor_parallel_size: 1
+    enable_history: False
   auxiliary_models:
   - model_path: /PATH/TO/MODEL
     tensor_parallel_size: 1
@@ -339,6 +340,7 @@ explorer:
 - `rollout_model.engine_type`: Type of inference engine. Options: `vllm_async` (recommended), `vllm`.
 - `rollout_model.engine_num`: Number of inference engines.
 - `rollout_model.tensor_parallel_size`: Degree of tensor parallelism.
+- `rollout_model.enable_history`: Whether to enable model call history recording. If set to `True`, the model wrapper automatically records the return experiences of model calls. Please periodically extract the history via `extract_experience_from_history` to avoid out-of-memory issues. Default is `False`.
 - `auxiliary_models`: Additional models used for custom workflows.
 - `eval_interval`: Interval (in steps) for evaluating the model.
 - `eval_on_startup`: Whether to evaluate the model on startup. More precisely, at step 0 with the original model, so it will not be triggered when restarting.

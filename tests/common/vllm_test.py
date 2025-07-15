@@ -88,15 +88,19 @@ class BaseTestModelWrapper:
         n = self.config.algorithm.repeat_times
         generate_results = self.model_wrapper.generate(prompts, n=n, temperature=1.0)
         self.assertEqual(len(generate_results), len(prompts) * n)
-        history_experiences = self.model_wrapper.extract_experience_from_history(
-            clear_history=False
-        )
-        self.assertEqual(len(history_experiences), len(generate_results))
-        for exp, history_exp in zip(generate_results, history_experiences):
-            self.assertEqual(exp.response_text, history_exp.response_text)
-            self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
-            self.assertEqual(exp.prompt_length, history_exp.prompt_length)
-            self.assertEqual(exp.logprobs, history_exp.logprobs)
+        if self.config.explorer.rollout_model.enable_history:
+            history_experiences = self.model_wrapper.extract_experience_from_history(
+                clear_history=False
+            )
+            self.assertEqual(len(history_experiences), len(generate_results))
+            for exp, history_exp in zip(generate_results, history_experiences):
+                self.assertEqual(exp.response_text, history_exp.response_text)
+                self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
+                self.assertEqual(exp.prompt_length, history_exp.prompt_length)
+                self.assertEqual(exp.logprobs.tolist(), history_exp.logprobs.tolist())
+        else:
+            with self.assertRaises(ValueError):
+                self.model_wrapper.extract_experience_from_history(clear_history=False)
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "What's the weather like today?"},
@@ -108,13 +112,14 @@ class BaseTestModelWrapper:
         ]
         results = self.model_wrapper.chat(messages, n=n, temperature=1.0)
         self.assertEqual(len(results), n)
-        history_experiences = self.model_wrapper.extract_experience_from_history()
-        self.assertEqual(len(history_experiences) - len(generate_results), len(results))
-        for exp, history_exp in zip(results, history_experiences[len(generate_results) :]):
-            self.assertEqual(exp.response_text, history_exp.response_text)
-            self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
-            self.assertEqual(exp.prompt_length, history_exp.prompt_length)
-            self.assertEqual(exp.logprobs, history_exp.logprobs)
+        if self.config.explorer.rollout_model.enable_history:
+            history_experiences = self.model_wrapper.extract_experience_from_history()
+            self.assertEqual(len(history_experiences) - len(generate_results), len(results))
+            for exp, history_exp in zip(results, history_experiences[len(generate_results) :]):
+                self.assertEqual(exp.response_text, history_exp.response_text)
+                self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
+                self.assertEqual(exp.prompt_length, history_exp.prompt_length)
+                self.assertEqual(exp.logprobs.tolist(), history_exp.logprobs.tolist())
         for result in results:
             input_logprobs = result.logprobs[: result.prompt_length]
             output_logprobs = result.logprobs[result.prompt_length :]
@@ -122,8 +127,9 @@ class BaseTestModelWrapper:
             self.assertTrue(torch.any(output_logprobs != 0))
         logprobs = self.model_wrapper.logprobs(results[0].tokens.tolist())
         self.assertEqual(logprobs.shape[0], results[0].tokens.shape[0])
-        history_experiences = self.model_wrapper.extract_experience_from_history()
-        self.assertTrue(len(history_experiences) == 0)
+        if self.config.explorer.rollout_model.enable_history:
+            history_experiences = self.model_wrapper.extract_experience_from_history()
+            self.assertTrue(len(history_experiences) == 0)
         messages.append(
             {
                 "role": "assistant",
@@ -146,8 +152,9 @@ class BaseTestModelWrapper:
         self.assertTrue(torch.equal(result_dict["assistant_masks"][0], exp.action_mask))
         self.assertTrue(torch.equal(result_dict["input_ids"][0], exp.tokens))
         self.assertRaises(ValueError, self.model_wrapper.get_openai_client)
-        history_experiences = self.model_wrapper.extract_experience_from_history()
-        self.assertTrue(len(history_experiences) == 0)
+        if self.config.explorer.rollout_model.enable_history:
+            history_experiences = self.model_wrapper.extract_experience_from_history()
+            self.assertTrue(len(history_experiences) == 0)
 
 
 class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
@@ -161,9 +168,12 @@ class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
         self.config.explorer.rollout_model.use_v1 = False
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.algorithm.repeat_times = 2
+        self.config.explorer.rollout_model.enable_history = True
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
+        self.model_wrapper = ModelWrapper(
+            self.engines[0], model_type="vllm_async", enable_history=True
+        )
 
 
 class TestModelWrapperAsyncTPV0(BaseTestModelWrapper, RayUnittestBase):
@@ -192,9 +202,12 @@ class TestModelWrapperAsyncTPV1(BaseTestModelWrapper, RayUnittestBase):
         self.config.explorer.rollout_model.use_v1 = True
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.algorithm.repeat_times = 2
+        self.config.explorer.rollout_model.enable_history = True
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
+        self.model_wrapper = ModelWrapper(
+            self.engines[0], model_type="vllm_async", enable_history=True
+        )
 
 
 class TestModelWrapperAsyncV1(BaseTestModelWrapper, RayUnittestBase):

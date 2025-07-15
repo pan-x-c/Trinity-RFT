@@ -45,6 +45,7 @@ def create_inference_models(
 
     from trinity.common.models.vllm_model import vLLMRolloutModel
 
+    logger = get_logger(__name__)
     engine_num = config.explorer.rollout_model.engine_num
     tensor_parallel_size = config.explorer.rollout_model.tensor_parallel_size
 
@@ -105,7 +106,11 @@ def create_inference_models(
     if config.explorer.rollout_model.enable_openai_api:
         for engine in rollout_engines:
             engine.run_api_server.remote()
-
+    if config.explorer.rollout_model.enable_history:
+        logger.info(
+            "Model History recording is enabled. Please periodically extract "
+            "history via `extract_experience_from_history` to avoid out-of-memory issues."
+        )
     # create auxiliary models
     for model_config in config.explorer.auxiliary_models:
         engines = []

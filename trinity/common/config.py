@@ -203,6 +203,9 @@ class InferenceModelConfig:
     # For Qwen3
     enable_thinking: bool = False
 
+    # For history recording
+    enable_history: bool = False
+
     # For OpenAI API
     enable_openai_api: bool = False
 
