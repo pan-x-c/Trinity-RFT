@@ -238,7 +238,9 @@ class TestAPIServer(RayUnittestBase):
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
+        self.model_wrapper = ModelWrapper(
+            self.engines[0], model_type="vllm_async", enable_history=True
+        )
 
     def test_api(self):
         openai_client = self.model_wrapper.get_openai_client()
@@ -264,6 +266,10 @@ class TestAPIServer(RayUnittestBase):
         self.assertTrue(response.choices[0].logprobs.content[0].logprob < 0)
         self.assertTrue(hasattr(response, "prompt_token_ids"))
         self.assertTrue(len(response.prompt_token_ids) > 0)
+        self.assertTrue(hasattr(response.choices[0], "token_ids"))
+        self.assertTrue(len(response.choices[0].token_ids) > 0)
+        exps = self.model_wrapper.extract_experience_from_history()
+        self.assertEqual(len(exps), 3)
 
 
 class TestTokenizer(unittest.TestCase):

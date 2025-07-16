@@ -42,9 +42,18 @@ from trinity.utils.log import get_logger
 class PatchedChatCompletionResponse(ChatCompletionResponse):
     prompt_token_ids: list[int] = []
 
-    def __init__(self, *args, prompt_token_ids=None, **kwargs):
+    def __init__(self, *args, prompt_token_ids=None, response_token_ids=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.prompt_token_ids = prompt_token_ids or []
+        self.response_token_ids = response_token_ids or []
+
+
+class PatchedChatCompletionResponseChoice(ChatCompletionResponseChoice):
+    token_ids: list[int] = []
+
+    def __init__(self, *args, token_ids=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.token_ids = token_ids or []
 
 
 # TODO: add patch to stream generator
@@ -218,6 +227,7 @@ async def chat_completion_full_generator(  # noqa C901
             if output.finish_reason
             else "stop",
             stop_reason=output.stop_reason,
+            token_ids=output.token_ids,
         )
         choices.append(choice_data)
 
@@ -248,8 +258,6 @@ async def chat_completion_full_generator(  # noqa C901
         )
 
     request_metadata.final_usage_info = usage
-
-    print(str(final_res))
 
     response = PatchedChatCompletionResponse(
         id=request_id,

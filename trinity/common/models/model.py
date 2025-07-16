@@ -8,6 +8,7 @@ from typing import Any, List, Tuple, Union
 
 import openai
 import ray
+import torch
 from torch import Tensor
 
 from trinity.common.experience import Experience
@@ -166,6 +167,7 @@ class ModelWrapper:
 
             def record_chat_completions(*args, **kwargs):
                 response = ori_create(*args, **kwargs)
+                self.history.extend(convert_api_output_to_experience(response))
                 return response
 
             self.openai_client.chat.completions.create = record_chat_completions
@@ -180,3 +182,43 @@ class ModelWrapper:
         if clear_history:
             self.history.clear()
         return exps
+
+
+def convert_api_output_to_experience(
+    output,
+) -> List[Experience]:
+    """Convert the API output to a list of experiences."""
+    return [
+        Experience(
+            tokens=torch.cat(
+                (
+                    torch.tensor(output.prompt_token_ids, dtype=torch.int32),
+                    torch.tensor(choice.token_ids, dtype=torch.int32),
+                )
+            ),
+            logprobs=torch.cat(
+                (
+                    torch.full(
+                        (len(output.prompt_token_ids),),
+                        0.0,
+                        dtype=torch.float32,
+                    ),
+                    extract_logprobs(choice),
+                )
+            ),
+            prompt_length=len(output.prompt_token_ids),
+            prompt_text=None,
+            response_text=choice.message.content,
+        )
+        for choice in output.choices
+    ]
+
+
+def extract_logprobs(choice) -> Tensor:
+    """Extract logprobs from a list of logprob dictionaries."""
+    if not hasattr(choice, "logprobs") or choice.logprobs is None:
+        return torch.tensor([], dtype=torch.float32)
+    return torch.tensor(
+        [logprob.logprob for logprob in choice.logprobs.content],
+        dtype=torch.float32,
+    )
