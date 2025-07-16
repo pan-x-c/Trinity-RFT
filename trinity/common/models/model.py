@@ -156,17 +156,20 @@ class ModelWrapper:
                 "Failed to connect to the API server. Please check the API server is running."
             )
         self.logger.info(f"Successfully connect to API server at {api_address}")
+        self.openai_client = openai.OpenAI(
+            base_url=api_address,
+            api_key="EMPTY",
+        )
         if self.enable_history:
             # add a decorator to the openai client to record history
-            self.openai_client = openai.OpenAI(
-                base_url=api_address,
-                api_key="EMPTY",
-            )
-        else:
-            self.openai_client = openai.OpenAI(
-                base_url=api_address,
-                api_key="EMPTY",
-            )
+            ori_create = self.openai_client.chat.completions.create
+
+            def record_chat_completions(*args, **kwargs):
+                response = ori_create(*args, **kwargs)
+                return response
+
+            self.openai_client.chat.completions.create = record_chat_completions
+
         return self.openai_client
 
     def extract_experience_from_history(self, clear_history: bool = True) -> List[Experience]:

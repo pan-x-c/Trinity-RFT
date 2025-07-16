@@ -262,6 +262,8 @@ class TestAPIServer(RayUnittestBase):
         self.assertTrue(response.choices[0].logprobs is not None)
         self.assertEqual(0, len(response.choices[0].logprobs.content[0].top_logprobs))
         self.assertTrue(response.choices[0].logprobs.content[0].logprob < 0)
+        self.assertTrue(hasattr(response, "prompt_token_ids"))
+        self.assertTrue(len(response.prompt_token_ids) > 0)
 
 
 class TestTokenizer(unittest.TestCase):

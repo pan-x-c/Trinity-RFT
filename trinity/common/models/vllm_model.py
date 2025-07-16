@@ -313,7 +313,7 @@ class vLLMRolloutModel(InferenceModel):
         """
         if not (self.api_server_host is None or self.api_server_port is None):
             raise RuntimeError("API server is already running.")
-        from trinity.common.models.openai_api import run_api_server_in_ray_actor
+        from trinity.common.models.api.vllm_patch import run_api_server_in_ray_actor
 
         self.api_server_host, self.api_server_port = self.get_available_address()
         await run_api_server_in_ray_actor(
