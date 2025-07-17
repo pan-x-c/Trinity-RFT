@@ -108,7 +108,7 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(
-            self.engines[0], model_type="vllm_async", enable_history=True
+            self.engines[0], model_type="vllm_async", enable_history=self.enable_history
         )
 
     async def test_generate(
@@ -214,6 +214,9 @@ class TestAPIServer(RayUnittestBase):
         self.model_wrapper = ModelWrapper(
             self.engines[0], model_type="vllm_async", enable_history=True
         )
+        self.model_wrapper_no_history = ModelWrapper(
+            self.engines[0], model_type="vllm_async", enable_history=False
+        )
 
     def test_api(self):
         openai_client = self.model_wrapper.get_openai_client()
@@ -253,6 +256,10 @@ class TestAPIServer(RayUnittestBase):
         )
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 4)
+        self.assertTrue(len(self.model_wrapper.extract_experience_from_history()), 0)
+        response = self.model_wrapper_no_history.get_openai_client().chat.completions.create(model_id, messages=messages, n=2)
+        self.assertEqual(2, len(response.choices))
+        self.assertEqual(len(self.model_wrapper_no_history.extract_experience_from_history()), 0)
 
 
 class TestTokenizer(unittest.TestCase):

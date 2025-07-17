@@ -53,7 +53,7 @@ def _history_recorder(func):
     async def async_wrapper(self, *args, **kwargs):
         result = await func(self, *args, **kwargs)
         if self.enable_history:
-            self.history.append(result)
+            self._record_history(result)
         return result
 
     def sync_wrapper(self, *args, **kwargs):
