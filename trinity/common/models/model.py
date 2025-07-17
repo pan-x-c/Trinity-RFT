@@ -171,7 +171,7 @@ class ModelWrapper:
                 return response
 
             self.openai_client.chat.completions.create = record_chat_completions
-
+        setattr(self.openai_client, "model_path", self.openai_client.models.list().data[0].id)
         return self.openai_client
 
     def extract_experience_from_history(self, clear_history: bool = True) -> List[Experience]:

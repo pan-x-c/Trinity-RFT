@@ -1,7 +1,7 @@
 """Patch for vllm OpenAI API server.
 
 1. Mocks the `add_signal_handler` method to do nothing.
-2. Adds `prompt` and `prompt_token_ids` to the `ChatCompletionResponse`.
+2. Adds `token_ids` and `prompt_token_ids` to the `ChatCompletionResponse`.
 """
 import asyncio
 import functools
@@ -9,7 +9,7 @@ import json
 import time
 from typing import Optional, Union
 
-from pydantic import TypeAdapter
+from pydantic import Field, TypeAdapter
 from vllm.entrypoints.launcher import serve_http
 from vllm.entrypoints.openai.api_server import (
     build_app,
@@ -39,21 +39,13 @@ from vllm.utils import FlexibleArgumentParser, set_ulimit
 from trinity.utils.log import get_logger
 
 
-class PatchedChatCompletionResponse(ChatCompletionResponse):
-    prompt_token_ids: list[int] = []
-
-    def __init__(self, *args, prompt_token_ids=None, response_token_ids=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.prompt_token_ids = prompt_token_ids or []
-        self.response_token_ids = response_token_ids or []
-
-
 class PatchedChatCompletionResponseChoice(ChatCompletionResponseChoice):
-    token_ids: list[int] = []
+    token_ids: list[int] = Field(default_factory=list)
 
-    def __init__(self, *args, token_ids=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.token_ids = token_ids or []
+
+class PatchedChatCompletionResponse(ChatCompletionResponse):
+    prompt_token_ids: list[int] = Field(default_factory=list)
+    choices: list[PatchedChatCompletionResponseChoice] = list[ChatCompletionResponseChoice]
 
 
 # TODO: add patch to stream generator
@@ -217,7 +209,7 @@ async def chat_completion_full_generator(  # noqa C901
             )
             message = ChatMessage(role=role, reasoning_content=reasoning_content, content=content)
 
-        choice_data = ChatCompletionResponseChoice(
+        choice_data = PatchedChatCompletionResponseChoice(
             index=output.index,
             message=message,
             logprobs=logprobs,

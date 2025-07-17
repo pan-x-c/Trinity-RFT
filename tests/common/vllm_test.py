@@ -256,10 +256,16 @@ class TestAPIServer(RayUnittestBase):
         )
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 4)
-        self.assertTrue(len(self.model_wrapper.extract_experience_from_history()), 0)
-        response = self.model_wrapper_no_history.get_openai_client().chat.completions.create(model_id, messages=messages, n=2)
+        self.assertEqual(len(self.model_wrapper.extract_experience_from_history()), 0)
+        response = self.model_wrapper_no_history.get_openai_client().chat.completions.create(
+            model=model_id, messages=messages, n=2
+        )
         self.assertEqual(2, len(response.choices))
-        self.assertEqual(len(self.model_wrapper_no_history.extract_experience_from_history()), 0)
+        self.assertTrue(hasattr(response.choices[0], "token_ids"))
+        self.assertTrue(len(response.choices[0].token_ids) > 0)
+        with self.assertRaises(ValueError):
+            self.model_wrapper_no_history.extract_experience_from_history()
+        self.assertEqual(len(self.model_wrapper_no_history.history), 0)
 
 
 class TestTokenizer(unittest.TestCase):
