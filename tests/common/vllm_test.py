@@ -2,9 +2,10 @@ import os
 import unittest
 
 import torch
+from parameterized import parameterized
 from transformers import AutoTokenizer
 
-from tests.tools import RayUnittestBase, get_template_config
+from tests.tools import RayUnittestBase, RayUnittestBaseAysnc, get_template_config
 from trinity.common.models import create_inference_models
 from trinity.common.models.model import ModelWrapper
 from trinity.common.models.utils import (
@@ -82,8 +83,39 @@ CHAT_TEMPLATE = r"""
 """
 
 
-class BaseTestModelWrapper:
-    def test_generate(self):
+class ModelWrapperSyncTest(RayUnittestBase):
+    @parameterized.expand(
+        [
+            (1, 2, False, 2, True),
+            (2, 2, False, 1, False),
+            (2, 2, True, 2, True),
+            (1, 2, True, 1, False),
+        ]
+    )
+    def test_generate(
+        self,
+        tensor_parallel_size,
+        engine_num,
+        use_v1,
+        repeat_times,
+        enable_history,
+    ):
+        # configure the model
+        self.config = get_template_config()
+        self.config.mode = "explore"
+        self.config.model.model_path = get_model_path()
+        self.config.explorer.rollout_model.engine_num = engine_num
+        self.config.explorer.rollout_model.tensor_parallel_size = tensor_parallel_size
+        self.config.explorer.rollout_model.use_v1 = use_v1
+        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
+        self.config.algorithm.repeat_times = repeat_times
+        self.config.explorer.rollout_model.enable_history = enable_history
+        self.config.check_and_update()
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
+        self.model_wrapper = ModelWrapper(
+            self.engines[0], model_type="vllm_async", enable_history=True
+        )
+        # tests
         prompts = ["Hello, world!", "Hello, my name is"]
         n = self.config.algorithm.repeat_times
         generate_results = self.model_wrapper.generate(prompts, n=n, temperature=1.0)
@@ -157,72 +189,110 @@ class BaseTestModelWrapper:
             self.assertTrue(len(history_experiences) == 0)
 
 
-class TestModelWrapperAsyncV0(BaseTestModelWrapper, RayUnittestBase):
-    def setUp(self):
+class ModelWrapperAsyncTest(RayUnittestBaseAysnc):
+    @parameterized.expand(
+        [
+            (1, 2, False, 2, True),
+            (2, 2, False, 1, False),
+            (2, 2, True, 2, True),
+            (1, 2, True, 1, False),
+        ]
+    )
+    async def test_generate(
+        self,
+        tensor_parallel_size,
+        engine_num,
+        use_v1,
+        repeat_times,
+        enable_history,
+    ):
+        # configure the model
         self.config = get_template_config()
         self.config.mode = "explore"
         self.config.model.model_path = get_model_path()
-        self.config.explorer.rollout_model.engine_type = "vllm_async"
-        self.config.explorer.rollout_model.engine_num = 2
-        self.config.explorer.rollout_model.tensor_parallel_size = 1
-        self.config.explorer.rollout_model.use_v1 = False
+        self.config.explorer.rollout_model.engine_num = engine_num
+        self.config.explorer.rollout_model.tensor_parallel_size = tensor_parallel_size
+        self.config.explorer.rollout_model.use_v1 = use_v1
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        self.config.algorithm.repeat_times = 2
-        self.config.explorer.rollout_model.enable_history = True
+        self.config.algorithm.repeat_times = repeat_times
+        self.config.explorer.rollout_model.enable_history = enable_history
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(
             self.engines[0], model_type="vllm_async", enable_history=True
         )
-
-
-class TestModelWrapperAsyncTPV0(BaseTestModelWrapper, RayUnittestBase):
-    def setUp(self):
-        self.config = get_template_config()
-        self.config.mode = "explore"
-        self.config.model.model_path = get_model_path()
-        self.config.explorer.rollout_model.engine_type = "vllm_async"
-        self.config.explorer.rollout_model.engine_num = 2
-        self.config.explorer.rollout_model.tensor_parallel_size = 2
-        self.config.explorer.rollout_model.use_v1 = False
-        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        self.config.check_and_update()
-        self.engines, self.auxiliary_engines = create_inference_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
-
-
-class TestModelWrapperAsyncTPV1(BaseTestModelWrapper, RayUnittestBase):
-    def setUp(self):
-        self.config = get_template_config()
-        self.config.mode = "explore"
-        self.config.model.model_path = get_model_path()
-        self.config.explorer.rollout_model.engine_type = "vllm_async"
-        self.config.explorer.rollout_model.engine_num = 2
-        self.config.explorer.rollout_model.tensor_parallel_size = 2
-        self.config.explorer.rollout_model.use_v1 = True
-        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        self.config.algorithm.repeat_times = 2
-        self.config.explorer.rollout_model.enable_history = True
-        self.config.check_and_update()
-        self.engines, self.auxiliary_engines = create_inference_models(self.config)
-        self.model_wrapper = ModelWrapper(
-            self.engines[0], model_type="vllm_async", enable_history=True
+        # tests
+        prompts = ["Hello, world!", "Hello, my name is"]
+        n = self.config.algorithm.repeat_times
+        generate_results = await self.model_wrapper.generate_async(prompts, n=n, temperature=1.0)
+        self.assertEqual(len(generate_results), len(prompts) * n)
+        if self.config.explorer.rollout_model.enable_history:
+            history_experiences = self.model_wrapper.extract_experience_from_history(
+                clear_history=False
+            )
+            self.assertEqual(len(history_experiences), len(generate_results))
+            for exp, history_exp in zip(generate_results, history_experiences):
+                self.assertEqual(exp.response_text, history_exp.response_text)
+                self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
+                self.assertEqual(exp.prompt_length, history_exp.prompt_length)
+                self.assertEqual(exp.logprobs.tolist(), history_exp.logprobs.tolist())
+        else:
+            with self.assertRaises(ValueError):
+                self.model_wrapper.extract_experience_from_history(clear_history=False)
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "What's the weather like today?"},
+            {
+                "role": "assistant",
+                "content": "I'm sorry, but as an AI language model, I don't have access to real-time weather information. To get accurate weather information for your location, you can check a weather website or app, or look outside if possible.",
+            },
+            {"role": "user", "content": "OK, thanks!"},
+        ]
+        results = await self.model_wrapper.chat_async(messages, n=n, temperature=1.0)
+        self.assertEqual(len(results), n)
+        if self.config.explorer.rollout_model.enable_history:
+            history_experiences = self.model_wrapper.extract_experience_from_history()
+            self.assertEqual(len(history_experiences) - len(generate_results), len(results))
+            for exp, history_exp in zip(results, history_experiences[len(generate_results) :]):
+                self.assertEqual(exp.response_text, history_exp.response_text)
+                self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
+                self.assertEqual(exp.prompt_length, history_exp.prompt_length)
+                self.assertEqual(exp.logprobs.tolist(), history_exp.logprobs.tolist())
+        for result in results:
+            input_logprobs = result.logprobs[: result.prompt_length]
+            output_logprobs = result.logprobs[result.prompt_length :]
+            self.assertTrue(torch.all(input_logprobs == 0))
+            self.assertTrue(torch.any(output_logprobs != 0))
+        logprobs = await self.model_wrapper.logprobs_async(results[0].tokens.tolist())
+        self.assertEqual(logprobs.shape[0], results[0].tokens.shape[0])
+        if self.config.explorer.rollout_model.enable_history:
+            history_experiences = self.model_wrapper.extract_experience_from_history()
+            self.assertTrue(len(history_experiences) == 0)
+        messages.append(
+            {
+                "role": "assistant",
+                "content": results[0].response_text,
+            }
         )
-
-
-class TestModelWrapperAsyncV1(BaseTestModelWrapper, RayUnittestBase):
-    def setUp(self):
-        self.config = get_template_config()
-        self.config.mode = "explore"
-        self.config.model.model_path = get_model_path()
-        self.config.explorer.rollout_model.engine_type = "vllm_async"
-        self.config.explorer.rollout_model.engine_num = 2
-        self.config.explorer.rollout_model.tensor_parallel_size = 1
-        self.config.explorer.rollout_model.use_v1 = True
-        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        self.config.check_and_update()
-        self.engines, self.auxiliary_engines = create_inference_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], model_type="vllm_async")
+        exp = self.model_wrapper.convert_messages_to_experience(messages)
+        tokenizer = AutoTokenizer.from_pretrained(self.config.model.model_path)
+        result_dict = tokenizer.apply_chat_template(
+            messages,
+            chat_template=CHAT_TEMPLATE,
+            add_generation_prompt=False,
+            padding=False,
+            truncation=True,
+            return_tensors="pt",
+            add_special_tokens=False,
+            return_assistant_tokens_mask=True,
+            return_dict=True,
+        )
+        self.assertTrue(torch.equal(result_dict["assistant_masks"][0], exp.action_mask))
+        self.assertTrue(torch.equal(result_dict["input_ids"][0], exp.tokens))
+        self.assertRaises(ValueError, self.model_wrapper.get_openai_client)
+        if self.config.explorer.rollout_model.enable_history:
+            history_experiences = self.model_wrapper.extract_experience_from_history()
+            self.assertTrue(len(history_experiences) == 0)
 
 
 class TestAPIServer(RayUnittestBase):
@@ -270,6 +340,16 @@ class TestAPIServer(RayUnittestBase):
         self.assertTrue(len(response.choices[0].token_ids) > 0)
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 3)
+        response = openai_client.chat.completions.create(
+            model=model_id,
+            messages=messages,
+            n=4,
+            temperature=0.5,
+            logprobs=True,
+            top_logprobs=0,
+        )
+        exps = self.model_wrapper.extract_experience_from_history()
+        self.assertEqual(len(exps), 4)
 
 
 class TestTokenizer(unittest.TestCase):
