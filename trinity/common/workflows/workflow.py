@@ -84,10 +84,12 @@ class Workflow(ABC):
 
     def __init__(
         self,
-        model: ModelWrapper,
+        *,
         task: Task,
+        model: ModelWrapper,
         auxiliary_models: Optional[List[openai.OpenAI]] = None,
     ):
+        self.task = task
         self.model = model
         self.auxiliary_models = auxiliary_models
 
@@ -102,6 +104,7 @@ class Workflow(ABC):
     @abstractmethod
     def run(self) -> List[Experience]:
         """Run workflow and return a list of experiences."""
+        raise NotImplementedError
 
 
 class MultiTurnWorkflow(Workflow):
@@ -111,13 +114,14 @@ class MultiTurnWorkflow(Workflow):
 
     def __init__(
         self,
-        model: ModelWrapper,
+        *,
         task: Task,
+        model: ModelWrapper,
         auxiliary_models: Optional[List[openai.OpenAI]] = None,
     ):
         super().__init__(
-            model=model,
             task=task,
+            model=model,
             auxiliary_models=auxiliary_models,
         )
 
@@ -161,14 +165,15 @@ class SimpleWorkflow(Workflow):
 
     def __init__(
         self,
-        model: ModelWrapper,
+        *,
         task: Task,
+        model: ModelWrapper,
         auxiliary_models: Optional[List[openai.OpenAI]] = None,
     ):
         self.reset(task)
         super().__init__(
-            model=model,
             task=task,
+            model=model,
             auxiliary_models=auxiliary_models,
         )
 
@@ -236,14 +241,15 @@ class MathWorkflow(SimpleWorkflow):
 
     def __init__(
         self,
-        model: ModelWrapper,
+        *,
         task: Task,
+        model: ModelWrapper,
         auxiliary_models: Optional[List[openai.OpenAI]] = None,
     ):
         self.reset(task)
         super().__init__(
-            model=model,
             task=task,
+            model=model,
             auxiliary_models=auxiliary_models,
         )
 
