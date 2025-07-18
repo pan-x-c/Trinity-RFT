@@ -8,10 +8,9 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, List, Optional, Type, Union
 
 import openai
-import torch
 
 from trinity.common.config import FormatConfig, GenerationConfig
-from trinity.common.experience import Experience
+from trinity.common.experience import Experience, MultiTurnExperience
 from trinity.common.models.model import ModelWrapper
 from trinity.common.rewards.math_reward import MathRewardFn
 from trinity.common.rewards.reward_fn import RewardFn
@@ -132,24 +131,21 @@ class MultiTurnWorkflow(Workflow):
     def process_messages_to_experience(self, messages, reward, info={}) -> Experience:
         converted_experience = self.model.convert_messages_to_experience(messages)
 
-        tokens = converted_experience.tokens
+        token_ids = converted_experience.token_ids
         log_probs = converted_experience.logprobs
         assert converted_experience.action_mask is not None
         generation_mask = converted_experience.action_mask
         log_probs = log_probs * generation_mask
 
-        assert tokens.shape == log_probs.shape
-        # set prompt length to the first 1 in the gen_mask
-        prompt_length = torch.where(generation_mask == 1)[0][0].item()
+        assert token_ids.shape == log_probs.shape
 
         metrics = {}
         for k, v in info.items():
             if isinstance(v, float) or isinstance(v, int):
                 metrics[k] = float(v)
 
-        experience = Experience(
-            tokens=tokens,
-            prompt_length=prompt_length,
+        experience = MultiTurnExperience(
+            token_ids=token_ids,
             action_mask=generation_mask,
             reward=reward,
             logprobs=log_probs,
