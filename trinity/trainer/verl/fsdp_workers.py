@@ -27,7 +27,6 @@ import psutil
 import torch
 import torch.distributed
 import torch.distributed as dist
-
 import vllm  # noqa: F401 ; import vllm to set NCCL_CUMEM_ENABLE automatically.
 from codetiming import Timer
 from omegaconf import DictConfig, OmegaConf, open_dict
