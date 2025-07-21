@@ -133,13 +133,13 @@ class MultiTurnWorkflow(Workflow):
     def process_messages_to_experience(self, messages, reward, info={}) -> Experience:
         converted_experience = self.model.convert_messages_to_experience(messages)
 
-        token_ids = converted_experience.token_ids
+        tokens = converted_experience.tokens
         log_probs = converted_experience.logprobs
         assert converted_experience.action_mask is not None
         generation_mask = converted_experience.action_mask
         log_probs = log_probs * generation_mask
 
-        assert token_ids.shape == log_probs.shape
+        assert tokens.shape == log_probs.shape
 
         metrics = {}
         for k, v in info.items():
@@ -147,7 +147,7 @@ class MultiTurnWorkflow(Workflow):
                 metrics[k] = float(v)
 
         experience = Experience(
-            token_ids=token_ids,
+            tokens=tokens,
             action_mask=generation_mask,
             reward=reward,
             logprobs=log_probs,

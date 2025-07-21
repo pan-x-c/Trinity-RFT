@@ -83,7 +83,7 @@ class ExperienceType(Enum):
 @dataclass
 class Experience:
     eid: EID = field(default_factory=EID)  # Unique identifier for the experience
-    token_ids: Optional[Tensor] = None  # [seq_length]
+    tokens: Optional[Tensor] = None  # [seq_length]
     logprobs: Optional[Tensor] = None  # [seq_length]
     reward: Optional[float] = None
     # Type of the experience, automatically set based on the presence of action_mask or chosen/rejected_ids
@@ -116,7 +116,7 @@ class Experience:
         self,
         *,
         eid=None,
-        token_ids,
+        tokens,
         logprobs=None,
         reward=None,
         info=None,
@@ -142,18 +142,16 @@ class Experience:
             assert (
                 prompt_length > 0
             ), "Prompt length must be greater than 0 for single-turn experiences."
-            assert (
-                len(token_ids) > prompt_length
-            ), "Token ids must be longer than the prompt length."
-            action_mask = torch.zeros(len(token_ids), dtype=torch.bool)
+            assert len(tokens) > prompt_length, "Token ids must be longer than the prompt length."
+            action_mask = torch.zeros(len(tokens), dtype=torch.bool)
             action_mask[prompt_length:] = 1
         elif experience_type == ExperienceType.MULTI_TURN:
             prompt_length = 1
         elif experience_type == ExperienceType.DPO:
-            prompt_length = len(token_ids)
+            prompt_length = len(tokens)
 
         self.eid = eid or EID()
-        self.token_ids = token_ids
+        self.tokens = tokens
         self.logprobs = logprobs
         self.reward = reward
         self.experience_type = experience_type
@@ -169,8 +167,8 @@ class Experience:
         self.chosen_text = chosen_text
         self.rejected_text = rejected_text
 
-        if not isinstance(self.token_ids, Tensor):
-            self.token_ids = torch.tensor(self.token_ids)
+        if not isinstance(self.tokens, Tensor):
+            self.tokens = torch.tensor(self.tokens)
         if self.logprobs is not None and not isinstance(self.logprobs, Tensor):
             self.logprobs = torch.tensor(self.logprobs)
         if self.action_mask is not None and not isinstance(self.action_mask, Tensor):
@@ -218,13 +216,11 @@ class Experience:
         if exp_type == ExperienceType.DPO:
             experiences = split_dpo_experience_to_single_turn(experiences)
         max_prompt_length = max([exp.prompt_length for exp in experiences])  # type: ignore [type-var]
-        max_response_length = max([len(exp.token_ids) - exp.prompt_length for exp in experiences])  # type: ignore [arg-type]
+        max_response_length = max([len(exp.tokens) - exp.prompt_length for exp in experiences])  # type: ignore [arg-type]
         eids = [exp.eid for exp in experiences]
 
-        # Gather token_ids
-        token_ids = gather_token_ids(
-            experiences, max_prompt_length, max_response_length, pad_token_id
-        )
+        # Gather tokens
+        tokens = gather_token_ids(experiences, max_prompt_length, max_response_length, pad_token_id)
 
         # Gather rewards
         if experiences[0].reward is not None:
@@ -249,7 +245,7 @@ class Experience:
 
         return Experiences(
             eids=eids,
-            token_ids=token_ids,
+            tokens=tokens,
             rewards=rewards,
             attention_masks=attention_masks,
             action_masks=action_masks,
@@ -269,11 +265,11 @@ def split_dpo_experience_to_single_turn(experiences: List[Experience]) -> List[E
                     step=exp.eid.step,
                     run=exp.eid.run,
                 ),
-                token_ids=torch.cat([exp.token_ids, exp.chosen_ids]),
+                tokens=torch.cat([exp.tokens, exp.chosen_ids]),
                 reward=exp.reward,
                 info=exp.info,
                 metrics=exp.metrics,
-                prompt_length=len(exp.token_ids),  # type: ignore [arg-type]
+                prompt_length=len(exp.tokens),  # type: ignore [arg-type]
                 prompt_text=exp.prompt_text,
                 response_text=exp.chosen_text,
             )
@@ -286,11 +282,11 @@ def split_dpo_experience_to_single_turn(experiences: List[Experience]) -> List[E
                     step=exp.eid.step,
                     run=exp.eid.run,
                 ),
-                token_ids=torch.cat([exp.token_ids, exp.rejected_ids]),
+                tokens=torch.cat([exp.tokens, exp.rejected_ids]),
                 reward=exp.reward,
                 info=exp.info,
                 metrics=exp.metrics,
-                prompt_length=len(exp.token_ids),  # type: ignore [arg-type]
+                prompt_length=len(exp.tokens),  # type: ignore [arg-type]
                 prompt_text=exp.prompt_text,
                 response_text=exp.rejected_text,
             )
@@ -305,7 +301,7 @@ class Experiences:
     Example:
 
         >>>             |<- prompt_length ->|               |
-        >>> token_ids: ('P' represents prompt, 'O' represents output)
+        >>> tokens: ('P' represents prompt, 'O' represents output)
         >>> exp1:       |........PPPPPPPPPPP|OOOOOOOOOO.....|
         >>> exp2:       |......PPPPPPPPPPPPP|OOOOOOO........|
         >>>
@@ -315,7 +311,7 @@ class Experiences:
     """
 
     eids: List[EID]  # Experience IDs of each experience in the batch
-    token_ids: Tensor
+    tokens: Tensor
     rewards: Tensor
     attention_masks: Tensor
     action_masks: Optional[Tensor]
@@ -325,7 +321,7 @@ class Experiences:
     @property
     def batch_size(self) -> int:
         """Get the batch size."""
-        return self.token_ids.size(0)
+        return self.tokens.size(0)
 
     @classmethod
     def gather_experiences(
@@ -342,7 +338,7 @@ class Experiences:
 
 def empty_experiences() -> Experiences:
     return Experiences(
-        token_ids=torch.empty(0, dtype=torch.int32),
+        tokens=torch.empty(0, dtype=torch.int32),
         rewards=torch.empty(0, dtype=torch.float32),
         attention_masks=torch.empty(0, dtype=torch.bool),
         action_masks=torch.empty(0, dtype=torch.bool),
@@ -355,7 +351,7 @@ def empty_experiences() -> Experiences:
 def gather_token_ids(
     experiences, max_prompt_length: int, max_response_length: int, pad_token_id: int
 ) -> Tensor:
-    token_ids_dtype = experiences[0].token_ids.dtype
+    token_ids_dtype = experiences[0].tokens.dtype
     return torch.stack(
         [
             torch.cat(
@@ -365,9 +361,9 @@ def gather_token_ids(
                         pad_token_id,
                         dtype=token_ids_dtype,
                     ),
-                    exp.token_ids,
+                    exp.tokens,
                     torch.full(
-                        (max_response_length + exp.prompt_length - len(exp.token_ids),),
+                        (max_response_length + exp.prompt_length - len(exp.tokens),),
                         pad_token_id,
                         dtype=token_ids_dtype,
                     ),
@@ -390,7 +386,7 @@ def gather_action_masks(experiences, max_prompt_length: int, max_response_length
                     ),
                     exp.action_mask,
                     torch.full(
-                        (max_response_length + exp.prompt_length - len(exp.token_ids),),
+                        (max_response_length + exp.prompt_length - len(exp.tokens),),
                         0,
                         dtype=torch.bool,
                     ),
@@ -408,7 +404,7 @@ def gather_attention_masks(experiences, max_prompt_length: int, max_response_len
 
     for i, exp in enumerate(experiences):
         start = max_prompt_length - exp.prompt_length
-        end = start + len(exp.token_ids)
+        end = start + len(exp.tokens)
         attention_masks[i, start:end] = 1
 
     return attention_masks
@@ -427,7 +423,7 @@ def gather_logprobs(experiences, max_prompt_length: int, max_response_length: in
                     ),
                     exp.logprobs,
                     torch.full(
-                        (max_response_length + exp.prompt_length - len(exp.token_ids),),
+                        (max_response_length + exp.prompt_length - len(exp.tokens),),
                         0.0,
                         dtype=logprob_dtype,
                     ),

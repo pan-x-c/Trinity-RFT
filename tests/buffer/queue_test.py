@@ -42,7 +42,7 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
         self.assertEqual(await writer.acquire(), 1)
         exps = [
             Experience(
-                token_ids=torch.tensor([float(j) for j in range(i + 1)]),
+                tokens=torch.tensor([float(j) for j in range(i + 1)]),
                 prompt_length=i,
                 reward=float(i),
                 logprobs=torch.tensor([0.1]),
@@ -59,7 +59,7 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
             print(f"finish read {self.read_batch_size} experience")
         exps = [
             Experience(
-                token_ids=torch.tensor([float(j) for j in range(i + 1)]),
+                tokens=torch.tensor([float(j) for j in range(i + 1)]),
                 reward=float(i),
                 logprobs=torch.tensor([0.1]),
                 action_mask=torch.tensor([j % 2 for j in range(i + 1)]),
@@ -99,7 +99,7 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
             writer.write(
                 [
                     Experience(
-                        token_ids=torch.tensor([1, 2, 3]),
+                        tokens=torch.tensor([1, 2, 3]),
                         prompt_length=2,
                         info={"model_version": i, "use_count": 0},
                     ),
@@ -163,12 +163,12 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
             writer.write(
                 [
                     Experience(
-                        token_ids=torch.tensor([1, 2, 3]),
+                        tokens=torch.tensor([1, 2, 3]),
                         prompt_length=2,
                         info={"model_version": i, "use_count": 0},
                     ),
                     Experience(
-                        token_ids=torch.tensor([1, 2, 3]),
+                        tokens=torch.tensor([1, 2, 3]),
                         prompt_length=2,
                         info={"model_version": i, "use_count": 0},
                     ),
@@ -180,12 +180,12 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
             writer.write(
                 [
                     Experience(
-                        token_ids=torch.tensor([1, 2, 3]),
+                        tokens=torch.tensor([1, 2, 3]),
                         prompt_length=2,
                         info={"model_version": 4, "use_count": 0},
                     ),
                     Experience(
-                        token_ids=torch.tensor([1, 2, 3]),
+                        tokens=torch.tensor([1, 2, 3]),
                         prompt_length=2,
                         info={"model_version": 4, "use_count": 0},
                     ),

@@ -113,7 +113,7 @@ class MixSampleStrategy(SampleStrategy):
             expert_exp_list = self.expert_exp_buffer.read()
             for exp in expert_exp_list:
                 exp.reward = 0.0
-                exp.logprobs = torch.zeros_like(exp.token_ids, dtype=torch.float32)
+                exp.logprobs = torch.zeros_like(exp.tokens, dtype=torch.float32)
                 if exp.info is None:
                     exp.info = {}
                 exp.info["is_expert"] = True
@@ -144,8 +144,8 @@ We also need to add an `is_expert_mask` field when transforming to DataProto to 
     batch_dict = {
         "uid": np.array(experiences.group_ids),
         "position_ids": position_ids,
-        "input_ids": experiences.token_ids.long(),
-        "responses": experiences.token_ids[:, experiences.prompt_length :].long(),
+        "input_ids": experiences.tokens.long(),
+        "responses": experiences.tokens[:, experiences.prompt_length :].long(),
         "attention_mask": attention_mask.long(),
         "response_mask": (
             experiences.action_masks[:, experiences.prompt_length :].long()

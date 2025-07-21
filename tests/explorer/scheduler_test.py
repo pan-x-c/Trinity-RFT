@@ -43,7 +43,7 @@ class DummyWorkflow(Workflow):
 
         return [
             Experience(
-                token_ids=torch.zeros(5),
+                tokens=torch.zeros(5),
                 prompt_length=2,
                 prompt_text=self.error_type or "success",
                 info={"repeat_times": self.repeat_times},

@@ -190,10 +190,10 @@ def convert_api_output_to_experience(
     """Convert the API output to a list of experiences."""
     return [
         Experience(
-            token_ids=torch.cat(
+            tokens=torch.cat(
                 (
                     torch.tensor(output.prompt_token_ids, dtype=torch.int32),
-                    torch.tensor(choice.token_ids, dtype=torch.int32),
+                    torch.tensor(choice.tokens, dtype=torch.int32),
                 )
             ),
             logprobs=torch.cat(

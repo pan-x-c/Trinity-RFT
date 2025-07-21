@@ -1,7 +1,7 @@
 """Patch for vllm OpenAI API server.
 
 1. Mocks the `add_signal_handler` method to do nothing.
-2. Adds `token_ids` and `prompt_token_ids` to the `ChatCompletionResponse`.
+2. Adds `tokens` and `prompt_token_ids` to the `ChatCompletionResponse`.
 """
 import asyncio
 import functools
@@ -40,7 +40,7 @@ from trinity.utils.log import get_logger
 
 
 class PatchedChatCompletionResponseChoice(ChatCompletionResponseChoice):
-    token_ids: list[int] = Field(default_factory=list)
+    tokens: list[int] = Field(default_factory=list)
 
 
 class PatchedChatCompletionResponse(ChatCompletionResponse):
@@ -78,13 +78,13 @@ async def chat_completion_full_generator(  # noqa C901
 
     role = self.get_chat_request_role(request)
     for output in final_res.outputs:
-        token_ids = output.token_ids
+        tokens = output.tokens
         out_logprobs = output.logprobs
 
         if request.logprobs and request.top_logprobs is not None:
             assert out_logprobs is not None, "Did not output logprobs"
             logprobs = self._create_chat_logprobs(
-                token_ids=token_ids,
+                tokens=tokens,
                 top_logprobs=out_logprobs,
                 num_output_top_logprobs=request.top_logprobs,
                 tokenizer=tokenizer,
@@ -219,7 +219,7 @@ async def chat_completion_full_generator(  # noqa C901
             if output.finish_reason
             else "stop",
             stop_reason=output.stop_reason,
-            token_ids=output.token_ids,
+            tokens=output.tokens,
         )
         choices.append(choice_data)
 
@@ -238,7 +238,7 @@ async def chat_completion_full_generator(  # noqa C901
     num_prompt_tokens = len(final_res.prompt_token_ids)
     if final_res.encoder_prompt_token_ids is not None:
         num_prompt_tokens += len(final_res.encoder_prompt_token_ids)
-    num_generated_tokens = sum(len(output.token_ids) for output in final_res.outputs)
+    num_generated_tokens = sum(len(output.tokens) for output in final_res.outputs)
     usage = UsageInfo(
         prompt_tokens=num_prompt_tokens,
         completion_tokens=num_generated_tokens,
