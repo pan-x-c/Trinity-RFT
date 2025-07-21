@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple, Literal
+from typing import Dict, List, Literal
 
 from numpy import np
 
@@ -9,8 +9,8 @@ from trinity.utils.registry import Registry
 
 ADD_STRATEGY = Registry("add_strategy")
 
-class AddStrategy(ABC):
 
+class AddStrategy(ABC):
     def __init__(self, writer: BufferWriter, **kwargs) -> None:
         self.writer = writer
 
@@ -57,13 +57,14 @@ class RewardVarianceAddStrategy(AddStrategy):
             await self.writer.write_async(group_exps)
         return cnt
 
-
     @classmethod
     def default_args(cls) -> dict:
         return {"reward_threshold": 0.0}
 
 
-def group_by(experiences: List[Experience], id_type: Literal["task", "run", "step"]) -> Dict[str, List[Experience]]:
+def group_by(
+    experiences: List[Experience], id_type: Literal["task", "run", "step"]
+) -> Dict[str, List[Experience]]:
     """Group experiences by ID."""
     if id_type == "task":
         id_type = "tid"
