@@ -13,8 +13,8 @@ def to_data_proto(experiences: Experiences) -> DataProto:
     cumsum = torch.cumsum(attention_mask, dim=-1)
     position_ids = torch.clip(cumsum - 1, 0, None).long()
     batch_dict = {
-        "uid": np.array(experiences.group_ids),
-        "unique_ids": np.array(experiences.unique_ids),
+        "uid": np.array(experiences.eid.tid),
+        "unique_ids": np.array(experiences.eid.uid),
         "position_ids": position_ids,
         "input_ids": experiences.tokens.long(),
         "responses": experiences.tokens[:, experiences.prompt_length :].long(),
