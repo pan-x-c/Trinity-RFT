@@ -242,7 +242,7 @@ class TestAPIServer(RayUnittestBase):
         self.assertTrue(response.choices[0].logprobs.content[0].logprob < 0)
         self.assertTrue(hasattr(response, "prompt_token_ids"))
         self.assertTrue(len(response.prompt_token_ids) > 0)
-        self.assertTrue(hasattr(response.choices[0], "tokens_ids"))
+        self.assertTrue(hasattr(response.choices[0], "token_ids"))
         self.assertTrue(len(response.choices[0].token_ids) > 0)
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 3)
