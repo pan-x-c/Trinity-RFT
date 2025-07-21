@@ -19,7 +19,7 @@ class TestEID(unittest.TestCase):
         self.assertEqual(eid.uid, "1/2/3/4/abc123")
         self.assertEqual(eid.sid, "1/2/4")
         self.assertEqual(eid.rid, "1/2/3")
-        self.assertEqual(eid.gid, "1/2")
+        self.assertEqual(eid.tid, "1/2")
         self.assertEqual(str(eid), "1/2/3/4/abc123")
         self.assertIn("EID(batch=1, task=2, run=3, step=4, uuid=abc123)", repr(eid))
 

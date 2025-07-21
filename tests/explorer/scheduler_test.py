@@ -436,7 +436,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
             self.queue.read(batch_size=1)
 
         # test group_id and unique_id
-        group_ids = [exp.group_id for exp in exp_list]
+        group_ids = [exp.eid.gid for exp in exp_list]
         self.assertEqual(len(set(group_ids)), 11)  # 4 + 4 + 3
         unique_ids = [exp.unique_id for exp in exp_list]
         self.assertEqual(len(unique_ids), len(set(unique_ids)))

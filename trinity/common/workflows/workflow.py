@@ -36,7 +36,9 @@ class Task(dict):
     reward_fn: Optional[Type[RewardFn]] = None
     raw_task: Optional[dict] = None  # The raw data sample
 
-    group_id: Optional[str] = None  # for GRPO-like algorithms, automatically assigned
+    # automatically assigned ids
+    batch_id: int = 0
+    task_id: int = 0
 
     def to_workflow(
         self, model: Any, auxiliary_models: Optional[List[openai.OpenAI]] = None
