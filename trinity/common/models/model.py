@@ -11,7 +11,7 @@ import ray
 import torch
 from torch import Tensor
 
-from trinity.common.experience import Experience, SingleTurnExperience
+from trinity.common.experience import Experience
 from trinity.utils.log import get_logger
 
 
@@ -189,7 +189,7 @@ def convert_api_output_to_experience(
 ) -> List[Experience]:
     """Convert the API output to a list of experiences."""
     return [
-        SingleTurnExperience(
+        Experience(
             token_ids=torch.cat(
                 (
                     torch.tensor(output.prompt_token_ids, dtype=torch.int32),

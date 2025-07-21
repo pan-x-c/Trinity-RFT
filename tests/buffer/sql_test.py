@@ -8,7 +8,7 @@ from trinity.buffer.reader.sql_reader import SQLReader
 from trinity.buffer.writer.sql_writer import SQLWriter
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.constants import StorageType
-from trinity.common.experience import MultiTurnExperience, SingleTurnExperience
+from trinity.common.experience import Experience
 
 db_path = os.path.join(os.path.dirname(__file__), "test.db")
 
@@ -33,7 +33,7 @@ class TestSQLBuffer(RayUnittestBaseAysnc):
         sql_writer = SQLWriter(meta, config)
         sql_reader = SQLReader(meta, config)
         exps = [
-            SingleTurnExperience(
+            Experience(
                 token_ids=torch.tensor([float(j) for j in range(i + 1)]),
                 prompt_length=i,
                 reward=float(i),
@@ -51,7 +51,7 @@ class TestSQLBuffer(RayUnittestBaseAysnc):
         # dynamic read/write
         sql_writer.write(
             [
-                MultiTurnExperience(
+                Experience(
                     token_ids=torch.tensor([float(j) for j in range(i + 1)]),
                     reward=float(i),
                     logprobs=torch.tensor([0.1]),

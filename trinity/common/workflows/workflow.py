@@ -10,7 +10,7 @@ from typing import Any, List, Optional, Type, Union
 import openai
 
 from trinity.common.config import FormatConfig, GenerationConfig
-from trinity.common.experience import Experience, MultiTurnExperience
+from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
 from trinity.common.rewards.math_reward import MathRewardFn
 from trinity.common.rewards.reward_fn import RewardFn
@@ -24,7 +24,7 @@ WORKFLOWS = Registry("workflows")
 
 
 @dataclass
-class Task:
+class Task(dict):
     """A Task class that defines a task and its associated reward function / workflow."""
 
     workflow: Type[Workflow]
@@ -144,7 +144,7 @@ class MultiTurnWorkflow(Workflow):
             if isinstance(v, float) or isinstance(v, int):
                 metrics[k] = float(v)
 
-        experience = MultiTurnExperience(
+        experience = Experience(
             token_ids=token_ids,
             action_mask=generation_mask,
             reward=reward,

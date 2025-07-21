@@ -12,11 +12,7 @@ import vllm
 from vllm.sampling_params import RequestOutputKind
 
 from trinity.common.config import InferenceModelConfig
-from trinity.common.experience import (
-    Experience,
-    MultiTurnExperience,
-    SingleTurnExperience,
-)
+from trinity.common.experience import Experience
 from trinity.common.models.model import InferenceModel
 from trinity.common.models.utils import (
     tokenize_and_mask_messages_default,
@@ -149,7 +145,7 @@ class vLLMRolloutModel(InferenceModel):
         """
         output = await self._generate_internal(prompt=prompt, **kwargs)
         experiences = [
-            SingleTurnExperience(
+            Experience(
                 token_ids=torch.cat(
                     (
                         torch.tensor(output.prompt_token_ids, dtype=torch.int32),
@@ -225,7 +221,7 @@ class vLLMRolloutModel(InferenceModel):
             self.tokenizer, messages, self.chat_template
         )
         logprobs = await self.logprobs(token_ids=token_ids.tolist())
-        return MultiTurnExperience(
+        return Experience(
             token_ids=token_ids,
             logprobs=logprobs,
             action_mask=action_mask,

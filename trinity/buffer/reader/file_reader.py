@@ -10,7 +10,7 @@ from trinity.algorithm.algorithm import DPOAlgorithm, SFTAlgorithm
 from trinity.buffer.buffer_reader import BufferReader
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.constants import PromptType, ReadStrategy, TaskType
-from trinity.common.experience import DPOExperience, SingleTurnExperience
+from trinity.common.experience import Experience
 from trinity.common.rewards import REWARD_FUNCTIONS
 from trinity.common.workflows import WORKFLOWS, Task
 from trinity.utils.registry import Registry
@@ -135,7 +135,7 @@ class SFTDataReader(BufferReader):
                 prompt_tokens_ids = self.tokenizer.apply_chat_template(
                     messages[:-1], add_generation_prompt=True, return_tensors="pt"
                 )[0]
-                experience = SingleTurnExperience(
+                experience = Experience(
                     token_ids=token_ids,
                     prompt_length=len(prompt_tokens_ids),
                 )
@@ -159,7 +159,7 @@ class SFTDataReader(BufferReader):
                     prompt_messages, add_generation_prompt=True, return_tensors="pt"
                 )[0]
 
-                experience = SingleTurnExperience(
+                experience = Experience(
                     token_ids=token_ids,
                     prompt_length=len(prompt_tokens_ids),
                 )
@@ -172,7 +172,7 @@ class SFTDataReader(BufferReader):
                 response = sample[self.response_key]
                 token_ids = self.tokenizer(prompt + response, return_tensors="pt")["input_ids"][0]
                 prompt_tokens_ids = self.tokenizer(prompt, return_tensors="pt")["input_ids"][0]
-                experience = SingleTurnExperience(
+                experience = Experience(
                     token_ids=token_ids,
                     prompt_length=len(prompt_tokens_ids),
                 )
@@ -250,10 +250,10 @@ class DPODataReader(BufferReader):
                 add_generation_prompt=False,
                 return_tensors="pt",
             )[0][prompt_length:]
-            experience = DPOExperience(
+            experience = Experience(
                 token_ids=prompt_tokens,
-                chosen=chosen_tokens,
-                rejected=rejected_tokens,
+                chosen_ids=chosen_tokens,
+                rejected_ids=rejected_tokens,
             )
             exp_list.append(experience)
         return exp_list

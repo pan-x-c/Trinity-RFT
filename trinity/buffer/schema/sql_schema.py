@@ -5,7 +5,7 @@ from typing import Any, Optional, Union
 from sqlalchemy import Column, Float, Integer, LargeBinary, String
 from sqlalchemy.ext.declarative import declarative_base
 
-from trinity.common.experience import Experience, MultiTurnExperience
+from trinity.common.experience import Experience
 
 Base = declarative_base()
 
@@ -90,7 +90,7 @@ class SFTDataModel(Base):  # type: ignore
             messages=messages,
             chat_template=chat_template,
         )
-        exp = MultiTurnExperience(
+        exp = Experience(
             token_ids=token_ids,
             action_mask=action_mask,
             info={"response_num": sum([1 if m["role"] == "assistant" else 0 for m in messages])},
@@ -119,8 +119,8 @@ class DPODataModel(Base):  # type: ignore
     def to_experience(self) -> Experience:
         """Load the experience from the database."""
         exp = Experience.deserialize(self.serialized_exp)
-        exp.chosen = Experience.deserialize(self.chosen)
-        exp.rejected = Experience.deserialize(self.rejected)
+        exp.chosen_ids = Experience.deserialize(self.chosen)
+        exp.rejected_ids = Experience.deserialize(self.rejected)
         return exp
 
 
