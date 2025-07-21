@@ -36,11 +36,13 @@ class AddStrategy(ABC):
         """
 
 
+@ADD_STRATEGY.register_module("reward_variance")
 class RewardVarianceAddStrategy(AddStrategy):
     """An example add strategy that filters experiences based on a reward threshold."""
 
     def __init__(self, writer: BufferWriter, variance_threshold: float = 0.0, **kwargs) -> None:
         super().__init__(writer)
+        self.variance_threshold = variance_threshold
 
     async def add(self, experiences: List[Experience], step: int) -> int:
         cnt = 0
@@ -59,7 +61,7 @@ class RewardVarianceAddStrategy(AddStrategy):
 
     @classmethod
     def default_args(cls) -> dict:
-        return {"reward_threshold": 0.0}
+        return {"variance_threshold": 0.0}
 
 
 def group_by(

@@ -84,7 +84,12 @@ class Explorer:
         self.collect_experiences = self.config.explorer.collect_experiences
         self.generated_experience_cnt = 0
         if self.collect_experiences:
-            self.add_strategy = ADD_STRATEGY.get(self.config.algorithm.add_strategy)
+            assert (
+                self.experience_buffer is not None
+            ), "Experience buffer is required when collect_experiences is True."
+            self.add_strategy = ADD_STRATEGY.get(self.config.algorithm.add_strategy)(
+                self.experience_buffer, **self.config.algorithm.add_strategy_args
+            )
 
     async def setup_weight_sync_group(
         self, master_address: str, master_port: int, state_dict_meta: List = None
@@ -349,11 +354,13 @@ class Explorer:
 
     async def _finish_explore_step(self, step: int) -> None:
         statuses, exps = await self.scheduler.get_results(batch_id=step)
+        metric = {}
         if self.config.explorer.collect_experiences:
-            exp_cnt = self.add_strategy.add(exps, step)
+            exp_cnt = await self.add_strategy.add(exps, step)
             self.generated_experience_cnt += exp_cnt
+            metric["rollout/experience_count"] = exp_cnt
         if statuses:
-            metric = gather_metrics([status.metric for status in statuses], "rollout")
+            metric.update(gather_metrics([status.metric for status in statuses], "rollout"))
             self.monitor.log(metric, step=step)
 
     async def _finish_eval_step(self, step: Optional[int] = None, prefix: str = "eval") -> None:
