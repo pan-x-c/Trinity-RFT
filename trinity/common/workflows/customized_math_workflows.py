@@ -81,7 +81,7 @@ class MathBoxedWorkflow(SimpleWorkflow):
                 truth=self.truth,
                 with_think=self.with_think,
                 format_score_coef=self.format_score_coef,
-                response_token=response.tokens[response.prompt_length :],
+                response_token=response.token_ids[response.prompt_length :],
             )
 
             if response.metrics is None:

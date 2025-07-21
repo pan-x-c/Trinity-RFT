@@ -178,7 +178,7 @@ class ExampleWorkflow(Workflow):
             # construct Experience
             experiences.append(
                 Experience(
-                    tokens=response.tokens,
+                    token_ids=response.tokens,
                     prompt_length=response.prompt_length,
                     reward=reward,
                     logprobs=response.logprobs,
@@ -275,7 +275,7 @@ class ExampleWorkflow(Workflow):
             # construct Experience
             experiences.append(
                 Experience(
-                    tokens=response.tokens,
+                    token_ids=response.tokens,
                     prompt_length=response.prompt_length,
                     reward=reward,
                     logprobs=response.logprobs,

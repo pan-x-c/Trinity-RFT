@@ -104,10 +104,10 @@ class WorkflowRunner:
                 # If the task is an evaluation task, we do not record the experiences to the buffer
                 return Status(True, metric=metric), []
             if self.return_experiences:
+                return Status(True, metric=metric), exps
+            else:
                 self.experience_buffer.write(exps)
                 return Status(True, metric=metric), []
-            else:
-                return Status(True, metric=metric), exps
         except Exception as e:
             error_trace_back = traceback.format_exc()
             self.logger.error(f"WorkflowRunner run task error: {e}\nTraceback:\n{error_trace_back}")

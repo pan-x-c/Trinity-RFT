@@ -130,7 +130,7 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
             self.assertEqual(len(history_experiences), len(generate_results))
             for exp, history_exp in zip(generate_results, history_experiences):
                 self.assertEqual(exp.response_text, history_exp.response_text)
-                self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
+                self.assertEqual(exp.token_ids.tolist(), history_exp.token_ids.tolist())
                 self.assertEqual(exp.prompt_length, history_exp.prompt_length)
                 self.assertEqual(exp.logprobs.tolist(), history_exp.logprobs.tolist())
         else:
@@ -155,7 +155,7 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
             self.assertEqual(len(history_experiences) - len(generate_results), len(results))
             for exp, history_exp in zip(results, history_experiences[len(generate_results) :]):
                 self.assertEqual(exp.response_text, history_exp.response_text)
-                self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
+                self.assertEqual(exp.token_ids.tolist(), history_exp.token_ids.tolist())
                 self.assertEqual(exp.prompt_length, history_exp.prompt_length)
                 self.assertEqual(exp.logprobs.tolist(), history_exp.logprobs.tolist())
         for result in results:
@@ -164,10 +164,10 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
             self.assertTrue(torch.all(input_logprobs == 0))
             self.assertTrue(torch.any(output_logprobs != 0))
         if self.use_async:
-            logprobs = await self.model_wrapper.logprobs_async(results[0].tokens.tolist())
+            logprobs = await self.model_wrapper.logprobs_async(results[0].token_ids.tolist())
         else:
-            logprobs = self.model_wrapper.logprobs(results[0].tokens.tolist())
-        self.assertEqual(logprobs.shape[0], results[0].tokens.shape[0])
+            logprobs = self.model_wrapper.logprobs(results[0].token_ids.tolist())
+        self.assertEqual(logprobs.shape[0], results[0].token_ids.shape[0])
         if self.config.explorer.rollout_model.enable_history:
             history_experiences = self.model_wrapper.extract_experience_from_history()
             self.assertTrue(len(history_experiences) == 0)
@@ -191,7 +191,7 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
             return_dict=True,
         )
         self.assertTrue(torch.equal(result_dict["assistant_masks"][0], exp.action_mask))
-        self.assertTrue(torch.equal(result_dict["input_ids"][0], exp.tokens))
+        self.assertTrue(torch.equal(result_dict["input_ids"][0], exp.token_ids))
         self.assertRaises(ValueError, self.model_wrapper.get_openai_client)
         if self.config.explorer.rollout_model.enable_history:
             history_experiences = self.model_wrapper.extract_experience_from_history()

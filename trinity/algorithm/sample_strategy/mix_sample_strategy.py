@@ -57,7 +57,7 @@ class MixSampleStrategy(SampleStrategy):
             expert_exp_list = self.expert_exp_buffer.read()
             for exp in expert_exp_list:
                 exp.reward = 0.0
-                exp.logprobs = torch.zeros_like(exp.tokens, dtype=torch.float32)
+                exp.logprobs = torch.zeros_like(exp.token_ids, dtype=torch.float32)
                 if exp.info is None:
                     exp.info = {}
                 exp.info["is_expert"] = True

@@ -347,7 +347,7 @@ class Scheduler:
 
         self.logger.debug(f"Waiting for {min_num} tasks to complete...")
 
-        while time.time() - start_time < timeout:
+        while time.time() - start_time <= timeout:
             completed_count = len(self.completed_tasks.get(batch_id, []))
             if completed_count >= min_num:
                 break

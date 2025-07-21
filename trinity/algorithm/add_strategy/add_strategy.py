@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Literal
 
-from numpy import np
+import numpy as np
 
 from trinity.buffer import BufferWriter
 from trinity.common.experience import Experience

@@ -1,4 +1,4 @@
-from trinity.algorithm.add_strategy.sample_strategy import (
+from trinity.algorithm.add_strategy.add_strategy import (
     ADD_STRATEGY,
     AddStrategy,
     RewardVarianceAddStrategy,

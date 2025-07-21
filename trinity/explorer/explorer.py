@@ -84,9 +84,7 @@ class Explorer:
         self.collect_experiences = self.config.explorer.collect_experiences
         self.generated_experience_cnt = 0
         if self.collect_experiences:
-            self.add_strategy = ADD_STRATEGY.get(
-                self.config.algorithm.add_strategy, self.config.algorithm.trainer_type
-            )
+            self.add_strategy = ADD_STRATEGY.get(self.config.algorithm.add_strategy)
 
     async def setup_weight_sync_group(
         self, master_address: str, master_port: int, state_dict_meta: List = None
@@ -369,7 +367,7 @@ class Explorer:
             if eval_step != step:
                 return
             self.pending_eval_tasks.popleft()
-            eval_results = await self.scheduler.get_results(f"{step}/{eval_task_name}")
+            eval_results, _ = await self.scheduler.get_results(f"{step}/{eval_task_name}")
             metric.update(
                 gather_metrics(
                     [status.metric for status in eval_results], f"{prefix}/{eval_task_name}"
