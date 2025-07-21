@@ -28,7 +28,11 @@ class StepWiseRewardWorkflow(Workflow):
             # Collect experiences data of the current step
             exps = self.model.extract_experience_from_history()
             # Calculate the reward for the current step
-            exps = self.reward(exps, step_num=step)
+            reward = self.reward(exps, step_num=step)
+            for exp in exps:
+                exp.reward = reward
+                # set the step number in each experience
+                exp.eid.step = step
             # Store the step experiences
             experiences.extend(exps)
             if not continue_run:
@@ -83,11 +87,16 @@ class RewardPropagationWorkflow(Workflow):
             continue_run = self.step(step_num=step)
             # Collect experiences data of the current step
             exps = self.model.extract_experience_from_history()
+            # set the step number in each experience
+            for exp in exps:
+                exp.eid.step = step
             # Store the step experiences
             experiences.extend(exps)
             if not continue_run:
                 break
-        self.reward(experiences)
+        reward = self.reward(experiences)
+        for exp in experiences:
+            exp.reward = reward
         return experiences
 
     @abstractmethod
