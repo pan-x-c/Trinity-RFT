@@ -25,7 +25,7 @@ def tokenize_and_mask_messages_hf(
         messages (List[dict]): Messages with `role` and `content` fields.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: The tokens (sequence_length)
+        Tuple[torch.Tensor, torch.Tensor]: The token_ids (sequence_length)
         and assistant_masks (sequence_length).
     """
     token_dict = tokenizer.apply_chat_template(
@@ -55,7 +55,7 @@ def tokenize_and_mask_messages_default(
         messages (List[dict]): Messages with `role` and `content` fields.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: The tokens (sequence_length)
+        Tuple[torch.Tensor, torch.Tensor]: The token_ids (sequence_length)
         and assistant_masks (sequence_length).
 
     Note:

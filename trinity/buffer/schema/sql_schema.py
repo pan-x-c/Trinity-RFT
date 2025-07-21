@@ -119,8 +119,8 @@ class DPODataModel(Base):  # type: ignore
     def to_experience(self) -> Experience:
         """Load the experience from the database."""
         exp = Experience.deserialize(self.serialized_exp)
-        exp.chosen_ids = Experience.deserialize(self.chosen)
-        exp.rejected_ids = Experience.deserialize(self.rejected)
+        exp.chosen = Experience.deserialize(self.chosen)
+        exp.rejected = Experience.deserialize(self.rejected)
         return exp
 
 

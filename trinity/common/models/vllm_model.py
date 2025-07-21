@@ -149,7 +149,7 @@ class vLLMRolloutModel(InferenceModel):
                 tokens=torch.cat(
                     (
                         torch.tensor(output.prompt_token_ids, dtype=torch.int32),
-                        torch.tensor(output.outputs[i].tokens, dtype=torch.int32),
+                        torch.tensor(output.outputs[i].token_ids, dtype=torch.int32),
                     )
                 ),
                 logprobs=torch.cat(
@@ -176,10 +176,10 @@ class vLLMRolloutModel(InferenceModel):
         ]
         return experiences
 
-    async def logprobs(self, tokens: List[int]) -> torch.Tensor:
+    async def logprobs(self, token_ids: List[int]) -> torch.Tensor:
         """Calculate the logprobs of the given tokens in async."""
         output = await self._generate_internal(
-            prompt={"prompt_token_ids": tokens},
+            prompt={"prompt_token_ids": token_ids},
             n=1,
             max_tokens=1,
             prompt_logprobs=0,  # vLLM return `prompt_logprobs + 1` logrpobs for each token
@@ -217,10 +217,12 @@ class vLLMRolloutModel(InferenceModel):
             self.tokenizer = await self.async_llm.get_tokenizer()
         if self.chat_template is None:
             self.chat_template = self.tokenizer.get_chat_template()
-        tokens, action_mask = self.action_mask_method(self.tokenizer, messages, self.chat_template)
-        logprobs = await self.logprobs(tokens=tokens.tolist())
+        token_ids, action_mask = self.action_mask_method(
+            self.tokenizer, messages, self.chat_template
+        )
+        logprobs = await self.logprobs(token_ids=token_ids.tolist())
         return Experience(
-            tokens=tokens,
+            tokens=token_ids,
             logprobs=logprobs,
             action_mask=action_mask,
         )

@@ -63,14 +63,12 @@ class TestExperience(unittest.TestCase):
 
     def test_dpo_experience(self):
         tokens = torch.tensor([1, 2])
-        chosen_ids = torch.tensor([3, 4])
-        rejected_ids = torch.tensor([5, 6])
-        exp = Experience(
-            tokens=tokens, chosen_ids=chosen_ids, rejected_ids=rejected_ids, reward=0.5
-        )
+        chosen = torch.tensor([3, 4])
+        rejected = torch.tensor([5, 6])
+        exp = Experience(tokens=tokens, chosen=chosen, rejected=rejected, reward=0.5)
         self.assertEqual(exp.experience_type.name, "DPO")
-        self.assertTrue(torch.equal(exp.chosen_ids, chosen_ids))
-        self.assertTrue(torch.equal(exp.rejected_ids, rejected_ids))
+        self.assertTrue(torch.equal(exp.chosen, chosen))
+        self.assertTrue(torch.equal(exp.rejected, rejected))
         self.assertEqual(exp.prompt_length, 2)
 
     def test_serialize_deserialize(self):
@@ -139,7 +137,7 @@ class TestExperience(unittest.TestCase):
         with self.assertRaises(AssertionError):
             Experience(tokens=[1, 2], prompt_length=2)
         # DPO: tokens must match prompt_length
-        exp = Experience(tokens=[1, 2], chosen_ids=[3], rejected_ids=[4], prompt_length=1)
+        exp = Experience(tokens=[1, 2], chosen=[3], rejected=[4], prompt_length=1)
         exp.prompt_length = 2  # should automatically adjust
 
 
@@ -281,13 +279,13 @@ class TestExperienceConversion(unittest.TestCase):
         exps = [
             Experience(
                 tokens=torch.tensor([1, 2]),
-                chosen_ids=torch.tensor([3, 4]),
-                rejected_ids=torch.tensor([5, 6]),
+                chosen=torch.tensor([3, 4]),
+                rejected=torch.tensor([5, 6]),
             ),
             Experience(
                 tokens=torch.tensor([7, 8, 9]),
-                chosen_ids=torch.tensor([10, 11]),
-                rejected_ids=torch.tensor([12, 13]),
+                chosen=torch.tensor([10, 11]),
+                rejected=torch.tensor([12, 13]),
             ),
         ]
         batch = Experiences.gather_experiences(exps)

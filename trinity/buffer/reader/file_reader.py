@@ -252,8 +252,8 @@ class DPODataReader(BufferReader):
             )[0][prompt_length:]
             experience = Experience(
                 tokens=prompt_tokens,
-                chosen_ids=chosen_tokens,
-                rejected_ids=rejected_tokens,
+                chosen=chosen_tokens,
+                rejected=rejected_tokens,
             )
             exp_list.append(experience)
         return exp_list

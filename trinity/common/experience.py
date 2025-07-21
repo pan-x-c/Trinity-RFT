@@ -86,7 +86,7 @@ class Experience:
     tokens: Optional[Tensor] = None  # [seq_length]
     logprobs: Optional[Tensor] = None  # [seq_length]
     reward: Optional[float] = None
-    # Type of the experience, automatically set based on the presence of action_mask or chosen/rejected_ids
+    # Type of the experience, automatically set based on the presence of action_mask or chosen/rejected
     experience_type: ExperienceType = ExperienceType.SINGLE_TURN
     info: Optional[dict] = field(
         default_factory=dict
@@ -107,8 +107,8 @@ class Experience:
     messages: Optional[List[dict]] = None  # List of messages
 
     # for dpo experiences
-    chosen_ids: Optional[Tensor] = None  # Token ids of the chosen response [resp_length]
-    rejected_ids: Optional[Tensor] = None  # Token ids of the rejected response [resp_length]
+    chosen: Optional[Tensor] = None  # Token ids of the chosen response [resp_length]
+    rejected: Optional[Tensor] = None  # Token ids of the rejected response [resp_length]
     chosen_text: Optional[str] = None  # Text of the chosen response
     rejected_text: Optional[str] = None  # Text of the rejected response
 
@@ -126,14 +126,14 @@ class Experience:
         prompt_text=None,
         action_mask=None,
         messages=None,
-        chosen_ids=None,
-        rejected_ids=None,
+        chosen=None,
+        rejected=None,
         chosen_text=None,
         rejected_text=None,
     ):
         if action_mask is not None:
             experience_type = ExperienceType.MULTI_TURN
-        elif chosen_ids is not None and rejected_ids is not None:
+        elif chosen is not None and rejected is not None:
             experience_type = ExperienceType.DPO
         else:
             experience_type = ExperienceType.SINGLE_TURN
@@ -162,8 +162,8 @@ class Experience:
         self.prompt_text = prompt_text
         self.action_mask = action_mask
         self.messages = messages
-        self.chosen_ids = chosen_ids
-        self.rejected_ids = rejected_ids
+        self.chosen = chosen
+        self.rejected = rejected
         self.chosen_text = chosen_text
         self.rejected_text = rejected_text
 
@@ -173,10 +173,10 @@ class Experience:
             self.logprobs = torch.tensor(self.logprobs)
         if self.action_mask is not None and not isinstance(self.action_mask, Tensor):
             self.action_mask = torch.tensor(self.action_mask)
-        if self.chosen_ids is not None and not isinstance(self.chosen_ids, Tensor):
-            self.chosen_ids = torch.tensor(self.chosen_ids)
-        if self.rejected_ids is not None and not isinstance(self.rejected_ids, Tensor):
-            self.rejected_ids = torch.tensor(self.rejected_ids)
+        if self.chosen is not None and not isinstance(self.chosen, Tensor):
+            self.chosen = torch.tensor(self.chosen)
+        if self.rejected is not None and not isinstance(self.rejected, Tensor):
+            self.rejected = torch.tensor(self.rejected)
 
     def serialize(self) -> bytes:
         """Serialize the experience to bytes."""
@@ -200,10 +200,10 @@ class Experience:
             res["response_text"] = self.response_text
         if self.messages is not None:
             res["messages"] = self.messages
-        if self.chosen_ids is not None:
-            res["chosen_ids"] = self.chosen_ids.tolist()
-        if self.rejected_ids is not None:
-            res["rejected_ids"] = self.rejected_ids.tolist()
+        if self.chosen is not None:
+            res["chosen"] = self.chosen.tolist()
+        if self.rejected is not None:
+            res["rejected"] = self.rejected.tolist()
         if self.reward is not None:
             res["reward"] = float(self.reward)
         return res
@@ -265,7 +265,7 @@ def split_dpo_experience_to_single_turn(experiences: List[Experience]) -> List[E
                     step=exp.eid.step,
                     run=exp.eid.run,
                 ),
-                tokens=torch.cat([exp.tokens, exp.chosen_ids]),
+                tokens=torch.cat([exp.tokens, exp.chosen]),
                 reward=exp.reward,
                 info=exp.info,
                 metrics=exp.metrics,
@@ -282,7 +282,7 @@ def split_dpo_experience_to_single_turn(experiences: List[Experience]) -> List[E
                     step=exp.eid.step,
                     run=exp.eid.run,
                 ),
-                tokens=torch.cat([exp.tokens, exp.rejected_ids]),
+                tokens=torch.cat([exp.tokens, exp.rejected]),
                 reward=exp.reward,
                 info=exp.info,
                 metrics=exp.metrics,

@@ -242,8 +242,8 @@ class TestAPIServer(RayUnittestBase):
         self.assertTrue(response.choices[0].logprobs.content[0].logprob < 0)
         self.assertTrue(hasattr(response, "prompt_token_ids"))
         self.assertTrue(len(response.prompt_token_ids) > 0)
-        self.assertTrue(hasattr(response.choices[0], "tokens"))
-        self.assertTrue(len(response.choices[0].tokens) > 0)
+        self.assertTrue(hasattr(response.choices[0], "tokens_ids"))
+        self.assertTrue(len(response.choices[0].token_ids) > 0)
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 3)
         response = openai_client.chat.completions.create(
@@ -261,8 +261,8 @@ class TestAPIServer(RayUnittestBase):
             model=model_id, messages=messages, n=2
         )
         self.assertEqual(2, len(response.choices))
-        self.assertTrue(hasattr(response.choices[0], "tokens"))
-        self.assertTrue(len(response.choices[0].tokens) > 0)
+        self.assertTrue(hasattr(response.choices[0], "token_ids"))
+        self.assertTrue(len(response.choices[0].token_ids) > 0)
         with self.assertRaises(ValueError):
             self.model_wrapper_no_history.extract_experience_from_history()
         self.assertEqual(len(self.model_wrapper_no_history.history), 0)
@@ -284,7 +284,7 @@ class TestTokenizer(unittest.TestCase):
             },
         ]
         tokenizer = AutoTokenizer.from_pretrained(get_model_path())
-        tokens, action_mask = tokenize_and_mask_messages_default(
+        token_ids, action_mask = tokenize_and_mask_messages_default(
             tokenizer=tokenizer,
             messages=messages,
             chat_template=CHAT_TEMPLATE,
@@ -294,7 +294,7 @@ class TestTokenizer(unittest.TestCase):
             messages=messages,
             chat_template=CHAT_TEMPLATE,
         )
-        self.assertEqual(tokens.shape, token_ids_hf.shape)
+        self.assertEqual(token_ids.shape, token_ids_hf.shape)
         self.assertEqual(action_mask.shape, action_mask_hf.shape)
-        self.assertTrue(torch.equal(tokens, token_ids_hf))
+        self.assertTrue(torch.equal(token_ids, token_ids_hf))
         self.assertTrue(torch.equal(action_mask, action_mask_hf))
