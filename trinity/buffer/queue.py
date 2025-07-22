@@ -9,6 +9,7 @@ from sortedcontainers import SortedDict
 
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.experience import Experience
+from trinity.utils.log import get_logger
 from trinity.utils.registry import Registry
 
 PRIORITY_FUNC = Registry("priority_fn")
@@ -29,6 +30,10 @@ class QueueBuffer(ABC):
         """Get a list of experience from the queue."""
 
     @abstractmethod
+    def qsize(self) -> int:
+        """Get the current size of the queue."""
+
+    @abstractmethod
     def close(self) -> None:
         """Close the queue."""
 
@@ -39,10 +44,14 @@ class QueueBuffer(ABC):
     @classmethod
     def get_queue(cls, storage_config: StorageConfig, config: BufferConfig) -> "QueueBuffer":
         """Get a queue instance based on the storage configuration."""
+        logger = get_logger(__name__)
         if storage_config.use_priority_queue:
             reuse_cooldown_time = storage_config.reuse_cooldown_time
             replay_buffer_kwargs = storage_config.replay_buffer_kwargs
             capacity = min(storage_config.capacity, config.read_batch_size * 2)
+            logger.info(
+                f"Using AsyncPriorityQueue with capacity {capacity}, reuse_cooldown_time {reuse_cooldown_time}."
+            )
             return AsyncPriorityQueue(capacity, reuse_cooldown_time, **replay_buffer_kwargs)
         else:
             return AsyncQueue(capacity=storage_config.capacity)
@@ -74,7 +83,8 @@ class AsyncPriorityQueue(QueueBuffer):
     Items are prioritized using a user-defined function and reinserted after a cooldown period.
 
     Attributes:
-        capacity (int): Maximum number of items the queue can hold.
+        capacity (int): Maximum number of items the queue can hold. This value is automatically
+            adjusted to be at most twice the read batch size.
         priority_groups (SortedDict): Maps priorities to deques of items with the same priority.
         priority_fn (callable): Function used to determine the priority of an item.
         reuse_cooldown_time (float): Delay before reusing an item (set to infinity to disable).
@@ -101,6 +111,7 @@ class AsyncPriorityQueue(QueueBuffer):
         self.priority_fn = partial(PRIORITY_FUNC.get(priority_fn), **kwargs)
         self.reuse_cooldown_time = reuse_cooldown_time
         self._condition = asyncio.Condition()  # For thread-safe operations
+        self._closed = False
 
     async def _put(self, item: List[Experience], delay: float = 0) -> None:
         """
@@ -113,7 +124,7 @@ class AsyncPriorityQueue(QueueBuffer):
         if delay > 0:
             await asyncio.sleep(delay)
 
-        priority = self.priority_fn(item)
+        priority = self.priority_fn(item=item)
         async with self._condition:
             if len(self.priority_groups) == self.capacity:
                 # If full, only insert if new item has higher or equal priority than the lowest
@@ -153,14 +164,16 @@ class AsyncPriorityQueue(QueueBuffer):
             if not item_queue:
                 self.priority_groups.popitem(index=-1)
 
-        if item != self.FINISH_MESSAGE:
-            for exp in item:
-                exp.info["use_count"] += 1
+        for exp in item:
+            exp.info["use_count"] += 1
         # Optionally resubmit the item after a cooldown
         if self.reuse_cooldown_time is not None:
             asyncio.create_task(self._put(item, self.reuse_cooldown_time))
 
         return item
+
+    def qsize(self):
+        return len(self.priority_groups)
 
     def close(self) -> None:
         """

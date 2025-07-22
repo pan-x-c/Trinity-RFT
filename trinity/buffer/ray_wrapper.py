@@ -15,7 +15,6 @@ from sqlalchemy.pool import NullPool
 from trinity.buffer.queue import QueueBuffer
 from trinity.buffer.schema import Base, create_dynamic_table
 from trinity.buffer.utils import default_storage_path, retry_session
-from trinity.buffer.writer.file_writer import JSONWriter
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.constants import ReadStrategy, StorageType
 from trinity.common.experience import Experience
@@ -231,12 +230,16 @@ class QueueWrapper:
                 st_config.storage_type = StorageType.SQL
                 self.writer = SQLWriter(st_config, self.config)
             elif is_json_file(st_config.path):
+                from trinity.buffer.writer.file_writer import JSONWriter
+
                 st_config.storage_type = StorageType.FILE
                 self.writer = JSONWriter(st_config, self.config)
             else:
                 self.logger.warning("Unknown supported storage path: %s", st_config.path)
                 self.writer = None
         else:
+            from trinity.buffer.writer.file_writer import JSONWriter
+
             st_config.storage_type = StorageType.FILE
             self.writer = JSONWriter(st_config, self.config)
         self.logger.warning(f"Save experiences in {st_config.path}.")
