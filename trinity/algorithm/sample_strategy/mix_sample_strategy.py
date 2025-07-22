@@ -92,7 +92,7 @@ def to_data_proto_mix(experiences: Experiences, is_expert_mask: torch.tensor):
     position_ids = torch.clip(cumsum - 1, 0, None).long()
     batch_dict = {
         "uid": np.array([eid.tid for eid in experiences.eids]),
-        "unique_ids": np.array(eid.uid for eid in experiences.eids),
+        "unique_ids": np.array([eid.uid for eid in experiences.eids]),
         "position_ids": position_ids,
         "input_ids": experiences.tokens.long(),
         "responses": experiences.tokens[:, experiences.prompt_length :].long(),

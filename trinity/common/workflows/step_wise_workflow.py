@@ -22,7 +22,7 @@ class StepWiseRewardWorkflow(Workflow):
     def run(self) -> list[Experience]:
         """Run the workflow and return a list of experiences with step-wise rewards."""
         experiences = []
-        for step in self.max_step_num:
+        for step in range(self.max_step_num):
             # Run a single step of the agent application
             continue_run = self.step(step_num=step)
             # Collect experiences data of the current step
@@ -82,7 +82,7 @@ class RewardPropagationWorkflow(Workflow):
     def run(self) -> list[Experience]:
         """Run the workflow and return a list of experiences with step-wise rewards."""
         experiences = []
-        for step in self.max_step_num:
+        for step in range(self.max_step_num):
             # Run a single step of the agent application
             continue_run = self.step(step_num=step)
             # Collect experiences data of the current step

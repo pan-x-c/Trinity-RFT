@@ -82,7 +82,7 @@ class WorkflowRunner:
             assert exps is not None and len(exps) > 0, "An empty experience is generated"
             metrics: dict[str, List[float]] = defaultdict(list)
             # set group id
-            for idx, exp in enumerate(exps):
+            for _, exp in enumerate(exps):
                 exp.eid.batch = task.batch_id
                 exp.eid.task = task.task_id
                 if not hasattr(exp, "info") or exp.info is None:
@@ -100,14 +100,16 @@ class WorkflowRunner:
             if metrics:
                 for k, v in metrics.items():
                     metric[k] = sum(v) / len(v)  # type: ignore
+
             if task.is_eval:
                 # If the task is an evaluation task, we do not record the experiences to the buffer
                 return Status(True, metric=metric), []
-            if self.return_experiences:
+            elif self.return_experiences:
                 return Status(True, metric=metric), exps
             else:
                 self.experience_buffer.write(exps)
                 return Status(True, metric=metric), []
+
         except Exception as e:
             error_trace_back = traceback.format_exc()
             self.logger.error(f"WorkflowRunner run task error: {e}\nTraceback:\n{error_trace_back}")

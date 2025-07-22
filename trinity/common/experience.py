@@ -142,7 +142,9 @@ class Experience:
             assert (
                 prompt_length > 0
             ), "Prompt length must be greater than 0 for single-turn experiences."
-            assert len(tokens) > prompt_length, "Token ids must be longer than the prompt length."
+            assert (
+                len(tokens) > prompt_length
+            ), f"Token ids must be longer than the prompt length. Got len(tokens)={len(tokens)}, prompt_length={prompt_length}."
             action_mask = torch.zeros(len(tokens), dtype=torch.bool)
             action_mask[prompt_length:] = 1
         elif experience_type == ExperienceType.MULTI_TURN:
