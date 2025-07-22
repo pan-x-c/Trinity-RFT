@@ -80,6 +80,7 @@ class TestExplorerWithAddStrategy(BaseExplorerCase):
 
         from trinity.explorer.explorer import Explorer
 
+        self.config.algorithm.repeat_times = 2
         self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
         self.config.buffer.explorer_input.add_strategy = "random"
@@ -110,7 +111,7 @@ class TestExplorerWithAddStrategy(BaseExplorerCase):
         for count in experience_counts:
             self.assertTrue(count >= 0)
             self.assertTrue(count <= 2 * 4)  # repeat_times * batch_size
-            self.assertTrue(count % (2 * 4) == 0)  # should be multiple of repeat_times * batch_size
+            self.assertTrue(count % 2 == 0)  # should be multiple of repeat_times
 
         reader = get_buffer_reader(
             self.config.buffer.trainer_input.experience_buffer, self.config.buffer
@@ -122,5 +123,5 @@ class TestExplorerWithAddStrategy(BaseExplorerCase):
         except StopIteration:
             pass
         self.assertTrue(len(exps) <= 4 * 2 * 4)  # step * repeat_times * batch_size
-        self.assertTrue(len(exps) % (2 * 4) == 0)  # should be multiple of repeat_times * batch_size
+        self.assertTrue(len(exps) % (2 * 4) == 0)  # should be multiple of repeat_times
         ray.get(explorer.shutdown.remote())
