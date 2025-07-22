@@ -204,7 +204,7 @@ class Experience:
             res["messages"] = self.messages
         if self.chosen_text is not None:
             res["chosen_text"] = self.chosen_text
-        if self.rejected is not None:
+        if self.rejected_text is not None:
             res["rejected_text"] = self.rejected_text
         if self.reward is not None:
             res["reward"] = float(self.reward)
