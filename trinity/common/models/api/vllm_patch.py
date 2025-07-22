@@ -1,7 +1,7 @@
 """Patch for vllm OpenAI API server.
 
 1. Mocks the `add_signal_handler` method to do nothing.
-2. Adds `tokens` and `prompt_token_ids` to the `ChatCompletionResponse`.
+2. Adds `token_ids` and `prompt_token_ids` to the `ChatCompletionResponse`.
 """
 import asyncio
 import functools
