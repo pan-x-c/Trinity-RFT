@@ -49,7 +49,6 @@ jobs:
         else
           echo "type=all" >> $GITHUB_OUTPUT
         fi
-        echo "Test type: ${{ steps.test_type.outputs.type }}"
 
     - name: Get changed modules (for diff)
       if: steps.test_type.outputs.type == 'diff'
@@ -67,29 +66,37 @@ jobs:
         TYPE="${{ steps.test_type.outputs.type }}"
         if [ "$TYPE" = "all" ]; then
           docker compose exec trinity-node-1 pytest tests -v -s --ignore=tests/data --ctrf report.json
+          echo "tests_run=true" >> $GITHUB_ENV
         elif [ "$TYPE" = "diff" ]; then
-          if [ -s ../../../test_dirs.txt ]; then
-            TEST_DIRS=$(cat ../../../test_dirs.txt | xargs)
+          ROOT_DIR=trinity-${{ github.run_id }}
+          if [ -s "$ROOT_DIR/test_dirs.txt" ]; then
+            TEST_DIRS=$(cat "$ROOT_DIR/test_dirs.txt" | xargs)
             docker compose exec trinity-node-1 pytest $TEST_DIRS -v -s --ignore=tests/data --ctrf report.json
+            echo "tests_run=true" >> $GITHUB_ENV
           else
             echo "No changed modules detected, skipping tests."
+            echo "tests_run=false" >> $GITHUB_ENV
           fi
         elif [ "$TYPE" = "module" ]; then
           MODULE="${{ steps.test_type.outputs.module }}"
           if [ -n "$MODULE" ]; then
             docker compose exec trinity-node-1 pytest tests/$MODULE -v -s --ignore=tests/data --ctrf report.json
+            echo "tests_run=true" >> $GITHUB_ENV
           else
             echo "No module specified, skipping tests."
+            echo "tests_run=false" >> $GITHUB_ENV
           fi
         fi
 
     - name: Upload test results
+      if: env.tests_run == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: pytest-results
         path: trinity-${{ github.run_id }}/report.json
 
     - name: Publish Test Report
+      if: env.tests_run == 'true'
       uses: ctrf-io/github-test-reporter@v1
       with:
         report-path: trinity-${{ github.run_id }}/report.json
@@ -98,7 +105,6 @@ jobs:
         issue: ${{ github.event.issue.number }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      if: always()
 
     - name: Remove docker compose
       working-directory: trinity-${{ github.run_id }}/.github/workflows/docker
