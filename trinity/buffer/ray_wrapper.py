@@ -255,7 +255,7 @@ class QueueWrapper:
         """Release the queue."""
         self.ref_count -= 1
         if self.ref_count <= 0:
-            self.queue.close()
+            await self.queue.close()
             await self.writer.release()
         return self.ref_count
 

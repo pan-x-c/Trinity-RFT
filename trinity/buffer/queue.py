@@ -34,7 +34,7 @@ class QueueBuffer(ABC):
         """Get the current size of the queue."""
 
     @abstractmethod
-    def close(self) -> None:
+    async def close(self) -> None:
         """Close the queue."""
 
     @abstractmethod
@@ -68,7 +68,7 @@ class AsyncQueue(asyncio.Queue, QueueBuffer):
         super().__init__(maxsize=capacity)
         self._closed = False
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Close the queue."""
         self._closed = True
 
@@ -157,6 +157,8 @@ class AsyncPriorityQueue(QueueBuffer):
         """
         async with self._condition:
             while len(self.priority_groups) == 0:
+                if self._closed:
+                    raise StopAsyncIteration()
                 await self._condition.wait()
 
             _, item_queue = self.priority_groups.peekitem(index=-1)
@@ -175,13 +177,15 @@ class AsyncPriorityQueue(QueueBuffer):
     def qsize(self):
         return len(self.priority_groups)
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """
         Close the queue.
         """
-        self._closed = True
-        # No more items will be added, but existing items can still be processed.
-        self.reuse_cooldown_time = None
+        async with self._condition:
+            self._closed = True
+            # No more items will be added, but existing items can still be processed.
+            self.reuse_cooldown_time = None
+            self._condition.notify_all()
 
     def stopped(self) -> bool:
         return self._closed and len(self.priority_groups) == 0
