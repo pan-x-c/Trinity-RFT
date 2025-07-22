@@ -38,7 +38,7 @@ class AddStrategy(ABC):
 
 @ADD_STRATEGY.register_module("reward_variance")
 class RewardVarianceAddStrategy(AddStrategy):
-    """An example add strategy that filters experiences based on a reward threshold."""
+    """An example AddStrategy that filters experiences based on a reward variance threshold."""
 
     def __init__(self, writer: BufferWriter, variance_threshold: float = 0.0, **kwargs) -> None:
         super().__init__(writer)
@@ -53,7 +53,7 @@ class RewardVarianceAddStrategy(AddStrategy):
             # check if the rewards are the same
             rewards = [exp.reward for exp in group_exps]
             variance = np.var(rewards)
-            if variance < self.variance_threshold:
+            if variance <= self.variance_threshold:
                 continue
             cnt += len(group_exps)
             await self.writer.write_async(group_exps)
