@@ -1,4 +1,4 @@
-"""An Async PriorityQueue."""
+"""Implementation of async queue buffers."""
 import asyncio
 from abc import ABC, abstractmethod
 from collections import deque
