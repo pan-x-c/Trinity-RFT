@@ -306,7 +306,6 @@ class TestTrainerSFT(BaseTrainerCase):
             "sft_for_gsm8k"
         )
         self.config.check_and_update()
-        print(self.config)
         train(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
         actor_metrics = parser.metric_list("actor")

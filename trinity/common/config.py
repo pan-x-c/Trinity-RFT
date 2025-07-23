@@ -472,6 +472,9 @@ class Config:
             f" (={self.algorithm.repeat_times})."
         )
         if self.mode == "train":
+            assert (
+                self.buffer.trainer_input.experience_buffer is not None
+            ), "`buffer.trainer_input.experience_buffer` is required when `mode` is `train`."
             self.buffer.trainer_input.experience_buffer.total_epochs = self.buffer.total_epochs
             self.buffer.trainer_input.experience_buffer.total_steps = self.buffer.total_steps
         else:
