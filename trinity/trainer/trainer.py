@@ -71,7 +71,7 @@ class Trainer:
             batch, sample_metrics, repr_samples = self.sample_strategy.sample(
                 self.train_step_num + 1
             )
-        except StopAsyncIteration:
+        except StopIteration:
             self.logger.info("No more samples to train. Stopping training.")
             if (
                 self.config.trainer.save_interval == 0
@@ -112,7 +112,7 @@ class Trainer:
 
     def _log_experiences(self, samples: List[Dict]) -> None:
         self._sample_exps_to_log.extend(samples)
-        if self.train_step_num % self.config.trainer.sync_freq == 0:
+        if self.train_step_num % self.config.synchronizer.sync_interval == 0:
             self.monitor.log_table(
                 "rollout_examples", pd.DataFrame(self._sample_exps_to_log), self.train_step_num
             )
