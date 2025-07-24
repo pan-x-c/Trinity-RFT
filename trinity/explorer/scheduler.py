@@ -224,7 +224,6 @@ class Scheduler:
 
     def task_done_callback(self, async_task: asyncio.Task):
         task = self.running_task_map.pop(async_task)
-        self.logger.info(f"Task {task.task.task_id} completed.")
         if async_task.cancelled():
             return
         elif async_task.exception():

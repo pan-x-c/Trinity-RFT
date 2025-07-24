@@ -57,7 +57,7 @@ class MixSampleStrategy(SampleStrategy):
             expert_exp_list = self.expert_exp_buffer.read()
             for exp in expert_exp_list:
                 exp.reward = 0.0
-                exp.logprobs = torch.zeros_like(exp.tokens, dtype=torch.float32)
+                exp.logprobs = torch.zeros_like(exp.tokens[exp.prompt_length:], dtype=torch.float32)
                 if exp.info is None:
                     exp.info = {}
                 exp.info["is_expert"] = True
@@ -98,7 +98,7 @@ def to_data_proto_mix(experiences: Experiences, is_expert_mask: torch.tensor):
         "responses": experiences.tokens[:, experiences.prompt_length :].long(),
         "attention_mask": attention_mask.long(),
         "response_mask": (
-            experiences.action_masks[:, experiences.prompt_length :].long()
+            experiences.action_masks.long()
             if hasattr(experiences, "action_masks") and experiences.action_masks is not None
             else attention_mask[:, experiences.prompt_length :].long()
         ),
@@ -114,7 +114,7 @@ def to_data_proto_mix(experiences: Experiences, is_expert_mask: torch.tensor):
         batch_dict.update(
             {
                 "token_level_scores": token_level_rewards,
-                "old_log_probs": experiences.logprobs[:, experiences.prompt_length :],  # type: ignore
+                "old_log_probs": experiences.logprobs,  # type: ignore
             }
         )
     return DataProto.from_single_dict(batch_dict)

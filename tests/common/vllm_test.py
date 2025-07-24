@@ -159,10 +159,7 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
                 self.assertEqual(exp.prompt_length, history_exp.prompt_length)
                 self.assertEqual(exp.logprobs.tolist(), history_exp.logprobs.tolist())
         for result in results:
-            input_logprobs = result.logprobs[: result.prompt_length]
-            output_logprobs = result.logprobs[result.prompt_length :]
-            self.assertTrue(torch.all(input_logprobs == 0))
-            self.assertTrue(torch.any(output_logprobs != 0))
+            self.assertTrue(torch.any(result.logprobs != 0))
         if self.use_async:
             logprobs = await self.model_wrapper.logprobs_async(results[0].tokens.tolist())
         else:

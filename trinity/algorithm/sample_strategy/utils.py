@@ -20,7 +20,7 @@ def to_data_proto(experiences: Experiences) -> DataProto:
         "responses": experiences.tokens[:, experiences.prompt_length :].long(),
         "attention_mask": attention_mask.long(),
         "response_mask": (
-            experiences.action_masks[:, experiences.prompt_length :].long()
+            experiences.action_masks.long()
             if hasattr(experiences, "action_masks") and experiences.action_masks is not None
             else attention_mask[:, experiences.prompt_length :].long()
         ),
@@ -35,7 +35,7 @@ def to_data_proto(experiences: Experiences) -> DataProto:
         batch_dict.update(
             {
                 "token_level_scores": token_level_rewards,
-                "old_log_probs": experiences.logprobs[:, experiences.prompt_length :],  # type: ignore
+                "old_log_probs": experiences.logprobs,  # type: ignore
             }
         )
     return DataProto.from_single_dict(batch_dict)
