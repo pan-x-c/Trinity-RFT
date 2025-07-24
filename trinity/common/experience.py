@@ -446,7 +446,7 @@ def gather_logprobs(experiences, max_response_length: int) -> Tensor:
     )
 
 
-def gather_advantages(experiences, max_response_length: int) -> Tensor:
+def gather_advantages(experiences, max_response_length: int) -> Optional[Tensor]:
     if experiences[0].advantages is None:
         return None
     advantages_dtype = experiences[0].advantages.dtype
@@ -467,7 +467,7 @@ def gather_advantages(experiences, max_response_length: int) -> Tensor:
     )
 
 
-def gather_returns(experiences, max_response_length: int) -> Tensor:
+def gather_returns(experiences, max_response_length: int) -> Optional[Tensor]:
     if experiences[0].returns is None:
         return None
     returns_dtype = experiences[0].returns.dtype
