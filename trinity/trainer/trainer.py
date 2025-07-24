@@ -29,7 +29,7 @@ class Trainer:
         self.logger = get_logger(__name__)
         self.engine = get_trainer_wrapper(config)
         self.explorer_ref = None
-        self.monitor = MONITOR.get_monitor(config.monitor.monitor_type)(
+        self.monitor = MONITOR.get(config.monitor.monitor_type)(
             project=config.project,
             name=config.trainer,
             role=config.trainer.name,
@@ -84,7 +84,7 @@ class Trainer:
         continue_run, metrics = self.engine.train_step(batch)
         prefix_metrics(sample_metrics, "sample", metrics)
         self.monitor.log(data=metrics, step=self.train_step_num)
-        if self.config.algorithm.use_advantage and self.config.trainer.enable_preview:
+        if self.config.trainer.enable_preview:
             self._log_experiences(repr_samples)
         return continue_run
 
