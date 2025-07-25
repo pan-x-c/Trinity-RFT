@@ -31,7 +31,7 @@ class Trainer:
         self.explorer_ref = None
         self.monitor = MONITOR.get(config.monitor.monitor_type)(
             project=config.project,
-            name=config.trainer,
+            name=config.name,
             role=config.trainer.name,
             config=config,
         )
