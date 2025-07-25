@@ -16,7 +16,7 @@ from trinity.algorithm import SAMPLE_STRATEGY
 from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import Config
 from trinity.common.constants import RunningStatus, SyncMethod
-from trinity.common.experience import Experience
+from trinity.common.experience import Experiences
 from trinity.utils.log import get_logger
 from trinity.utils.monitor import MONITOR
 
@@ -144,11 +144,11 @@ class TrainEngineWrapper(ABC):
         """Get the current training step number."""
 
     @abstractmethod
-    def train_step(self, batch: List[Experience]) -> Tuple[bool, Dict]:
+    def train_step(self, batch: Experiences) -> Tuple[bool, Dict]:
         """Training one step.
 
         Args:
-            batch (List[Experience]): A batch of experiences to train.
+            batch (Experiences): A batch of experiences to train.
 
         Returns:
             bool: Whether to continue training.

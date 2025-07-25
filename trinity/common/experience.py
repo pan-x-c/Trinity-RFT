@@ -80,6 +80,18 @@ class ExperienceType(Enum):
     DPO = "dpo"  # DPO experience, e.g., a chosen and rejected response pair
 
 
+@dataclass(frozen=True)
+class CustomField:
+    """Custom field for Experiences.
+
+    This is used to store additional information into the Experiences class.
+    """
+
+    source_field: str  # The source field name in the Experience.info
+    destination_field: str  # The destination field name in the Experiences class
+    data_type: torch.dtype  # The data type of the field, e.g., torch.float32, torch.int64, etc.
+
+
 @dataclass
 class Experience:
     eid: EID = field(default_factory=EID)  # Unique identifier for the experience
@@ -90,12 +102,12 @@ class Experience:
     returns: Optional[Tensor] = None  # [resp_length]
     # Type of the experience, automatically set based on the presence of action_mask or chosen/rejected
     experience_type: ExperienceType = ExperienceType.SINGLE_TURN
-    info: Optional[dict] = field(
+    info: dict = field(
         default_factory=dict
-    )  # Additional information about the experience
-    metrics: Optional[dict[str, float]] = field(
+    )  # Additional information about the experience, can also be used to store custom fields
+    metrics: dict[str, float] = field(
         default_factory=dict
-    )  # Metrics associated with the experience
+    )  # Metrics associated with the experience, directly used by the monitor
 
     # for single-turn experiences
     prompt_length: int = 1  # Length of the prompt in tokens, used for generating attention masks
@@ -213,9 +225,14 @@ class Experience:
         return res
 
     @classmethod
-    def gather(cls, experiences: List[Experience], pad_token_id: int = 0) -> Experiences:
+    def gather(
+        cls,
+        experiences: List[Experience],
+        pad_token_id: int = 0,
+        custom_fields: Optional[List[CustomField]] = None,
+    ) -> Experiences:
         if len(experiences) == 0:
-            return empty_experiences()
+            return empty_experiences(custom_fields)
         exp_type = experiences[0].experience_type
         if exp_type == ExperienceType.DPO:
             experiences = split_dpo_experience_to_single_turn(experiences)
@@ -259,7 +276,7 @@ class Experience:
         else:
             returns = None
 
-        return Experiences(
+        exps = Experiences(
             eids=eids,
             tokens=tokens,
             rewards=rewards,
@@ -270,6 +287,18 @@ class Experience:
             prompt_length=max_prompt_length,
             logprobs=logprobs,
         )
+        if custom_fields is not None:
+            for custom_field in custom_fields:
+                exps.custom_fields.append(custom_field.destination_field)
+                setattr(
+                    exps,
+                    custom_field.destination_field,
+                    torch.tensor(
+                        [exp.info[custom_field.source_field] for exp in experiences],
+                        dtype=custom_field.data_type,
+                    ),
+                )
+        return exps
 
 
 def split_dpo_experience_to_single_turn(experiences: List[Experience]) -> List[Experience]:
@@ -337,6 +366,9 @@ class Experiences:
     action_masks: Optional[Tensor]  # [batch_size, response_length]
     prompt_length: int
     logprobs: Optional[Tensor]  # [batch_size, response_length]
+    custom_fields: List[str] = field(
+        default_factory=list
+    )  # Custom fields to include in the gathered experiences
 
     @property
     def batch_size(self) -> int:
@@ -345,19 +377,29 @@ class Experiences:
 
     @classmethod
     def gather_experiences(
-        cls, experiences: list[Experience], pad_token_id: int = 0
+        cls,
+        experiences: list[Experience],
+        pad_token_id: int = 0,
+        custom_fields: Optional[List[CustomField]] = None,
     ) -> Experiences:
         """Gather a batch of experiences from a list of experiences.
 
         This method will automatically pad the `tokens` and `logprobs` of input experiences to the same length.
+
+        Args:
+            experiences (list[Experience]): A list of experiences to gather.
+            pad_token_id (int): The token ID to use for padding. Default is 0.
+            custom_fields (Optional[List[CustomField]]): Custom fields to include in the gathered experiences.
         """
         if len(experiences) == 0:
-            return empty_experiences()
-        return experiences[0].__class__.gather(experiences, pad_token_id=pad_token_id)
+            return empty_experiences(custom_fields)
+        return experiences[0].__class__.gather(
+            experiences, pad_token_id=pad_token_id, custom_fields=custom_fields
+        )
 
 
-def empty_experiences() -> Experiences:
-    return Experiences(
+def empty_experiences(custom_fields: Optional[List[CustomField]]) -> Experiences:
+    exps = Experiences(
         tokens=torch.empty(0, dtype=torch.int32),
         rewards=torch.empty(0, dtype=torch.float32),
         advantages=torch.empty(0, dtype=torch.float32),
@@ -368,6 +410,12 @@ def empty_experiences() -> Experiences:
         prompt_length=torch.empty(0, dtype=torch.int32),
         eids=[],
     )
+    if custom_fields is not None:
+        for custom_field in custom_fields:
+            setattr(
+                exps, custom_field.destination_field, torch.empty(0, dtype=custom_field.data_type)
+            )
+    return exps
 
 
 def gather_token_ids(

@@ -5,7 +5,7 @@ Modified from verl/trainer/ppo/ray_trainer.py
 """
 import os
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 import ray
 import torch
@@ -34,8 +34,9 @@ from trinity.algorithm.algorithm import ALGORITHM_TYPE, SFTAlgorithm
 from trinity.algorithm.algorithm_manager import AlgorithmManager
 from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import Config
-from trinity.common.experience import Experience
+from trinity.common.experience import Experiences
 from trinity.trainer.trainer import TrainEngineWrapper
+from trinity.trainer.verl.converter import to_data_proto
 from trinity.utils.log import get_logger
 
 
@@ -268,8 +269,9 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         # TODO: compute total training steps
         self.total_training_steps = self.config.trainer.total_training_steps or sys.maxsize
 
-    def train_step(self, batch: List[Experience]) -> Tuple[bool, Dict]:  # noqa C901
+    def train_step(self, batch: Experiences) -> Tuple[bool, Dict]:  # noqa C901
         self.logger.info(f"Training at step {self.global_steps + 1} started.")
+        batch = to_data_proto(batch)
         metrics = {}
         self.global_steps += 1
         self.logger.info(f"Sampling at step {self.global_steps} done.")
