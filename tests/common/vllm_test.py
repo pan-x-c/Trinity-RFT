@@ -86,10 +86,10 @@ CHAT_TEMPLATE = r"""
 @parameterized_class(
     ("tensor_parallel_size", "engine_num", "use_v1", "repeat_times", "enable_history", "use_async"),
     [
-        # (1, 2, False, 2, True, False),
-        # (2, 2, False, 1, False, True),
-        # (2, 2, True, 2, True, False),
-        # (1, 2, True, 1, False, True),
+        (1, 2, False, 2, True, False),
+        (2, 2, False, 1, False, True),
+        (2, 2, True, 2, True, False),
+        (1, 2, True, 1, False, True),
         (2, 1, True, 3, True, True),
     ],
 )
