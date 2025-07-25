@@ -38,7 +38,6 @@ class Trainer:
         self._sample_exps_to_log = []
         self.sample_strategy = SAMPLE_STRATEGY.get(config.algorithm.sample_strategy)(
             buffer_config=config.buffer,
-            trainer_type=config.trainer.trainer_type,
             **config.algorithm.sample_strategy_args,
         )
 
