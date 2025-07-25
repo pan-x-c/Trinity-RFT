@@ -412,6 +412,7 @@ def empty_experiences(custom_fields: Optional[List[CustomField]]) -> Experiences
     )
     if custom_fields is not None:
         for custom_field in custom_fields:
+            exps.custom_fields.append(custom_field.destination_field)
             setattr(
                 exps, custom_field.destination_field, torch.empty(0, dtype=custom_field.data_type)
             )

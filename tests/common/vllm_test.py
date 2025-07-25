@@ -164,7 +164,7 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
             logprobs = await self.model_wrapper.logprobs_async(results[0].tokens.tolist())
         else:
             logprobs = self.model_wrapper.logprobs(results[0].tokens.tolist())
-        self.assertEqual(logprobs.shape[0], results[0].tokens.shape[0])
+        self.assertEqual(logprobs.shape[0], results[0].tokens.shape[0] - 1)
         if self.config.explorer.rollout_model.enable_history:
             history_experiences = self.model_wrapper.extract_experience_from_history()
             self.assertTrue(len(history_experiences) == 0)
@@ -281,12 +281,12 @@ class TestTokenizer(unittest.TestCase):
             },
         ]
         tokenizer = AutoTokenizer.from_pretrained(get_model_path())
-        token_ids, action_mask = tokenize_and_mask_messages_default(
+        token_ids, action_mask, prompt_length = tokenize_and_mask_messages_default(
             tokenizer=tokenizer,
             messages=messages,
             chat_template=CHAT_TEMPLATE,
         )
-        token_ids_hf, action_mask_hf = tokenize_and_mask_messages_hf(
+        token_ids_hf, action_mask_hf, prompt_length_hf = tokenize_and_mask_messages_hf(
             tokenizer=tokenizer,
             messages=messages,
             chat_template=CHAT_TEMPLATE,
@@ -295,3 +295,4 @@ class TestTokenizer(unittest.TestCase):
         self.assertEqual(action_mask.shape, action_mask_hf.shape)
         self.assertTrue(torch.equal(token_ids, token_ids_hf))
         self.assertTrue(torch.equal(action_mask, action_mask_hf))
+        self.assertEqual(prompt_length, prompt_length_hf)
