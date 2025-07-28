@@ -9,6 +9,7 @@ import json
 import time
 from typing import Optional, Union
 
+import vllm
 from pydantic import Field, TypeAdapter
 from vllm.entrypoints.launcher import serve_http
 from vllm.entrypoints.openai.api_server import (
@@ -251,16 +252,32 @@ async def chat_completion_full_generator(  # noqa C901
 
     request_metadata.final_usage_info = usage
 
-    response = PatchedChatCompletionResponse(
-        id=request_id,
-        created=created_time,
-        model=model_name,
-        choices=choices,
-        usage=usage,
-        prompt_logprobs=clamp_prompt_logprobs(final_res.prompt_logprobs),
-        kv_transfer_params=final_res.kv_transfer_params,
-        prompt_token_ids=final_res.prompt_token_ids,
-    )
+    if vllm.__version__ >= "0.9.0":
+        response = PatchedChatCompletionResponse(
+            id=request_id,
+            created=created_time,
+            model=model_name,
+            choices=choices,
+            usage=usage,
+            prompt_logprobs=clamp_prompt_logprobs(final_res.prompt_logprobs),
+            kv_transfer_params=final_res.kv_transfer_params,
+            prompt_token_ids=final_res.prompt_token_ids,
+        )
+    elif vllm.__version__ >= "0.8.5":
+        response = PatchedChatCompletionResponse(
+            id=request_id,
+            created=created_time,
+            model=model_name,
+            choices=choices,
+            usage=usage,
+            prompt_logprobs=clamp_prompt_logprobs(final_res.prompt_logprobs),
+            prompt_token_ids=final_res.prompt_token_ids,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported vllm version: {vllm.__version__}. "
+            "This patch requires vllm version >= 0.8.5."
+        )
 
     return response
 
