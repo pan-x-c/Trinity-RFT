@@ -10,6 +10,7 @@ import time
 from typing import Optional, Union
 
 import vllm
+from packaging.version import parse as parse_version
 from pydantic import Field, TypeAdapter
 from vllm.entrypoints.launcher import serve_http
 from vllm.entrypoints.openai.api_server import (
@@ -252,34 +253,20 @@ async def chat_completion_full_generator(  # noqa C901
 
     request_metadata.final_usage_info = usage
 
-    if vllm.__version__ >= "0.9.0":
-        response = PatchedChatCompletionResponse(
-            id=request_id,
-            created=created_time,
-            model=model_name,
-            choices=choices,
-            usage=usage,
-            prompt_logprobs=clamp_prompt_logprobs(final_res.prompt_logprobs),
-            kv_transfer_params=final_res.kv_transfer_params,
-            prompt_token_ids=final_res.prompt_token_ids,
-        )
-    elif vllm.__version__ >= "0.8.5":
-        response = PatchedChatCompletionResponse(
-            id=request_id,
-            created=created_time,
-            model=model_name,
-            choices=choices,
-            usage=usage,
-            prompt_logprobs=clamp_prompt_logprobs(final_res.prompt_logprobs),
-            prompt_token_ids=final_res.prompt_token_ids,
-        )
-    else:
-        raise ValueError(
-            f"Unsupported vllm version: {vllm.__version__}. "
-            "This patch requires vllm version >= 0.8.5."
-        )
+    vllm_version = parse_version(vllm.__version__)
+    response_args = {
+        "id": request_id,
+        "created": created_time,
+        "model": model_name,
+        "choices": choices,
+        "usage": usage,
+        "prompt_logprobs": clamp_prompt_logprobs(final_res.prompt_logprobs),
+        "prompt_token_ids": final_res.prompt_token_ids,
+    }
+    if vllm_version >= parse_version("0.9.0"):
+        response_args["kv_transfer_params"] = final_res.kv_transfer_params
 
-    return response
+    return PatchedChatCompletionResponse(**response_args)
 
 
 async def run_server_in_ray(args, engine_client):
@@ -340,6 +327,13 @@ async def patch_and_serve_http(app, sock, args):
 
 
 async def run_api_server_in_ray_actor(async_llm, host: str, port: int, model_path: str):
+    vllm_version = parse_version(vllm.__version__)
+    if vllm_version < parse_version("0.8.5") or vllm_version >= parse_version("0.10.0"):
+        raise ValueError(
+            f"Unsupported vllm version: {vllm.__version__}. "
+            "This patch requires vllm version >= 0.8.5, <= 0.10.0."
+        )
+
     parser = FlexibleArgumentParser(description="Run the OpenAI API server.")
     args = make_arg_parser(parser)
     args = parser.parse_args(["--host", str(host), "--port", str(port), "--model", model_path])
