@@ -17,6 +17,7 @@ Trinity-RFT is still under development, and the following interfaces may change.
 
 ---
 
+(Workflows)=
 ## Workflows (For RL Environment Developers)
 
 In Trinity-RFT, workflows are the core components that define the interaction between Agents and Environments.
