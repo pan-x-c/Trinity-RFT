@@ -165,9 +165,9 @@ class OPMDAddStrategy(GroupAdvantageStrategy):
                     score = exp.reward - group_baseline
                     exp.advantages = score * exp.action_mask
                     exp.returns = exp.advantages.clone()
-                metrics = {
-                    "group_baseline": group_baseline,
-                }
+            metrics = {
+                "group_baseline": group_baseline,
+            }
         return exps, metrics
 
     @classmethod
