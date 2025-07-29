@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Literal, Tuple
 
 import numpy as np
+import torch
 
 from trinity.buffer import BufferWriter
 from trinity.common.experience import Experience
@@ -69,6 +70,8 @@ class GroupAdvantageStrategy(AddStrategy):
         """
 
     async def add(self, exps: List[Experience], step: int) -> Tuple[int, Dict]:
+        if len(exps) == 0:
+            return 0, {}
         exp_groups = self.group_experiences(exps)
         cnt = 0
         metric_list = []
@@ -78,10 +81,13 @@ class GroupAdvantageStrategy(AddStrategy):
             metric_list.append(group_metrics)
             cnt += len(group_exps)
             if len(group_exps) > 0:
-                tasks.append(self.buffer.write_async(group_exps))
+                tasks.append(self.writer.write_async(group_exps))
         if tasks:
             await asyncio.gather(*tasks)
-        metrics = gather_metrics(metric_list, "group_advantages")
+        try:
+            metrics = gather_metrics(metric_list, "group_advantages")
+        except ValueError:
+            metrics = {}  # empty metric list causes ValueError, ignore it
         return cnt, metrics
 
 
@@ -91,9 +97,7 @@ class GRPOAddStrategy(GroupAdvantageStrategy):
 
     def __init__(self, writer: BufferWriter, epsilon: float = 1e-6, **kwargs) -> None:
         super().__init__(writer)
-        from trinity.algorithm.advantage_fn.grpo_advantage import GRPOAdvantageFn
-
-        self.grpo_advantage_fn = GRPOAdvantageFn(epsilon)
+        self.epsilon = epsilon
 
     def group_experiences(self, exps):
         return group_by(exps, id_type="task")
@@ -101,7 +105,25 @@ class GRPOAddStrategy(GroupAdvantageStrategy):
     def calculate_group_advantage(
         self, group_id: str, exps: List[Experience]
     ) -> Tuple[List[Experience], Dict]:
-        return self.grpo_advantage_fn(exps)
+        with torch.no_grad():
+            if len(exps) == 1:
+                group_reward_mean = torch.tensor(0.0)
+                group_reward_std = torch.tensor(1.0)
+            else:
+                rewards = torch.tensor([exp.reward for exp in exps])
+                group_reward_mean = torch.mean(rewards)
+                group_reward_std = torch.std(rewards)
+            for exp in exps:
+                score = (exp.reward - group_reward_mean) / (group_reward_std + self.epsilon)
+                exp.advantages = score * exp.action_mask
+                exp.returns = exp.advantages.clone()
+
+            metrics = {
+                "reward_mean": group_reward_mean.item(),
+                "reward_std": group_reward_std.item(),
+            }
+
+        return exps, metrics
 
     @classmethod
     def default_args(cls) -> dict:
@@ -116,9 +138,8 @@ class OPMDAddStrategy(GroupAdvantageStrategy):
         self, writer: BufferWriter, opmd_baseline: str = "mean", tau: float = 1.0, **kwargs
     ) -> None:
         super().__init__(writer)
-        from trinity.algorithm.advantage_fn.opmd_advantage import OPMDAdvantageFn
-
-        self.opmd_advantage_fn = OPMDAdvantageFn(opmd_baseline, tau)
+        self.opmd_baseline = opmd_baseline
+        self.tau = tau
 
     def group_experiences(self, exps):
         return group_by(exps, id_type="task")
@@ -126,15 +147,36 @@ class OPMDAddStrategy(GroupAdvantageStrategy):
     def calculate_group_advantage(
         self, group_id: str, exps: List[Experience]
     ) -> Tuple[List[Experience], Dict]:
-        return self.opmd_advantage_fn(exps)
+        with torch.no_grad():
+            if len(exps) == 1:
+                group_baseline = torch.tensor(0.0)
+            else:
+                group_rewards = torch.tensor([exp.reward for exp in exps])
+                if self.opmd_baseline == "mean":
+                    group_baseline = torch.mean(group_rewards)
+                elif self.opmd_baseline == "logavgexp":
+                    group_baseline = self.tau * (
+                        torch.logsumexp(group_rewards / self.tau, dim=-1)
+                        - torch.log(torch.tensor(len(exps)))
+                    )
+                else:
+                    raise NotImplementedError(f"Unknown OPMD baseline: {self.opmd_baseline}")
+                for exp in exps:
+                    score = exp.reward - group_baseline
+                    exp.advantages = score * exp.action_mask
+                    exp.returns = exp.advantages.clone()
+                metrics = {
+                    "group_baseline": group_baseline,
+                }
+        return exps, metrics
 
     @classmethod
     def default_args(cls) -> dict:
         return {"opmd_baseline": "mean", "tau": 1.0}
 
 
-@ADD_STRATEGY.register_module("reward_variance")
-class RewardVarianceAddStrategy(AddStrategy):
+@ADD_STRATEGY.register_module("dapo")
+class RewardVarianceAddStrategy(GRPOAddStrategy):
     """An example AddStrategy that filters experiences based on a reward variance threshold."""
 
     def __init__(self, writer: BufferWriter, variance_threshold: float = 0.0, **kwargs) -> None:

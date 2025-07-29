@@ -3,12 +3,13 @@
 Ref: https://github.com/volcengine/verl/blob/main/verl/trainer/ppo/core_algos.py
 """
 
-from typing import Dict, List, Tuple
+from collections import defaultdict
+from typing import Dict, Tuple
 
 import torch
+from verl import DataProto
 
 from trinity.algorithm.advantage_fn import ADVANTAGE_FN, AdvantageFn
-from trinity.common.experience import Experience
 
 
 @ADVANTAGE_FN.register_module("grpo")
@@ -23,31 +24,55 @@ class GRPOAdvantageFn(AdvantageFn):
 
     def __call__(
         self,
-        exps: List[Experience],
+        exps: DataProto,
         **kwargs,
-    ) -> Tuple[List[Experience], Dict]:
+    ) -> Tuple[DataProto, Dict]:
         """
-        Compute advantage for GRPO. This method should only be called with experiences that belong to the same task.
+        Compute advantage for GRPO, operating only on Outcome reward
+        (with only one scalar reward for each response).
 
-        Args:
-            exps (List[Experience]): List of experiences belonging to the same task. Contains at least 1 experience.
+            token_level_rewards: `(torch.Tensor)`
+                shape: (bs, response_length)
+            eos_mask: `(torch.Tensor)`
+                shape: (bs, response_length)
+            scores: `(torch.Tensor)`
+                shape: (bs, response_length)
         """
+        token_level_rewards = exps.batch["token_level_rewards"]
+        eos_mask = exps.batch["response_mask"]
+        index = exps.non_tensor_batch["uid"]
+        epsilon = self.epsilon
+
+        response_length = token_level_rewards.shape[-1]
+        scores = token_level_rewards.sum(dim=-1)
+
+        id2score = defaultdict(list)
+        id2mean = {}
+        id2std = {}
+
         with torch.no_grad():
-            if len(exps) == 1:
-                group_reward_mean = torch.tensor(0.0)
-                group_reward_std = torch.tensor(1.0)
-            else:
-                group_reward_mean = torch.mean([exp.reward for exp in exps])
-                group_reward_std = torch.std([exp.reward for exp in exps])
-            for exp in exps:
-                score = (exp.reward - group_reward_mean) / (group_reward_std + self.epsilon)
-                exp.advantages = score * exp.action_mask
-                exp.returns = exp.advantages
+            bsz = scores.shape[0]
+            for i in range(bsz):
+                id2score[index[i]].append(scores[i])
+            for idx in id2score:
+                if len(id2score[idx]) == 1:
+                    id2mean[idx] = torch.tensor(0.0)
+                    id2std[idx] = torch.tensor(1.0)
+                elif len(id2score[idx]) > 1:
+                    id2mean[idx] = torch.mean(torch.tensor(id2score[idx]))
+                    id2std[idx] = torch.std(torch.tensor([id2score[idx]]))
+                else:
+                    raise ValueError(f"no score in prompt index: {idx}")
+            for i in range(bsz):
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            scores = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask
 
-            metrics = {
-                "reward_mean": group_reward_mean.item(),
-                "reward_std": group_reward_std.item(),
-            }
+        exps.batch["advantages"] = scores
+        exps.batch["returns"] = scores
+
+        metrics = {
+            # TODO: add meaningful metrics
+        }
 
         return exps, metrics
 

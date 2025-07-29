@@ -37,6 +37,10 @@ def to_data_proto(experiences: Experiences) -> DataProto:
                 "old_log_probs": experiences.logprobs,  # type: ignore
             }
         )
+    if experiences.advantages is not None:
+        batch_dict["advantages"] = experiences.advantages
+    if experiences.returns is not None:
+        batch_dict["returns"] = experiences.returns
     if experiences.custom_fields:
         for field in experiences.custom_fields:
             if hasattr(experiences, field):

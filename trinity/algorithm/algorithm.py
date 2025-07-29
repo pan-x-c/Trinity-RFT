@@ -92,7 +92,7 @@ class GRPOAlgorithm(AlgorithmType):
 
     use_critic: bool = False
     use_reference: bool = True
-    use_advantage: bool = True
+    use_advantage: bool = False
     can_balance_batch: bool = True
     schema: type = ExperienceModel
 
@@ -100,9 +100,9 @@ class GRPOAlgorithm(AlgorithmType):
     def default_config(cls) -> Dict:
         return {
             "repeat_times": 2,
+            "add_strategy": "grpo",
             "sample_strategy": "warmup",
             "policy_loss_fn": "ppo",
-            "advantage_fn": "grpo",
             "kl_penalty_fn": "none",
             "kl_loss_fn": "k2",
             "entropy_loss_fn": "default",
@@ -115,7 +115,7 @@ class OPMDAlgorithm(AlgorithmType):
 
     use_critic: bool = False
     use_reference: bool = True
-    use_advantage: bool = True
+    use_advantage: bool = False
     can_balance_batch: bool = True
     schema: type = ExperienceModel
 
@@ -123,9 +123,9 @@ class OPMDAlgorithm(AlgorithmType):
     def default_config(cls) -> Dict:
         return {
             "repeat_times": 2,
+            "add_strategy": "opmd",
             "sample_strategy": "warmup",
             "policy_loss_fn": "opmd",
-            "advantage_fn": "opmd",
             "kl_penalty_fn": "none",
             "kl_loss_fn": "k2",
             "entropy_loss_fn": "default",

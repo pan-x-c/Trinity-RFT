@@ -1,11 +1,12 @@
 """OPMD advantage computation"""
 
-from typing import Dict, List, Tuple
+from collections import defaultdict
+from typing import Dict, Tuple
 
 import torch
+from verl import DataProto
 
 from trinity.algorithm.advantage_fn import ADVANTAGE_FN, AdvantageFn
-from trinity.common.experience import Experience
 
 
 @ADVANTAGE_FN.register_module("opmd")
@@ -22,39 +23,68 @@ class OPMDAdvantageFn(AdvantageFn):
 
     def __call__(
         self,
-        exps: List[Experience],
+        exps: DataProto,
         **kwargs,
-    ) -> Tuple[List[Experience], Dict]:
+    ) -> Tuple[DataProto, Dict]:
         """Modified from compute_grpo_outcome_advantage
 
         Compute advantage for OPMD, operating only on Outcome reward
         (with only one scalar reward for each response).
 
-        Args:
-            exps (List[Experience]): List of experiences belonging to the same task. Contains at least 1 experience.
+            token_level_rewards: `(torch.Tensor)`
+                shape: (bs, response_length)
+            eos_mask: `(torch.Tensor)`
+                shape: (bs, response_length)
+            scores: `(torch.Tensor)`
+                shape: (bs, response_length)
         """
+        token_level_rewards = exps.batch["token_level_rewards"]
+        eos_mask = exps.batch["response_mask"]
+        # TODO (yanxi): confirm consistency with exps.batch["attention_mask"][:, -response_length:] in original implementation
+        index = exps.non_tensor_batch["uid"]
+        opmd_baseline = self.opmd_baseline
+        tau = self.tau
+
+        response_length = token_level_rewards.shape[-1]
+        scores = token_level_rewards.sum(dim=-1)
+
+        id2score = defaultdict(list)
+        id2baseline = {}
+
         with torch.no_grad():
-            if len(exps) == 1:
-                group_baseline = torch.tensor(0.0)
-            else:
-                group_rewards = torch.tensor([exp.reward for exp in exps])
-                if self.opmd_baseline == "mean":
-                    group_baseline = torch.mean(group_rewards)
-                elif self.opmd_baseline == "logavgexp":
-                    group_baseline = self.tau * (
-                        torch.logsumexp(group_rewards / self.tau, dim=-1)
-                        - torch.log(torch.tensor(len(exps)))
-                    )
+            bsz = scores.shape[0]
+            for i in range(bsz):
+                id2score[index[i]].append(scores[i])
+            for idx in id2score:
+                if len(id2score[idx]) == 1:
+                    id2baseline[idx] = torch.tensor(0.0)
+                    # TODO: consider id2baseline[idx] = id2score[idx] (so that this sample won't take effect?)
+                elif len(id2score[idx]) > 1:
+                    if opmd_baseline == "mean":
+                        id2baseline[idx] = torch.mean(torch.tensor(id2score[idx]))
+                    elif opmd_baseline == "logavgexp":
+                        rewards_tensor = torch.tensor(id2score[idx])
+                        # here we use the fact that logavgexp(x) = logsumexp(x) - log(len(x))
+                        id2baseline[idx] = tau * (
+                            torch.logsumexp(rewards_tensor / tau, dim=-1)
+                            - torch.log(torch.tensor(len(id2score[idx])))
+                        )
+                    else:
+                        raise NotImplementedError
                 else:
-                    raise NotImplementedError(f"Unknown OPMD baseline: {self.opmd_baseline}")
-                for exp in exps:
-                    score = exp.reward - group_baseline
-                    exp.advantages = score * exp.action_mask
-                    exp.returns = exp.advantages
-                metrics = {
-                    "group_baseline": group_baseline,
-                }
-            return exps, metrics
+                    raise ValueError(f"no score in prompt index: {idx}")
+            for i in range(bsz):
+                scores[i] = scores[i] - id2baseline[index[i]]
+            scores = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask
+
+        exps.batch["advantages"] = scores
+        exps.batch["returns"] = scores
+
+        metrics = {
+            # TODO: add meaningful metrics
+        }
+
+        return exps, metrics
 
     @classmethod
     def default_args(cls) -> Dict:
