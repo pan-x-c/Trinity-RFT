@@ -1,4 +1,4 @@
-"""Convert Experiences to verl.DataProto."""
+"""Utils for ccompatibility issues with verl."""
 
 import numpy as np
 import torch
@@ -9,6 +9,7 @@ from trinity.common.experience import Experiences
 
 
 def to_data_proto(experiences: Experiences) -> DataProto:
+    """Convert Experiences to verl DataProto."""
     attention_mask = experiences.attention_masks
     cumsum = torch.cumsum(attention_mask, dim=-1)
     position_ids = torch.clip(cumsum - 1, 0, None).long()
