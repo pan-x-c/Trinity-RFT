@@ -76,7 +76,7 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = False) -> dict:
     """
     metrics = {}
 
-    if "token_level_rewards" in batch.batch:
+    if "token_level_rewards" in batch.batch and "token_level_scores" in batch.batch:
         sequence_score = batch.batch["token_level_scores"].sum(-1)
         sequence_reward = batch.batch["token_level_rewards"].sum(-1)
         metrics.update(

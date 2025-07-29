@@ -138,6 +138,10 @@ class OPMDAddStrategy(GroupAdvantageStrategy):
         self, writer: BufferWriter, opmd_baseline: str = "mean", tau: float = 1.0, **kwargs
     ) -> None:
         super().__init__(writer)
+        assert opmd_baseline in [
+            "mean",
+            "logavgexp",
+        ], f"opmd_baseline must be 'mean' or 'logavgexp', got {opmd_baseline}"
         self.opmd_baseline = opmd_baseline
         self.tau = tau
 
@@ -154,17 +158,15 @@ class OPMDAddStrategy(GroupAdvantageStrategy):
                 group_rewards = torch.tensor([exp.reward for exp in exps])
                 if self.opmd_baseline == "mean":
                     group_baseline = torch.mean(group_rewards)
-                elif self.opmd_baseline == "logavgexp":
+                else:
                     group_baseline = self.tau * (
                         torch.logsumexp(group_rewards / self.tau, dim=-1)
                         - torch.log(torch.tensor(len(exps)))
                     )
-                else:
-                    raise NotImplementedError(f"Unknown OPMD baseline: {self.opmd_baseline}")
-                for exp in exps:
-                    score = exp.reward - group_baseline
-                    exp.advantages = score * exp.action_mask
-                    exp.returns = exp.advantages.clone()
+            for exp in exps:
+                score = exp.reward - group_baseline
+                exp.advantages = score * exp.action_mask
+                exp.returns = exp.advantages.clone()
             metrics = {
                 "group_baseline": group_baseline,
             }
