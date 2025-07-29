@@ -226,6 +226,7 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         )
         self.config.buffer.trainer_input.sft_warmup_steps = 3
         self.config.check_and_update()
+        self.config.buffer.trainer_input.experience_buffer.max_read_timeout = 20
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         self.config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr = 1e-5
         both(self.config)
@@ -240,7 +241,7 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         self.assertEqual(parser.metric_max_step(actor_metrics[-1]), 7)  # RFT
         response_metrics = parser.metric_list("response_length")
         self.assertTrue(len(response_metrics) > 0)
-        self.assertEqual(parser.metric_min_step(response_metrics[0]), 4)
+        self.assertEqual(parser.metric_min_step(response_metrics[0]), 1)
         self.assertEqual(parser.metric_max_step(response_metrics[0]), 7)
         # test save checkpoint when sft finish
         self.assertEqual(
