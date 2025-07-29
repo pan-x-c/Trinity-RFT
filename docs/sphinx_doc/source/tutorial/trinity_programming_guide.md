@@ -422,7 +422,7 @@ After implementation, you need to register this module through {class}`trinity.a
 
 ```{note}
 This step can be skipped if you have implemented `AddStrategy` as shown above.
-The `AdvantageFn` is mainly used for pre-sample advantage calculation, which is not recommended for group-based advantage calculation.
+The `AdvantageFn` is mainly used for pre-sample advantage calculation, and not recommended for group-based advantage calculation.
 ```
 
 The {class}`trinity.algorithm.AdvantageFn` interface, which mainly includes two methods:
@@ -577,7 +577,7 @@ If you need to modify certain parameters, you can simply add the corresponding p
 algorithm:
   algorithm_type: "opmd"
   repeat_times: 8
-  advantage_fn_args:
+  add_strategy_args:
     opmd_baseline: "logavgexp"
     tau: 0.99
   policy_loss_fn_args:
