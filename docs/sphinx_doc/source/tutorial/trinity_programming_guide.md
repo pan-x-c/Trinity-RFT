@@ -327,8 +327,9 @@ Trinity-RFT provides a standardized process for implementing new algorithms.
 In Trinity-RFT, the algorithm module is primarily responsible for extracting experience data from the Replay Buffer during the RL process and calculating the loss to update models based on this data.
 To avoid implementing a new Trainer class each time a new algorithm is added, we have decomposed the representative PPO algorithm process into multiple sub-modules to adapt to various algorithms.
 
+- **Add Strategy** ({class}`trinity.algorithm.AddStrategy`): Responsible for adding rollout experience data to the Replay Buffer. You can do some filtering or grouping of experience data before adding it to the buffer. For example, calculate the GRPO advantage in this module and filter out groups with the same reward.
 - **Sample Strategy** ({class}`trinity.algorithm.SampleStrategy`): Responsible for sampling experience data from the buffer module. By customizing this module, you can implement functionalities like filtering experience data or mixed sampling from multiple data sources.
-- **Advantage Fn**({class}`trinity.algorithm.AdvantageFn`): Responsible for calculating the Advantage and Returns of experience data.
+- **Advantage Fn**({class}`trinity.algorithm.AdvantageFn`): Responsible for calculating the Advantage and Returns of experience data. Note that you may not able to get a whole group of experience in this module. If you need group based Advantage calculation, you can implement it in the `AddStrategy` module.
 - **Policy Loss Fn**({class}`trinity.algorithm.PolicyLossFn`): Responsible for calculating the core training loss of the policy network.
 - **KL Fn**({class}`trinity.algorithm.KLFn`): Responsible for calculating KL Divergence, which is generally used in two places in existing RL algorithms: Reward Penalty and Actor Loss.
 - **Entropy Loss Fn**({class}`trinity.algorithm.EntropyLossFn`): Responsible for calculating the entropy loss of the policy network.
@@ -442,7 +443,7 @@ The `AlgorithmType` class includes the following attributes and methods:
 
 - `use_critic`: Whether to use the Critic model
 - `use_reference`: Whether to use the Reference model
-- `use_advantage`: Whether to calculate Advantage; if False, the `AdvantageFn` call will be skipped
+- `compute_advantage_in_trainer`: Whether to calculate Advantages in Trainer; if False, the `AdvantageFn` call in trainer will be skipped
 - `can_balance_batch`: Whether the algorithm allows automatic balancing when splitting a batch into microbatches (which permute the order of samples)
 - `schema`: The format of experience data corresponding to the algorithm
 - `default_config`: Gets the default configuration of the algorithm, which will override attributes with the same name in `ALGORITHM_TYPE`
@@ -460,7 +461,7 @@ class OPMDAlgorithm(AlgorithmType):
 
     use_critic: bool = False
     use_reference: bool = True
-    use_advantage: bool = True
+    compute_advantage_in_trainer: bool = True
     can_balance_batch: bool = True
     schema: type = ExperienceModel
 

@@ -124,7 +124,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
 
         # specify advantage function for various rft algorithms
         algorithm = ALGORITHM_TYPE.get(self.algorithm_config.algorithm_type)
-        if algorithm.use_advantage:
+        if algorithm.compute_advantage_in_trainer:
             self.advantage_fn = ADVANTAGE_FN.get(self.algorithm_config.advantage_fn)(
                 **self.algorithm_config.advantage_fn_args
             )
@@ -305,7 +305,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
                     values = self.critic_wg.compute_values(batch)
                     batch = batch.union(values)
 
-            if self.algorithm.use_advantage:
+            if self.algorithm.compute_advantage_in_trainer:
                 with marked_timer("adv", timing_raw):
                     # compute kl penalty
                     batch, kl_metrics = self.kl_fn.apply_kl_penalty_to_reward(batch)

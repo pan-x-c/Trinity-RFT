@@ -177,7 +177,7 @@ class OPMDAddStrategy(GroupAdvantageStrategy):
         return {"opmd_baseline": "mean", "tau": 1.0}
 
 
-@ADD_STRATEGY.register_module("dapo")
+@ADD_STRATEGY.register_module("reward_variance")
 class RewardVarianceAddStrategy(GRPOAddStrategy):
     """An example AddStrategy that filters experiences based on a reward variance threshold."""
 
