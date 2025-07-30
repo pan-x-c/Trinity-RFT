@@ -330,7 +330,7 @@ To avoid implementing a new Trainer class each time a new algorithm is added, we
 
 - **Add Strategy** ({class}`trinity.algorithm.AddStrategy`): Responsible for adding rollout experience data to the Replay Buffer. You can do some filtering or grouping of experience data before adding it to the buffer. For example, calculate the GRPO advantage in this module and filter out groups with the same reward.
 - **Sample Strategy** ({class}`trinity.algorithm.SampleStrategy`): Responsible for sampling experience data from the buffer module. By customizing this module, you can implement functionalities like filtering experience data or mixed sampling from multiple data sources.
-- **Advantage Fn**({class}`trinity.algorithm.AdvantageFn`): Responsible for calculating the Advantage and Returns of experience data. Note that you may not able to get a whole group of experiences in this module. Thus, if you need group based Advantage calculation, you should implement it in the `AddStrategy` module. Only pre-sample advantage calculation is recommanded in this module, e.g., PPO.
+- **Advantage Fn**({class}`trinity.algorithm.AdvantageFn`): Responsible for calculating the Advantage and Returns of experience data. Note that you might not be able to get a whole group of experiences in this module (depending on how experiences are written to and sampled from the buffer). Thus, if you need group based Advantage calculation, it is highly recommended that you implement it in the `AddStrategy` module instead. Only per-sample advantage calculation is recommended in this module, e.g., PPO.
 - **Policy Loss Fn**({class}`trinity.algorithm.PolicyLossFn`): Responsible for calculating the core training loss of the policy network.
 - **KL Fn**({class}`trinity.algorithm.KLFn`): Responsible for calculating KL Divergence, which is generally used in two places in existing RL algorithms: Reward Penalty and Actor Loss.
 - **Entropy Loss Fn**({class}`trinity.algorithm.EntropyLossFn`): Responsible for calculating the entropy loss of the policy network.
@@ -422,7 +422,7 @@ After implementation, you need to register this module through {class}`trinity.a
 
 ```{note}
 This step can be skipped if you have implemented `AddStrategy` as shown above.
-The `AdvantageFn` is mainly used for pre-sample advantage calculation, and not recommended for group-based advantage calculation.
+The `AdvantageFn` is mainly used for per-sample advantage calculation, and not recommended for group-based advantage calculation.
 ```
 
 The {class}`trinity.algorithm.AdvantageFn` interface, which mainly includes two methods:
