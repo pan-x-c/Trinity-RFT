@@ -6,10 +6,13 @@ from trinity.algorithm.add_strategy.add_strategy import (
     RewardVarianceAddStrategy,
 )
 
+from trinity.algorithm.add_strategy.step_wise_add_strategy import StepWiseGRPOStrategy
+
 __all__ = [
     "ADD_STRATEGY",
     "AddStrategy",
     "RewardVarianceAddStrategy",
     "GRPOAddStrategy",
     "OPMDAddStrategy",
+    "StepWiseGRPOStrategy",
 ]
