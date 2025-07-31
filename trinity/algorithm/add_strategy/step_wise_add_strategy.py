@@ -43,7 +43,6 @@ class StepWiseGRPOStrategy(AddStrategy):
             Dict[str, float]: A tuple containing the scores for each run.
             Dict[str, float]: Metrics for logging.
         """
-        print(f"Calculating group advantage for {len(exps)} experiences")
         with torch.no_grad():
             if len(exps) == 1:
                 group_reward_mean = torch.tensor(0.0)
@@ -55,7 +54,7 @@ class StepWiseGRPOStrategy(AddStrategy):
             scores = {}
             for rid, exp in exps.items():
                 score = (exp.reward - group_reward_mean) / (group_reward_std + self.epsilon)
-                scores[rid] = score
+                scores[rid] = score.item()
             metrics = {
                 "group_reward_mean": group_reward_mean.item(),
                 "group_reward_std": group_reward_std.item(),
@@ -87,14 +86,12 @@ class StepWiseGRPOStrategy(AddStrategy):
     async def add(self, exps: List[Experience], step: int) -> Tuple[int, Dict]:
         if len(exps) == 0:
             return 0, {}
-        print(f"adding {len(exps)} experiences")
         cnt = 0
         tasks = []
         metric_list = []
         # Step 1: split the experiences into sub-groups by task
         task_exps = group_by(exps, "task")
         # Step 2: further split each task's experiences into sub-groups by run
-        run_exps = {}
         for task_exp in task_exps.values():
             run_exps = group_by(task_exp, "run")
 
@@ -117,7 +114,8 @@ class StepWiseGRPOStrategy(AddStrategy):
             metrics = {}  # empty metric list causes ValueError, ignore it
         return cnt, metrics
 
-    def default_args(self) -> Dict:
+    @classmethod
+    def default_args(cls) -> Dict:
         """Return the default configuration for this strategy."""
         return {
             "epsilon": 1e-6,

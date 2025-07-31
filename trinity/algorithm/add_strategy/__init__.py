@@ -5,7 +5,6 @@ from trinity.algorithm.add_strategy.add_strategy import (
     OPMDAddStrategy,
     RewardVarianceAddStrategy,
 )
-
 from trinity.algorithm.add_strategy.step_wise_add_strategy import StepWiseGRPOStrategy
 
 __all__ = [
