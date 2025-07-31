@@ -48,7 +48,7 @@ class StepWiseGRPOStrategy(AddStrategy):
                 group_reward_mean = torch.tensor(0.0)
                 group_reward_std = torch.tensor(1.0)
             else:
-                rewards = torch.tensor([exp.reward for exp in exps.values()])
+                rewards = torch.tensor([exp.reward for exp in exps.values()], dtype=torch.float32)
                 group_reward_mean = torch.mean(rewards)
                 group_reward_std = torch.std(rewards)
             scores = {}
