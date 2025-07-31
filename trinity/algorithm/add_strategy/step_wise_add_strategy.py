@@ -56,8 +56,8 @@ class StepWiseGRPOStrategy(AddStrategy):
                 score = (exp.reward - group_reward_mean) / (group_reward_std + self.epsilon)
                 scores[rid] = score.item()
             metrics = {
-                "group_reward_mean": group_reward_mean.item(),
-                "group_reward_std": group_reward_std.item(),
+                "reward_mean": group_reward_mean.item(),
+                "reward_std": group_reward_std.item(),
             }
         return scores, metrics
 
