@@ -10,6 +10,8 @@ from trinity.algorithm.add_strategy.step_wise_add_strategy import StepWiseGRPOSt
 __all__ = [
     "ADD_STRATEGY",
     "AddStrategy",
+    "GRPOAddStrategy",
+    "OPMDAddStrategy",
     "RewardVarianceAddStrategy",
     "GRPOAddStrategy",
     "OPMDAddStrategy",
