@@ -8,7 +8,6 @@ from trinity.common.experience import EID, Experience
 
 
 class TestAddStrategy(unittest.IsolatedAsyncioTestCase):
-
     async def test_grpo_args(self):
         writer = MagicMock()
         writer.write_async = AsyncMock()
@@ -66,7 +65,6 @@ class TestAddStrategy(unittest.IsolatedAsyncioTestCase):
         write_async_call_count_2 = writer.write_async.call_count
         self.assertTrue(write_async_call_count_2 - write_async_call_count_1 == 3)
 
-
     async def test_reward_variance_strategy(self):
         writer = MagicMock()
         writer.write_async = AsyncMock()
@@ -93,7 +91,6 @@ class TestAddStrategy(unittest.IsolatedAsyncioTestCase):
 
         write_async_call_count = writer.write_async.call_count
         self.assertEqual(write_async_call_count, 0)
-
 
     async def test_step_wise_grpo_strategy(self):
         writer = MagicMock()
@@ -124,7 +121,9 @@ class TestAddStrategy(unittest.IsolatedAsyncioTestCase):
         self.assertIn("group_advantages/reward_mean/mean", metrics)
         self.assertIn("group_advantages/reward_std/mean", metrics)
         self.assertTrue(metrics["group_advantages/reward_mean/mean"] == 1.0)
-        self.assertTrue(metrics["group_advantages/reward_std/mean"] == torch.std(torch.tensor([i for i in range(repeat_times)], dtype=torch.float32)).item()
+        self.assertTrue(
+            metrics["group_advantages/reward_std/mean"]
+            == torch.std(torch.tensor([i for i in range(repeat_times)], dtype=torch.float32)).item()
         )
         write_async_call_count = writer.write_async.call_count
         self.assertEqual(write_async_call_count, task_num * repeat_times)
