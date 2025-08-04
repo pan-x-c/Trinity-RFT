@@ -133,6 +133,28 @@ class RewardShapingConfig:
 
 
 @dataclass
+class OperatorConfig:
+    name: str
+    args: dict
+
+
+@dataclass
+class ExperiencePipelineConfig:
+    """Config for experience pipeline."""
+
+    # A dictionary of input buffers, buffers are indexed by their names.
+    # the explorer output buffer will be automatically added as `experience_buffer`,
+    # users only need to set extra buffers here
+    inputs: Dict[str, StorageConfig] = field(default_factory=dict)
+    # The list of experience operators to apply, operators will be applied in the order they are defined
+    operators: List[OperatorConfig] = field(default_factory=list)
+    # The output buffer of processor, automatically set to the trainer input buffer if not provided
+    output: Optional[StorageConfig] = None
+    # ! DO NOT SET ray namespace for the experience pipeline
+    ray_namespace: Optional[str] = None
+
+
+@dataclass
 class DataPipelineConfig:
     """Config for data pipeline."""
 
