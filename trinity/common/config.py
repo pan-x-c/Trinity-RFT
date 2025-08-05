@@ -134,8 +134,8 @@ class RewardShapingConfig:
 
 @dataclass
 class OperatorConfig:
-    name: str
-    args: dict
+    name: str = ""
+    args: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

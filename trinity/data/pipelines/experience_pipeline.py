@@ -2,7 +2,7 @@ from typing import Dict, List
 
 import ray
 
-from trinity.buffer.buffer import get_buffer_writer
+from trinity.buffer.buffer import get_buffer_writer, get_buffer_reader
 from trinity.common.config import BufferConfig, ExperiencePipelineConfig
 from trinity.common.experience import Experience
 from trinity.data.operators.experience_operator import ExperienceOperator
@@ -15,8 +15,8 @@ def get_input_buffers(
     """Get input buffers for the experience pipeline."""
     input_buffers = {}
     for input_name, input_config in pipeline_config.inputs.items():
-        buffer_writer = get_buffer_writer(input_config, buffer_config)
-        input_buffers[input_name] = buffer_writer
+        buffer_reader = get_buffer_reader(input_config, buffer_config)
+        input_buffers[input_name] = buffer_reader
     return input_buffers
 
 
@@ -35,12 +35,12 @@ class ExperiencePipeline:
         )
 
     @classmethod
-    def get_ray_actor(cls, pipeline_config: ExperiencePipelineConfig):
+    def get_ray_actor(cls, pipeline_config: ExperiencePipelineConfig, buffer_config: BufferConfig):
         """Get a Ray actor for the experience pipeline."""
         return (
             ray.remote(cls)
             .options(name="ExperiencePipeline", namespace=pipeline_config.ray_namespace)
-            .remote(pipeline_config)
+            .remote(pipeline_config, buffer_config)
         )
 
     def read_from_input_buffers(self) -> List[Experience]:
