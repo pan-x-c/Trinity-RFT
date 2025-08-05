@@ -11,10 +11,10 @@ from typing import List, Optional
 
 import ray
 import torch
+from ray.util.placement_group import placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-from trinity.algorithm import ADD_STRATEGY
 from trinity.algorithm.algorithm_manager import AlgorithmManager
-from trinity.buffer import get_buffer_writer
 from trinity.buffer.buffer import get_buffer_reader
 from trinity.common.config import Config
 from trinity.common.constants import (
@@ -25,6 +25,7 @@ from trinity.common.constants import (
 )
 from trinity.common.models import create_inference_models
 from trinity.common.synchronizer import Synchronizer
+from trinity.data.pipelines.experience_pipeline import ExperiencePipeline
 from trinity.explorer.scheduler import Scheduler
 from trinity.manager.manager import CacheManager
 from trinity.utils.log import get_logger
@@ -44,12 +45,7 @@ class Explorer:
         self.config = config
         self.algorithm_manager = AlgorithmManager(config)
         self.models, self.auxiliary_models = create_inference_models(config)
-        self.experience_buffer = None
-        if self.config.mode != "bench":
-            self.experience_buffer = get_buffer_writer(
-                self.config.buffer.explorer_output,  # type: ignore
-                self.config.buffer,
-            )
+        self.experience_pipeline: Optional[ExperiencePipeline] = None
         self.config.buffer.explorer_input.taskset.index = explorer_meta.get("latest_task_index", 0)
         self.taskset = get_buffer_reader(
             self.config.buffer.explorer_input.taskset, self.config.buffer
@@ -75,15 +71,6 @@ class Explorer:
         self.model_version = -1
         self.last_sync_successful = True
         self.logger.info("Finished initializing Explorer.")
-        self.collect_experiences = self.config.explorer.collect_experiences
-        self.generated_experience_cnt = 0
-        if self.collect_experiences:
-            assert (
-                self.experience_buffer is not None
-            ), "Experience buffer is required when collect_experiences is True."
-            self.add_strategy = ADD_STRATEGY.get(self.config.algorithm.add_strategy)(
-                self.experience_buffer, **self.config.algorithm.add_strategy_args
-            )
 
     async def setup_weight_sync_group(
         self, master_address: str, master_port: int, state_dict_meta: List = None
@@ -174,8 +161,8 @@ class Explorer:
             asyncio.create_task(self.scheduler.start()),
             self.synchronizer.acquire.remote(),
         ]
-        if self.experience_buffer:
-            futures.append(asyncio.create_task(self.experience_buffer.acquire()))
+        if self.experience_pipeline:
+            futures.append(asyncio.create_task(self.experience_pipeline.prepare()))
         if not self.use_nccl_sync:
             master_address, master_port = await self.models[0].get_available_address.remote()
             futures.append(
@@ -238,7 +225,7 @@ class Explorer:
                 if self.last_sync_successful
                 else RunningStatus.REQUIRE_SYNC,
             )
-            await self.experience_buffer.release()
+            await self.experience_pipeline.close()
             return False
         self.scheduler.schedule(tasks, batch_id=self.explore_step_num + 1)
         self.explore_step_num += 1
@@ -324,11 +311,6 @@ class Explorer:
         return True
 
     async def save_checkpoint(self, sync_weight: bool = False) -> None:
-        if not self.config.explorer.collect_experiences:
-            # wait for all tasks to complete
-            self.logger.info("Waiting for all tasks to complete")
-            await self.scheduler.wait_all()
-            self.logger.info(f"All tasks before step {self.explore_step_num} have completed.")
         log_task = asyncio.create_task(
             self._finish_steps(self.last_sync_step + 1, self.explore_step_num, self.model_version)
         )
@@ -367,11 +349,8 @@ class Explorer:
     async def _finish_explore_step(self, step: int, model_version: int) -> None:
         statuses, exps = await self.scheduler.get_results(batch_id=step)
         metric = {"rollout/model_version": model_version}
-        if self.config.explorer.collect_experiences:
-            exp_cnt, add_strategy_metric = await self.add_strategy.add(exps, step)
-            self.generated_experience_cnt += exp_cnt
-            metric.update(add_strategy_metric)
-            metric["rollout/experience_count"] = exp_cnt
+        # TODO: avoid blocking
+        await self.experience_pipeline.run(exps)
         if statuses:
             metric.update(gather_metrics([status.metric for status in statuses], "rollout"))
             self.monitor.log(metric, step=step)
@@ -402,3 +381,56 @@ class Explorer:
             ray.kill(self.synchronizer)
             self.logger.info("Synchronizer stopped.")
         await self.scheduler.stop()
+
+    async def set_experience_pipeline(self, pipeline: ExperiencePipeline) -> None:
+        """Set the experience pipeline for the explorer.
+
+        Args:
+            pipeline: The experience pipeline actor.
+        """
+        if self.experience_pipeline is not None:
+            raise RuntimeError("Experience pipeline has already been set.")
+        self.experience_pipeline = pipeline
+
+    @classmethod
+    def get_actor(cls, config: Config):
+        """Get a Ray actor for the explorer."""
+        # Create a placement group for the explorer,
+        # 1 CPU for the explorer actor, 1 CPU for the experience pipeline
+        pg = placement_group(
+            [{"CPU": 1}, {"CPU": 1}],
+            strategy="PACK",
+            name=config.explorer.name,
+        )
+        ray.get(pg.ready())
+        explorer_actor = (
+            ray.remote(cls)
+            .options(
+                name=config.explorer.name,
+                namespace=ray.get_runtime_context().namespace,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_capture_child_tasks=False,
+                    placement_group_bundle_index=0,
+                ),
+            )
+            .remote(config)
+        )
+        pipeline_actor = (
+            ray.remote(ExperiencePipeline)
+            .options(
+                name=f"{config.explorer.name}_pipeline",
+                namespace=ray.get_runtime_context().namespace,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_capture_child_tasks=False,
+                    placement_group_bundle_index=1,
+                ),
+            )
+            .remote(
+                config.data_processor.experience_pipeline,
+                config.buffer,
+            )
+        )
+        explorer_actor.set_output_buffer.remote(pipeline_actor)
+        return explorer_actor

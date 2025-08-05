@@ -365,7 +365,6 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(exps), 0)
         await scheduler.stop()
 
-        self.config.explorer.collect_experiences = True
         await scheduler.start()
         tasks = generate_tasks(3, repeat_times=2)
         scheduler.schedule(tasks, batch_id=1)
@@ -375,7 +374,6 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         await scheduler.stop()
 
     async def test_scheduler_all_methods(self):
-        self.config.explorer.collect_experiences = True
         scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
         tasks = generate_tasks(8)

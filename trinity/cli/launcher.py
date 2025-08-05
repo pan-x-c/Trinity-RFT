@@ -9,12 +9,7 @@ from pprint import pprint
 import ray
 
 from trinity.common.config import Config, load_config
-from trinity.common.constants import DataProcessorPipelineType
-from trinity.data.utils import (
-    activate_data_processor,
-    stop_data_processor,
-    validate_data_pipeline,
-)
+from trinity.data.utils import check_and_activate_data_processor, stop_data_processor
 from trinity.explorer.explorer import Explorer
 from trinity.trainer.trainer import Trainer
 from trinity.utils.log import get_logger
@@ -165,29 +160,7 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
     pprint(config)
     # try to activate task pipeline for raw data
     data_processor_config = config.data_processor
-    if (
-        data_processor_config.data_processor_url is not None
-        and data_processor_config.task_pipeline is not None
-        and validate_data_pipeline(
-            data_processor_config.task_pipeline, DataProcessorPipelineType.TASK
-        )
-    ):
-        activate_data_processor(
-            f"{data_processor_config.data_processor_url}/{DataProcessorPipelineType.TASK.value}",
-            config_path,
-        )
-    # try to activate experience pipeline for experiences
-    if (
-        data_processor_config.data_processor_url is not None
-        and data_processor_config.experience_pipeline is not None
-        and validate_data_pipeline(
-            data_processor_config.experience_pipeline, DataProcessorPipelineType.EXPERIENCE
-        )
-    ):
-        activate_data_processor(
-            f"{data_processor_config.data_processor_url}/{DataProcessorPipelineType.EXPERIENCE.value}",
-            config_path,
-        )
+    check_and_activate_data_processor(data_processor_config, config_path)
     if dlc:
         from trinity.utils.dlc_utils import setup_ray_cluster
 
