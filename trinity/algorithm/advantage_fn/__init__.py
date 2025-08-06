@@ -1,4 +1,8 @@
-from trinity.algorithm.advantage_fn.advantage_fn import ADVANTAGE_FN, AdvantageFn
+from trinity.algorithm.advantage_fn.advantage_fn import (
+    ADVANTAGE_FN,
+    AdvantageFn,
+    GroupAdvantage,
+)
 from trinity.algorithm.advantage_fn.grpo_advantage import (
     GRPOAdvantageFn,
     GRPOGroupedAdvantage,
@@ -20,6 +24,7 @@ from trinity.algorithm.advantage_fn.rloo_advantage import RLOOAdvantageFn
 __all__ = [
     "ADVANTAGE_FN",
     "AdvantageFn",
+    "GroupAdvantage",
     "PPOAdvantageFn",
     "GRPOAdvantageFn",
     "GRPOGroupedAdvantage",

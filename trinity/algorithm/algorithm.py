@@ -193,6 +193,5 @@ class MIXAlgorithm(AlgorithmType):
             "repeat_times": 8,
             "advantage_fn": "grpo",
             "policy_loss_fn": "mix",
-            "advantage_fn": "grpo",
             "sample_strategy": "mix",
         }

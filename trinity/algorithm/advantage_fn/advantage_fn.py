@@ -19,7 +19,7 @@ class AdvantageFn(ABC):
             kwargs (`Dict`): The step-level parameters for calculating advantages.
 
         Returns:
-            `DataProto`: The experiences with advantages.
+            `Any`: The experiences with advantages.
             `Dict`: The metrics for logging.
         """
 
