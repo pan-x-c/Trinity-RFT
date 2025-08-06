@@ -1,6 +1,7 @@
 """GRPO advantage computation
 """
 
+import copy
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
@@ -13,6 +14,7 @@ from trinity.algorithm.advantage_fn.advantage_fn import (
     GroupAdvantage,
 )
 from trinity.common.experience import Experience, group_by
+from trinity.utils.monitor import gather_metrics
 
 
 @ADVANTAGE_FN.register_module("grpo_verl")
@@ -94,20 +96,24 @@ class GRPOGroupedAdvantage(GroupAdvantage):
     def __init__(
         self,
         epsilon: float = 1e-6,
-        reward_std_threshold: Optional[float] = None,
+        std_threshold: Optional[float] = None,
+        duplicate_experiences: bool = False,
         rank_penalty: Optional[float] = None,
-        **kwargs,
     ) -> None:
         """Initialize the GRPO advantage function.
 
         Args:
             epsilon (float): A small value to avoid division by zero.
-            reward_std_threshold (Optional[float]): If provided, groups with a reward standard deviation equal or below this threshold will be skipped.
+            std_threshold (Optional[float]): If provided, groups with a reward standard deviation equal
+                or below this threshold will be skipped.
+            duplicate_experiences (bool): If True, allows duplicate experiences to keep the original experience
+                count. Only used when `std_threshold` is not None (https://hkunlp.github.io/blog/2025/Polaris).
             rank_penalty (Optional[float]): A penalty applied to the rank of rewards to correct for bias
-            (https://arxiv.org/pdf/2506.02355).
+                (https://arxiv.org/pdf/2506.02355).
         """
         self.epsilon = epsilon
-        self.reward_std_threshold = reward_std_threshold
+        self.std_threshold = std_threshold
+        self.duplicate_experiences = duplicate_experiences
         self.rank_penalty = rank_penalty
 
     def group_experiences(self, exps):
@@ -121,11 +127,12 @@ class GRPOGroupedAdvantage(GroupAdvantage):
             if len(exps) == 1:
                 group_reward_mean = torch.tensor(0.0)
                 group_reward_std = torch.tensor(1.0)  # set to 1.0 to avoid division by zero
-                if self.reward_std_threshold is not None:
+                if self.std_threshold is not None:
                     metrics["skipped_count"] = 1
                     exps.clear()  # Clear experiences if only one experience
             else:
                 rewards = torch.tensor([exp.reward for exp in exps], dtype=torch.float32)
+
                 if self.rank_penalty is not None:
                     # Correct bias by adjusting rewards based on their ranks
                     old_log_probs = torch.tensor(
@@ -134,14 +141,12 @@ class GRPOGroupedAdvantage(GroupAdvantage):
                     group_ranks = torch.argsort(torch.argsort(old_log_probs))
                     group_ranks = group_ranks / len(group_ranks)
                     rewards = rewards * (1 - group_ranks * self.rank_penalty)
+
                 group_reward_mean = torch.mean(rewards)
                 group_reward_std = torch.std(rewards)
 
                 # If the reward standard deviation is below a threshold, skip the group
-                if (
-                    self.reward_std_threshold is not None
-                    and group_reward_std <= self.reward_std_threshold
-                ):
+                if self.std_threshold is not None and group_reward_std <= self.std_threshold:
                     metrics["skipped_count"] = len(exps)
                     exps.clear()
 
@@ -153,6 +158,48 @@ class GRPOGroupedAdvantage(GroupAdvantage):
             metrics["reward_mean"] = group_reward_mean.item()
             metrics["reward_std"] = group_reward_std.item()
 
+        return exps, metrics
+
+    def _duplicate_experiences(self, exp_groups: Dict[str, List[Experience]]) -> List[Experience]:
+        original_group_num = len(exp_groups)
+        exp_groups = {
+            group_id: group_exps
+            for group_id, group_exps in exp_groups.items()
+            if len(group_exps) > 0
+        }
+        skipped_group_num = original_group_num - len(exp_groups)
+        if skipped_group_num == 0:
+            return [exp for group in exp_groups.values() for exp in group]
+        elif skipped_group_num == original_group_num:
+            # All groups are skipped, return an empty list
+            return []
+        else:
+            idx = torch.randperm(len(exp_groups))[:skipped_group_num]
+            duplicated_groups = [copy.deepcopy(exp_groups[i]) for i in idx]
+            duplicated_exps = [exp for group in duplicated_groups for exp in group]
+            exps = [exp for group in exp_groups.values() for exp in group]
+            for exp in duplicated_exps:
+                exp.eid.task += (
+                    original_group_num  # Ensure unique task IDs for duplicated experiences
+                )
+                exps.append(exp)
+            return exps
+
+    def process(self, exps):
+        exp_groups = self.group_experiences(exps)
+        metric_list = []
+        for group_id, group_exps in exp_groups.items():
+            group_exps, group_metrics = self.calculate_group_advantage(group_id, group_exps)
+            metric_list.append(group_metrics)
+        try:
+            # TODO: sum skipped count
+            metrics = gather_metrics(metric_list, "group_advantages")
+        except ValueError:
+            metrics = {}  # empty metric list causes ValueError, ignore it
+        if self.duplicate_experiences and self.std_threshold is not None:
+            exps = self._duplicate_experiences(exp_groups)
+        else:
+            exps = [exp for group in exp_groups.values() for exp in group]  # Flatten the list
         return exps, metrics
 
     @classmethod

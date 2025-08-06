@@ -1,5 +1,6 @@
 import unittest
 
+import numpy as np
 import torch
 
 from trinity.algorithm.advantage_fn import ADVANTAGE_FN
@@ -86,7 +87,7 @@ class TestGroupedAdvantageFn(unittest.TestCase):
     def test_grpo_reward_std(self):
         advantage_fn_cls = ADVANTAGE_FN.get("grpo")
         self.assertIsNotNone(advantage_fn_cls)
-        advantage_fn = advantage_fn_cls(epsilon=1e-6, reward_std_threshold=0.0)
+        advantage_fn = advantage_fn_cls(epsilon=1e-6, std_threshold=0.0)
         task_num = 3
         repeat_times = 5
         exps = [
@@ -144,6 +145,45 @@ class TestGroupedAdvantageFn(unittest.TestCase):
             torch.std(torch.tensor([0.0, 0.95, 1.80, 2.55], dtype=torch.float32)).item(),
             places=6,
         )
+
+    def test_duplicate_grpo(self):
+        advantage_fn_cls = ADVANTAGE_FN.get("grpo")
+        self.assertIsNotNone(advantage_fn_cls)
+        advantage_fn = advantage_fn_cls(epsilon=1e-6, std_threshold=0.0, duplicate_experiences=True)
+        task_num = 3
+        repeat_times = 5
+        exps = [
+            Experience(
+                eid=EID(
+                    batch=0,
+                    task=j,
+                    run=i,
+                ),
+                tokens=torch.zeros(5),
+                prompt_length=2,
+                reward=np.random.rand(),
+            )
+            for i in range(repeat_times)
+            for j in range(task_num)
+        ]
+        zero_adv_exps = [
+            Experience(
+                eid=EID(
+                    batch=0,
+                    task=j,
+                    run=i,
+                ),
+                tokens=torch.zeros(5),
+                prompt_length=2,
+                reward=0.5,
+            )
+            for i in range(repeat_times)
+            for j in range(task_num)
+        ]
+        exps.extend(zero_adv_exps)
+
+        exps, metrics = advantage_fn(exps)
+        self.assertEqual(len(exps), (task_num + task_num) * repeat_times)
 
     def test_step_wise_grpo_advantage(self):
         advantage_fn_cls = ADVANTAGE_FN.get("step_wise_grpo")
