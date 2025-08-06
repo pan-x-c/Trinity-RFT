@@ -177,7 +177,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
         # test both mode
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.repeat_times = 4
-        self.config.algorithm.add_strategy = "grpo"
+        self.config.algorithm.advantage_fn = "grpo"
         # self.config.algorithm.repeat_times = 8  # TODO: used for real testing
         # self.config.buffer.batch_size = 96  # TODO: used for real testing
         self.config.buffer.total_epochs = 1

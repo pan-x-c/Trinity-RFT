@@ -98,7 +98,7 @@ jobs:
         fi
 
     - name: Upload test results
-      if: env.tests_run == 'true'
+      if: env.tests_run == 'true' || failure()
       uses: actions/upload-artifact@v4
       with:
         name: pytest-results
@@ -106,7 +106,7 @@ jobs:
       continue-on-error: true
 
     - name: Publish Test Report
-      if: env.tests_run == 'true'
+      if: env.tests_run == 'true' || failure()
       uses: ctrf-io/github-test-reporter@v1
       with:
         report-path: trinity-${{ github.run_id }}/report.json

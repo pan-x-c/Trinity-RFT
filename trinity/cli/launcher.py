@@ -48,14 +48,7 @@ def explore(config: Config) -> None:
 def train(config: Config) -> None:
     """Run trainer."""
     try:
-        trainer = (
-            ray.remote(Trainer)
-            .options(
-                name=config.trainer.name,
-                namespace=ray.get_runtime_context().namespace,
-            )
-            .remote(config)
-        )
+        trainer = Trainer.get_actor(config)
         ray.get(trainer.prepare.remote())
         ray.get(trainer.sync_weight.remote())
         ray.get(trainer.train.remote())
@@ -75,23 +68,8 @@ def both(config: Config) -> None:
     the latest step. The specific number of experiences may vary for different
     algorithms and tasks.
     """
-    namespace = ray.get_runtime_context().namespace
-    explorer = (
-        ray.remote(Explorer)
-        .options(
-            name=config.explorer.name,
-            namespace=namespace,
-        )
-        .remote(config)
-    )
-    trainer = (
-        ray.remote(Trainer)
-        .options(
-            name=config.trainer.name,
-            namespace=namespace,
-        )
-        .remote(config)
-    )
+    explorer = Explorer.get_actor(config)
+    trainer = Trainer.get_actor(config)
     ray.get([explorer.__ray_ready__.remote(), trainer.__ray_ready__.remote()])
     ray.get(
         [
