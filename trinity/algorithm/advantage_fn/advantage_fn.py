@@ -72,15 +72,12 @@ class GroupAdvantage(AdvantageFn, ExperienceOperator):
         if len(exps) == 0:
             return [], {}
         exp_groups = self.group_experiences(exps)
-        cnt = 0
         metric_list = []
         for group_id, group_exps in exp_groups.items():
             group_exps, group_metrics = self.calculate_group_advantage(group_id, group_exps)
             metric_list.append(group_metrics)
-            cnt += len(group_exps)
         try:
             metrics = gather_metrics(metric_list, "group_advantages")
-            metrics["experience_count"] = cnt
         except ValueError:
             metrics = {}  # empty metric list causes ValueError, ignore it
         exps = [exp for group in exp_groups.values() for exp in group]  # Flatten the list
