@@ -13,10 +13,9 @@ from trinity.algorithm.advantage_fn.advantage_fn import (
     GroupAdvantage,
 )
 from trinity.common.experience import Experience, group_by
-from trinity.data.operators import EXPERIENCE_OPERATORS
 
 
-@ADVANTAGE_FN.register_module("grpo")
+@ADVANTAGE_FN.register_module("grpo_verl")
 class GRPOAdvantageFn(AdvantageFn):
     """GRPO advantage computation"""
 
@@ -88,7 +87,7 @@ class GRPOAdvantageFn(AdvantageFn):
         }
 
 
-@EXPERIENCE_OPERATORS.register_module("grpo")
+@ADVANTAGE_FN.register_module("grpo")
 class GRPOGroupedAdvantage(GroupAdvantage):
     """An example AddStrategy that calculates GRPO advantages."""
 
@@ -126,8 +125,8 @@ class GRPOGroupedAdvantage(GroupAdvantage):
         return {"epsilon": 1e-6}
 
 
-@EXPERIENCE_OPERATORS.register_module("correct_bias_grpo")
-class CorrectBiasMapper(GRPOGroupedAdvantage):
+@ADVANTAGE_FN.register_module("grpo_correct_bias")
+class GRPOCorrectBiasAdvantage(GRPOGroupedAdvantage):
     """An Addstrategy with GroupAdvantage that corrects for rank bias (https://arxiv.org/pdf/2506.02355)"""
 
     def __init__(self, epsilon: float = 1e-6, rank_penalty: float = 0.25, **kwargs) -> None:

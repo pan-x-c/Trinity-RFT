@@ -44,13 +44,3 @@ class ExperienceOperator(ABC):
                 raise ValueError(f"Unknown operator: {config.name}")
             operators.append(operator_class(**config.args))
         return operators
-
-    @classmethod
-    @abstractmethod
-    def default_args(cls) -> Dict:
-        """Get the default arguments for the operator.
-
-        Returns:
-            Dict: A dictionary containing the default arguments for the operator.
-        """
-        return {}

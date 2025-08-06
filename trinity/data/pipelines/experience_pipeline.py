@@ -1,10 +1,16 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import ray
 
-from trinity.buffer.buffer import get_buffer_reader, get_buffer_writer
+from trinity.buffer.buffer import BufferWriter, get_buffer_reader, get_buffer_writer
 from trinity.buffer.ray_wrapper import is_database_url, is_json_file
-from trinity.common.config import BufferConfig, ExperiencePipelineConfig, StorageConfig
+from trinity.common.config import (
+    AlgorithmConfig,
+    BufferConfig,
+    Config,
+    ExperiencePipelineConfig,
+    StorageConfig,
+)
 from trinity.common.constants import StorageType
 from trinity.common.experience import Experience
 from trinity.data.operators.experience_operator import ExperienceOperator
@@ -27,21 +33,37 @@ class ExperiencePipeline:
     A class to process experiences.
     """
 
-    def __init__(self, pipeline_config: ExperiencePipelineConfig, buffer_config: BufferConfig):
+    def __init__(self, config: Config):
         self.logger = get_logger(__name__)
+        pipeline_config = config.data_processor.experience_pipeline
+        buffer_config = config.buffer
+        self.input_store = self._init_input_storage(pipeline_config, buffer_config)  # type: ignore [arg-type]
         self.operators = ExperienceOperator.create_operators(pipeline_config.operators)
-        self.input_store = None
+        self._set_algorithm_operators(pipeline_config.algorithm_config)
+        self.output = get_buffer_writer(
+            pipeline_config.output,  # type: ignore [arg-type]
+            buffer_config,
+        )
+
+    def _init_input_storage(
+        self,
+        pipeline_config: ExperiencePipelineConfig,
+        buffer_config: BufferConfig,
+    ) -> Optional[BufferWriter]:
+        """Initialize the input storage if it is not already set."""
         if pipeline_config.save_input:
-            if is_json_file(pipeline_config.input_save_path):  # type: ignore [arg-type]
-                self.input_store = get_buffer_writer(
+            if pipeline_config.input_save_path is None:
+                raise ValueError("input_save_path must be set when save_input is True.")
+            elif is_json_file(pipeline_config.input_save_path):
+                return get_buffer_writer(
                     StorageConfig(
                         storage_type=StorageType.FILE,
                         path=pipeline_config.input_save_path,
                     ),
                     buffer_config,
                 )
-            elif is_database_url(pipeline_config.input_save_path):  # type: ignore [arg-type]
-                self.input_store = get_buffer_writer(
+            elif is_database_url(pipeline_config.input_save_path):
+                return get_buffer_writer(
                     StorageConfig(
                         storage_type=StorageType.SQL,
                         path=pipeline_config.input_save_path,
@@ -53,10 +75,23 @@ class ExperiencePipeline:
                     f"Unsupported save_input format: {pipeline_config.save_input}. "
                     "Only JSON file path or SQLite URL is supported."
                 )
-        self.output = get_buffer_writer(
-            pipeline_config.output,  # type: ignore [arg-type]
-            buffer_config,
-        )
+        else:
+            return None
+
+    def _set_algorithm_operators(self, algorithm_config: AlgorithmConfig) -> None:
+        """Add algorithm-specific operators to the pipeline."""
+        from trinity.algorithm import ADVANTAGE_FN, ALGORITHM_TYPE
+
+        algorithm = ALGORITHM_TYPE.get(algorithm_config.algorithm_type)
+        if not algorithm.compute_advantage_in_trainer and algorithm_config.advantage_fn:
+            advantage_fn_cls = ADVANTAGE_FN.get(algorithm_config.advantage_fn)
+            assert (
+                advantage_fn_cls is not None
+            ), f"AdvantageFn {algorithm_config.advantage_fn} not found."
+            assert (
+                not advantage_fn_cls.compute_in_trainer()
+            ), f"AdvantageFn {algorithm_config.advantage_fn} can only be computed in the trainer, please check your implementation."
+            self.operators.append(advantage_fn_cls(**algorithm_config.advantage_fn_args))
 
     async def prepare(self) -> None:
         await self.output.acquire()

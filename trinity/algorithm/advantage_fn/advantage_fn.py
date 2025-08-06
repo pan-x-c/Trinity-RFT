@@ -31,8 +31,13 @@ class AdvantageFn(ABC):
             `Dict`: The default init arguments for the advantage function.
         """
 
+    @classmethod
+    def compute_in_trainer(cls) -> bool:
+        """Whether the advantage should be computed in the trainer loop."""
+        return True
 
-class GroupAdvantage(ExperienceOperator):
+
+class GroupAdvantage(AdvantageFn, ExperienceOperator):
     """For group-based advantages calculation."""
 
     @abstractmethod
@@ -45,6 +50,9 @@ class GroupAdvantage(ExperienceOperator):
         Returns:
             Dict[str, List[Experience]]: A dictionary where keys are group identifiers and values are lists of experiences.
         """
+
+    def __call__(self, exps, **kwargs):
+        return self.process(exps)
 
     @abstractmethod
     def calculate_group_advantage(
@@ -67,7 +75,7 @@ class GroupAdvantage(ExperienceOperator):
         cnt = 0
         metric_list = []
         for group_id, group_exps in exp_groups.items():
-            group_exps, group_metrics = self.calculate_group_advantage(group_id, group_exps)
+            group_exps, group_metrics = self.calculate_last_step_advantage(group_id, group_exps)
             metric_list.append(group_metrics)
             cnt += len(group_exps)
         try:
@@ -77,3 +85,8 @@ class GroupAdvantage(ExperienceOperator):
             metrics = {}  # empty metric list causes ValueError, ignore it
         exps = [exp for group in exp_groups.values() for exp in group]  # Flatten the list
         return exps, metrics
+
+    @classmethod
+    def compute_in_trainer(cls) -> bool:
+        """Whether the advantage should be computed in the trainer loop."""
+        return False

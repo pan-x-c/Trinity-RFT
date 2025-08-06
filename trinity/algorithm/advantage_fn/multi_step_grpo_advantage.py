@@ -4,15 +4,16 @@ from typing import Dict, List, Tuple
 
 import torch
 
+from trinity.algorithm.advantage_fn.advantage_fn import ADVANTAGE_FN, AdvantageFn
 from trinity.common.experience import Experience, group_by
-from trinity.data.operators import EXPERIENCE_OPERATORS, ExperienceOperator
+from trinity.data.operators import ExperienceOperator
 from trinity.utils.monitor import gather_metrics
 
 
-@EXPERIENCE_OPERATORS.register_module("step_wise_grpo")
-class StepWiseGRPOAdvantageFn(ExperienceOperator):
+@ADVANTAGE_FN.register_module("step_wise_grpo")
+class StepWiseGRPOAdvantageFn(AdvantageFn, ExperienceOperator):
     """
-    An example AddStrategy that broadcasts advantages from the last step to previous steps.
+    An advantage function that broadcasts advantages from the last step to previous steps.
     Inspired by rLLM (https://github.com/rllm-org/rllm).
     """
 
@@ -25,7 +26,7 @@ class StepWiseGRPOAdvantageFn(ExperienceOperator):
         self.epsilon = epsilon
         self.enable_step_norm = enable_step_norm
 
-    def calculate_group_advantage(
+    def calculate_last_step_advantage(
         self, exps: Dict[str, Experience]
     ) -> Tuple[Dict[str, float], Dict[str, float]]:
         """Calculate group advantage for a given group of experiences.
@@ -91,7 +92,7 @@ class StepWiseGRPOAdvantageFn(ExperienceOperator):
 
             # Step3: extract the last experience (last step) from each run and calculate scores
             last_step_exps = {run_id: step_exps[-1] for run_id, step_exps in run_exps.items()}
-            scores, metrics = self.calculate_group_advantage(last_step_exps)
+            scores, metrics = self.calculate_last_step_advantage(last_step_exps)
             metric_list.append(metrics)
 
             # Step 4: broadcast the advantages to all previous steps
@@ -106,6 +107,14 @@ class StepWiseGRPOAdvantageFn(ExperienceOperator):
         except ValueError:
             metrics = {}  # empty metric list causes ValueError, ignore it
         return result_exps, metrics
+
+    def __call__(self, exps, **kwargs):
+        return self.process(exps)
+
+    @classmethod
+    def compute_in_trainer(cls) -> bool:
+        """Whether the advantage should be computed in the trainer loop."""
+        return False
 
     @classmethod
     def default_args(cls) -> Dict:
