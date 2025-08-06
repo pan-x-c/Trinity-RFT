@@ -75,7 +75,7 @@ class GroupAdvantage(AdvantageFn, ExperienceOperator):
         cnt = 0
         metric_list = []
         for group_id, group_exps in exp_groups.items():
-            group_exps, group_metrics = self.calculate_last_step_advantage(group_id, group_exps)
+            group_exps, group_metrics = self.calculate_group_advantage(group_id, group_exps)
             metric_list.append(group_metrics)
             cnt += len(group_exps)
         try:

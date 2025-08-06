@@ -195,7 +195,9 @@ class DataProcessorConfig:
     # 1. For task. Data preprocessing from raw dataset to the task set
     task_pipeline: Optional[DataPipelineConfig] = None
     # 2. For experience. Data processing for rollouts
-    experience_pipeline: Optional[ExperiencePipelineConfig] = None
+    experience_pipeline: Optional[ExperiencePipelineConfig] = field(
+        default_factory=ExperiencePipelineConfig
+    )
 
     # For Data-Juicer
     # Whether to setup Data-Juicer server automatically. If set to True, the launcher

@@ -100,7 +100,7 @@ class GRPOAlgorithm(AlgorithmType):
     def default_config(cls) -> Dict:
         return {
             "repeat_times": 2,
-            "add_strategy": "grpo",
+            "advantage_fn": "grpo",
             "sample_strategy": "warmup",
             "policy_loss_fn": "ppo",
             "kl_penalty_fn": "none",

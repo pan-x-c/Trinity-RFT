@@ -162,7 +162,7 @@ class Explorer:
             self.synchronizer.acquire.remote(),
         ]
         if self.experience_pipeline:
-            futures.append(asyncio.create_task(self.experience_pipeline.prepare()))
+            futures.append(self.experience_pipeline.prepare.remote())
         if not self.use_nccl_sync:
             master_address, master_port = await self.models[0].get_available_address.remote()
             futures.append(
@@ -225,7 +225,7 @@ class Explorer:
                 if self.last_sync_successful
                 else RunningStatus.REQUIRE_SYNC,
             )
-            await self.experience_pipeline.close()
+            await self.experience_pipeline.close.remote()
             return False
         self.scheduler.schedule(tasks, batch_id=self.explore_step_num + 1)
         self.explore_step_num += 1
@@ -350,7 +350,8 @@ class Explorer:
         statuses, exps = await self.scheduler.get_results(batch_id=step)
         metric = {"rollout/model_version": model_version}
         # TODO: avoid blocking
-        await self.experience_pipeline.run(exps)
+        pipeline_metrics = await self.experience_pipeline.run.remote(exps)
+        metric.update(pipeline_metrics)
         if statuses:
             metric.update(gather_metrics([status.metric for status in statuses], "rollout"))
             self.monitor.log(metric, step=step)
@@ -427,10 +428,7 @@ class Explorer:
                     placement_group_bundle_index=1,
                 ),
             )
-            .remote(
-                config.data_processor.experience_pipeline,
-                config.buffer,
-            )
+            .remote(config)
         )
-        explorer_actor.set_output_buffer.remote(pipeline_actor)
+        ray.get(explorer_actor.set_experience_pipeline.remote(pipeline_actor))
         return explorer_actor

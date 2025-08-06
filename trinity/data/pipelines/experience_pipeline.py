@@ -39,9 +39,9 @@ class ExperiencePipeline:
         buffer_config = config.buffer
         self.input_store = self._init_input_storage(pipeline_config, buffer_config)  # type: ignore [arg-type]
         self.operators = ExperienceOperator.create_operators(pipeline_config.operators)
-        self._set_algorithm_operators(pipeline_config.algorithm_config)
+        self._set_algorithm_operators(config.algorithm)
         self.output = get_buffer_writer(
-            pipeline_config.output,  # type: ignore [arg-type]
+            buffer_config.trainer_input.experience_buffer,  # type: ignore [arg-type]
             buffer_config,
         )
 
@@ -123,9 +123,18 @@ class ExperiencePipeline:
             exps, metric = operator.process(exps)
             metrics.update(metric)
 
+        metrics["experience_count"] = len(exps)
+
         # Write processed experiences to output buffer
-        self.output.write(exps)
-        return metrics
+        await self.output.write_async(exps)
+
+        # prefix metrics keys with 'pipeline/'
+        result_metrics = {}
+        for key, value in metrics.items():
+            if isinstance(value, (int, float)):
+                result_metrics[f"pipeline/{key}"] = float(value)
+
+        return result_metrics
 
     async def close(self) -> None:
         await self.output.release()

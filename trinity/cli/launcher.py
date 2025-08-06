@@ -21,14 +21,7 @@ logger = get_logger(__name__)
 def bench(config: Config) -> None:
     """Evaluate model."""
     config.explorer.name = "benchmark"
-    explorer = (
-        ray.remote(Explorer)
-        .options(
-            name=config.explorer.name,
-            namespace=ray.get_runtime_context().namespace,
-        )
-        .remote(config)
-    )
+    explorer = Explorer.get_actor(config)
     try:
         ray.get(explorer.prepare.remote())
         ray.get(explorer.benchmark.remote())
@@ -42,14 +35,7 @@ def bench(config: Config) -> None:
 def explore(config: Config) -> None:
     """Run explorer."""
     try:
-        explorer = (
-            ray.remote(Explorer)
-            .options(
-                name=config.explorer.name,
-                namespace=ray.get_runtime_context().namespace,
-            )
-            .remote(config)
-        )
+        explorer = Explorer.get_actor(config)
         ray.get(explorer.prepare.remote())
         ray.get(explorer.sync_weight.remote())
         ray.get(explorer.explore.remote())
