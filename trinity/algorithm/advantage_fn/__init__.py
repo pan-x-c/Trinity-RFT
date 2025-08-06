@@ -1,7 +1,6 @@
 from trinity.algorithm.advantage_fn.advantage_fn import ADVANTAGE_FN, AdvantageFn
 from trinity.algorithm.advantage_fn.grpo_advantage import (
     GRPOAdvantageFn,
-    GRPOCorrectBiasAdvantage,
     GRPOGroupedAdvantage,
 )
 from trinity.algorithm.advantage_fn.multi_step_grpo_advantage import (
@@ -21,7 +20,6 @@ __all__ = [
     "PPOAdvantageFn",
     "GRPOAdvantageFn",
     "GRPOGroupedAdvantage",
-    "GRPOCorrectBiasAdvantage",
     "StepWiseGRPOAdvantageFn",
     "REINFORCEPLUSPLUSAdvantageFn",
     "REMAXAdvantageFn",

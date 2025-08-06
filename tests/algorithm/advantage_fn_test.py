@@ -7,6 +7,7 @@ from trinity.common.experience import EID, Experience
 
 
 class TestGroupedAdvantageFn(unittest.TestCase):
+    """Test cases for group-based advantage functions."""
 
     def test_grpo_advantage(self):
         advantage_fn_cls = ADVANTAGE_FN.get("grpo")
@@ -82,6 +83,67 @@ class TestGroupedAdvantageFn(unittest.TestCase):
         self.assertTrue(metrics["group_advantages/reward_mean/mean"] == 0.0)
         self.assertTrue(metrics["group_advantages/reward_std/mean"] == 1.0)
 
+    def test_grpo_reward_std(self):
+        advantage_fn_cls = ADVANTAGE_FN.get("grpo")
+        self.assertIsNotNone(advantage_fn_cls)
+        advantage_fn = advantage_fn_cls(epsilon=1e-6, reward_std_threshold=0.0)
+        task_num = 3
+        repeat_times = 5
+        exps = [
+            Experience(
+                eid=EID(
+                    batch=0,
+                    task=j,
+                    run=i,
+                ),
+                tokens=torch.zeros(5),
+                prompt_length=2,
+                reward=0.5,
+            )
+            for i in range(repeat_times)
+            for j in range(task_num)
+        ]
+
+        exps, metrics = advantage_fn(exps)
+        self.assertEqual(len(exps), 0)
+        self.assertIn("group_advantages/skipped_count/mean", metrics)
+        self.assertEqual(metrics["group_advantages/skipped_count/mean"], 5)
+
+    def test_grpo_correct_bias(self):
+        advantage_fn_cls = ADVANTAGE_FN.get("grpo")
+        self.assertIsNotNone(advantage_fn_cls)
+        advantage_fn = advantage_fn_cls(epsilon=1e-7, rank_penalty=0.2)
+        task_num = 2
+        repeat_times = 4
+        exps = [
+            Experience(
+                eid=EID(
+                    batch=0,
+                    task=j,
+                    run=i,
+                ),
+                tokens=torch.zeros(5),
+                logprobs=torch.tensor([0.1 * i for _ in range(5)]),
+                prompt_length=2,
+                reward=i,
+            )
+            for i in range(repeat_times)
+            for j in range(task_num)
+        ]
+        exps, metrics = advantage_fn(exps)
+        self.assertEqual(len(exps), task_num * repeat_times)
+        self.assertIn("group_advantages/reward_mean/mean", metrics)
+        self.assertIn("group_advantages/reward_std/mean", metrics)
+        self.assertAlmostEqual(
+            metrics["group_advantages/reward_mean/mean"],
+            torch.mean(torch.tensor([0.0, 0.95, 1.80, 2.55], dtype=torch.float32)).item(),
+            places=6,
+        )
+        self.assertAlmostEqual(
+            metrics["group_advantages/reward_std/mean"],
+            torch.std(torch.tensor([0.0, 0.95, 1.80, 2.55], dtype=torch.float32)).item(),
+            places=6,
+        )
 
     def test_step_wise_grpo_advantage(self):
         advantage_fn_cls = ADVANTAGE_FN.get("step_wise_grpo")
