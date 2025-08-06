@@ -1,7 +1,5 @@
 from typing import Dict, List, Optional
 
-import ray
-
 from trinity.buffer.buffer import BufferWriter, get_buffer_reader, get_buffer_writer
 from trinity.buffer.ray_wrapper import is_database_url, is_json_file
 from trinity.common.config import (
@@ -95,15 +93,6 @@ class ExperiencePipeline:
 
     async def prepare(self) -> None:
         await self.output.acquire()
-
-    @classmethod
-    def get_ray_actor(cls, pipeline_config: ExperiencePipelineConfig, buffer_config: BufferConfig):
-        """Get a Ray actor for the experience pipeline."""
-        return (
-            ray.remote(cls)
-            .options(name="ExperiencePipeline", namespace=pipeline_config.ray_namespace)
-            .remote(pipeline_config, buffer_config)
-        )
 
     async def run(self, exps: List[Experience]) -> Dict:
         """Run the experience pipeline.
