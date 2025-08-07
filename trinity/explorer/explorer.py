@@ -153,7 +153,6 @@ class Explorer:
         """Preparation before running."""
         futures = [
             asyncio.create_task(self.scheduler.start()),
-            self.synchronizer.acquire.remote(),
         ]
         if self.experience_pipeline:
             futures.append(self.experience_pipeline.prepare.remote())
@@ -381,6 +380,10 @@ class Explorer:
         if await self.synchronizer.release.remote() == 0:
             ray.kill(self.synchronizer)
             self.logger.info("Synchronizer stopped.")
+
+    def is_alive(self) -> bool:
+        """Check if the explorer is alive."""
+        return True
 
     async def set_experience_pipeline(self, pipeline: ExperiencePipeline) -> None:
         """Set the experience pipeline for the explorer.
