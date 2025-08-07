@@ -9,9 +9,6 @@ algorithm:
   policy_loss_fn_args:
     clip_range: 0.2
   advantage_fn: ppo
-  advantage_fn_args:
-    gamma: 1.0
-    lam: 1.0
   kl_penalty_fn: k3
   kl_loss_fn: k2
 
