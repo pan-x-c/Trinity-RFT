@@ -377,9 +377,6 @@ class Explorer:
     async def shutdown(self) -> None:
         await self.scheduler.stop()
         self.monitor.close()
-        if await self.synchronizer.release.remote() == 0:
-            ray.kill(self.synchronizer)
-            self.logger.info("Synchronizer stopped.")
 
     def is_alive(self) -> bool:
         """Check if the explorer is alive."""

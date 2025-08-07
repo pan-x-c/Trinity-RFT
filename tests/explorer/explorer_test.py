@@ -87,6 +87,9 @@ class TestExplorerGSM8k(BaseExplorerCase):
         # some step may be skipped due to same reward
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.advantage_fn = "grpo"
+        self.config.algorithm.advantage_fn_args = {
+            "epsilon": 1e-6,
+        }
         self.config.check_and_update()
         explorer = Explorer.get_actor(self.config)
         ray.get(explorer.prepare.remote())
