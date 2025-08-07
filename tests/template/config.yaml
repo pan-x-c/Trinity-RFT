@@ -33,6 +33,7 @@ buffer:
       storage_type: file
       path: 'placeholder'
       split: 'train'
+      enable_progress_bar: false
     default_workflow_type: ''
     default_eval_workflow_type: ''
     default_reward_fn_type: ''
