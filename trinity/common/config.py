@@ -570,22 +570,23 @@ class Config:
         self.buffer.explorer_input.eval_tasksets = remained_tasksets
 
         # check trainer_input.experience_buffer
-        if self.mode == "both":
-            if self.buffer.trainer_input.experience_buffer is None:
-                self.buffer.trainer_input.experience_buffer = StorageConfig(
-                    name="experience_buffer",
-                    storage_type=StorageType.QUEUE,
-                )
-                logger.info(
-                    f"Auto set `buffer.trainer_input.experience_buffer` to {self.buffer.trainer_input.experience_buffer}"
-                )
-            elif self.buffer.trainer_input.experience_buffer.storage_type is StorageType.FILE:
-                logger.warning(
-                    "`FILE` storage is not supported to use as experience_buffer in `both` mode, use `QUEUE` instead."
-                )
-                self.buffer.trainer_input.experience_buffer.storage_type = StorageType.QUEUE
-        elif self.mode == "train":  # TODO: to be check
-            pass
+        if self.buffer.trainer_input.experience_buffer is None:
+            self.buffer.trainer_input.experience_buffer = StorageConfig(
+                name="experience_buffer",
+                storage_type=StorageType.QUEUE,
+            )
+            logger.info(
+                f"Auto set `buffer.trainer_input.experience_buffer` to {self.buffer.trainer_input.experience_buffer}"
+            )
+        elif (
+            self.buffer.trainer_input.experience_buffer.storage_type is StorageType.FILE
+            and self.mode == "both"
+        ):
+            logger.warning(
+                "`FILE` storage is not supported to use as experience_buffer in `both` mode, use `QUEUE` instead."
+            )
+            self.buffer.trainer_input.experience_buffer.storage_type = StorageType.QUEUE
+
         if self.buffer.trainer_input.experience_buffer is not None:
             self.buffer.trainer_input.experience_buffer.algorithm_type = (
                 self.algorithm.algorithm_type
