@@ -185,10 +185,7 @@ class SFTDataReader(BufferReader):
     async def read_async(
         self, batch_size: Optional[int] = None, strategy: Optional[ReadStrategy] = None
     ):
-        try:
-            return self.read(batch_size, strategy)
-        except StopIteration as e:
-            raise StopAsyncIteration from e
+        return self.read(batch_size, strategy)
 
 
 @FILE_READERS.register_module(DPOAlgorithm.name())
@@ -270,10 +267,7 @@ class DPODataReader(BufferReader):
     async def read_async(
         self, batch_size: Optional[int] = None, strategy: Optional[ReadStrategy] = None
     ):
-        try:
-            return self.read(batch_size, strategy)
-        except StopIteration as e:
-            raise StopAsyncIteration from e
+        return self.read(batch_size, strategy)
 
 
 @FILE_READERS.register_module("rollout")
@@ -349,10 +343,7 @@ class RolloutDataReader(BufferReader):
     async def read_async(
         self, batch_size: Optional[int] = None, strategy: Optional[ReadStrategy] = None
     ):
-        try:
-            return self.read(batch_size, strategy)
-        except StopIteration as e:
-            raise StopAsyncIteration from e
+        return self.read(batch_size, strategy)
 
 
 @FILE_READERS.register_module("raw")
@@ -375,7 +366,4 @@ class RawDataReader(BufferReader):
     async def read_async(
         self, batch_size: Optional[int] = None, strategy: Optional[ReadStrategy] = None
     ):
-        try:
-            return self.read(batch_size, strategy)
-        except StopIteration as e:
-            raise StopAsyncIteration from e
+        return self.read(batch_size, strategy)

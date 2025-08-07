@@ -221,7 +221,9 @@ class Explorer:
             return True
         try:
             tasks = await self.taskset.read_async()
-        except StopAsyncIteration:
+        except (StopIteration, RuntimeError) as e:
+            if isinstance(e, RuntimeError) and "StopIteration" not in str(e):
+                raise
             self.logger.warning("No more tasks to explore. Stop exploring.")
             await self.save_checkpoint(sync_weight=False)
             await self.synchronizer.set_explorer_status.remote(
