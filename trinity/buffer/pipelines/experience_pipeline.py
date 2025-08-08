@@ -57,6 +57,7 @@ class ExperiencePipeline:
                     StorageConfig(
                         storage_type=StorageType.FILE,
                         path=pipeline_config.input_save_path,
+                        wrap_in_ray=False,
                     ),
                     buffer_config,
                 )
@@ -65,6 +66,7 @@ class ExperiencePipeline:
                     StorageConfig(
                         storage_type=StorageType.SQL,
                         path=pipeline_config.input_save_path,
+                        wrap_in_ray=False,
                     ),
                     buffer_config,
                 )
