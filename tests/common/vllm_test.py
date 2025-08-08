@@ -345,7 +345,9 @@ class TestAPIServerToolCall(RayUnittestBase):
         )
 
     def test_api_tool_calls(self):
-        """Tests the full conversation flow of a tool call via the OpenAI API."""
+        """Tests the full conversation flow of a tool call via the OpenAI API.
+        Note: This test require a model that supports tool calls and thinking mode, e.g. Qwen3-1.7B.
+        """
         import json
         import time
 
