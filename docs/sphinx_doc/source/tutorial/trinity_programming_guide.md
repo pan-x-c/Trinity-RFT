@@ -568,7 +568,7 @@ from trinity.common.experience import Experience
 
 
 @EXPERIENCE_OPERATORS.register_module("reward_filter")
-class RewardFilterOperator(ExperienceOperator):
+class RewardFilter(ExperienceOperator):
 
     def __init__(self, threshold: float = 0.0) -> None:
         self.threshold = threshold
@@ -601,7 +601,7 @@ synchronizer:
 ```
 
 ```{tip}
-The `RewardFilterOperator` reduces the number of experiences, which may cause the trainer can't get enough experiences to start a training step. To avoid the issue, you can use the advanced *Dynamic Synchronization* feature provided by Trinity-RFT as shown in the above configuration file.
+The `RewardFilter` reduces the number of experiences, which may cause the trainer can't get enough experiences to start a training step. To avoid the issue, you can use the advanced *Dynamic Synchronization* feature provided by Trinity-RFT as shown in the above configuration file.
 The above setting means that the `Explorer` will sync with the `Trainer` every 2 steps and will continue running regardless of how many steps the `Trainer` has completed. This ensures that the `Trainer` can always get enough experiences to start a training step as long as the `Explorer` is running.
 ```
 
