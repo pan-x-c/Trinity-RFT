@@ -485,10 +485,9 @@ class OPMDAlgorithm(AlgorithmType):
     def default_config(cls) -> Dict:
         return {
             "repeat_times": 2,
-            "add_strategy": "opmd",
+            "advantage_fn": "opmd",
             "sample_strategy": "warmup",
             "policy_loss_fn": "opmd",
-            "advantage_fn": "opmd",
             "kl_penalty_fn": "none",
             "kl_loss_fn": "k2",
             "entropy_loss_fn": "default",
@@ -517,7 +516,7 @@ If you need to modify certain parameters, you can simply add the corresponding p
 algorithm:
   algorithm_type: "opmd"
   repeat_times: 8
-  add_strategy_args:
+  advantage_fn_args:
     opmd_baseline: "logavgexp"
     tau: 0.99
   policy_loss_fn_args:

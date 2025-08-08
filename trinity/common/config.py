@@ -275,8 +275,8 @@ class AlgorithmConfig:
     repeat_times: int = 1
 
     # the strategy for adding experiences to the buffer
-    add_strategy: Optional[str] = None
-    add_strategy_args: Optional[dict] = None
+    add_strategy: Optional[str] = None  # deprecated
+    add_strategy_args: Optional[dict] = None  # deprecated
 
     # the strategy for sampling experiences from the buffer
     sample_strategy: Optional[str] = None
@@ -652,7 +652,6 @@ class Config:
 
     def _check_algorithm(self) -> None:
         from trinity.algorithm import (
-            ADD_STRATEGY,
             ADVANTAGE_FN,
             ENTROPY_LOSS_FN,
             KL_FN,
@@ -684,8 +683,6 @@ class Config:
                 setattr(self.algorithm, args_attr, fn_cls.default_args())
             return fn_cls
 
-        if self.algorithm.add_strategy is not None:
-            check_and_set("add_strategy", ADD_STRATEGY, "add_strategy_args")
         check_and_set("sample_strategy", SAMPLE_STRATEGY, "sample_strategy_args")
         check_and_set("policy_loss_fn", POLICY_LOSS_FN, "policy_loss_fn_args")
         check_and_set("advantage_fn", ADVANTAGE_FN, "advantage_fn_args")

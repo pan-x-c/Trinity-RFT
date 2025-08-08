@@ -14,9 +14,11 @@ from trinity.algorithm.advantage_fn.advantage_fn import (
     GroupAdvantage,
 )
 from trinity.common.experience import Experience, group_by
+from trinity.utils.annotations import Deprecated
 from trinity.utils.monitor import gather_metrics
 
 
+@Deprecated
 @ADVANTAGE_FN.register_module("grpo_verl")
 class GRPOAdvantageFn(AdvantageFn):
     """GRPO advantage computation"""

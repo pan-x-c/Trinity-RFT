@@ -12,8 +12,10 @@ from trinity.algorithm.advantage_fn.advantage_fn import (
     GroupAdvantage,
 )
 from trinity.common.experience import Experience, group_by
+from trinity.utils.annotations import Deprecated
 
 
+@Deprecated
 @ADVANTAGE_FN.register_module("opmd_verl")
 class OPMDAdvantageFn(AdvantageFn):
     """OPMD advantage computation"""
