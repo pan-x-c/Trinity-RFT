@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 
 from trinity.buffer.buffer import BufferWriter, get_buffer_reader, get_buffer_writer
+from trinity.buffer.operators.experience_operator import ExperienceOperator
 from trinity.buffer.ray_wrapper import is_database_url, is_json_file
 from trinity.common.config import (
     AlgorithmConfig,
@@ -11,7 +12,6 @@ from trinity.common.config import (
 )
 from trinity.common.constants import StorageType
 from trinity.common.experience import Experience
-from trinity.data.operators.experience_operator import ExperienceOperator
 from trinity.utils.log import get_logger
 
 

@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple
 
+from trinity.buffer.operators import ExperienceOperator
 from trinity.common.experience import Experience
-from trinity.data.operators import ExperienceOperator
 from trinity.utils.monitor import gather_metrics
 from trinity.utils.registry import Registry
 

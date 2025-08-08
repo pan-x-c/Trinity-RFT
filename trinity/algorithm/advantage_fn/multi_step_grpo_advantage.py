@@ -5,8 +5,8 @@ from typing import Dict, List, Tuple
 import torch
 
 from trinity.algorithm.advantage_fn.advantage_fn import ADVANTAGE_FN, AdvantageFn
+from trinity.buffer.operators import ExperienceOperator
 from trinity.common.experience import Experience, group_by
-from trinity.data.operators import ExperienceOperator
 from trinity.utils.monitor import gather_metrics
 
 

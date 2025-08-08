@@ -351,10 +351,10 @@ To implement OPMD, developers need to implement advantage calculation in `Advant
 
 #### Step 1.1: Implement `AdvantageFn`
 
-The {class}`trinity.algorithm.AdvantageFn` interface includes two methods:
+The {class}`trinity.algorithm.AdvantageFn` interface includes three methods:
 
-- `__call__`: This method is the main entrance for advantage calculation. It receives a list of experiences and returns a list of experiences with calculated advantages and returns, along with a metrics dictionary for logging. The input experience data format is a list of {class}`trinity.common.experience.Experience`.
-- `default_args`: This class method returns the default initialization parameters in dictionary form, which will be used by default when users don't specify initialization parameters in the configuration file.
+- `__call__`: The main entrance for advantage calculation. It receives a list of experiences ({class}`trinity.common.experience.Experience`) and returns a list of experiences with calculated advantages and returns, along with a metrics dictionary for logging.
+- `default_args`: A class method that returns the default initialization parameters in dictionary form. It will be used by default when users don't specify initialization parameters in the configuration file.
 - `compute_in_trainer`: This class method indicates whether to compute advantages in the Trainer. If it returns `False`, the `AdvantageFn` will be called in the experience data processing pipeline.
 
 For convenience, Trinity-RFT provides an abstract class {class}`trinity.algorithm.advantage_fn.GroupAdvantage` that implements the `__call__` method for group-based advantage calculation, you can focus on how to group the experiences and calculate advantages on grouped experiences with the following two methods:

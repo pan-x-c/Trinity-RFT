@@ -16,6 +16,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from trinity.algorithm.algorithm_manager import AlgorithmManager
 from trinity.buffer.buffer import get_buffer_reader
+from trinity.buffer.pipelines.experience_pipeline import ExperiencePipeline
 from trinity.common.config import Config
 from trinity.common.constants import (
     ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
@@ -25,7 +26,6 @@ from trinity.common.constants import (
 )
 from trinity.common.models import create_inference_models
 from trinity.common.synchronizer import Synchronizer
-from trinity.data.pipelines.experience_pipeline import ExperiencePipeline
 from trinity.explorer.scheduler import Scheduler
 from trinity.manager.manager import CacheManager
 from trinity.utils.log import get_logger
