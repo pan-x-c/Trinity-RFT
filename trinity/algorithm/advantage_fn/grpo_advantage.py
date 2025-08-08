@@ -162,22 +162,19 @@ class GRPOGroupedAdvantage(GroupAdvantage):
 
     def _duplicate_experiences(self, exp_groups: Dict[str, List[Experience]]) -> List[Experience]:
         original_group_num = len(exp_groups)
-        exp_groups = {
-            group_id: group_exps
-            for group_id, group_exps in exp_groups.items()
-            if len(group_exps) > 0
-        }
-        skipped_group_num = original_group_num - len(exp_groups)
+        valid_groups = [group_exps for group_exps in exp_groups.values() if len(group_exps) > 0]
+        skipped_group_num = original_group_num - len(valid_groups)
+
         if skipped_group_num == 0:
-            return [exp for group in exp_groups.values() for exp in group]
+            return [exp for group in valid_groups for exp in group]
         elif skipped_group_num == original_group_num:
             # All groups are skipped, return an empty list
             return []
         else:
-            idx = torch.randperm(len(exp_groups))[:skipped_group_num]
-            duplicated_groups = [copy.deepcopy(exp_groups[i]) for i in idx]
+            idx = torch.randint(0, len(valid_groups), (skipped_group_num,)).tolist()
+            duplicated_groups = [copy.deepcopy(valid_groups[i]) for i in idx]
             duplicated_exps = [exp for group in duplicated_groups for exp in group]
-            exps = [exp for group in exp_groups.values() for exp in group]
+            exps = [exp for group in valid_groups for exp in group]
             for exp in duplicated_exps:
                 exp.eid.task += (
                     original_group_num  # Ensure unique task IDs for duplicated experiences

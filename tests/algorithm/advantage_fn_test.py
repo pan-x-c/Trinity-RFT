@@ -164,7 +164,7 @@ class TestGroupedAdvantageFn(unittest.TestCase):
                 reward=np.random.rand(),
             )
             for i in range(repeat_times)
-            for j in range(task_num)
+            for j in range(task_num - 1)
         ]
         zero_adv_exps = [
             Experience(
@@ -178,12 +178,15 @@ class TestGroupedAdvantageFn(unittest.TestCase):
                 reward=0.5,
             )
             for i in range(repeat_times)
-            for j in range(task_num)
+            for j in range(task_num - 1, task_num * 2)
         ]
         exps.extend(zero_adv_exps)
 
         exps, metrics = advantage_fn(exps)
-        self.assertEqual(len(exps), (task_num + task_num) * repeat_times)
+        self.assertEqual(len(exps), 2 * task_num * repeat_times)
+
+        exps, metrics = advantage_fn(zero_adv_exps)
+        self.assertEqual(len(exps), 0)
 
     def test_step_wise_grpo_advantage(self):
         advantage_fn_cls = ADVANTAGE_FN.get("step_wise_grpo")

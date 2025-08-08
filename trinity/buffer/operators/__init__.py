@@ -1,4 +1,4 @@
-from trinity.data.operators.experience_operator import (
+from trinity.buffer.operators.experience_operator import (
     EXPERIENCE_OPERATORS,
     ExperienceOperator,
 )
