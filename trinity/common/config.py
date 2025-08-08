@@ -104,7 +104,7 @@ class StorageConfig:
     reward_fn_args: dict = field(default_factory=dict)
 
     # enable progress bar (tqdm) for _HFBatchReader
-    enable_progress_bar: Optional[bool] = True
+    enable_progress_bar: Optional[bool] = False
 
     # get storage from existing experiment
     ray_namespace: Optional[str] = None
@@ -213,7 +213,8 @@ class ModelConfig:
     # source model path
     model_path: str = ""
     critic_model_path: str = ""
-    max_prompt_tokens: Optional[int] = None
+    max_model_len: Optional[int] = None
+    max_prompt_tokens: Optional[int] = None  # deprecated
     max_response_tokens: Optional[int] = None
     custom_chat_template: Optional[str] = None
 
@@ -235,8 +236,10 @@ class InferenceModelConfig:
     dtype: str = "bfloat16"
     seed: int = 42
 
+    # if not set, use `model.max_model_len`
+    max_model_len: Optional[int] = None
     # if not set, use `model.max_prompt_tokens`
-    max_prompt_tokens: Optional[int] = None
+    max_prompt_tokens: Optional[int] = None  # deprecated
     # if not set, use `model.max_response_tokens`
     max_response_tokens: Optional[int] = None
 
@@ -734,6 +737,20 @@ class Config:
             self.explorer.rollout_model.max_prompt_tokens = self.model.max_prompt_tokens
         if self.explorer.rollout_model.max_response_tokens is None:
             self.explorer.rollout_model.max_response_tokens = self.model.max_response_tokens
+        if self.explorer.rollout_model.max_model_len is None:
+            self.explorer.rollout_model.max_model_len = self.model.max_model_len
+        if (
+            self.explorer.rollout_model.max_model_len is None
+            and self.explorer.rollout_model.max_prompt_tokens is not None
+            and self.explorer.rollout_model.max_response_tokens is not None
+        ):
+            logger.warning(
+                "`max_prompt_tokens` is deprecated, please set `max_model_len` directly."
+            )
+            self.explorer.rollout_model.max_model_len = (
+                self.explorer.rollout_model.max_prompt_tokens
+                + self.explorer.rollout_model.max_response_tokens
+            )
 
         # check synchronizer
         self.synchronizer.ray_namespace = self.ray_namespace
