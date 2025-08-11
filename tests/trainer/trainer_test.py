@@ -38,7 +38,7 @@ class BaseTrainerCase(RayUnittestBase):
         self.config.algorithm.repeat_times = 3
         self.config.project = "Trainer-unittest"
         self.config.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        self.config.monitor.monitor_type = "tensorboard"
+        # self.config.monitor.monitor_type = "tensorboard"
         self.config.checkpoint_root_dir = get_checkpoint_path()
         self.config.synchronizer.sync_interval = 2
         self.config.synchronizer.sync_method = SyncMethod.NCCL
