@@ -2,7 +2,6 @@
 
 import os
 from abc import ABC, abstractmethod
-from dataclasses import asdict, is_dataclass
 from typing import Dict, List, Optional, Union
 
 import numpy as np
@@ -131,18 +130,11 @@ class WandbMonitor(Monitor):
         assert wandb is not None, "wandb is not installed. Please install it to use WandbMonitor."
         if not group:
             group = name
-        if (
-            config.monitor.monitor_args
-            and "base_url" in config.monitor.monitor_args
-            and config.monitor.monitor_args["base_url"]
-        ):
-            os.environ["WANDB_BASE_URL"] = config.monitor.monitor_args["base_url"]
-        if (
-            config.monitor.monitor_args
-            and "api_key" in config.monitor.monitor_args
-            and config.monitor.monitor_args["api_key"]
-        ):
-            os.environ["WANDB_API_KEY"] = config.monitor.monitor_args["api_key"]
+        monitor_args = config.monitor.monitor_args or {}
+        if base_url := monitor_args.get("base_url"):
+            os.environ["WANDB_BASE_URL"] = base_url
+        if api_key := monitor_args.get("api_key"):
+            os.environ["WANDB_API_KEY"] = api_key
         self.logger = wandb.init(
             project=project,
             group=group,
@@ -190,10 +182,11 @@ class MlflowMonitor(Monitor):
         assert (
             mlflow is not None
         ), "mlflow is not installed. Please install it to use MlflowMonitor."
-        if config.monitor.monitor_args and "username" in config.monitor.monitor_args:
-            os.environ["MLFLOW_TRACKING_USERNAME"] = config.monitor.monitor_args.get("username", "")
-        if config.monitor.monitor_args and "password" in config.monitor.monitor_args:
-            os.environ["MLFLOW_TRACKING_PASSWORD"] = config.monitor.monitor_args.get("password", "")
+        monitor_args = config.monitor.monitor_args or {}
+        if username := monitor_args.get("username"):
+            os.environ["MLFLOW_TRACKING_USERNAME"] = username
+        if password := monitor_args.get("password"):
+            os.environ["MLFLOW_TRACKING_PASSWORD"] = password
         mlflow.set_tracking_uri(config.monitor.monitor_args.get("uri", "http://localhost:5000"))
         mlflow.set_experiment(project)
         mlflow.start_run(
@@ -216,19 +209,6 @@ class MlflowMonitor(Monitor):
 
     def close(self) -> None:
         mlflow.end_run()
-
-    def _flatten_dict(self, config, parent_key: str = "", sep: str = ".") -> dict:
-        """Flatten the config for logging."""
-        items = {}
-        for k, v in config.items():
-            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-            if is_dataclass(v):
-                v = asdict(v)
-            if isinstance(v, dict):
-                items.update(self._flatten_dict(v, new_key, sep=sep))
-            else:
-                items[new_key] = v
-        return items
 
     @classmethod
     def default_args(cls) -> Dict:
