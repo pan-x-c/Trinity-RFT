@@ -1,9 +1,10 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from trinity.buffer.operators.experience_operator import (
     EXPERIENCE_OPERATORS,
     ExperienceOperator,
 )
+from trinity.common.experience import Experience
 from trinity.service.data_juicer.client import DataJuicerClient
 
 
@@ -38,7 +39,7 @@ class DataJuicerOperator(ExperienceOperator):
             {"operators": operators, "config_path": config_path, "description": description}
         )
 
-    def process(self, exps):
+    def process(self, exps: List[Experience]) -> Tuple[List[Experience], Dict]:
         return self.client.process(exps)
 
     def close(self):
