@@ -447,6 +447,37 @@ class SynchronizerConfig:
 
 
 @dataclass
+class DataJuicerConfig:
+    """Config for Data-Juicer.
+
+    Please update `trinity.service.data_juicer.server.server.py` correspondingly if you change the fields here.
+    """
+
+    # the url of the Data-Juicer server
+    server_url: str
+    # the openai base url used by Data-Juicer Agent
+    openai_base_url: str
+    # the model name used by Data-Juicer Agent
+    model_name: str
+
+    # whether to start Data-Juicer server automatically
+    auto_start: bool = False
+
+    # the following fields are only used when `auto_start` is True
+    # python path to the Data-Juicer environment
+    python_path: str = "python"
+    # the port of the Data-Juicer server
+    port: int = 5005
+
+
+@dataclass
+class ServiceConfig:
+    """Configs for outside services."""
+
+    data_juicer: Optional[DataJuicerConfig] = None
+
+
+@dataclass
 class Config:
     """Global Configuration"""
 

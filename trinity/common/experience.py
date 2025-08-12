@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import pickle
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
 from typing import Dict, List, Literal, Optional
 
 import torch
+from datasets import Dataset
 from torch import Tensor
 
 
@@ -566,3 +567,26 @@ def group_by(
             grouped[group_id] = []
         grouped[group_id].append(exp)
     return grouped
+
+
+def to_hf_datasets(experiences: list[Experience]) -> Dataset:
+    """
+    Convert a list of Experience objects to a HuggingFace Dataset,
+    preserving all fields.
+    """
+    return Dataset.from_list([asdict(exp) for exp in experiences])
+
+
+def from_hf_datasets(dataset: Dataset) -> List[Experience]:
+    """
+    Convert a HuggingFace Dataset back to a list of Experience objects.
+    """
+
+    def dict_to_dataclass(cls, d):
+        valid_keys = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in d.items() if k in valid_keys}
+        return cls(**filtered)
+
+    experiences = [dict_to_dataclass(Experience, row) for row in dataset.to_list()]
+
+    return experiences

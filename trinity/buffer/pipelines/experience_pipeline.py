@@ -129,3 +129,5 @@ class ExperiencePipeline:
 
     async def close(self) -> None:
         await self.output.release()
+        for operator in self.operators:
+            operator.close()
