@@ -111,8 +111,6 @@ class Experience:
     reward: Optional[float] = None
     advantages: Optional[Tensor] = None  # [resp_length]
     returns: Optional[Tensor] = None  # [resp_length]
-    # Type of the experience, automatically set based on the presence of action_mask or chosen/rejected
-    experience_type: ExperienceType = ExperienceType.SINGLE_TURN
     info: dict = field(
         default_factory=dict
     )  # Additional information about the experience, can also be used to store custom fields
@@ -136,7 +134,7 @@ class Experience:
     chosen_text: Optional[str] = None  # Text of the chosen response
     rejected_text: Optional[str] = None  # Text of the rejected response
 
-    def __init__(
+    def __init__(  # noqa: C901
         self,
         *,
         eid=None,
@@ -158,13 +156,13 @@ class Experience:
         rejected_text=None,
     ):
         if action_mask is not None:
-            experience_type = ExperienceType.MULTI_TURN
+            experience_type = "multi_turn"
         elif chosen is not None and rejected is not None:
-            experience_type = ExperienceType.DPO
+            experience_type = "dpo"
         else:
-            experience_type = ExperienceType.SINGLE_TURN
+            experience_type = "single_turn"
 
-        if experience_type == ExperienceType.SINGLE_TURN:
+        if experience_type == "single_turn":
             assert (
                 prompt_length > 0
             ), "Prompt length must be greater than 0 for single-turn experiences."
@@ -172,14 +170,26 @@ class Experience:
                 len(tokens) > prompt_length
             ), f"Token ids must be longer than the prompt length. Got len(tokens)={len(tokens)}, prompt_length={prompt_length}."
             action_mask = torch.ones(len(tokens) - prompt_length, dtype=torch.bool)
-        elif experience_type == ExperienceType.DPO:
+        elif experience_type == "dpo":
             prompt_length = len(tokens)
-
-        self.eid = eid or EID()
+        if eid is None:
+            self.eid = EID()
+        elif isinstance(eid, dict):
+            self.eid = EID(**eid)
+        else:
+            self.eid = eid
+        if isinstance(tokens, list):
+            tokens = torch.tensor(tokens, dtype=torch.int32)
         self.tokens = tokens
+        if isinstance(logprobs, list):
+            logprobs = torch.tensor(logprobs, dtype=torch.float32)
         self.logprobs = logprobs
         self.reward = reward
+        if isinstance(advantages, list):
+            advantages = torch.tensor(advantages, dtype=torch.float32)
         self.advantages = advantages
+        if isinstance(returns, list):
+            returns = torch.tensor(returns, dtype=torch.float32)
         self.returns = returns
         self.experience_type = experience_type
         self.info = info or {}
@@ -187,9 +197,15 @@ class Experience:
         self.prompt_length = prompt_length
         self.response_text = response_text
         self.prompt_text = prompt_text
+        if isinstance(action_mask, list):
+            action_mask = torch.tensor(action_mask, dtype=torch.bool)
         self.action_mask = action_mask
         self.messages = messages
+        if isinstance(chosen, list):
+            chosen = torch.tensor(chosen, dtype=torch.int32)
         self.chosen = chosen
+        if isinstance(rejected, list):
+            rejected = torch.tensor(rejected, dtype=torch.int32)
         self.rejected = rejected
         self.chosen_text = chosen_text
         self.rejected_text = rejected_text
@@ -217,7 +233,7 @@ class Experience:
         """Convert the experience to a dictionary."""
         res = {
             "eid": self.eid,
-            "type": self.experience_type.value,
+            "type": self.experience_type,
             "info": self.info,
             "metrics": self.metrics,
         }
@@ -245,7 +261,7 @@ class Experience:
         if len(experiences) == 0:
             return empty_experiences(custom_fields)
         exp_type = experiences[0].experience_type
-        if exp_type == ExperienceType.DPO:
+        if exp_type == "dpo":
             experiences = split_dpo_experience_to_single_turn(experiences)
         max_prompt_length = max([exp.prompt_length for exp in experiences])  # type: ignore [type-var]
         max_response_length = max([len(exp.tokens) - exp.prompt_length for exp in experiences])  # type: ignore [arg-type]

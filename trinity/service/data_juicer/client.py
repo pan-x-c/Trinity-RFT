@@ -1,6 +1,8 @@
-from typing import List
+import io
+from typing import Dict, List, Tuple
 
 import requests
+from datasets import Dataset
 
 from trinity.common.experience import Experience, from_hf_datasets, to_hf_datasets
 
@@ -15,36 +17,32 @@ class DataJuicerClient:
         response.raise_for_status()
         self.session_id = response.json().get("session_id")
 
-    def process(self, exps: List[Experience]) -> List[Experience]:
-        import os
-        import tempfile
-
-        from datasets import Dataset
-
+    def process(self, exps: List[Experience]) -> Tuple[List[Experience], Dict]:
         if not self.session_id:
             raise ValueError("DataJuicer session is not initialized.")
+
         hf_exps = to_hf_datasets(exps)
-        with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp_file:
-            hf_exps.to_parquet(tmp_file.name)
-            tmp_file_path = tmp_file.name
-        try:
-            with open(tmp_file_path, "rb") as f:
-                files = {"file": (os.path.basename(tmp_file_path), f, "application/octet-stream")}
-                data = {"session_id": self.session_id}
-                response = requests.post(f"{self.url}/process", data=data, files=files)
-            response.raise_for_status()
-            with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as recv_file:
-                recv_file.write(response.content)
-                recv_file_path = recv_file.name
-            try:
-                ds = Dataset.from_parquet(recv_file_path)
-                return from_hf_datasets(ds)
-            finally:
-                os.remove(recv_file_path)
-        finally:
-            os.remove(tmp_file_path)
+
+        # Serialize to an in-memory buffer
+        buffer = io.BytesIO()
+        hf_exps.to_parquet(buffer)
+        buffer.seek(0)
+
+        # The filename in the multipart-form data can be a constant string
+        files = {"file": ("experiences.parquet", buffer, "application/octet-stream")}
+        data = {"session_id": self.session_id}
+        response = requests.post(f"{self.url}/process", data=data, files=files)
+        response.raise_for_status()
+
+        # Deserialize from the response content in-memory
+        metrics = response.json().get("metrics", {})
+        with io.BytesIO(response.content) as recv_buffer:
+            ds = Dataset.from_parquet(recv_buffer)
+            return from_hf_datasets(ds), metrics
 
     def close(self):
         """Close the DataJuicer client connection."""
         if self.session_id:
-            requests.post(f"{self.url}/close", json={"session_id": self.session_id})
+            response = requests.post(f"{self.url}/close", json={"session_id": self.session_id})
+            response.raise_for_status()
+            self.session_id = None
