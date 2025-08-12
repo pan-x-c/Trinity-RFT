@@ -1,9 +1,16 @@
 from typing import Dict, Tuple
 
+from data_juicer.core.executor.default_executor import DefaultExecutor
 from datasets import Dataset
+from jsonargparse import Namespace
 
 from .config_parser import ConfigParser
 from .utils import DataJuicerConfigModel
+
+
+def extract_metrics(dataset: Dataset) -> Dict:
+    """Extract metrics from the processed dataset."""
+    return {}
 
 
 class DataJuicerSession:
@@ -12,17 +19,18 @@ class DataJuicerSession:
     This class manages the connection and provides methods to send and receive data.
     """
 
-    def __init__(self, config: DataJuicerConfigModel, agent: ConfigParser):
+    def __init__(self, config: DataJuicerConfigModel, config_parser: ConfigParser):
         """
         Initialize the DataJuicerSession with a URL and configuration.
 
         Args:
             config (DataJuicerConfigModel): Configuration parameters provided by Trinity.
         """
-        self.config = config
-        self.agent = agent
-        self.agent.parse(config)
+        self.config: Namespace = config_parser.parse(config)
 
     def process(self, ds: Dataset) -> Tuple[Dataset, Dict]:
         # TODO: Implement the processing logic using data juicer executor
-        return ds, {}
+        dj_executor = DefaultExecutor(cfg=self.config)
+        ds = dj_executor.run(ds)
+        metrics = extract_metrics(ds)
+        return ds, metrics

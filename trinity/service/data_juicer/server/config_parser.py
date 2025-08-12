@@ -7,12 +7,7 @@ from jsonargparse import Namespace
 from loguru import logger
 from openai import OpenAI
 
-from .default_ops import (
-    DEFAULT_CLEANER,
-    DEFAULT_HUMAN_ANNOTATOR,
-    DEFAULT_OP_ARGS,
-    DEFAULT_SYNTHESIZER,
-)
+from .default_ops import DEFAULT_CLEANER, DEFAULT_OP_ARGS
 from .utils import DataJuicerConfigModel
 
 CONFIG_PARSER_SYSTEM_PROMPT_TEMPLATE = """
@@ -144,38 +139,23 @@ class ConfigParser:
         self.model_name = model_name
         self.validate_config = validate_config
 
-    def parse(self, config: DataJuicerConfigModel, extra_op_args=None):
+    def parse(self, config: DataJuicerConfigModel, extra_op_args=None) -> Namespace:
         """Convert RFT config to DJ config"""
-        if config.config_path is not None:
+        if config.operators is not None:
+            dj_config = Namespace(process=[op.model_dump() for op in config.operators])
+            dj_config = get_init_configs(dj_config)
+            if extra_op_args is not None:
+                dj_config = self._update_common_op_args(dj_config, extra_op_args)
+        elif config.config_path is not None:
             dj_config = self._direct_mapping(config.config_path)
         elif config.description is not None:
             dj_config = self._agent_based_parsing(extra_op_args)
         else:
-            dj_config = None
+            raise ValueError(
+                "At least one of operators, config_path, description should be provided."
+            )
 
-        hit_cleaner, hit_synthesizer, hit_human_annotator = self._check_types_of_processors(
-            dj_config
-        )
-
-        return dj_config, hit_cleaner, hit_synthesizer, hit_human_annotator
-
-    def _check_types_of_processors(self, dj_config):
-        if dj_config is None:
-            return False, False, False
-        hit_cleaner, hit_synthesizer, hit_human_annotator = False, False, False
-        process_list = dj_config.get("process", [])
-        for op in process_list:
-            op_name = list(op.keys())[0]
-            if op_name in DEFAULT_SYNTHESIZER:
-                hit_synthesizer = True
-            elif op_name in DEFAULT_HUMAN_ANNOTATOR:
-                hit_human_annotator = True
-            else:
-                for dimension in DEFAULT_CLEANER:
-                    if op_name in DEFAULT_CLEANER[dimension]:
-                        hit_cleaner = True
-                        break
-        return hit_cleaner, hit_synthesizer, hit_human_annotator
+        return dj_config
 
     def _update_common_op_args(self, dj_config: Namespace, extra_op_args: Dict) -> Namespace:
         """Update common op args for RFT project"""
