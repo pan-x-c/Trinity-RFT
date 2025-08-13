@@ -7,7 +7,7 @@ from datasets import Dataset
 from flask import Flask, jsonify, make_response, request
 
 from trinity.service.data_juicer.server.session import DataJuicerSession
-from trinity.service.data_juicer.server.utils import DataJuicerConfigModel
+from trinity.service.data_juicer.server.utils import DJConfig
 
 app = Flask(__name__)
 openai_client = None  # Placeholder for OpenAI client, to be initialized later
@@ -56,7 +56,7 @@ def create():
     """
     config = request.json
     try:
-        config = DataJuicerConfigModel.model_validate(config)
+        config = DJConfig.model_validate(config)
     except Exception as e:
         return jsonify({"error": f"Failed to parse config: {e}"}), 400
 

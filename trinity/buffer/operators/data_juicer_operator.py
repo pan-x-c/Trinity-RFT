@@ -4,6 +4,7 @@ from trinity.buffer.operators.experience_operator import (
     EXPERIENCE_OPERATORS,
     ExperienceOperator,
 )
+from trinity.common.config import DataJuicerServiceConfig
 from trinity.common.experience import Experience
 from trinity.service.data_juicer.client import DataJuicerClient
 
@@ -12,16 +13,15 @@ from trinity.service.data_juicer.client import DataJuicerClient
 class DataJuicerOperator(ExperienceOperator):
     def __init__(
         self,
-        data_juicer_url: str,
+        service_config: DataJuicerServiceConfig,
         operators: Optional[List[Dict]] = None,
         config_path: Optional[str] = None,
-        description: Optional[str] = None,
     ):
         """
-        Initialize the DataJuicerOperator with a URL and configuration.
+        Initialize the DataJuicerOperator.
 
         Args:
-            data_juicer_url (str): The URL of the Data-Juicer server.
+            service_config (config): The configuration for the DataJuicer service.
             operators(`List[Dict]`): A list of operators with their configurations.
             config_path(`str`): Path to the Data-Juicer configuration file.
 
@@ -30,12 +30,8 @@ class DataJuicerOperator(ExperienceOperator):
                 - `operators` (`List[Dict]`)
                 - `config_path` (`str`)
         """
-        self.client = DataJuicerClient(
-            url=data_juicer_url,
-        )
-        self.client.initialize(
-            {"operators": operators, "config_path": config_path, "description": description}
-        )
+        self.client = DataJuicerClient(config=service_config)
+        self.client.initialize({"operators": operators, "config_path": config_path})
 
     def process(self, exps: List[Experience]) -> Tuple[List[Experience], Dict]:
         return self.client.process_experience(exps)

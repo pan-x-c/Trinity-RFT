@@ -4,7 +4,7 @@ from data_juicer.core.executor.default_executor import DefaultExecutor
 from datasets import Dataset
 from jsonargparse import Namespace
 
-from .utils import DataJuicerConfigModel, parse_config
+from .utils import DJConfig, parse_config
 
 
 def extract_metrics(dataset: Dataset) -> Dict:
@@ -18,7 +18,7 @@ class DataJuicerSession:
     This class manages the connection and provides methods to send and receive data.
     """
 
-    def __init__(self, config: DataJuicerConfigModel):
+    def __init__(self, config: DJConfig):
         """
         Initialize the DataJuicerSession with a URL and configuration.
 

@@ -5,7 +5,7 @@ from jsonargparse import Namespace
 from pydantic import BaseModel, model_validator
 
 
-class DataJuicerConfigModel(BaseModel):
+class DJConfig(BaseModel):
     operators: Optional[List[Dict[str, Dict[str, Any]]]] = None
     config_path: Optional[str] = None
 
@@ -16,7 +16,7 @@ class DataJuicerConfigModel(BaseModel):
         return self
 
 
-def parse_config(config: DataJuicerConfigModel) -> Namespace:
+def parse_config(config: DJConfig) -> Namespace:
     """Convert Trinity config to DJ config"""
     if config.operators is not None:
         dj_config = Namespace(process=[op for op in config.operators])

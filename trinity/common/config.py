@@ -447,7 +447,7 @@ class SynchronizerConfig:
 
 
 @dataclass
-class DataJuicerConfig:
+class DataJuicerServiceConfig:
     """Config for Data-Juicer.
 
     Please update `trinity.service.data_juicer.server.server.py` correspondingly if you change the fields here.
@@ -462,15 +462,16 @@ class DataJuicerConfig:
     # the following fields are only used when `auto_start` is True
     # python path to the Data-Juicer environment
     python_path: str = "python"
-    # the port of the Data-Juicer server
-    port: int = 5005
+    # the port of the Data-Juicer server, if not set, a random port will be used
+    port: Optional[int] = None
+    # the hostname will be automatically set to "localhost" so we do not need to set it here
 
 
 @dataclass
 class ServiceConfig:
     """Configs for outside services."""
 
-    data_juicer: Optional[DataJuicerConfig] = None
+    data_juicer: Optional[DataJuicerServiceConfig] = None
 
 
 @dataclass
@@ -499,6 +500,7 @@ class Config:
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
     synchronizer: SynchronizerConfig = field(default_factory=SynchronizerConfig)
+    service: ServiceConfig = field(default_factory=ServiceConfig)
 
     def save(self, config_path: str) -> None:
         """Save config to file."""
@@ -830,6 +832,12 @@ class Config:
             self.trainer.trainer_config.synchronize_config(self)
         else:
             self.trainer.trainer_config = None
+
+        # check service
+        if self.service.data_juicer is not None:
+            for operator in self.data_processor.experience_pipeline.operators:
+                if operator.name == "data_juicer":
+                    operator.args["server_config"] = self.service.data_juicer
 
 
 def load_config(config_path: str) -> Config:

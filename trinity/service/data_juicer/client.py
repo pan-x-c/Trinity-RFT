@@ -1,23 +1,66 @@
 import io
+import time
+from multiprocessing import Process
 from typing import Dict, List, Tuple
 
 import requests
 from datasets import Dataset
 
+from trinity.common.config import DataJuicerServiceConfig
 from trinity.common.experience import Experience, from_hf_datasets, to_hf_datasets
+from trinity.utils.distributed import get_available_port
 
 
 class DataJuicerClient:
-    def __init__(self, url: str = "http://localhost:5005"):
-        self.url = url
+    """Client for interacting with the DataJuicer server."""
+
+    def __init__(self, config: DataJuicerServiceConfig):
+        self.config = config
+        self.url = config.server_url
         self.session_id = None
+        self.server = None
+        if not self.config.auto_start:
+            # If auto-start is disabled, check the connection immediately
+            self._check_connection()
+
+    def _start_server(self):
+        """Start the DataJuicer server."""
+        if not self.config.auto_start:
+            # Server auto-start is disabled, use the provided URL
+            return None
+
+        from trinity.service.data_juicer.server.server import main
+
+        if not self.config.port:
+            self.config.port = get_available_port()
+        self.url = f"http://localhost:{self.config.port}"
+        server_process = Process(
+            target=main, kwargs={"host": "localhost", "port": self.config.port, "debug": False}
+        )
+        server_process.start()
+        # Wait for the server to start
+        while True:
+            try:
+                if self._check_connection():
+                    break
+            except ConnectionError:
+                time.sleep(5)
+        return server_process
+
+    def _check_connection(self) -> bool:
+        """Check if the DataJuicer server is reachable."""
         try:
             response = requests.get(f"{self.url}/health")  # Check if the server is running
-        except Exception:
-            raise ConnectionError(f"Failed to connect to DataJuicer server at {self.url}")
-        response.raise_for_status()
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to DataJuicer server at {self.url}: {e}")
+        if response.status_code != 200:
+            raise ConnectionError(
+                f"DataJuicer server at {self.url} is not reachable. Status code: {response.status_code}"
+            )
+        return True
 
     def initialize(self, config: dict):
+        self.server = self._start_server()
         response = requests.post(f"{self.url}/create", json=config)
         response.raise_for_status()
         self.session_id = response.json().get("session_id")
@@ -51,3 +94,7 @@ class DataJuicerClient:
             response = requests.post(f"{self.url}/close", json={"session_id": self.session_id})
             response.raise_for_status()
             self.session_id = None
+        if self.server:
+            self.server.terminate()
+            self.server.join()
+            self.server = None
