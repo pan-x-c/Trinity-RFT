@@ -64,7 +64,7 @@ class TestExperiencePipeline(RayUnittestBaseAysnc):
         task_num = 8
         repeat_times = 4
         experiences = get_experiences(task_num=task_num, repeat_times=repeat_times)
-        metrics = await pipeline.run.remote(experiences)
+        metrics = await pipeline.process.remote(experiences)
         self.assertEqual(
             metrics["pipeline/experience_count"], task_num * (repeat_times - 1)
         )  # first experience of each task will be filtered out by the reward filter

@@ -1,8 +1,10 @@
 import io
+import json
 import time
 from multiprocessing import Process
 from typing import Dict, List, Tuple
 
+import pyarrow as pa
 import requests
 from datasets import Dataset
 
@@ -69,24 +71,19 @@ class DataJuicerClient:
         if not self.session_id:
             raise ValueError("DataJuicer session is not initialized.")
 
-        hf_exps = to_hf_datasets(exps)
+        dataset = to_hf_datasets(exps)
 
-        # Serialize to an in-memory buffer
-        buffer = io.BytesIO()
-        hf_exps.to_parquet(buffer)
-        buffer.seek(0)
-
-        # The filename in the multipart-form data can be a constant string
-        files = {"file": ("experiences.parquet", buffer, "application/octet-stream")}
+        arrow_bytes = serialize_dataset_to_arrow(dataset)
+        files = {"arrow_data": ("dataset.arrow", arrow_bytes, "application/octet-stream")}
         data = {"session_id": self.session_id}
-        response = requests.post(f"{self.url}/process", data=data, files=files)
-        response.raise_for_status()
-
-        # Deserialize from the response content in-memory
-        metrics = response.json().get("metrics", {})
-        with io.BytesIO(response.content) as recv_buffer:
-            ds = Dataset.from_parquet(recv_buffer)
-            return from_hf_datasets(ds), metrics
+        response = requests.post(f"{self.url}/process_experience", data=data, files=files)
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Failed to process experiences: {response.status_code}, {response.json().get('error')}"
+            )
+        metrics = json.loads(response.headers.get("X-Metrics"))
+        exps = from_hf_datasets(deserialize_arrow_to_dataset(response.content))
+        return exps, metrics
 
     def close(self):
         """Close the DataJuicer client connection."""
@@ -98,3 +95,26 @@ class DataJuicerClient:
             self.server.terminate()
             self.server.join()
             self.server = None
+
+
+def serialize_dataset_to_arrow(dataset):
+    arrow_table = dataset.data.table
+
+    buffer = io.BytesIO()
+    with pa.ipc.new_stream(buffer, arrow_table.schema) as writer:
+        writer.write_table(arrow_table)
+
+    arrow_bytes = buffer.getvalue()
+
+    return arrow_bytes
+
+
+def deserialize_arrow_to_dataset(arrow_bytes):
+    buffer = io.BytesIO(arrow_bytes)
+
+    with pa.ipc.open_stream(buffer) as reader:
+        arrow_table = reader.read_all()
+
+    dataset = Dataset(arrow_table)
+
+    return dataset

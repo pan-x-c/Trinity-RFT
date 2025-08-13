@@ -8,9 +8,15 @@ except ImportError:
     raise ImportError(
         "data_juicer module is not installed. Please install it with `pip install py-data-juicer` to run the tests."
     )
+import ray
+import torch
 from jsonargparse import Namespace
 
-from trinity.common.config import DataJuicerServiceConfig
+from tests.tools import RayUnittestBaseAysnc, get_template_config
+from trinity.buffer.buffer import get_buffer_reader
+from trinity.buffer.pipelines import ExperiencePipeline
+from trinity.common.config import DataJuicerServiceConfig, OperatorConfig
+from trinity.common.experience import Experience
 from trinity.service.data_juicer.client import DataJuicerClient
 from trinity.service.data_juicer.server.server import main
 from trinity.service.data_juicer.server.utils import DJConfig, parse_config
@@ -73,7 +79,6 @@ class TestDataJuicer(unittest.TestCase):
                         "llm_quality_score_filter": {
                             "api_or_hf_model": "qwen2.5-7b-instruct",
                             "min_score": 0.0,
-                            "input_keys": ["prompt_text"],
                             "field_names": ["prompt", "response"],
                         }
                     },
@@ -120,3 +125,71 @@ class TestDataJuicer(unittest.TestCase):
         client.close()
         self.assertIsNone(client.session_id)
         self.assertIsNone(client.server)
+
+
+class TestDataJuicerOperators(RayUnittestBaseAysnc):
+    async def test_data_juicer_operators(self):
+        config = get_template_config()
+        config.service.data_juicer = DataJuicerServiceConfig(
+            auto_start=True,
+        )
+        config.data_processor.experience_pipeline.operators = [
+            OperatorConfig(
+                name="data_juicer",
+                args={
+                    "operators": [
+                        {
+                            "text_length_filter": {
+                                "min_len": 10,
+                                "max_len": 50,
+                                "text_key": "response_text",
+                            }
+                        },
+                        {
+                            "word_repetition_filter": {
+                                "lang": "en",
+                                "text_key": "response_text",
+                            }
+                        },
+                    ]
+                },
+            )
+        ]
+        config.check_and_update()
+        config.buffer.trainer_input.experience_buffer.max_read_timeout = 5
+        pipeline = ray.remote(ExperiencePipeline).options(num_cpus=2).remote(config)
+        await pipeline.prepare.remote()
+        exps = [
+            Experience(
+                tokens=torch.tensor([1, 2, 3, 4, 5]),
+                prompt_length=3,
+                prompt_text="Hello, how are you?",
+                response_text="Hi, I am fine.",
+            ),
+            Experience(  # too short response
+                tokens=torch.tensor([1, 2, 3, 4, 5]),
+                prompt_length=3,
+                prompt_text="What is your name?",
+                response_text="Trinity.",
+            ),
+            Experience(  # repeated words
+                tokens=torch.tensor([1, 2, 3, 4, 5]),
+                prompt_length=3,
+                prompt_text="Hello, how are you?",
+                response_text="I am fine. I am fine. I am fine.",
+            ),
+            Experience(
+                tokens=torch.tensor([1, 2, 3, 4, 5]),
+                prompt_length=3,
+                prompt_text="What is your favorite color?",
+                response_text="My favorite color is blue.",
+            ),
+        ]
+        metrics = await pipeline.process.remote(exps)
+        self.assertIsInstance(metrics, dict)
+        reader = get_buffer_reader(config.buffer.trainer_input.experience_buffer, config.buffer)
+        filtered_exps = reader.read(batch_size=2)
+        self.assertEqual(len(filtered_exps), 2)
+        e = reader.read(batch_size=1)
+        self.assertEqual(len(e), 0)
+        await pipeline.close.remote()

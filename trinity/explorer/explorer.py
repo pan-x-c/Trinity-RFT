@@ -344,7 +344,7 @@ class Explorer:
         statuses, exps = await self.scheduler.get_results(batch_id=step)
         metric = {"rollout/model_version": model_version}
         # TODO: avoid blocking
-        pipeline_metrics = await self.experience_pipeline.run.remote(exps)
+        pipeline_metrics = await self.experience_pipeline.process.remote(exps)
         metric.update(pipeline_metrics)
         if statuses:
             metric.update(gather_metrics([status.metric for status in statuses], "rollout"))

@@ -1,11 +1,14 @@
 import argparse
-import io
 import json
+import traceback
 import uuid
 
-from datasets import Dataset
 from flask import Flask, jsonify, make_response, request
 
+from trinity.service.data_juicer.client import (
+    deserialize_arrow_to_dataset,
+    serialize_dataset_to_arrow,
+)
 from trinity.service.data_juicer.server.session import DataJuicerSession
 from trinity.service.data_juicer.server.utils import DJConfig
 
@@ -70,44 +73,38 @@ def create():
 def process_experience():
     """
     Process uploaded experiences for a given session.
-    Expects a multipart/form-data POST with a parquet file and session_id.
-    Returns processed experiences and metrics as a parquet file and JSON.
+    Expects a multipart/form-data POST with arrow bytes and session_id.
+    Returns processed experiences and metrics as arrow bytes and JSON.
     """
-    session_id = request.json.get("session_id")
+    session_id = request.form.get("session_id")
     if not session_id or session_id not in sessions:
         return jsonify({"error": "Session ID not found."}), 404
 
     # Check for file in request
-    if "file" not in request.files:
+    if "arrow_data" not in request.files:
         return jsonify({"error": "No file uploaded."}), 400
-    file = request.files["file"]
-
-    # Read parquet from uploaded file
-    try:
-        buffer = io.BytesIO(file.read())
-        ds = Dataset.from_parquet(buffer)
-    except Exception as e:
-        return jsonify({"error": f"Failed to read parquet: {e}"}), 400
+    arrow_file = request.files["arrow_data"]
+    arrow_bytes = arrow_file.read()
+    ds = deserialize_arrow_to_dataset(arrow_bytes)
 
     # Process experiences using session
     session = sessions[session_id]
     try:
         # from_hf_datasets and to_hf_datasets should be imported from trinity.common.experience
         processed_ds, metrics = session.process(ds)
+        print(f"Processed {len(ds)} experiences, got {len(processed_ds)} after processing.")
     except Exception as e:
+        print(f"Error processing experiences: {traceback.format_exc()}")
         return jsonify({"error": f"Processing failed: {e}"}), 500
 
     # Serialize processed experiences to parquet in-memory
-    out_buffer = io.BytesIO()
-    processed_ds.to_parquet(out_buffer)
-    out_buffer.seek(0)
+    return_bytes = serialize_dataset_to_arrow(processed_ds)
 
-    # Return parquet file and metrics as response
-    response = make_response(out_buffer.read())
-    response.headers["Content-Type"] = "application/octet-stream"
-    response.headers["Content-Disposition"] = "attachment; filename=processed_experiences.parquet"
-    # Add metrics as a custom header (JSON string)
+    # Return arrow bytes and metrics as response
+    response = make_response(return_bytes)
     response.headers["X-Metrics"] = json.dumps(metrics)
+    response.headers["Content-Type"] = "application/octet-stream"
+    response.headers["Content-Disposition"] = "attachment; filename=processed.arrow"
     return response
 
 

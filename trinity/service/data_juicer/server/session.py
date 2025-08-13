@@ -1,10 +1,9 @@
 from typing import Dict, Tuple
 
-from data_juicer.core.executor.default_executor import DefaultExecutor
 from datasets import Dataset
 from jsonargparse import Namespace
 
-from .utils import DJConfig, parse_config
+from trinity.service.data_juicer.server.utils import DJConfig, parse_config
 
 
 def extract_metrics(dataset: Dataset) -> Dict:
@@ -29,7 +28,11 @@ class DataJuicerSession:
 
     def process(self, ds: Dataset) -> Tuple[Dataset, Dict]:
         # TODO: Implement the processing logic using data juicer executor
+        from data_juicer.core.data import NestedDataset
+        from data_juicer.core.executor.default_executor import DefaultExecutor
+
         dj_executor = DefaultExecutor(cfg=self.config)
-        ds = dj_executor.run(ds)
+
+        ds = dj_executor.run(NestedDataset.from_dict(ds.to_dict()))
         metrics = extract_metrics(ds)
         return ds, metrics

@@ -454,14 +454,12 @@ class DataJuicerServiceConfig:
     """
 
     # the url of the Data-Juicer server
-    server_url: str
+    server_url: Optional[str] = None
 
     # whether to start Data-Juicer server automatically
     auto_start: bool = False
 
     # the following fields are only used when `auto_start` is True
-    # python path to the Data-Juicer environment
-    python_path: str = "python"
     # the port of the Data-Juicer server, if not set, a random port will be used
     port: Optional[int] = None
     # the hostname will be automatically set to "localhost" so we do not need to set it here
@@ -837,7 +835,7 @@ class Config:
         if self.service.data_juicer is not None:
             for operator in self.data_processor.experience_pipeline.operators:
                 if operator.name == "data_juicer":
-                    operator.args["server_config"] = self.service.data_juicer
+                    operator.args["service_config"] = self.service.data_juicer
 
 
 def load_config(config_path: str) -> Config:
