@@ -3,16 +3,21 @@ import io
 import json
 import uuid
 
-import openai
 from datasets import Dataset
 from flask import Flask, jsonify, make_response, request
 
-from .session import DataJuicerSession
-from .utils import DataJuicerConfigModel
+from trinity.service.data_juicer.server.session import DataJuicerSession
+from trinity.service.data_juicer.server.utils import DataJuicerConfigModel
 
 app = Flask(__name__)
 openai_client = None  # Placeholder for OpenAI client, to be initialized later
 sessions = {}
+
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Health check endpoint to verify server is running."""
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route("/create", methods=["POST"])
@@ -61,8 +66,8 @@ def create():
     return jsonify({"session_id": session_id, "message": "Session created successfully."})
 
 
-@app.route("/process", methods=["POST"])
-def process():
+@app.route("/process_experience", methods=["POST"])
+def process_experience():
     """
     Process uploaded experiences for a given session.
     Expects a multipart/form-data POST with a parquet file and session_id.
@@ -128,8 +133,4 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=5005, help="Port number")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
-    openai_client = openai.OpenAI(
-        base_url=args.openai_base_url,
-        api_key=args.openai_api_key,
-    )
     main(host=args.host, port=args.port, debug=args.debug)

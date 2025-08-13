@@ -11,13 +11,18 @@ class DataJuicerClient:
     def __init__(self, url: str = "http://localhost:5005"):
         self.url = url
         self.session_id = None
+        try:
+            response = requests.get(f"{self.url}/health")  # Check if the server is running
+        except Exception:
+            raise ConnectionError(f"Failed to connect to DataJuicer server at {self.url}")
+        response.raise_for_status()
 
     def initialize(self, config: dict):
         response = requests.post(f"{self.url}/create", json=config)
         response.raise_for_status()
         self.session_id = response.json().get("session_id")
 
-    def process(self, exps: List[Experience]) -> Tuple[List[Experience], Dict]:
+    def process_experience(self, exps: List[Experience]) -> Tuple[List[Experience], Dict]:
         if not self.session_id:
             raise ValueError("DataJuicer session is not initialized.")
 

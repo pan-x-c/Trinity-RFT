@@ -38,7 +38,7 @@ class DataJuicerOperator(ExperienceOperator):
         )
 
     def process(self, exps: List[Experience]) -> Tuple[List[Experience], Dict]:
-        return self.client.process(exps)
+        return self.client.process_experience(exps)
 
     def close(self):
         """Close the DataJuicer client connection."""
