@@ -24,13 +24,11 @@ class DataJuicerOperator(ExperienceOperator):
             data_juicer_url (str): The URL of the Data-Juicer server.
             operators(`List[Dict]`): A list of operators with their configurations.
             config_path(`str`): Path to the Data-Juicer configuration file.
-            description(`str`): The operator you want to use, described in natural language (Experimental).
 
         Note:
             - Must include one of the following, and the priority is from high to low:
                 - `operators` (`List[Dict]`)
                 - `config_path` (`str`)
-                - `description` (`str`)
         """
         self.client = DataJuicerClient(
             url=data_juicer_url,

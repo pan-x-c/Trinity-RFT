@@ -455,10 +455,6 @@ class DataJuicerConfig:
 
     # the url of the Data-Juicer server
     server_url: str
-    # the openai base url used by Data-Juicer Agent
-    openai_base_url: str
-    # the model name used by Data-Juicer Agent
-    model_name: str
 
     # whether to start Data-Juicer server automatically
     auto_start: bool = False

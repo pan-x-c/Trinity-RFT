@@ -7,7 +7,6 @@ import openai
 from datasets import Dataset
 from flask import Flask, jsonify, make_response, request
 
-from .config_parser import ConfigParser
 from .session import DataJuicerSession
 from .utils import DataJuicerConfigModel
 
@@ -57,7 +56,7 @@ def create():
         return jsonify({"error": f"Failed to parse config: {e}"}), 400
 
     session_id = str(uuid.uuid4())
-    sessions[session_id] = DataJuicerSession(config, app.config["config_parser"])
+    sessions[session_id] = DataJuicerSession(config)
 
     return jsonify({"session_id": session_id, "message": "Session created successfully."})
 
@@ -128,19 +127,9 @@ if __name__ == "__main__":
     parser.add_argument("--host", type=str, default="localhost", help="Host address")
     parser.add_argument("--port", type=int, default=5005, help="Port number")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-    parser.add_argument(
-        "--openai-base-url",
-        type=str,
-        required=False,
-        help="The OpenAI base url used by Data-Juicer Agent",
-    )
-    parser.add_argument(
-        "--model_name", type=str, required=False, help="The model name used by Data-Juicer Agent"
-    )
     args = parser.parse_args()
     openai_client = openai.OpenAI(
         base_url=args.openai_base_url,
         api_key=args.openai_api_key,
     )
-    app.config["config_parser"] = ConfigParser(model_api=openai_client, model_name=args.model_name)
     main(host=args.host, port=args.port, debug=args.debug)

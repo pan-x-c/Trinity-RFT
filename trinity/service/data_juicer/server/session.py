@@ -4,8 +4,7 @@ from data_juicer.core.executor.default_executor import DefaultExecutor
 from datasets import Dataset
 from jsonargparse import Namespace
 
-from .config_parser import ConfigParser
-from .utils import DataJuicerConfigModel
+from .utils import DataJuicerConfigModel, parse_config
 
 
 def extract_metrics(dataset: Dataset) -> Dict:
@@ -19,14 +18,14 @@ class DataJuicerSession:
     This class manages the connection and provides methods to send and receive data.
     """
 
-    def __init__(self, config: DataJuicerConfigModel, config_parser: ConfigParser):
+    def __init__(self, config: DataJuicerConfigModel):
         """
         Initialize the DataJuicerSession with a URL and configuration.
 
         Args:
             config (DataJuicerConfigModel): Configuration parameters provided by Trinity.
         """
-        self.config: Namespace = config_parser.parse(config)
+        self.config: Namespace = parse_config(config)
 
     def process(self, ds: Dataset) -> Tuple[Dataset, Dict]:
         # TODO: Implement the processing logic using data juicer executor
