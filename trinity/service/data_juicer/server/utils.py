@@ -29,5 +29,4 @@ def parse_config(config: DJConfig) -> Namespace:
         dj_config = get_init_configs(dj_config)
     else:
         raise ValueError("At least one of operators or config_path should be provided.")
-    print("number of processes:", dj_config.np)
     return dj_config
