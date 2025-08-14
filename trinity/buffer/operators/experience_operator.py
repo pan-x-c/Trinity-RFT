@@ -44,3 +44,7 @@ class ExperienceOperator(ABC):
                 raise ValueError(f"Unknown operator: {config.name}")
             operators.append(operator_class(**config.args))
         return operators
+
+    def close(self):
+        """Close the operator if it has any resources to release."""
+        pass

@@ -1,3 +1,4 @@
+from trinity.buffer.operators.data_juicer_operator import DataJuicerOperator
 from trinity.buffer.operators.experience_operator import (
     EXPERIENCE_OPERATORS,
     ExperienceOperator,
@@ -11,4 +12,5 @@ __all__ = [
     "RewardFilter",
     "RewardSTDFilter",
     "RewardShapingMapper",
+    "DataJuicerOperator",
 ]

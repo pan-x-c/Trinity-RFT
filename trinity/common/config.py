@@ -216,6 +216,7 @@ class ModelConfig:
     max_model_len: Optional[int] = None
     max_prompt_tokens: Optional[int] = None  # deprecated
     max_response_tokens: Optional[int] = None
+    min_response_tokens: int = 1
     custom_chat_template: Optional[str] = None
 
 
@@ -242,6 +243,10 @@ class InferenceModelConfig:
     max_prompt_tokens: Optional[int] = None  # deprecated
     # if not set, use `model.max_response_tokens`
     max_response_tokens: Optional[int] = None
+    # if not set, use `model.min_response_tokens`
+    min_response_tokens: Optional[int] = None
+    # used for testing very long response generation, do not set it unless you know what you are doing
+    ignore_eos: bool = False
 
     # override chat template in model
     chat_template: Optional[str] = None
@@ -447,6 +452,32 @@ class SynchronizerConfig:
 
 
 @dataclass
+class DataJuicerServiceConfig:
+    """Config for Data-Juicer.
+
+    Please update `trinity.service.data_juicer.server.server.py` correspondingly if you change the fields here.
+    """
+
+    # the url of the Data-Juicer server
+    server_url: Optional[str] = None
+
+    # whether to start Data-Juicer server automatically
+    auto_start: bool = False
+
+    # the following fields are only used when `auto_start` is True
+    # the port of the Data-Juicer server, if not set, a random port will be used
+    port: Optional[int] = None
+    # the hostname will be automatically set to "localhost" so we do not need to set it here
+
+
+@dataclass
+class ServiceConfig:
+    """Configs for outside services."""
+
+    data_juicer: Optional[DataJuicerServiceConfig] = None
+
+
+@dataclass
 class Config:
     """Global Configuration"""
 
@@ -472,6 +503,7 @@ class Config:
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
     synchronizer: SynchronizerConfig = field(default_factory=SynchronizerConfig)
+    service: ServiceConfig = field(default_factory=ServiceConfig)
 
     def save(self, config_path: str) -> None:
         """Save config to file."""
@@ -734,6 +766,8 @@ class Config:
             self.explorer.rollout_model.max_prompt_tokens = self.model.max_prompt_tokens
         if self.explorer.rollout_model.max_response_tokens is None:
             self.explorer.rollout_model.max_response_tokens = self.model.max_response_tokens
+        if self.explorer.rollout_model.min_response_tokens is None:
+            self.explorer.rollout_model.min_response_tokens = self.model.min_response_tokens
         if self.explorer.rollout_model.max_model_len is None:
             self.explorer.rollout_model.max_model_len = self.model.max_model_len
         if (
@@ -803,6 +837,12 @@ class Config:
             self.trainer.trainer_config.synchronize_config(self)
         else:
             self.trainer.trainer_config = None
+
+        # check service
+        if self.service.data_juicer is not None:
+            for operator in self.data_processor.experience_pipeline.operators:
+                if operator.name == "data_juicer":
+                    operator.args["service_config"] = self.service.data_juicer
 
 
 def load_config(config_path: str) -> Config:
