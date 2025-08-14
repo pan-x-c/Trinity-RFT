@@ -27,34 +27,29 @@ def create():
     """Create a new data juicer session.
 
     Args:
-        config (dict): Configuration parameters for the session.
-        - Must include one of the following, and the priority is from high to low:
-            - `operators` (`List[Dict]`): A list of operators with their configurations.
-            - `config_path` (`str`): Path to the Data-Juicer configuration file.
-            - `description` (`str`): The operator you want to use, described in natural language.
+        config (dict): Configuration parameters for the session. Must include one of the following, and the priority is from high to low:
 
-    Example:
 
-    ```json
-    {
-        "config_path": "path/to/data_juicer_config.yaml",
-        "operators": [
-            {
-                "operator1_name": {
-                    "arg1": "value1",
-                    "arg2": "value2"
+
+    For example, the config should look like this:
+    .. code-block:: python
+        {
+            "operators": [
+                {
+                    "operator1_name": {
+                        "arg1": "value1",
+                        "arg2": "value2"
+                    }
+                },
+                {
+                    "operator2_name": {
+                        "arg1": "value1",
+                        "arg2": "value2"
+                    }
                 }
-            },
-            {
-                "operator2_name": {
-                    "arg1": "value1",
-                    "arg2": "value2"
-                }
-            }
-        ],
-        "description": "Do something"
-    }
-    ```
+            ],
+            "config_path": "path/to/data_juicer_config.yaml",
+        }
     """
     config = request.json
     try:
