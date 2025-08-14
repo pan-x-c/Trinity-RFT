@@ -13,7 +13,6 @@ from trinity.service.data_juicer.server.session import DataJuicerSession
 from trinity.service.data_juicer.server.utils import DJConfig
 
 app = Flask(__name__)
-openai_client = None  # Placeholder for OpenAI client, to be initialized later
 sessions = {}
 
 
@@ -53,7 +52,7 @@ def create():
                 }
             }
         ],
-        "description": "Do somthing"
+        "description": "Do something"
     }
     ```
     """

@@ -5,7 +5,6 @@ from __future__ import annotations
 import pickle
 import uuid
 from dataclasses import asdict, dataclass, field, fields
-from enum import Enum
 from typing import Dict, List, Literal, Optional
 
 import torch
@@ -81,14 +80,6 @@ class EID:
             "step": self.step,
             "suffix": self.suffix,
         }
-
-
-class ExperienceType(Enum):
-    """Enum for experience types."""
-
-    SINGLE_TURN = "single_turn"  # Single-turn experience, e.g., a prompt-response pair
-    MULTI_TURN = "multi_turn"  # Multi-turn experience, e.g., a conversation history
-    DPO = "dpo"  # DPO experience, e.g., a chosen and rejected response pair
 
 
 @dataclass(frozen=True)

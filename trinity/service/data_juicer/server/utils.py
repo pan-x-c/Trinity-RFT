@@ -25,6 +25,6 @@ def parse_config(config: DJConfig) -> Namespace:
         dj_config = prepare_side_configs(config.config_path)
         dj_config = get_init_configs(dj_config)
     else:
-        raise ValueError("At least one of operators, config_path, description should be provided.")
+        raise ValueError("At least one of operators or config_path should be provided.")
 
     return dj_config
