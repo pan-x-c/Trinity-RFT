@@ -206,7 +206,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.config.explorer.max_retry_times = 1
         self.config.explorer.max_timeout = 5
         self.config.explorer.runner_per_model = 2
-        self.config.buffer.read_batch_size = 2
+        self.config.buffer.train_batch_size = 2
         self.config.buffer.pad_token_id = 0
         self.config.buffer.explorer_output = (
             self.config.buffer.trainer_input.experience_buffer
@@ -553,11 +553,13 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_stepwise_experience_eid(self):
+        task_num, repeat_times, step_num = 2, 4, 3
+        self.config.buffer.batch_size = task_num
+        self.config.buffer.train_batch_size = task_num * repeat_times * step_num
         self.config.explorer.max_repeat_times_per_runner = 2
         self.config.check_and_update()
         scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
-        task_num, repeat_times, step_num = 2, 4, 3
         batch_num = 2
 
         # repeatable stepwise workflow
