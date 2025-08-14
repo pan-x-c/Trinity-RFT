@@ -216,6 +216,7 @@ class ModelConfig:
     max_model_len: Optional[int] = None
     max_prompt_tokens: Optional[int] = None  # deprecated
     max_response_tokens: Optional[int] = None
+    min_response_tokens: int = 1
     custom_chat_template: Optional[str] = None
 
 
@@ -242,6 +243,10 @@ class InferenceModelConfig:
     max_prompt_tokens: Optional[int] = None  # deprecated
     # if not set, use `model.max_response_tokens`
     max_response_tokens: Optional[int] = None
+    # if not set, use `model.min_response_tokens`
+    min_response_tokens: Optional[int] = None
+    # used for testing very long response generation, do not set it unless you know what you are doing
+    ignore_eos: bool = False
 
     # override chat template in model
     chat_template: Optional[str] = None
@@ -761,6 +766,8 @@ class Config:
             self.explorer.rollout_model.max_prompt_tokens = self.model.max_prompt_tokens
         if self.explorer.rollout_model.max_response_tokens is None:
             self.explorer.rollout_model.max_response_tokens = self.model.max_response_tokens
+        if self.explorer.rollout_model.min_response_tokens is None:
+            self.explorer.rollout_model.min_response_tokens = self.model.min_response_tokens
         if self.explorer.rollout_model.max_model_len is None:
             self.explorer.rollout_model.max_model_len = self.model.max_model_len
         if (

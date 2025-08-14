@@ -83,13 +83,16 @@ class TestExplorerGSM8k(BaseExplorerCase):
         self.config.algorithm.repeat_times = 2
         self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
-        self.config.name = f"explore-add-strategy-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        self.config.name = f"explore-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         # some step may be skipped due to same reward
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.advantage_fn = "grpo"
         self.config.algorithm.advantage_fn_args = {
             "epsilon": 1e-6,
         }
+        self.config.model.max_response_tokens = 8192
+        self.config.model.min_response_tokens = 8192
+        self.config.explorer.rollout_model.ignore_eos = True
         self.config.check_and_update()
         explorer = Explorer.get_actor(self.config)
         ray.get(explorer.prepare.remote())
@@ -116,6 +119,7 @@ class TestExplorerGSM8k(BaseExplorerCase):
         try:
             batch = reader.read()
             exps.extend(batch)
+            self.assertTrue(len(batch[0].tokens) > 8192)
         except StopIteration:
             pass
         self.assertTrue(len(exps) <= 4 * 2 * 4)  # step * repeat_times * batch_size

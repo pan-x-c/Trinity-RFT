@@ -147,7 +147,9 @@ class TestDataJuicerOperators(RayUnittestBaseAysnc):
                         },
                         {
                             "word_repetition_filter": {
-                                "lang": "en",
+                                "rep_len": 3,
+                                "min_ratio": 0.0,
+                                "max_ratio": 0.2,
                                 "text_key": "response_text",
                             }
                         },
@@ -175,8 +177,8 @@ class TestDataJuicerOperators(RayUnittestBaseAysnc):
             Experience(  # repeated words
                 tokens=torch.tensor([1, 2, 3, 4, 5]),
                 prompt_length=3,
-                prompt_text="Hello, how are you?",
-                response_text="I am fine. I am fine. I am fine.",
+                prompt_text="What day is it today?",
+                response_text="Today is Sunday Sunday Sunday Sunday Sunday and it's a happy day!",
             ),
             Experience(
                 tokens=torch.tensor([1, 2, 3, 4, 5]),
@@ -190,6 +192,6 @@ class TestDataJuicerOperators(RayUnittestBaseAysnc):
         reader = get_buffer_reader(config.buffer.trainer_input.experience_buffer, config.buffer)
         filtered_exps = reader.read(batch_size=2)
         self.assertEqual(len(filtered_exps), 2)
-        e = reader.read(batch_size=1)
-        self.assertEqual(len(e), 0)
+        with self.assertRaises(TimeoutError):
+            reader.read(batch_size=1)
         await pipeline.close.remote()
