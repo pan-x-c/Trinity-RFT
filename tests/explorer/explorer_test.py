@@ -90,6 +90,7 @@ class TestExplorerGSM8k(BaseExplorerCase):
         self.config.algorithm.advantage_fn_args = {
             "epsilon": 1e-6,
         }
+        self.config.model.max_model_len = 10240
         self.config.model.max_response_tokens = 8192
         self.config.model.min_response_tokens = 8192
         self.config.explorer.rollout_model.ignore_eos = True
