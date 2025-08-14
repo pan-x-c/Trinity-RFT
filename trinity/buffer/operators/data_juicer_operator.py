@@ -16,6 +16,7 @@ class DataJuicerOperator(ExperienceOperator):
         service_config: DataJuicerServiceConfig,
         operators: Optional[List[Dict]] = None,
         config_path: Optional[str] = None,
+        np: int = 4,
     ):
         """
         Initialize the DataJuicerOperator.
@@ -24,6 +25,7 @@ class DataJuicerOperator(ExperienceOperator):
             service_config (config): The configuration for the DataJuicer service.
             operators(`List[Dict]`): A list of operators with their configurations.
             config_path(`str`): Path to the Data-Juicer configuration file.
+            np (`int`): Number of processes to use for Data-Juicer. Default is 4.
 
         Note:
             - Must include one of the following, and the priority is from high to low:
@@ -31,7 +33,7 @@ class DataJuicerOperator(ExperienceOperator):
                 - `config_path` (`str`)
         """
         self.client = DataJuicerClient(config=service_config)
-        self.client.initialize({"operators": operators, "config_path": config_path})
+        self.client.initialize({"operators": operators, "config_path": config_path, "np": np})
 
     def process(self, exps: List[Experience]) -> Tuple[List[Experience], Dict]:
         return self.client.process_experience(exps)

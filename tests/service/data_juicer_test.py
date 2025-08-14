@@ -42,7 +42,8 @@ class TestDataJuicer(unittest.TestCase):
                         "enable_vllm": False,
                     }
                 },
-            ]
+            ],
+            "np": 8,
         }
         config = DJConfig.model_validate(trinity_config)
         dj_config = parse_config(config)
@@ -89,7 +90,8 @@ class TestDataJuicer(unittest.TestCase):
                             "enable_vllm": False,
                         }
                     },
-                ]
+                ],
+                "np": 6,
             }
         )
         self.assertIsNotNone(client.session_id)
@@ -153,7 +155,8 @@ class TestDataJuicerOperators(RayUnittestBaseAysnc):
                                 "text_key": "response_text",
                             }
                         },
-                    ]
+                    ],
+                    "np": 2,
                 },
             )
         ]

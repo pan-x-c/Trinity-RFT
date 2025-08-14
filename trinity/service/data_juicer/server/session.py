@@ -33,6 +33,6 @@ class DataJuicerSession:
 
         dj_executor = DefaultExecutor(cfg=self.config)
 
-        ds = dj_executor.run(NestedDataset.from_dict(ds.to_dict()))
+        ds = dj_executor.run(NestedDataset(ds))
         metrics = extract_metrics(ds)
         return ds, metrics
