@@ -6,7 +6,7 @@ import unittest
 import torch
 
 from trinity.buffer.schema.sql_schema import ExperienceModel
-from trinity.common.experience import EID, Experience, Experiences, CustomField
+from trinity.common.experience import EID, CustomField, Experience, Experiences
 
 db_url = os.path.join(os.path.dirname(__file__), "tmp", "test.db")
 dataset_path = os.path.join(os.path.dirname(__file__), "data")
@@ -323,10 +323,16 @@ class TestExperienceConversion(unittest.TestCase):
     def test_gather_experiences_with_custom_fields(self):
         # test multiple experiences gathering
         exps = [
-            Experience(tokens=torch.tensor([1, 2]), reward=0.1, prompt_length=1, info={"a": 1.0, "b": 3}),
-            Experience(tokens=torch.tensor([3, 4, 5]), reward=0.2, prompt_length=2, info={"a": 2, "c": 4}),
+            Experience(
+                tokens=torch.tensor([1, 2]), reward=0.1, prompt_length=1, info={"a": 1.0, "b": 3}
+            ),
+            Experience(
+                tokens=torch.tensor([3, 4, 5]), reward=0.2, prompt_length=2, info={"a": 2, "c": 4}
+            ),
         ]
-        batch = Experiences.gather_experiences(exps, custom_fields=[CustomField("a", "a", torch.float32)])
+        batch = Experiences.gather_experiences(
+            exps, custom_fields=[CustomField("a", "a", torch.float32)]
+        )
         self.assertEqual(batch.batch_size, 2)
         self.assertEqual(batch.prompt_length, 2)
         self.assertEqual(batch.tokens.shape[1], 3)
