@@ -52,6 +52,6 @@ class DataJuicerSession:
 
         dj_executor = DefaultExecutor(cfg=self.config)
 
-        dj_executor.run()
+        ds = dj_executor.run()
 
-        return {}
+        return {"sample_num": ds.num_rows}

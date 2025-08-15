@@ -15,6 +15,7 @@ class DJConfig(BaseModel):
 
     # For `task` only
     executor_type: Literal["ray", "default"] = "default"
+    inputs: List[str] = None  # List of input files
 
     @model_validator(mode="after")
     def check_dj_config(self):
@@ -27,6 +28,11 @@ class DJConfig(BaseModel):
 
 def parse_config(config: DJConfig) -> Namespace:
     """Convert Trinity config to DJ config"""
+    if config.config_path is not None:
+        task_config = prepare_side_configs(config.config_path)
+        task_config = get_init_configs(task_config)
+        return task_config
+
     if config.pipeline_type == "experience":
         return _parse_experience_pipeline_config(config)
     elif config.pipeline_type == "task":
@@ -37,10 +43,7 @@ def parse_config(config: DJConfig) -> Namespace:
 
 def _parse_experience_pipeline_config(config: DJConfig) -> Namespace:
     """Parse the experience pipeline configuration."""
-    if config.config_path is not None:
-        exp_config = prepare_side_configs(config.config_path)
-        exp_config = get_init_configs(exp_config)
-    elif config.operators is not None:
+    if config.operators is not None:
         exp_config = Namespace(process=[op for op in config.operators], np=config.np)
         exp_config = get_init_configs(exp_config)
     else:
@@ -50,11 +53,21 @@ def _parse_experience_pipeline_config(config: DJConfig) -> Namespace:
 
 def _parse_task_pipeline_config(config: DJConfig) -> Namespace:
     """Parse the task pipeline configuration."""
-    if config.config_path is not None:
-        task_config = prepare_side_configs(config.config_path)
-        task_config = get_init_configs(task_config)
-    elif config.operators is not None:
-        task_config = Namespace(process=[op for op in config.operators], np=config.np)
+    if config.operators is not None:
+        task_config = Namespace(
+            process=[op for op in config.operators],
+            np=config.np,
+            dataset={
+                "configs": [
+                    {
+                        "type": "local",
+                        "weight": 1.0,
+                        "path": path,
+                    }
+                    for path in config.inputs
+                ]
+            },
+        )
         task_config = get_init_configs(task_config)
     else:
         raise ValueError("At least one of operators or config_path should be provided.")
