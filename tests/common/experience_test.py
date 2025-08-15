@@ -333,7 +333,8 @@ class TestExperienceConversion(unittest.TestCase):
         self.assertEqual(batch.rewards[0], 0.1)
         self.assertEqual(batch.rewards[1], 0.2)
         self.assertIn("a", batch.custom_fields)
-        self.assertEqual(batch.a[0], 1)
+        self.assertEqual(batch.a[0], 1.0)
+        self.assertEqual(batch.a[1], 2.0)
 
 
 if __name__ == "__main__":
