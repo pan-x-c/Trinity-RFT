@@ -141,7 +141,10 @@ class OperatorConfig:
 @Experimental
 @dataclass
 class ExperiencePipelineConfig:
-    """Config for experience pipeline."""
+    """Config for experience pipeline.
+
+    Experience Pipeline is used to pre-process rollout experiences for better training.
+    """
 
     # The list of experience operators to apply, operators will be applied in the order they are defined
     operators: List[OperatorConfig] = field(default_factory=list)
@@ -157,6 +160,27 @@ class ExperiencePipelineConfig:
     inputs: Dict[str, StorageConfig] = field(default_factory=dict)
     # The output buffer will automatically set to the trainer input buffer, so we do not need to set it here.
     output: Optional[StorageConfig] = None
+
+
+@Experimental
+@dataclass
+class TaskPipelineConfig:
+    """Config for task pipeline.
+
+    Task Pipeline is used to pre-process raw tasks for better exploring. Currently, we only support using Data-Juicer operators
+    for task pipeline.
+    """
+
+    # The list of data-juicer operators to apply, operators will be applied in the order they are defined
+    operators: List[OperatorConfig] = field(default_factory=list)
+
+    # Raw input tasks
+    inputs: Dict[str, StorageConfig] = field(default_factory=dict)
+    # Output task buffer, if not set, use `buffer.explorer_input.taskset`. In most cases, users do not need to set this field.
+    output: Optional[StorageConfig] = None
+
+    # The strategy for sampling tasks from multiple input buffers, if you have only one input buffer, you can ignore this field.
+    sample_strategy: Optional[str] = None
 
 
 @dataclass

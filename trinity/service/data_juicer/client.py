@@ -85,6 +85,18 @@ class DataJuicerClient:
         exps = from_hf_datasets(deserialize_arrow_to_dataset(response.content))
         return exps, metrics
 
+    def process_task(self) -> Dict:
+        """Process a task using the Data-Juicer service."""
+        if not self.session_id:
+            raise ValueError("DataJuicer session is not initialized.")
+        json_data = {"session_id": self.session_id}
+        response = requests.post(f"{self.url}/process_task", json=json_data)
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Failed to process task: {response.status_code}, {response.json().get('error')}"
+            )
+        return response.json().get("metrics")
+
     def close(self):
         """Close the DataJuicer client connection."""
         if self.session_id:

@@ -26,8 +26,15 @@ class DataJuicerSession:
         """
         self.config: Namespace = parse_config(config)
 
-    def process(self, ds: Dataset) -> Tuple[Dataset, Dict]:
-        # TODO: Implement the processing logic using data juicer executor
+    def process_experience(self, ds: Dataset) -> Tuple[Dataset, Dict]:
+        """Process a batch of experiences.
+
+        Args:
+            ds (Dataset): The input dataset containing a batch of experiences.
+
+        Returns:
+            Tuple[Dataset, Dict]: The processed dataset and extracted metrics.
+        """
         from data_juicer.core.data import NestedDataset
         from data_juicer.core.executor.default_executor import DefaultExecutor
 
@@ -36,3 +43,15 @@ class DataJuicerSession:
         ds = dj_executor.run(NestedDataset(ds))
         metrics = extract_metrics(ds)
         return ds, metrics
+
+    def process_tasks(self) -> Dict:
+        """
+        Process task datasets using Data-Juicer
+        """
+        from data_juicer.core.executor.default_executor import DefaultExecutor
+
+        dj_executor = DefaultExecutor(cfg=self.config)
+
+        dj_executor.run()
+
+        return {}
