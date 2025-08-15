@@ -13,11 +13,7 @@ import ray
 import torch
 from jsonargparse import Namespace
 
-from tests.tools import (
-    RayUnittestBase,
-    RayUnittestBaseAysnc,
-    get_template_config,
-)
+from tests.tools import RayUnittestBase, RayUnittestBaseAysnc, get_template_config
 from trinity.buffer.buffer import get_buffer_reader
 from trinity.buffer.pipelines import ExperiencePipeline, check_and_run_task_pipeline
 from trinity.common.config import (
@@ -228,7 +224,7 @@ class TestDataJuicerTaskPipeline(RayUnittestBase):
                     name="text_length_filter",
                     args={
                         "min_len": 10,
-                        "max_len": 50,
+                        "max_len": 500,
                         "text_key": "question",
                     },
                 ),
@@ -258,10 +254,14 @@ class TestDataJuicerTaskPipeline(RayUnittestBase):
                     "train.jsonl",
                 ),
             ],
+            output_fields=["question", "answer"],
         )
         config.buffer.explorer_input.taskset = StorageConfig(
             name="taskset",
             path=TASKSET_OUTPUT_DIR,
         )
         config.check_and_update()
-        check_and_run_task_pipeline(config)
+        metrics = check_and_run_task_pipeline(config)
+        self.assertTrue("sample_num" in metrics)
+        self.assertEqual(metrics["sample_num"], 16)
+

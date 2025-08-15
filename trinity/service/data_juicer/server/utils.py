@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Literal, Optional
 
 from data_juicer.config import get_init_configs, prepare_side_configs
@@ -16,6 +17,8 @@ class DJConfig(BaseModel):
     # For `task` only
     executor_type: Literal["ray", "default"] = "default"
     inputs: List[str] = None  # List of input files
+    output_dir: str = None
+    output_fields: List[str] = None  # fields in the output dataset
 
     @model_validator(mode="after")
     def check_dj_config(self):
@@ -54,6 +57,14 @@ def _parse_experience_pipeline_config(config: DJConfig) -> Namespace:
 def _parse_task_pipeline_config(config: DJConfig) -> Namespace:
     """Parse the task pipeline configuration."""
     if config.operators is not None:
+        for input in config.inputs:
+            if not os.path.exists(input):
+                raise FileNotFoundError(f"{input} does not exist.")
+            if not os.path.isfile(input):
+                raise ValueError(
+                    f"{input} is not a file. Currently, task pipeline only support process on file."
+                )
+        os.makedirs(config.output_dir, exist_ok=True)
         task_config = Namespace(
             process=[op for op in config.operators],
             np=config.np,
@@ -67,6 +78,8 @@ def _parse_task_pipeline_config(config: DJConfig) -> Namespace:
                     for path in config.inputs
                 ]
             },
+            text_keys=config.output_fields,
+            export_shard_size=128 * 1024 * 1024,  # 128 MB
         )
         task_config = get_init_configs(task_config)
     else:

@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Tuple
 
 from datasets import Dataset
@@ -24,7 +25,8 @@ class DataJuicerSession:
         Args:
             config (DataJuicerConfigModel): Configuration parameters provided by Trinity.
         """
-        self.config: Namespace = parse_config(config)
+        self.config = config
+        self.dj_config: Namespace = parse_config(config)
 
     def process_experience(self, ds: Dataset) -> Tuple[Dataset, Dict]:
         """Process a batch of experiences.
@@ -38,20 +40,23 @@ class DataJuicerSession:
         from data_juicer.core.data import NestedDataset
         from data_juicer.core.executor.default_executor import DefaultExecutor
 
-        dj_executor = DefaultExecutor(cfg=self.config)
+        dj_executor = DefaultExecutor(cfg=self.dj_config)
 
         ds = dj_executor.run(NestedDataset(ds))
         metrics = extract_metrics(ds)
         return ds, metrics
 
-    def process_tasks(self) -> Dict:
+    def process_task(self) -> Dict:
         """
         Process task datasets using Data-Juicer
         """
         from data_juicer.core.executor.default_executor import DefaultExecutor
 
-        dj_executor = DefaultExecutor(cfg=self.config)
+        dj_executor = DefaultExecutor(cfg=self.dj_config)
 
-        ds = dj_executor.run()
-
+        ds: Dataset = dj_executor.run()
+        # sort the output dataset in priority
+        if "priority" in ds.features:
+            ds.sort_by("priority", reverse=True)
+        ds.to_json(os.path.join(self.config.output_dir, "output.jsonl"))
         return {"sample_num": ds.num_rows}

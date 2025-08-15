@@ -1,31 +1,23 @@
-import os
 from typing import Any, Dict
 
 from trinity.common.config import Config, OperatorConfig, TaskPipelineConfig
 from trinity.utils.log import get_logger
 
 
-def check_and_run_task_pipeline(config: Config):
-    if not (config.mode == "explore" or config.mode == "bench"):
+def check_and_run_task_pipeline(config: Config) -> Dict:
+    if not (config.mode == "explore" or config.mode == "both"):
         # task pipeline is only available when using Explorer
         return
     if config.data_processor.task_pipeline is None:
         return
-    for input in config.data_processor.task_pipeline.inputs.values():
-        if not input.path:
-            raise ValueError("`path` is required for each `data_processor.task_pipeline.inputs`.")
-        if not os.path.exists(input.path):
-            raise FileNotFoundError(f"{input.path} does not exist.")
-        if not os.path.isfile(input.path):
-            raise ValueError(
-                f"{input.path} is not a file. Currently, task pipeline only support process on file."
-            )
 
+    task_pipeline = TaskPipeline(config)
     try:
-        task_pipeline = TaskPipeline(config)
-        task_pipeline.process()
+        return task_pipeline.process()
     except Exception as e:
         raise RuntimeError(f"Task pipeline failed: {e}")
+    finally:
+        task_pipeline.close()
 
 
 class TaskPipeline:
@@ -51,9 +43,11 @@ class TaskPipeline:
         converted_config = {
             "pipeline_type": "task",
             "operators": [_convert_operator(op) for op in pipeline_config.operators],
+            "np": pipeline_config.num_process,
             "config_path": pipeline_config.config_path,
-            "np": pipeline_config.np,
-            "inputs": [input.path for input in pipeline_config.inputs.values()],
+            "inputs": [path for path in pipeline_config.inputs],
+            "output_fields": pipeline_config.output_fields,
+            "output_dir": pipeline_config.output.path,
         }
         return converted_config
 
@@ -67,5 +61,10 @@ class TaskPipeline:
         # Convert the pipeline configuration
         converted_config = self.convert_pipeline_config(self.pipeline_config)  # type: ignore [arg-type]
         self.client.initialize(converted_config)
-        self.client.process_task()
-        return {}
+        self.logger.info("Starting task processing...")
+        metrics = self.client.process_task()
+        self.logger.info("Task processing completed.")
+        return metrics
+
+    def close(self):
+        self.client.close()

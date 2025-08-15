@@ -173,13 +173,19 @@ class TaskPipelineConfig:
 
     # The list of data-juicer operators to apply, operators will be applied in the order they are defined
     operators: List[OperatorConfig] = field(default_factory=list)
+    # number of process
+    num_process: int = 4
+    # The path to the Data-Juicer config file. If set, operators and num_process will be ignored
+    config_path: Optional[str] = None
 
-    # Raw input tasksets. Currently, task pipeline only support local file storage,
-    # and the path field should be a local file path.
+    # Raw input tasksets. Currently, task pipeline only support local file as inputs,
     # e.g., /path/to/file.jsonl or /path/to/file.parquet, not a directory or huggingface path
-    inputs: List[StorageConfig] = field(default_factory=list)
+    inputs: List[str] = field(default_factory=list)
     # Output task buffer, if not set, use `buffer.explorer_input.taskset`. In most cases, users do not need to set this field.
     output: Optional[StorageConfig] = None
+
+    # The list of fields to extract from the input tasksets into output tasksets
+    output_fields: List[str] = field(default_factory=list)
 
 
 @dataclass
