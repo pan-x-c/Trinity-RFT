@@ -264,4 +264,3 @@ class TestDataJuicerTaskPipeline(RayUnittestBase):
         metrics = check_and_run_task_pipeline(config)
         self.assertTrue("sample_num" in metrics)
         self.assertEqual(metrics["sample_num"], 16)
-

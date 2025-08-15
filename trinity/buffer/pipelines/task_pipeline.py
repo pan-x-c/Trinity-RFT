@@ -7,9 +7,9 @@ from trinity.utils.log import get_logger
 def check_and_run_task_pipeline(config: Config) -> Dict:
     if not (config.mode == "explore" or config.mode == "both"):
         # task pipeline is only available when using Explorer
-        return
+        return {}
     if config.data_processor.task_pipeline is None:
-        return
+        return {}
 
     task_pipeline = TaskPipeline(config)
     try:
