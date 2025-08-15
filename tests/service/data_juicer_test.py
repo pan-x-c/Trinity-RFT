@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 import unittest
 from multiprocessing import Process
@@ -211,7 +212,7 @@ class TestDataJuicerExperiencePipeline(RayUnittestBaseAysnc):
 class TestDataJuicerTaskPipeline(RayUnittestBase):
     def setUp(self):
         if os.path.exists(TASKSET_OUTPUT_DIR):
-            os.rmdir(TASKSET_OUTPUT_DIR)
+            shutil.rmtree(TASKSET_OUTPUT_DIR)
 
     def test_data_juicer_task_pipeline(self):
         config = get_template_config()
@@ -264,3 +265,10 @@ class TestDataJuicerTaskPipeline(RayUnittestBase):
         metrics = check_and_run_task_pipeline(config)
         self.assertTrue("sample_num" in metrics)
         self.assertEqual(metrics["sample_num"], 16)
+        from datasets import load_dataset
+
+        ds = load_dataset(
+            TASKSET_OUTPUT_DIR,
+            split="train",
+        )
+        self.assertEqual(ds.num_rows, 16)
