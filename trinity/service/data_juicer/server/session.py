@@ -58,5 +58,5 @@ class DataJuicerSession:
         # sort the output dataset in priority
         if "priority" in ds.features:
             ds.sort_by("priority", reverse=True)
-        ds.to_json(os.path.join(self.config.output_dir, "output.jsonl"))
+        ds.to_json(os.path.join(self.config.output_dir, "output.jsonl"))  # type: ignore [arg-type]
         return {"sample_num": ds.num_rows}

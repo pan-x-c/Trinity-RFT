@@ -16,9 +16,9 @@ class DJConfig(BaseModel):
 
     # For `task` only
     executor_type: Literal["ray", "default"] = "default"
-    inputs: List[str] = None  # List of input files
-    output_dir: str = None
-    output_fields: List[str] = None  # fields in the output dataset
+    inputs: List[str] = []  # List of input files
+    output_dir: Optional[str] = None
+    target_fields: List[str] = []  # fields in the output dataset
 
     @model_validator(mode="after")
     def check_dj_config(self):
@@ -62,8 +62,10 @@ def _parse_task_pipeline_config(config: DJConfig) -> Namespace:
                 raise FileNotFoundError(f"{input} does not exist.")
             if not os.path.isfile(input):
                 raise ValueError(
-                    f"{input} is not a file. Currently, task pipeline only support process on file."
+                    f"{input} is not a file. Currently, the task pipeline only supports processing files."
                 )
+        if config.output_dir is None:
+            raise ValueError("`output_dir` must be set for task pipeline.")
         os.makedirs(config.output_dir, exist_ok=True)
         task_config = Namespace(
             process=[op for op in config.operators],
@@ -78,7 +80,7 @@ def _parse_task_pipeline_config(config: DJConfig) -> Namespace:
                     for path in config.inputs
                 ]
             },
-            text_keys=config.output_fields,
+            text_keys=config.target_fields,
             export_shard_size=128 * 1024 * 1024,  # 128 MB
         )
         task_config = get_init_configs(task_config)

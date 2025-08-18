@@ -184,8 +184,8 @@ class TaskPipelineConfig:
     # Output task buffer, if not set, use `buffer.explorer_input.taskset`. In most cases, users do not need to set this field.
     output: Optional[StorageConfig] = None
 
-    # The list of fields to extract from the input tasksets into output tasksets
-    output_fields: List[str] = field(default_factory=list)
+    # The list of fields extracted from the input tasksets and processed into the output taskset
+    target_fields: List[str] = field(default_factory=list)
 
 
 @dataclass

@@ -46,7 +46,7 @@ class TaskPipeline:
             "np": pipeline_config.num_process,
             "config_path": pipeline_config.config_path,
             "inputs": [path for path in pipeline_config.inputs],
-            "output_fields": pipeline_config.output_fields,
+            "target_fields": pipeline_config.target_fields,
             "output_dir": pipeline_config.output.path,
         }
         return converted_config

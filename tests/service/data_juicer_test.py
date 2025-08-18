@@ -255,7 +255,7 @@ class TestDataJuicerTaskPipeline(RayUnittestBase):
                     "train.jsonl",
                 ),
             ],
-            output_fields=["question", "answer"],
+            target_fields=["question", "answer"],
         )
         config.buffer.explorer_input.taskset = StorageConfig(
             name="taskset",
