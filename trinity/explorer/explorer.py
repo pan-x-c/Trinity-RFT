@@ -372,6 +372,7 @@ class Explorer:
 
     async def shutdown(self) -> None:
         await self.scheduler.stop()
+        await self.experience_pipeline.close.remote()
         self.monitor.close()
 
     def is_alive(self) -> bool:
