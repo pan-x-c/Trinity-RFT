@@ -25,6 +25,7 @@ import torch
 from torch import nn
 from verl import DataProto
 from verl.utils.debug import GPUMemoryLogger
+from verl.utils.device import get_device_id
 from verl.utils.py_functional import append_to_dict
 from verl.utils.seqlen_balancing import prepare_dynamic_batch
 from verl.workers.actor.dp_actor import DataParallelPPOActor as DPActor
@@ -84,7 +85,7 @@ class DataParallelPPOActor(DPActor):
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
         non_tensor_select_keys = ["multi_modal_inputs"] if has_multi_modal_inputs else []
 
-        data = data.select(batch_keys=select_keys, non_tensor_select_keys=non_tensor_select_keys)
+        data = data.select(batch_keys=select_keys, non_tensor_batch_keys=non_tensor_select_keys)
 
         mini_batches = data.split(self.config.ppo_mini_batch_size)
 
@@ -108,19 +109,22 @@ class DataParallelPPOActor(DPActor):
 
                 for micro_batch in micro_batches:
                     micro_batch_metrics = {}
-                    model_inputs = {**micro_batch.batch, **micro_batch.non_tensor_batch}
+                    model_inputs = {
+                        **micro_batch.batch.to(get_device_id()),
+                        **micro_batch.non_tensor_batch,
+                    }
                     response_mask = model_inputs["response_mask"]
 
                     # all return: (bsz, response_length)
                     calculate_entropy = self.entropy_loss_fn != DummyEntropyLossFn
                     entropy, log_prob = self._forward_micro_batch(
-                        micro_batch=micro_batch,
+                        micro_batch=model_inputs,
                         temperature=temperature,
                         calculate_entropy=calculate_entropy,
                     )
 
                     pg_loss, pg_loss_metrics = self.policy_loss_fn(  # type: ignore
-                        logprob=log_prob, **micro_batch
+                        logprob=log_prob, **model_inputs
                     )
                     prefix_metrics(
                         src_metrics=pg_loss_metrics, prefix="actor", dst_metrics=micro_batch_metrics
@@ -142,7 +146,7 @@ class DataParallelPPOActor(DPActor):
 
                     kl_loss, kl_loss_metrics = self.kl_loss_fn.calculate_kl_loss(
                         logprob=log_prob,
-                        ref_logprob=micro_batch.get("ref_log_prob", None),
+                        ref_logprob=model_inputs.get("ref_log_prob", None),
                         response_mask=response_mask,
                     )
                     prefix_metrics(
