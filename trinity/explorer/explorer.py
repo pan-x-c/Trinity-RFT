@@ -305,9 +305,7 @@ class Explorer:
         return True
 
     async def save_checkpoint(self, sync_weight: bool = False) -> None:
-        log_task = asyncio.create_task(
-            self._finish_steps(self.last_sync_step + 1, self.explore_step_num, self.model_version)
-        )
+        await self._finish_steps(self.last_sync_step + 1, self.explore_step_num, self.model_version)
 
         if sync_weight:
             # sync weights
@@ -319,9 +317,6 @@ class Explorer:
             self.logger.info(
                 f"Explorer sync_weights at step {self.explore_step_num} finished, model version = {self.model_version}."
             )
-
-        # overlay log and weight sync
-        await log_task
 
         # save explore checkpoint
         self.cache.save_explorer(
