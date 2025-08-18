@@ -40,6 +40,9 @@ class TaskPipeline:
         def _convert_operator(operator: OperatorConfig) -> Dict:
             return {operator.name: {key: value for key, value in operator.args.items()}}
 
+        if pipeline_config.output.path is None:
+            raise ValueError("When using task pipeline, taskset.path must be set.")
+
         converted_config = {
             "pipeline_type": "task",
             "operators": [_convert_operator(op) for op in pipeline_config.operators],
