@@ -31,7 +31,7 @@ def load_plugin_from_dirs(plugin_dirs: Union[str, List[str]]) -> None:
     """
     if not isinstance(plugin_dirs, list):
         plugin_dirs = [plugin_dirs]
-    plugin_dirs = list(set(plugin_dirs))
+    plugin_dirs = set(plugin_dirs)
     for plugin_dir in plugin_dirs:
         if not os.path.exists(plugin_dir):
             logger.error(f"plugin-dir [{plugin_dir}] does not exist.")

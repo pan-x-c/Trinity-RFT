@@ -95,9 +95,17 @@ class TestPluginLoader(unittest.TestCase):
         rollout_cnt = parser.metric_values("rollout")
         self.assertEqual(rollout_cnt, [2])
 
+    def test_passing_custom_class(self):
         # disable plugin and pass custom class directly
+        os.environ[PLUGIN_DIRS_ENV_VAR] = str(Path(__file__).resolve().parent / "plugins")
+        try:
+            load_plugins()
+        except KeyError:
+            # already registered in previous test
+            pass
+        my_workflow_cls = WORKFLOWS.get("my_workflow")
         remote_plugin = ray.remote(PluginActor).remote(
-            config, enable_load_plugins=False, enable_monitor=False, enable_workflow=False
+            self.config, enable_load_plugins=False, enable_monitor=False, enable_workflow=False
         )
         remote_res = ray.get(remote_plugin.run.remote(my_workflow_cls))
         self.assertEqual(remote_res[0], "Hello world")
