@@ -6,6 +6,7 @@ import ray
 
 from tests.tools import TensorBoardParser, get_template_config
 from trinity.common.config import Config
+from trinity.common.constants import PLUGIN_DIRS_ENV_VAR
 from trinity.common.workflows import WORKFLOWS
 from trinity.utils.monitor import MONITOR
 from trinity.utils.plugin_loader import load_plugins
@@ -13,6 +14,7 @@ from trinity.utils.plugin_loader import load_plugins
 
 class PluginActor:
     def __init__(self, config: Config):
+        load_plugins()
         self.config = config
         self.monitor = MONITOR.get("my_monitor")(
             project=self.config.project,
@@ -30,11 +32,11 @@ class PluginActor:
 
 class TestPluginLoader(unittest.TestCase):
     def test_load_plugins(self):
-        ray.init(ignore_reinit_error=True)
         config = get_template_config()
         my_plugin_cls = WORKFLOWS.get("my_workflow")
         self.assertIsNone(my_plugin_cls)
-        load_plugins(Path(__file__).resolve().parent / "plugins")
+        os.environ[PLUGIN_DIRS_ENV_VAR] = str(Path(__file__).resolve().parent / "plugins")
+        load_plugins()
         my_plugin_cls = WORKFLOWS.get("my_workflow")
         self.assertIsNotNone(my_plugin_cls)
         my_plugin = my_plugin_cls(task=None, model=None, auxiliary_models=None)
@@ -44,6 +46,12 @@ class TestPluginLoader(unittest.TestCase):
         self.assertEqual(res[1], "Hi")
 
         # Remote Actor test
+        ray.init(
+            ignore_reinit_error=True,
+            runtime_env={
+                "env_vars": {PLUGIN_DIRS_ENV_VAR: str(Path(__file__).resolve().parent / "plugins")}
+            },
+        )
         remote_plugin = ray.remote(PluginActor).remote(config)
         remote_res = ray.get(remote_plugin.run.remote())
         self.assertEqual(remote_res[0], "Hello world")
