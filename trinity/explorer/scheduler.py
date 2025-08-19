@@ -1,7 +1,6 @@
 """Scheduler for rollout tasks."""
 
 import asyncio
-import os
 import re
 import time
 import traceback

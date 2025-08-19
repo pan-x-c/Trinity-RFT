@@ -6,13 +6,12 @@ from typing import Type
 
 import ray
 
-from tests.tools import TensorBoardParser, get_template_config
+from tests.tools import TensorBoardParser, get_checkpoint_path, get_template_config
 from trinity.common.config import Config
 from trinity.common.constants import PLUGIN_DIRS_ENV_VAR
 from trinity.common.workflows import WORKFLOWS, Workflow
 from trinity.utils.monitor import MONITOR
 from trinity.utils.plugin_loader import load_plugins
-from tests.tools import get_checkpoint_path
 
 
 class PluginActor:
