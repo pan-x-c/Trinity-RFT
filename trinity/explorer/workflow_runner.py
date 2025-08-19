@@ -12,7 +12,6 @@ from trinity.common.experience import Experience
 from trinity.common.models.model import InferenceModel, ModelWrapper
 from trinity.common.workflows import Task
 from trinity.utils.log import get_logger
-from trinity.utils.plugin_loader import load_plugins
 
 
 @dataclass(frozen=True)
@@ -36,7 +35,6 @@ class WorkflowRunner:
     ) -> None:
         self.logger = get_logger(__name__)
         self.config = config
-        load_plugins()
         self.experience_buffer = get_buffer_writer(
             self.config.buffer.explorer_output,  # type: ignore
             self.config.buffer,
