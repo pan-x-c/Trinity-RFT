@@ -23,7 +23,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        ref: ${{ inputs.ref }}
+        ref: ${{ github.head_ref || github.ref_name }}
         fetch-depth: 0
     - name: Setup Python ${{ matrix.python-version }}
       uses: actions/setup-python@master
