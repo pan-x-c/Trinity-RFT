@@ -18,6 +18,7 @@ if [[ "$1" == "--current-branch" ]]; then
     # Ensure cleanup runs on script exit or interruption
     trap cleanup EXIT
     branch=$(git rev-parse --abbrev-ref HEAD)
+    echo "Building documentation for branch: ${branch}"
 
     # Backup the conf file before modifying
     cp "${conf_file}" "${conf_file}.bak"
