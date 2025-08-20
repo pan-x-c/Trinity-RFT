@@ -8,6 +8,7 @@
 
 ## 🚀 News
 
+* [2025-08] Trinity-RFT v0.2.1 is released.
 * [2025-08] We now support training on general multi-step workflows! Please check out examples for [ALFWorld](./docs/sphinx_doc/source/tutorial/example_step_wise.md) and [ReAct](./docs/sphinx_doc/source/tutorial/example_react.md).
 * [2025-07] Trinity-RFT v0.2.0 is released.
 * [2025-07] We update the [technical report](https://arxiv.org/abs/2505.17826) (arXiv v2) with new features, examples, and experiments.

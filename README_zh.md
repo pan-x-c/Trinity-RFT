@@ -22,6 +22,7 @@
 
 ## 🚀 最新动态
 
+* [2025-08] 发布 Trinity-RFT v0.2.1 版本，强化了 Agentic RL 和 异步 RL 相关功能。
 * [2025-08] Trinity-RFT 现在已经支持通用多轮工作流的训练了，请参考 [ALFWorld](./docs/sphinx_doc/source/tutorial/example_step_wise.md) 和 [ReAct](./docs/sphinx_doc/source/tutorial/example_react.md) 的例子！
 * [2025-07] 发布 Trinity-RFT v0.2.0 版本，新增了多项功能优化。
 * [2025-07] 更新了[技术报告](https://arxiv.org/abs/2505.17826) (arXiv v2)，增加了新功能、示例和实验。
