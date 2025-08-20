@@ -16,6 +16,7 @@ release = version
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
+    "sphinxcontrib.apidoc",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
@@ -47,6 +48,12 @@ autodoc_default_options = {
     "members": True,
     "special-members": "__init__",
 }
+
+# auto api configs
+apidoc_module_dir = "../../../trinity"
+apidoc_output_dir = "build_api"
+apidoc_excluded_paths = ["tests", "build"]
+apidoc_separate_modules = True
 
 # Multiversion configs
 smv_tag_whitelist = r"^v\d+\.\d+\.\d+$"  # match v1.0.0 pattern
