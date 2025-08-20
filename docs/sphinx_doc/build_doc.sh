@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./build_doc.sh [--current-branch]
+# Usage: ./build_doc.sh [--branch <branch_name>]
 
 set -e
 
@@ -14,10 +14,10 @@ cleanup() {
     fi
 }
 
-if [[ "$1" == "--current-branch" ]]; then
+if [[ "$1" == "--branch" ]]; then
     # Ensure cleanup runs on script exit or interruption
     trap cleanup EXIT
-    branch=$(git rev-parse --abbrev-ref HEAD)
+    branch="$2"
     echo "Building documentation for branch: ${branch}"
 
     # Backup the conf file before modifying

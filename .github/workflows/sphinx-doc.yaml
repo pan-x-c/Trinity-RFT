@@ -23,6 +23,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
+        ref: ${{ inputs.ref }}
         fetch-depth: 0
     - name: Setup Python ${{ matrix.python-version }}
       uses: actions/setup-python@master
@@ -38,7 +39,8 @@ jobs:
         if [ "${{ github.ref }}" = "refs/heads/main" ]; then
           ./build_doc.sh
         else
-          ./build_doc.sh --current-branch
+          BRANCH_NAME="${GITHUB_REF_NAME:-${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}}"
+          ./build_doc.sh --branch  "$BRANCH_NAME"
         fi
     - name: Add redirect index.html to main version
       run: |
