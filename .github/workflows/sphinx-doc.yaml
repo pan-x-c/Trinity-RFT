@@ -54,7 +54,11 @@ jobs:
         fi
     - name: Add redirect index.html to main version
       run: |
-        BRANCH_NAME=$(git branch --show-current)
+        if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          BRANCH_NAME="main"
+        else
+          BRANCH_NAME=$(git branch --show-current)
+        fi
         REDIRECT_PATH="docs/sphinx_doc/build/html/index.html"
         MAIN_INDEX="${BRANCH_NAME}/index.html"
         cat > $REDIRECT_PATH <<EOF

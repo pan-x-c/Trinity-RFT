@@ -16,7 +16,7 @@ cd docs/sphinx_doc
 # build docs for all existing tags and main branch
 ./build_doc.sh
 # build docs for the current branch
-./build_doc.sh --current-branch
+./build_doc.sh --branch <current_branch_name>
 ```
 
 The sphinx doc is built in `docs/sphinx_doc/build/html`.
