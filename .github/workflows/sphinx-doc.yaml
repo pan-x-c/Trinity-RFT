@@ -34,7 +34,7 @@ jobs:
     - id: build
       name: Build Documentation
       run: |
-        cd docs/sphinx_doc/source
+        cd docs/sphinx_doc
         if [ "${{ github.ref }}" = "refs/heads/main" ]; then
           ./build_doc.sh
         else
