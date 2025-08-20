@@ -38,9 +38,10 @@ jobs:
         cd docs/sphinx_doc
         if [ "${{ github.ref }}" = "refs/heads/main" ]; then
           ./build_doc.sh
+        elif [ -n "${GITHUB_HEAD_REF}" ]; then
+          ./build_doc.sh --branch "$GITHUB_HEAD_REF"
         else
-          BRANCH_NAME="${GITHUB_REF_NAME:-${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}}"
-          ./build_doc.sh --branch  "$BRANCH_NAME"
+          ./build_doc.sh --branch "$GITHUB_REF_NAME"
         fi
     - name: Add redirect index.html to main version
       run: |
