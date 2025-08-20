@@ -39,11 +39,7 @@ jobs:
         if [ "${{ github.ref }}" = "refs/heads/main" ]; then
           ./build_doc.sh
         else
-          # github.head_ref is set for pull_request, github.ref_name for push
-          BRANCH_NAME="${{ github.head_ref }}"
-          if [ -z "$BRANCH_NAME" ]; then
-            BRANCH_NAME="${{ github.ref_name }}"
-          fi
+          BRANCH_NAME=$(git branch --show-current)
           ./build_doc.sh --branch "$BRANCH_NAME"
         fi
     - name: Add redirect index.html to main version

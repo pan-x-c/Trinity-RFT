@@ -19,8 +19,6 @@ if [[ "$1" == "--branch" ]]; then
     trap cleanup EXIT
     branch="$2"
     echo "Building documentation for branch: ${branch}"
-    current_branch=$(git rev-parse --abbrev-ref HEAD)
-    echo "Current git branch is: ${current_branch}"
     # Backup the conf file before modifying
     cp "${conf_file}" "${conf_file}.bak"
 
