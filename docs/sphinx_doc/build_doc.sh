@@ -4,10 +4,25 @@
 
 set -e
 
+conf_file="source/conf.py"
+
+cleanup() {
+    # Restore the original conf.py if a backup exists
+    if [[ -f "${conf_file}.bak" ]]; then
+        echo "Restoring original ${conf_file}..."
+        mv "${conf_file}.bak" "${conf_file}"
+    fi
+}
+
 if [[ "$1" == "--current-branch" ]]; then
+    # Ensure cleanup runs on script exit or interruption
+    trap cleanup EXIT
     branch=$(git rev-parse --abbrev-ref HEAD)
-    conf_file="source/conf.py"
+
+    # Backup the conf file before modifying
     cp "${conf_file}" "${conf_file}.bak"
+
+    # Modify conf.py to build for the current branch only
     python3 -c "
 import re
 path = '${conf_file}'
@@ -23,7 +38,6 @@ with open(path, 'w', encoding='utf-8') as f:
             f.write(line)
 "
     sphinx-multiversion source build/html
-    mv "${conf_file}.bak" "${conf_file}"
 else
     sphinx-multiversion source build/html
 fi
