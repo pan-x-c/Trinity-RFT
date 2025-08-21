@@ -556,7 +556,7 @@ class ExperienceOperator(ABC):
 Here is an implementation of a simple operator that filters out experiences with rewards below a certain threshold:
 
 ```python
-from trinity.data.operators import EXPERIENCE_OPERATORS, ExperienceOperator
+from trinity.buffer.operators import EXPERIENCE_OPERATORS, ExperienceOperator
 from trinity.common.experience import Experience
 
 
@@ -594,7 +594,7 @@ synchronizer:
 ```
 
 ```{tip}
-The `RewardFilter` reduces the number of experiences, which may cause the trainer can't get enough experiences to start a training step. To avoid the issue, you can use the advanced *Dynamic Synchronization* feature provided by Trinity-RFT as shown in the above configuration file.
+The `RewardFilter` reduces the number of experiences, which may cause the trainer can't get enough experiences to start a training step. To avoid the issue, you can use the advanced {ref}`*Dynamic Synchronization* <Synchronizer>` feature provided by Trinity-RFT as shown in the above configuration file.
 The above setting means that the `Explorer` will sync with the `Trainer` every 2 steps and will continue running regardless of how many steps the `Trainer` has completed. This ensures that the `Trainer` can always get enough experiences to start a training step as long as the `Explorer` is running.
 ```
 
