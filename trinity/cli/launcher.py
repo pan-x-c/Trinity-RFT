@@ -13,11 +13,12 @@ from trinity.common.config import Config, load_config
 from trinity.common.constants import (
     LOG_DIR_ENV_VAR,
     LOG_LEVEL_ENV_VAR,
+    LOG_NODE_IP_ENV_VAR,
     PLUGIN_DIRS_ENV_VAR,
 )
 from trinity.explorer.explorer import Explorer
 from trinity.trainer.trainer import Trainer
-from trinity.utils.log import get_log_dir, get_logger
+from trinity.utils.log import get_logger
 
 logger = get_logger(__name__)
 
@@ -128,8 +129,9 @@ def run(config_path: str, log_level: str = "INFO", dlc: bool = False, plugin_dir
 
     envs = {
         PLUGIN_DIRS_ENV_VAR: plugin_dir or "",
-        LOG_DIR_ENV_VAR: get_log_dir(config.checkpoint_job_dir),
-        LOG_LEVEL_ENV_VAR: log_level,
+        LOG_DIR_ENV_VAR: config.log.save_dir,
+        LOG_LEVEL_ENV_VAR: config.log.level,
+        LOG_NODE_IP_ENV_VAR: "1" if config.log.group_by_node else "0",
     }
     if dlc:
         from trinity.utils.dlc_utils import setup_ray_cluster
@@ -195,12 +197,6 @@ def main() -> None:
     # run command
     run_parser = subparsers.add_parser("run", help="Run RFT process.")
     run_parser.add_argument("--config", type=str, required=True, help="Path to the config file.")
-    run_parser.add_argument(
-        "--log-level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default="INFO",
-        help="Log level.",
-    )
     run_parser.add_argument(
         "--plugin-dir",
         type=str,

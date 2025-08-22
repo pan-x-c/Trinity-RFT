@@ -6,7 +6,13 @@ import sys
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
-from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
+import ray
+
+from trinity.common.constants import (
+    LOG_DIR_ENV_VAR,
+    LOG_LEVEL_ENV_VAR,
+    LOG_NODE_IP_ENV_VAR,
+)
 
 _LOG_FORMAT = "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(message)s"
 _LOG_DATE_FORMAT = "%m-%d %H:%M:%S"
@@ -31,13 +37,6 @@ class NewLineFormatter(logging.Formatter):
 _ray_logger_ctx: contextvars.ContextVar[Optional[logging.Logger]] = contextvars.ContextVar(
     "ray_logger", default=None
 )
-
-
-def get_log_dir(job_dir: str) -> str:
-    """
-    Returns the log directory path for a given job directory.
-    """
-    return os.path.join(job_dir, "log")
 
 
 def get_logger(
@@ -82,7 +81,12 @@ def get_logger(
         log_dir = os.environ.get(LOG_DIR_ENV_VAR)
         assert name is not None, "Logger name must be set when logging from a Ray actor"
         if log_dir:
+            if os.environ.get(LOG_NODE_IP_ENV_VAR, "0") != "0":
+                # organize logs by node IP
+                node_ip = ray.util.get_node_ip_address()
+                log_dir = os.path.join(log_dir, node_ip)
             os.makedirs(log_dir, exist_ok=True)
+            # save log into log_dir/{actor_name}.log
             file_path = os.path.join(log_dir, f"{name}.log")
             file_handler = RotatingFileHandler(
                 file_path, encoding="utf-8", maxBytes=64 * 1024 * 1024

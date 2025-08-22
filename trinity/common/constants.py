@@ -13,8 +13,9 @@ ROLLOUT_WEIGHT_SYNC_GROUP_NAME = "rollout_weight_sync"
 
 # trinity env var names
 PLUGIN_DIRS_ENV_VAR = "TRINITY_PLUGIN_DIRS"
-LOG_DIR_ENV_VAR = "TRINITY_LOG_DIR"
-LOG_LEVEL_ENV_VAR = "TRINITY_LOG_LEVEL"
+LOG_DIR_ENV_VAR = "TRINITY_LOG_DIR"  # log dir
+LOG_LEVEL_ENV_VAR = "TRINITY_LOG_LEVEL"  # global log level
+LOG_NODE_IP_ENV_VAR = "TRINITY_LOG_NODE_IP"  # whether to organize logs by node IP
 
 
 # constants

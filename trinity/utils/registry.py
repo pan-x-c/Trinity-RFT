@@ -90,7 +90,6 @@ class Registry(object):
                     module_cls=MyWorkflow,
                     force=True,
                 )
-
         """
         if not (module_name is None or isinstance(module_name, str)):
             raise TypeError(f"module_name must be either of None, str," f"got {type(module_name)}")
