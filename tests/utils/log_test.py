@@ -7,7 +7,11 @@ import ray
 from ray.runtime_env import RuntimeEnv
 
 from tests.tools import get_template_config
-from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR, LOG_NODE_IP_ENV_VAR
+from trinity.common.constants import (
+    LOG_DIR_ENV_VAR,
+    LOG_LEVEL_ENV_VAR,
+    LOG_NODE_IP_ENV_VAR,
+)
 from trinity.utils.log import get_logger
 
 
@@ -138,7 +142,6 @@ class LogTest(unittest.TestCase):
         finally:
             ray.shutdown(_exiting_interpreter=True)
 
-
     def test_group_by_node(self):
         ray.init(
             namespace=self.config.ray_namespace,
@@ -146,7 +149,7 @@ class LogTest(unittest.TestCase):
                 env_vars={
                     LOG_DIR_ENV_VAR: self.log_dir,
                     LOG_LEVEL_ENV_VAR: "INFO",
-                    LOG_NODE_IP_ENV_VAR: "1"
+                    LOG_NODE_IP_ENV_VAR: "1",
                 }
             ),
         )
