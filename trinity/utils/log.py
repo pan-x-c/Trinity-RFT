@@ -29,8 +29,8 @@ class NewLineFormatter(logging.Formatter):
 _ray_logger_ctx = contextvars.ContextVar("ray_logger", default=None)
 
 
-def get_ray_actor_logger(name: str = None, level: Optional[int] = None) -> logging.Logger:
-    return get_logger(name, level, in_ray_actor=True)
+def get_log_dir(job_dir: str) -> str:
+    return os.path.join(job_dir, "log")
 
 
 def get_logger(

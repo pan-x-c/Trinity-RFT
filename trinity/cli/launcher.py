@@ -10,10 +10,14 @@ import ray
 
 from trinity.buffer.pipelines.task_pipeline import check_and_run_task_pipeline
 from trinity.common.config import Config, load_config
-from trinity.common.constants import LOG_DIR_ENV_VAR, PLUGIN_DIRS_ENV_VAR
+from trinity.common.constants import (
+    LOG_DIR_ENV_VAR,
+    LOG_LEVEL_ENV_VAR,
+    PLUGIN_DIRS_ENV_VAR,
+)
 from trinity.explorer.explorer import Explorer
 from trinity.trainer.trainer import Trainer
-from trinity.utils.log import get_logger
+from trinity.utils.log import get_log_dir, get_logger
 
 logger = get_logger(__name__)
 
@@ -117,7 +121,7 @@ def both(config: Config) -> None:
         logger.error(f"Explorer or Trainer failed:\n{traceback.format_exc()}")
 
 
-def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
+def run(config_path: str, log_level: str = "INFO", dlc: bool = False, plugin_dir: str = None):
     config = load_config(config_path)
     config.check_and_update()
     pprint(config)
@@ -127,7 +131,8 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
 
     envs = {
         PLUGIN_DIRS_ENV_VAR: plugin_dir or "",
-        LOG_DIR_ENV_VAR: os.path.join(config.checkpoint_job_dir, "log"),
+        LOG_DIR_ENV_VAR: get_log_dir(config.checkpoint_job_dir),
+        LOG_LEVEL_ENV_VAR: log_level,
     }
     if dlc:
         from trinity.utils.dlc_utils import setup_ray_cluster
@@ -190,6 +195,12 @@ def main() -> None:
     run_parser = subparsers.add_parser("run", help="Run RFT process.")
     run_parser.add_argument("--config", type=str, required=True, help="Path to the config file.")
     run_parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Log level.",
+    )
+    run_parser.add_argument(
         "--plugin-dir",
         type=str,
         default=None,
@@ -208,7 +219,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "run":
         # TODO: support parse all args from command line
-        run(args.config, args.dlc, args.plugin_dir)
+        run(args.config, args.log_level, args.dlc, args.plugin_dir)
     elif args.command == "studio":
         studio(args.port)
 
