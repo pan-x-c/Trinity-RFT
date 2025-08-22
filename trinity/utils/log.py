@@ -59,7 +59,11 @@ def get_logger(
     if logger is not None:
         return logger
 
-    resolved_level = level or getattr(logging, os.environ.get(LOG_LEVEL_ENV_VAR, "INFO").upper())
+    resolved_level = (
+        level
+        if level is not None
+        else getattr(logging, os.environ.get(LOG_LEVEL_ENV_VAR, "INFO").upper())
+    )
     logger_name = f"trinity.{name}" if name else "trinity"
     logger = logging.getLogger(logger_name)
     logger.propagate = False
