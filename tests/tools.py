@@ -13,7 +13,6 @@ from trinity.common.constants import PromptType
 def get_template_config() -> Config:
     config_path = os.path.join(os.path.dirname(__file__), "template", "config.yaml")
     config = load_config(config_path)
-    config.ray_namespace = ray.get_runtime_context().namespace
     return config
 
 

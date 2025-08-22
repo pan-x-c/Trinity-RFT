@@ -8,74 +8,85 @@ from typing import Optional
 
 from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 
-_FORMAT = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
-_DATE_FORMAT = "%m-%d %H:%M:%S"
+_LOG_FORMAT = "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(message)s"
+_LOG_DATE_FORMAT = "%m-%d %H:%M:%S"
 
 
 class NewLineFormatter(logging.Formatter):
-    """Adds logging prefix to newlines to align multi-line messages."""
+    """
+    Formatter that adds logging prefix to newlines to align multi-line messages.
+    """
 
-    def __init__(self, fmt, datefmt=None):
+    def __init__(self, fmt: str, datefmt: Optional[str] = None):
         super().__init__(fmt, datefmt)
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         msg = super().format(record)
-        if record.message != "":
-            parts = msg.split(record.message)
-            msg = msg.replace("\n", "\r\n" + parts[0])
+        if record.message:
+            prefix = msg.split(record.message)[0]
+            msg = msg.replace("\n", f"\r\n{prefix}")
         return msg
 
 
-_ray_logger_ctx = contextvars.ContextVar("ray_logger", default=None)
+_ray_logger_ctx: contextvars.ContextVar[Optional[logging.Logger]] = contextvars.ContextVar(
+    "ray_logger", default=None
+)
 
 
 def get_log_dir(job_dir: str) -> str:
+    """
+    Returns the log directory path for a given job directory.
+    """
     return os.path.join(job_dir, "log")
 
 
 def get_logger(
-    name: str = None, level: Optional[int] = None, in_ray_actor: bool = False
+    name: Optional[str] = None, level: Optional[int] = None, in_ray_actor: bool = False
 ) -> logging.Logger:
     """
-    Get a logger instance for current actor.
+    Get a logger instance, compatible with Ray Actor and standard usage.
 
     Args:
-        name (str): The name of the logger
-        level (int): The logging level
-        in_ray_actor (bool): Whether the logger is used within a Ray actor
+        name (Optional[str]): The name of the logger. If None, uses 'trinity'.
+        level (Optional[int]): The logging level. If None, uses LOG_LEVEL_ENV_VAR or INFO.
+        in_ray_actor (bool): Whether the logger is used within a Ray actor.
 
+    Returns:
+        logging.Logger: Configured logger instance.
     """
-    level = level or getattr(logging, os.environ.get(LOG_LEVEL_ENV_VAR, "INFO").upper())
+    # Reuse logger created by the actor if exists (Ray context)
+    logger = _ray_logger_ctx.get()
+    if logger is not None:
+        return logger
 
-    if in_ray_actor:
-        logger = _ray_logger_ctx.get()
-        if logger is not None:
-            return logger
-
-    logger = logging.getLogger(f"trinity.{name}")
-
-    logger.setLevel(level)
+    resolved_level = level or getattr(logging, os.environ.get(LOG_LEVEL_ENV_VAR, "INFO").upper())
+    logger_name = f"trinity.{name}" if name else "trinity"
+    logger = logging.getLogger(logger_name)
+    logger.propagate = False
+    logger.setLevel(resolved_level)
     logger.handlers.clear()
 
-    # stream log
+    # Stream handler (stdout)
     stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setLevel(level)
-    fmt = NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
-    stream_handler.setFormatter(fmt)
+    stream_handler.setLevel(resolved_level)
+    formatter = NewLineFormatter(_LOG_FORMAT, datefmt=_LOG_DATE_FORMAT)
+    stream_handler.setFormatter(formatter)
     logger.addHandler(stream_handler)
 
     if in_ray_actor:
-        # file log
-        log_dir = os.environ.get(LOG_DIR_ENV_VAR, None)
-        if log_dir is None:
-            # File logging is disabled if LOG_DIR_ENV_VAR not provided
-            return logger
-        os.makedirs(log_dir, exist_ok=True)
-        file_path = os.path.join(log_dir, f"{name}.log")
-        file_handler = RotatingFileHandler(file_path, encoding="utf-8", maxBytes=64 * 1024 * 1024)
-        file_handler.setLevel(level)
-        file_handler.setFormatter(fmt)
-        logger.addHandler(file_handler)
-        logger.propagate = False
-        _ray_logger_ctx.set(logger)  # type: ignore[arg-type]
+        # File handler (rotating file log)
+        log_dir = os.environ.get(LOG_DIR_ENV_VAR)
+        assert name is not None, "Logger name must be set when logging from a Ray actor"
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+            file_path = os.path.join(log_dir, f"{name}.log")
+            file_handler = RotatingFileHandler(
+                file_path, encoding="utf-8", maxBytes=64 * 1024 * 1024
+            )
+            file_handler.setLevel(resolved_level)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+            _ray_logger_ctx.set(logger)
+        # If LOG_DIR_ENV_VAR is not set, file logging is disabled
+
     return logger
