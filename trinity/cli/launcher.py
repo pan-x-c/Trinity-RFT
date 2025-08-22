@@ -126,9 +126,6 @@ def run(config_path: str, log_level: str = "INFO", dlc: bool = False, plugin_dir
     config.check_and_update()
     pprint(config)
 
-    # try to run task pipeline for raw data
-    check_and_run_task_pipeline(config)
-
     envs = {
         PLUGIN_DIRS_ENV_VAR: plugin_dir or "",
         LOG_DIR_ENV_VAR: get_log_dir(config.checkpoint_job_dir),
@@ -146,6 +143,10 @@ def run(config_path: str, log_level: str = "INFO", dlc: bool = False, plugin_dir
         ray.init(
             namespace=config.ray_namespace, ignore_reinit_error=True, runtime_env={"env_vars": envs}
         )
+
+    # try to run task pipeline for raw data
+    check_and_run_task_pipeline(config)
+
     try:
         if config.mode == "explore":
             explore(config)
