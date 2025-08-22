@@ -10,7 +10,7 @@ import ray
 
 from trinity.buffer.pipelines.task_pipeline import check_and_run_task_pipeline
 from trinity.common.config import Config, load_config
-from trinity.common.constants import PLUGIN_DIRS_ENV_VAR
+from trinity.common.constants import LOG_DIR_ENV_VAR, PLUGIN_DIRS_ENV_VAR
 from trinity.explorer.explorer import Explorer
 from trinity.trainer.trainer import Trainer
 from trinity.utils.log import get_logger
@@ -125,7 +125,10 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
     # try to run task pipeline for raw data
     check_and_run_task_pipeline(config)
 
-    envs = {PLUGIN_DIRS_ENV_VAR: plugin_dir or ""}
+    envs = {
+        PLUGIN_DIRS_ENV_VAR: plugin_dir or "",
+        LOG_DIR_ENV_VAR: os.path.join(config.checkpoint_job_dir, "log"),
+    }
     if dlc:
         from trinity.utils.dlc_utils import setup_ray_cluster
 

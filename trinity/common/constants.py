@@ -3,9 +3,6 @@
 from enum import Enum, EnumMeta
 
 from trinity.utils.annotations import Deprecated
-from trinity.utils.log import get_logger
-
-logger = get_logger(__name__)
 
 # names
 
@@ -14,7 +11,10 @@ TRAINER_NAME = "trainer"
 
 ROLLOUT_WEIGHT_SYNC_GROUP_NAME = "rollout_weight_sync"
 
+# trinity env var names
 PLUGIN_DIRS_ENV_VAR = "TRINITY_PLUGIN_DIRS"
+LOG_DIR_ENV_VAR = "TRINITY_LOG_DIR"
+LOG_LEVEL_ENV_VAR = "TRINITY_LOG_LEVEL"
 
 
 # constants
@@ -87,15 +87,12 @@ class MonitorType(CaseInsensitiveEnum):
 class SyncMethodEnumMeta(CaseInsensitiveEnumMeta):
     def __call__(cls, value, *args, **kwargs):
         if value == "online":
-            logger.warning("SyncMethod `online` is deprecated, use `nccl` instead.")
             value = "nccl"
         elif value == "offline":
-            logger.warning("SyncMethod `offline` is deprecated, use `checkpoint` instead.")
             value = "checkpoint"
         try:
             return super().__call__(value, *args, **kwargs)
-        except Exception as e:
-            logger.warning("Error parsing SyncMethod:", e)
+        except Exception:
             raise ValueError(f"Invalid SyncMethod: {value}")
 
 

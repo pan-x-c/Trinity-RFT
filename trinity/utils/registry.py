@@ -1,9 +1,5 @@
 from typing import Any, Type
 
-from trinity.utils.log import get_logger
-
-logger = get_logger(__name__)
-
 
 # TODO: support lazy load
 # e.g. @MODULES.register_module("name", lazy=True)
@@ -37,11 +33,6 @@ class Registry(object):
             `dict`: A dict storing modules in current registry.
         """
         return self._modules
-
-    def list(self) -> None:
-        """Logging the list of module in current registry."""
-        for m in self._modules.keys():
-            logger.info(f"{self._name}\t{m}")
 
     def get(self, module_key) -> Any:
         """

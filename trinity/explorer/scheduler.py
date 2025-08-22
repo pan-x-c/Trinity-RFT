@@ -38,7 +38,7 @@ class RunnerWrapper:
         auxiliary_models: List[InferenceModel],
         config: Config,
     ):
-        self.logger = get_logger(__name__)
+        self.logger = get_logger(__name__, in_ray_actor=True)
         self.runner_id = runner_id
         self.rollout_model = rollout_model
         self.auxiliary_models = auxiliary_models
@@ -132,7 +132,7 @@ class Scheduler:
         rollout_model: List[InferenceModel],
         auxiliary_models: Optional[List[List[InferenceModel]]] = None,
     ):
-        self.logger = get_logger(__name__)
+        self.logger = get_logger(__name__, in_ray_actor=True)
         self.config = config
         self.rollout_model = rollout_model
         self.auxiliary_models = auxiliary_models or []

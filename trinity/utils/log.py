@@ -1,8 +1,12 @@
-# Adapted from
-# https://github.com/skypilot-org/skypilot/blob/86dc0f6283a335e4aa37b3c10716f90999f48ab6/sky/sky_logging.py
-"""Logging configuration for vLLM."""
+"""A Ray compatible logging module with actor-scope logger support."""
+import contextvars
 import logging
+import os
 import sys
+from logging.handlers import RotatingFileHandler
+from typing import Optional
+
+from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 
 _FORMAT = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
 _DATE_FORMAT = "%m-%d %H:%M:%S"
@@ -12,54 +16,66 @@ class NewLineFormatter(logging.Formatter):
     """Adds logging prefix to newlines to align multi-line messages."""
 
     def __init__(self, fmt, datefmt=None):
-        logging.Formatter.__init__(self, fmt, datefmt)
+        super().__init__(fmt, datefmt)
 
     def format(self, record):
-        msg = logging.Formatter.format(self, record)
+        msg = super().format(record)
         if record.message != "":
             parts = msg.split(record.message)
             msg = msg.replace("\n", "\r\n" + parts[0])
         return msg
 
 
-_root_logger = logging.getLogger("trinity")
-_default_handler = None
+_ray_logger_ctx = contextvars.ContextVar("ray_logger", default=None)
 
 
-def _setup_logger():
-    _root_logger.setLevel(logging.DEBUG)
-    global _default_handler
-    if _default_handler is None:
-        _default_handler = logging.StreamHandler(sys.stdout)
-        _default_handler.flush = sys.stdout.flush  # type: ignore
-        _default_handler.setLevel(logging.INFO)
-        _root_logger.addHandler(_default_handler)
-    fmt = NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
-    _default_handler.setFormatter(fmt)
-    # Setting this will avoid the message
-    # being propagated to the parent logger.
-    _root_logger.propagate = False
+def get_ray_actor_logger(name: str = None, level: Optional[int] = None) -> logging.Logger:
+    return get_logger(name, level, in_ray_actor=True)
 
 
-# The logger is initialized when the module is imported.
-# This is thread-safe as the module is only imported once,
-# guaranteed by the Python GIL.
-_setup_logger()
-
-
-def get_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
-    """Get a logger with the given name and level.
+def get_logger(
+    name: str = None, level: Optional[int] = None, in_ray_actor: bool = False
+) -> logging.Logger:
+    """
+    Get a logger instance for current actor.
 
     Args:
-        name (str): The name of the logger.
-        level (int, optional): The level of the logger. Defaults to logging.DEBUG.
+        name (str): The name of the logger
+        level (int): The logging level
+        in_ray_actor (bool): Whether the logger is used within a Ray actor
 
-    Returns:
-        logging.Logger: The logger with the given name and level.
     """
-    logger = logging.getLogger(name)
+    level = level or getattr(logging, os.environ.get(LOG_LEVEL_ENV_VAR, "INFO").upper())
+
+    if in_ray_actor:
+        logger = _ray_logger_ctx.get()
+        if logger is not None:
+            return logger
+
+    logger = logging.getLogger(f"trinity.{name}")
+
     logger.setLevel(level)
-    if not logger.handlers:
-        logger.addHandler(_default_handler)  # type: ignore [arg-type]
-    logger.propagate = False
+    logger.handlers.clear()
+
+    # stream log
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setLevel(level)
+    fmt = NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
+    stream_handler.setFormatter(fmt)
+    logger.addHandler(stream_handler)
+
+    if in_ray_actor:
+        # file log
+        log_dir = os.environ.get(LOG_DIR_ENV_VAR, None)
+        if log_dir is None:
+            # File logging is disabled if LOG_DIR_ENV_VAR not provided
+            return logger
+        os.makedirs(log_dir, exist_ok=True)
+        file_path = os.path.join(log_dir, f"{name}.log")
+        file_handler = RotatingFileHandler(file_path, encoding="utf-8", maxBytes=64 * 1024 * 1024)
+        file_handler.setLevel(level)
+        file_handler.setFormatter(fmt)
+        logger.addHandler(file_handler)
+        logger.propagate = False
+        _ray_logger_ctx.set(logger)  # type: ignore[arg-type]
     return logger
