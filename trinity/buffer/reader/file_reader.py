@@ -118,11 +118,11 @@ class SFTDataReader(BaseFileReader):
 
     def __init__(self, meta: StorageConfig, config: BufferConfig):
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
-        if self.prompt_type == PromptType.MESSAGES:
+        if meta.format.prompt_type == PromptType.MESSAGES:
             self.formatter = SFTMessagesFormatter(
                 tokenizer=self.tokenizer, format_config=meta.format
             )
-        elif self.prompt_type == PromptType.PLAINTEXT:
+        elif meta.format.prompt_type == PromptType.PLAINTEXT:
             self.formatter = SFTPlaintextFormatter(
                 tokenizer=self.tokenizer, format_config=meta.format
             )
@@ -152,11 +152,11 @@ class SFTDataReader(BaseFileReader):
 class DPODataReader(BaseFileReader):
     def __init__(self, meta: StorageConfig, config: BufferConfig):
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
-        if self.prompt_type == PromptType.MESSAGES:
+        if meta.format.prompt_type == PromptType.MESSAGES:
             self.formatter = DPOMessagesFormatter(
                 tokenizer=self.tokenizer, format_config=meta.format
             )
-        elif self.prompt_type == PromptType.PLAINTEXT:
+        elif meta.format.prompt_type == PromptType.PLAINTEXT:
             self.formatter = DPOPlaintextFormatter(
                 tokenizer=self.tokenizer, format_config=meta.format
             )

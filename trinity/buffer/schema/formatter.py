@@ -132,14 +132,14 @@ class DPOPlaintextFormatter(Formatter):
        }
     """
 
-    def __init__(self, tokenizer, format_config):
+    def __init__(self, tokenizer, format_config: FormatConfig):
         self.tokenizer = tokenizer
         self.prompt_key = format_config.prompt_key
         self.chosen_key = format_config.chosen_key
         self.rejected_key = format_config.rejected_key
         self.system_prompt_key = format_config.system_prompt_key
         self.system_prompt = format_config.system_prompt
-        self.tools_key = format_config.tools_key
+        # currently DPO not support tools
 
     def format(self, sample: Dict) -> Experience:
         messages = []
