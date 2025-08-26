@@ -200,15 +200,6 @@ class DataProcessorConfig:
         default_factory=ExperiencePipelineConfig
     )
 
-    # For Data-Juicer
-    # Whether to setup Data-Juicer server automatically. If set to True, the launcher
-    # will try to start a Data-Juicer server using the `data_processor_url`,
-    # If set to False, the user should start the Data-Juicer server manually, and set
-    # the `data_processor_url` to the server URL.
-    setup_data_processor: bool = False
-    # the url of the Data-Juicer server
-    data_processor_url: Optional[str] = None
-
 
 @dataclass
 class ModelConfig:
