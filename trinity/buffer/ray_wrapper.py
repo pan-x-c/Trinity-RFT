@@ -75,9 +75,7 @@ class DBWrapper:
             experience_models = [self.table_model_cls.from_experience(exp) for exp in data]
             session.add_all(experience_models)
 
-    def read(
-        self, batch_size: Optional[int] = None
-    ) -> List:
+    def read(self, batch_size: Optional[int] = None) -> List:
         if self.stopped:
             raise StopIteration()
 
