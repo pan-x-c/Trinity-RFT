@@ -30,30 +30,27 @@ class FormatConfig:
 
     prompt_type: PromptType = PromptType.MESSAGES
 
-    prompt_key: str = "prompt"
-    response_key: str = "response"
-    messages_key: str = "message"
-    tools_key: str = "tools"
-    chat_template: str = ""  # deprecated
+    # for plaintext input
+    prompt_key: str = "prompt"  # user prompt
+    response_key: str = "response"  # assistant response
+    system_prompt_key: Optional[str] = None  # If set, use the provided system prompt
+    system_prompt: Optional[str] = None  # have lower priority than system_prompt_key
 
-    system_prompt: Optional[str] = None
+    # for message list input
+    messages_key: str = "message"
+
+    # for tools
+    tools_key: str = "tools"
+
     reply_prefix: Optional[str] = None
 
     # for sample-level task controlling
-    reward_fn_key: str = ""
     workflow_key: str = ""
-    # for math dataset
-    solution_key: str = "solution"
-
-    # for reward dataset
-    reward_key: str = "reward"
+    reward_fn_key: str = ""
 
     # for dpo dataset
     chosen_key: str = "chosen"
     rejected_key: str = "rejected"
-
-    # for unpaired preference dataset
-    label_key: str = ""
 
 
 @dataclass
