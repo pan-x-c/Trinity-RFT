@@ -34,7 +34,7 @@ class FormatConfig:
     prompt_key: str = "prompt"  # user prompt
     response_key: str = "response"  # assistant response
     system_prompt_key: Optional[str] = None  # If set, use the provided system prompt
-    system_prompt: Optional[str] = None  # have lower priority than system_prompt_key
+    system_prompt: Optional[str] = None  # has lower priority than system_prompt_key
 
     # for message list input
     messages_key: str = "message"

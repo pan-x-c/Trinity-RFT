@@ -66,7 +66,7 @@ class SFTPlaintextFormatter(Formatter):
     .. code-block:: python
 
         {
-            "system_key": "system",
+            "system_prompt_key": "system",
             "prompt_key": "prompt",
             "response_key": "response",
         }

@@ -19,19 +19,33 @@ class TestLauncherMain(unittest.TestCase):
     def tearDown(self):
         sys.argv = self._orig_argv
 
+    @mock.patch("trinity.cli.launcher.explore")
+    @mock.patch("trinity.cli.launcher.train")
     @mock.patch("trinity.cli.launcher.both")
+    @mock.patch("trinity.cli.launcher.bench")
     @mock.patch("trinity.cli.launcher.load_config")
-    def test_main_run_command(self, mock_load, mock_both):
+    def test_main_run_command(self, mock_load, mock_bench, mock_both, mock_train, mock_explore):
         config = get_template_config()
-        config.mode = "both"
-        mock_load.return_value = config
-        with mock.patch(
-            "argparse.ArgumentParser.parse_args",
-            return_value=mock.Mock(command="run", config="dummy.yaml", dlc=False, plugin_dir=None),
-        ):
-            launcher.main()
-        mock_load.assert_called_once_with("dummy.yaml")
-        mock_both.assert_called_once_with(config)
+        mapping = {
+            "explore": mock_explore,
+            "train": mock_train,
+            "both": mock_both,
+            "bench": mock_bench,
+        }
+        for mode in ["explore", "train", "both", "bench"]:
+            config.mode = mode
+            mock_load.return_value = config
+            with mock.patch(
+                "argparse.ArgumentParser.parse_args",
+                return_value=mock.Mock(
+                    command="run", config="dummy.yaml", dlc=False, plugin_dir=None
+                ),
+            ):
+                launcher.main()
+            mock_load.assert_called_once_with("dummy.yaml")
+            mapping[mode].assert_called_once_with(config)
+            mock_load.reset_mock()
+            mapping[mode].reset_mock()
 
     @mock.patch("trinity.cli.launcher.setup_ray_cluster")
     @mock.patch("trinity.cli.launcher.both")
