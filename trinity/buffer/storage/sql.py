@@ -91,6 +91,16 @@ class SQLStorage:
 
 
 class SQLExperienceStorage(SQLStorage):
+    def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
+        super().__init__(storage_config, config)
+        self.is_eval = storage_config.is_eval
+        self.default_workflow_cls = WORKFLOWS.get(storage_config.default_workflow_type)  # type: ignore
+        if self.is_eval and storage_config.default_eval_workflow_type:
+            self.default_workflow_cls = WORKFLOWS.get(storage_config.default_eval_workflow_type)
+        self.default_reward_fn_cls = REWARD_FUNCTIONS.get(storage_config.default_reward_fn_type)  # type: ignore
+        self.formatter = TaskFormatter(storage_config)
+        self.latest_index = storage_config.index
+
     def write(self, data: List[Experience]) -> None:
         with retry_session(self.session, self.max_retry_times, self.max_retry_interval) as session:
             experience_models = [self.table_model_cls.from_experience(exp) for exp in data]
@@ -112,11 +122,13 @@ class SQLExperienceStorage(SQLStorage):
                 # get a batch of experiences from the database
                 experiences = (
                     session.query(self.table_model_cls)
-                    .filter(self.table_model_cls.reward.isnot(None))
+                    .filter(self.table_model_cls.id > self.latest_index)
                     .order_by(asc(self.table_model_cls.id))
-                    .limit(batch_size - len(exp_list))
+                    .limit(batch_size)
                     .all()
                 )
+                if experiences:
+                    self.latest_index = experiences[-1].id
                 exp_list.extend([self.table_model_cls.to_experience(exp) for exp in experiences])
         return exp_list
 

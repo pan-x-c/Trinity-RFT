@@ -3,7 +3,7 @@ from typing import List
 import ray
 
 from trinity.buffer.buffer_writer import BufferWriter
-from trinity.buffer.storages.file import FileStorage
+from trinity.buffer.storage.file import FileStorage
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.constants import StorageType
 

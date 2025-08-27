@@ -3,7 +3,7 @@
 import ray
 
 from trinity.buffer.buffer_writer import BufferWriter
-from trinity.buffer.storages.sql import SQLStorage
+from trinity.buffer.storage.sql import SQLStorage
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.constants import StorageType
 

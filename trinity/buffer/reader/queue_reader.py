@@ -5,7 +5,7 @@ from typing import List, Optional
 import ray
 
 from trinity.buffer.buffer_reader import BufferReader
-from trinity.buffer.storages.queue import QueueStorage
+from trinity.buffer.storage.queue import QueueStorage
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.constants import StorageType
 

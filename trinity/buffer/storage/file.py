@@ -1,4 +1,4 @@
-"""Ray actor wrapper for different buffers."""
+"""File Storage"""
 import json
 import os
 from typing import List

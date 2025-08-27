@@ -6,7 +6,6 @@ import datasets
 import transformers
 from datasets import Dataset, load_dataset
 
-from trinity.algorithm.algorithm import DPOAlgorithm, SFTAlgorithm
 from trinity.buffer.buffer_reader import BufferReader
 from trinity.buffer.schema.formatter import DPOFormatter, SFTFormatter
 from trinity.common.config import BufferConfig, StorageConfig
@@ -105,7 +104,7 @@ class BaseFileReader(BufferReader):
             raise StopAsyncIteration from e
 
 
-@FILE_READERS.register_module(SFTAlgorithm.name())
+@FILE_READERS.register_module("sft")
 class SFTDataReader(BaseFileReader):
     """Reader for SFT file data."""
 
@@ -132,7 +131,7 @@ class SFTDataReader(BaseFileReader):
         return exp_list
 
 
-@FILE_READERS.register_module(DPOAlgorithm.name())
+@FILE_READERS.register_module("dpo")
 class DPODataReader(BaseFileReader):
     def __init__(self, meta: StorageConfig, config: BufferConfig):
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
@@ -165,7 +164,7 @@ class DPODataReader(BaseFileReader):
         return exp_list
 
 
-@FILE_READERS.register_module("rollout")
+@FILE_READERS.register_module("task")
 class RolloutDataReader(BaseFileReader):
     def __init__(self, meta: StorageConfig, config: BufferConfig):
         self.meta = meta
