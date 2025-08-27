@@ -27,6 +27,7 @@ def format_messages(
     return Experience(
         tokens=tokens,
         prompt_length=len(prompt_tokens_ids),
+        messages=messages,
     )
 
 
@@ -115,6 +116,8 @@ def format_dpo_messages(
         prompt_length=len(prompt_tokens),
         chosen=chosen_tokens,
         rejected=reject_tokens,
+        chosen_messages=prompt_messages + chosen_messages,
+        rejected_messages=prompt_messages + reject_messages,
     )
 
 
