@@ -20,7 +20,7 @@ class TestSQLBuffer(RayUnittestBaseAysnc):
         read_batch_size = 4
         meta = StorageConfig(
             name="test_buffer",
-            algorithm_type="ppo",
+            schema_type="experience",
             path=f"sqlite:///{db_path}",
             storage_type=StorageType.SQL,
             wrap_in_ray=True,
@@ -66,3 +66,7 @@ class TestSQLBuffer(RayUnittestBaseAysnc):
         self.assertIsNotNone(db_wrapper)
         self.assertEqual(await sql_writer.release(), 0)
         self.assertRaises(StopIteration, sql_reader.read)
+
+    def setUp(self) -> None:
+        if os.path.exists(db_path):
+            os.remove(db_path)

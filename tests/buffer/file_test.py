@@ -90,7 +90,6 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
         while True:
             try:
                 tasks.extend(reader.read())
-                print(f"read from buffer, current len {len(tasks)}.")
             except StopIteration:
                 break
         self.assertEqual(len(tasks), 20 - 8)

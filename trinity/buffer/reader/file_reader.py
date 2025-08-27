@@ -1,6 +1,5 @@
 """Filed based buffer reader."""
 
-import copy
 from typing import List, Optional
 
 import datasets
@@ -9,14 +8,8 @@ from datasets import Dataset, load_dataset
 
 from trinity.algorithm.algorithm import DPOAlgorithm, SFTAlgorithm
 from trinity.buffer.buffer_reader import BufferReader
-from trinity.buffer.schema.formatter import (
-    DPOMessagesFormatter,
-    DPOPlaintextFormatter,
-    SFTMessagesFormatter,
-    SFTPlaintextFormatter,
-)
+from trinity.buffer.schema.formatter import DPOFormatter, SFTFormatter
 from trinity.common.config import BufferConfig, StorageConfig
-from trinity.common.constants import PromptType, TaskType
 from trinity.common.rewards import REWARD_FUNCTIONS
 from trinity.common.workflows import WORKFLOWS, Task
 from trinity.utils.registry import Registry
@@ -118,16 +111,7 @@ class SFTDataReader(BaseFileReader):
 
     def __init__(self, meta: StorageConfig, config: BufferConfig):
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
-        if meta.format.prompt_type == PromptType.MESSAGES:
-            self.formatter = SFTMessagesFormatter(
-                tokenizer=self.tokenizer, format_config=meta.format
-            )
-        elif meta.format.prompt_type == PromptType.PLAINTEXT:
-            self.formatter = SFTPlaintextFormatter(
-                tokenizer=self.tokenizer, format_config=meta.format
-            )
-        else:
-            raise ValueError(f"Unknown prompt type: {self.prompt_type}")
+        self.formatter = SFTFormatter(tokenizer=self.tokenizer, format_config=meta.format)
         self.read_batch_size = config.train_batch_size
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=meta.subset_name, split=meta.split),
@@ -152,14 +136,7 @@ class SFTDataReader(BaseFileReader):
 class DPODataReader(BaseFileReader):
     def __init__(self, meta: StorageConfig, config: BufferConfig):
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
-        if meta.format.prompt_type == PromptType.MESSAGES:
-            self.formatter = DPOMessagesFormatter(
-                tokenizer=self.tokenizer, format_config=meta.format
-            )
-        elif meta.format.prompt_type == PromptType.PLAINTEXT:
-            self.formatter = DPOPlaintextFormatter(
-                tokenizer=self.tokenizer, format_config=meta.format
-            )
+        self.formatter = DPOFormatter(tokenizer=self.tokenizer, format_config=meta.format)
         self.read_batch_size = config.train_batch_size
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=meta.subset_name, split=meta.split),
@@ -203,18 +180,16 @@ class RolloutDataReader(BaseFileReader):
             load_dataset(meta.path, name=subset_name, split=self.split),
             name=meta.name,
             default_batch_size=self.read_batch_size,
-            total_epochs=self.meta.total_epochs if meta.task_type == TaskType.EXPLORE else 1,
+            total_epochs=self.meta.total_epochs if not self.meta.is_eval else 1,
             offset=self.meta.index,
-            drop_last=self.meta.task_type == TaskType.EXPLORE,
+            drop_last=not self.meta.is_eval,
             total_steps=meta.total_steps,
             enable_progress_bar=meta.enable_progress_bar,
         )
-        self.prompt_key = meta.format.prompt_key
-        self.response_key = meta.format.response_key
         self.workflow_key = meta.format.workflow_key
         self.reward_fn_key = meta.format.reward_fn_key
 
-        self.task_type = meta.task_type
+        self.is_eval = meta.is_eval
         self.default_workflow_cls = WORKFLOWS.get(meta.default_workflow_type)  # type: ignore
         self.default_eval_workflow_cls = None
         if getattr(meta, "default_eval_workflow_type", None):
@@ -226,7 +201,7 @@ class RolloutDataReader(BaseFileReader):
         tasks = []
         samples = self.dataset.read_batch(batch_size)
         for sample in samples:
-            if self.task_type == TaskType.EVAL and self.default_eval_workflow_cls:
+            if self.is_eval and self.default_eval_workflow_cls:
                 workflow_class = self.default_eval_workflow_cls
             else:
                 workflow_class = (
@@ -245,11 +220,11 @@ class RolloutDataReader(BaseFileReader):
             task = Task(
                 workflow=workflow_class,
                 repeat_times=self.meta.repeat_times,
-                format_args=copy.deepcopy(self.meta.format),
-                rollout_args=copy.deepcopy(self.meta.rollout_args),
-                workflow_args=copy.deepcopy(self.meta.workflow_args),
-                reward_fn_args=copy.deepcopy(self.meta.reward_fn_args),
-                is_eval=self.meta.task_type == TaskType.EVAL,
+                format_args=self.meta.format,
+                rollout_args=self.meta.rollout_args,
+                workflow_args=self.meta.workflow_args,
+                reward_fn_args=self.meta.reward_fn_args,
+                is_eval=self.meta.is_eval,
                 reward_fn=reward_fn,
                 raw_task=sample,
             )

@@ -3,12 +3,7 @@ import unittest
 from transformers import AutoTokenizer
 
 from tests.tools import get_model_path
-from trinity.buffer.schema.formatter import (
-    DPOMessagesFormatter,
-    DPOPlaintextFormatter,
-    SFTMessagesFormatter,
-    SFTPlaintextFormatter,
-)
+from trinity.buffer.schema.formatter import DPOFormatter, SFTFormatter
 from trinity.common.config import FormatConfig
 from trinity.common.constants import PromptType
 from trinity.common.experience import Experience
@@ -23,7 +18,7 @@ class TestFormatter(unittest.TestCase):
             prompt_type=PromptType.MESSAGES,
             messages_key="message_list",
         )
-        formatter = SFTMessagesFormatter(tokenizer=self.tokenizer, format_config=config)
+        formatter = SFTFormatter(tokenizer=self.tokenizer, format_config=config)
         sample = {
             "message_list": [
                 {"role": "user", "content": "Hi"},
@@ -47,7 +42,7 @@ class TestFormatter(unittest.TestCase):
             messages_key="messages",
             tools_key="tools",
         )
-        formatter = SFTMessagesFormatter(tokenizer=self.tokenizer, format_config=config)
+        formatter = SFTFormatter(tokenizer=self.tokenizer, format_config=config)
         sample = {
             "messages": [
                 {
@@ -126,7 +121,7 @@ class TestFormatter(unittest.TestCase):
             prompt_key="prompt",
             response_key="response",
         )
-        formatter = SFTPlaintextFormatter(tokenizer=self.tokenizer, format_config=config)
+        formatter = SFTFormatter(tokenizer=self.tokenizer, format_config=config)
         sample = {
             "system": "You are a helpful assistant.",
             "prompt": "What is 2+2?",
@@ -150,7 +145,7 @@ class TestFormatter(unittest.TestCase):
             prompt_key="prompt",
             response_key="response",
         )
-        formatter = SFTPlaintextFormatter(tokenizer=self.tokenizer, format_config=config)
+        formatter = SFTFormatter(tokenizer=self.tokenizer, format_config=config)
 
         exp = formatter.format(sample)
         self.assertIsInstance(exp, Experience)
@@ -170,7 +165,7 @@ class TestFormatter(unittest.TestCase):
             chosen_key="chosen",
             rejected_key="rejected",
         )
-        formatter = DPOPlaintextFormatter(tokenizer=self.tokenizer, format_config=config)
+        formatter = DPOFormatter(tokenizer=self.tokenizer, format_config=config)
         sample = {"prompt": "What is 2+2?", "chosen": "2+2=4", "rejected": "2+2=5"}
         exp = formatter.format(sample)
         self.assertIsInstance(exp, Experience)
@@ -196,7 +191,7 @@ class TestFormatter(unittest.TestCase):
             chosen_key="chosen",
             rejected_key="rejected",
         )
-        formatter = DPOMessagesFormatter(tokenizer=self.tokenizer, format_config=config)
+        formatter = DPOFormatter(tokenizer=self.tokenizer, format_config=config)
         sample = {
             "messages": [
                 {"role": "user", "content": "What is your name?"},
