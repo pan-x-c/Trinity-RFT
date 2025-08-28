@@ -59,7 +59,6 @@ buffer:
       total_epochs: 10
       name: math_sft
       storage_type: file
-      algorithm_type: sft
       path: /PATH/TO/EXPERT_DATA/
       split: 'train'
       format:

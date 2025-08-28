@@ -7,7 +7,7 @@ import transformers
 from datasets import Dataset, load_dataset
 
 from trinity.buffer.buffer_reader import BufferReader
-from trinity.buffer.schema.formatter import SFTFormatter
+from trinity.buffer.schema.formatter import FORMATTER
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.rewards import REWARD_FUNCTIONS
 from trinity.common.workflows import WORKFLOWS, Task
@@ -106,7 +106,9 @@ class ExperienceFileReader(BaseFileReader):
 
     def __init__(self, meta: StorageConfig, config: BufferConfig):
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
-        self.formatter = SFTFormatter(tokenizer=self.tokenizer, format_config=meta.format)
+        self.formatter = FORMATTER.get(meta.schema_type)(
+            tokenizer=self.tokenizer, format_config=meta.format
+        )
         self.read_batch_size = config.train_batch_size
         self.dataset = _HFBatchReader(
             load_dataset(meta.path, name=meta.subset_name, split=meta.split),

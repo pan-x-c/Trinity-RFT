@@ -59,7 +59,6 @@ buffer:
       total_epochs: 25
       name: SFT_data
       storage_type: file
-      algorithm_type: sft
       path: /PATH/TO/SFT_DATASET
       split: 'train'
       format:
