@@ -48,10 +48,12 @@ log:
   ...
 ```
 
-Each of these sections will be explained in detail below.
+Each of these sections will be explained in detail below. For additional details about specific parameters not covered here, please refer to the [source code](https://github.com/modelscope/Trinity-RFT/blob/main/trinity/common/config.py).
 
-```{note}
-For additional details about specific parameters not covered here, please refer to the [source code](https://github.com/modelscope/Trinity-RFT/blob/main/trinity/common/config.py).
+```{tip}
+Trinity-RFT uses [OmegaConf](https://omegaconf.readthedocs.io/en/latest/) to load YAML configuration files.
+It supports some advanced features like [variable interpolation](https://omegaconf.readthedocs.io/en/latest/usage.html#variable-interpolation) and  [environment variable substitution](https://omegaconf.readthedocs.io/en/latest/custom_resolvers.html#oc-env).
+Users can use these features to simplify configuration.
 ```
 
 ---
@@ -64,7 +66,7 @@ These are general settings that apply to the entire experiment.
 project: Trinity-RFT
 name: example
 mode: both
-checkpoint_root_dir: /PATH/TO/CHECKPOINT
+checkpoint_root_dir: ${oc.env:CHECKPOINT_ROOT_DIR}   # CHECKPOINT_ROOT_DIR is an environment variable set in advance
 ```
 
 - `project`: The name of the project.
@@ -131,8 +133,8 @@ Defines the model paths and token limits.
 
 ```yaml
 model:
-  model_path: /PATH/TO/MODEL/
-  critic_model_path: ''
+  model_path: ${oc.env:MODEL_PATH}  # MODEL_PATH is an environment variable set in advance
+  critic_model_path: ${model.model_path}  # use the value of model.model_path
   max_response_tokens: 16384
   max_model_len: 20480
 ```
