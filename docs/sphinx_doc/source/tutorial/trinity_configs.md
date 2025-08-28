@@ -176,10 +176,6 @@ buffer:
       ...
     eval_tasksets:
       ...
-
-  explorer_output:
-    ...
-
   trainer_input:
     experience_buffer:
       ...
@@ -257,41 +253,6 @@ The configuration for each task dataset is defined as follows:
 - `default_reward_fn_type`: Reward function used during exploration. If not specified, the `buffer.default_reward_fn_type` is used.
 - `workflow_args`: A dictionary of arguments used to supplement dataset-level parameters.
 
-
-### Explorer Output
-
-In [`explore` mode](#global-configuration), since there is no trainer, users can configure an experience buffer via `buffer.explorer_output`, rather than using `buffer.trainer_input`, which will be introduced in the next section.
-
-```{note}
-For `both` and `train` modes, users should use `buffer.trainer_input.experience_buffer` instead of `buffer.explorer_output`.
-```
-
-```yaml
-buffer:
-  ...
-  explorer_output:
-    name: countdown_buffer
-    storage_type: queue
-    path: sqlite:///countdown_buffer.db
-    wrap_in_ray: True
-    max_read_timeout: 1800
-```
-
-- `name`: The name of the experience buffer. This name will be used as the Ray actor's name, so it must be unique.
-- `storage_type`: The storage type for the experience buffer.
-  - `queue`: Experience data is stored in a queue. This storage type is recommended for most use cases.
-  - `sql`: Experience data is stored in a SQL database. If your database only supports local access (e.g., SQLite), set `wrap_in_ray` to `True` to wrap the database in a Ray actor, enabling remote access from other nodes.
-  - `file`: Experience data is stored in a JSON file. This storage type should be used only for debugging purposes in `explore` mode.
-- `path`: The path to the experience buffer.
-  - For `queue` storage type, this field is optional. You can specify a SQLite database or JSON file path here to back up the queue data.
-  - For `file` storage type, the path points to the directory containing the dataset files.
-  - For `sql` storage type, the path points to the SQLite database file.
-- `wrap_in_ray`: Whether to wrap the experience buffer in a Ray actor. Only take effect when `storage_type` is `sql` or `file`. The `queue` storage always uses a Ray actor.
-- `max_read_timeout`: The maximum waiting time (in seconds) to read new experience data. If exceeded, an incomplete batch will be returned directly. Only take effect when `storage_type` is `queue`. Default is 1800 seconds (30 minutes).
-- `use_priority_queue`: Only take effect when `storage_type` is `queue`. If set to `True`, the queue will be a priority queue, which allows for prioritizing certain experiences over others. Default is `False`.
-- `reuse_cooldown_time`: Only take effect when `storage_type` is `queue` and `use_priority_queue` is `True`. If set, it specifies the cooldown time (in seconds) for reusing experiences. If not specified, the default value is `None`, meaning experiences can not be reused.
-
-
 ### Trainer Input
 
 Defines the experience buffer and optional SFT warm-up dataset.
@@ -316,7 +277,20 @@ buffer:
     sft_warmup_steps: 0
 ```
 
-- `experience_buffer`: Experience buffer used by the trainer, which is logically equivalent to `buffer.explorer_output`.
+- `experience_buffer`: It is the input of Trainer and also the output of Explorer. This field is required even in explore mode.
+  - `name`: The name of the experience buffer. This name will be used as the Ray actor's name, so it must be unique.
+  - `storage_type`: The storage type for the experience buffer.
+    - `queue`: Experience data is stored in a queue. This storage type is recommended for most use cases.
+    - `sql`: Experience data is stored in a SQL database. If your database only supports local access (e.g., SQLite), set `wrap_in_ray` to `True` to wrap the database in a Ray actor, enabling remote access from other nodes.
+    - `file`: Experience data is stored in a JSON file. This storage type should be used only for debugging purposes in `explore` mode.
+  - `path`: The path to the experience buffer.
+    - For `queue` storage type, this field is optional. You can specify a SQLite database or JSON file path here to back up the queue data.
+    - For `file` storage type, the path points to the directory containing the dataset files.
+    - For `sql` storage type, the path points to the SQLite database file.
+  - `wrap_in_ray`: Whether to wrap the experience buffer in a Ray actor. Only take effect when `storage_type` is `sql` or `file`. The `queue` storage always uses a Ray actor.
+  - `max_read_timeout`: The maximum waiting time (in seconds) to read new experience data. If exceeded, an incomplete batch will be returned directly. Only take effect when `storage_type` is `queue`. Default is 1800 seconds (30 minutes).
+  - `use_priority_queue`: Only take effect when `storage_type` is `queue`. If set to `True`, the queue will be a priority queue, which allows for prioritizing certain experiences over others. Default is `False`.
+  - `reuse_cooldown_time`: Only take effect when `storage_type` is `queue` and `use_priority_queue` is `True`. If set, it specifies the cooldown time (in seconds) for reusing experiences. If not specified, the default value is `None`, meaning experiences can not be reused.
 - `sft_warmup_dataset`: Optional dataset used for pre-training (SFT warmup).
 - `sft_warmup_steps`: Number of steps to use SFT warm-up before RL begins.
 
