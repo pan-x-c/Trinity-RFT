@@ -4,13 +4,15 @@ from abc import abstractmethod
 from typing import Dict, List, Optional
 
 import ray
+import transformers
+from datasets import Dataset
 from sqlalchemy import asc, create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 from trinity.buffer.schema import Base, create_dynamic_table
-from trinity.buffer.schema.formatter import TaskFormatter
+from trinity.buffer.schema.formatter import FORMATTER, TaskFormatter
 from trinity.buffer.utils import default_storage_path, retry_session
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.experience import Experience
@@ -132,6 +134,21 @@ class SQLExperienceStorage(SQLStorage):
                 exp_list.extend([self.table_model_cls.to_experience(exp) for exp in experiences])
         return exp_list
 
+    @classmethod
+    def load_from_dataset(
+        cls, dataset: Dataset, storage_config: StorageConfig, config: BufferConfig
+    ) -> "SQLExperienceStorage":
+        tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
+        storage = cls(
+            storage_config=storage_config,
+            config=config,
+        )
+        formatter = FORMATTER.get(storage_config.schema_type)(tokenizer, storage_config.format)
+        for batch in dataset.iter(batch_size=storage.batch_size):
+            exps = [formatter.format(item) for item in batch]
+            storage.write(exps)
+        return storage
+
 
 class SQLTaskStorage(SQLStorage):
     def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
@@ -169,3 +186,15 @@ class SQLTaskStorage(SQLStorage):
                 raise StopIteration()
             self.latest_index = results[-1].id
             return [self.formatter.format(item.raw_task) for item in results]
+
+    @classmethod
+    def load_from_dataset(
+        cls, dataset: Dataset, storage_config: StorageConfig, config: BufferConfig
+    ) -> "SQLTaskStorage":
+        storage = cls(
+            storage_config=storage_config,
+            config=config,
+        )
+        for batch in dataset.iter(batch_size=storage.batch_size):
+            storage.write(batch)
+        return storage

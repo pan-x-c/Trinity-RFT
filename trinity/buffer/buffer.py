@@ -17,16 +17,20 @@ def get_buffer_reader(storage_config: StorageConfig, buffer_config: BufferConfig
 
         return QueueReader(storage_config, buffer_config)
     elif storage_config.storage_type == StorageType.FILE:
-        from trinity.buffer.reader.file_reader import FILE_READERS
+        from trinity.buffer.reader.file_reader import (
+            ExperienceFileReader,
+            RawDataReader,
+            TaskFileReader,
+        )
 
         schema_type = storage_config.schema_type
         if storage_config.raw:
-            schema_type = "raw"
-        elif schema_type is not None:
-            schema_type = schema_type
+            return RawDataReader(storage_config, buffer_config)
+        elif schema_type:
+            # only trainer input has schema type
+            return ExperienceFileReader(storage_config, buffer_config)
         else:
-            schema_type = "task"
-        return FILE_READERS.get(schema_type)(storage_config, buffer_config)  # type: ignore
+            return TaskFileReader(storage_config, buffer_config)
     else:
         raise ValueError(f"{storage_config.storage_type} not supported.")
 

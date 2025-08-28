@@ -7,13 +7,10 @@ import transformers
 from datasets import Dataset, load_dataset
 
 from trinity.buffer.buffer_reader import BufferReader
-from trinity.buffer.schema.formatter import DPOFormatter, SFTFormatter
+from trinity.buffer.schema.formatter import SFTFormatter
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.rewards import REWARD_FUNCTIONS
 from trinity.common.workflows import WORKFLOWS, Task
-from trinity.utils.registry import Registry
-
-FILE_READERS = Registry("file_readers")
 
 
 class DummyProgressBar:
@@ -104,8 +101,7 @@ class BaseFileReader(BufferReader):
             raise StopAsyncIteration from e
 
 
-@FILE_READERS.register_module("sft")
-class SFTDataReader(BaseFileReader):
+class ExperienceFileReader(BaseFileReader):
     """Reader for SFT file data."""
 
     def __init__(self, meta: StorageConfig, config: BufferConfig):
@@ -131,41 +127,7 @@ class SFTDataReader(BaseFileReader):
         return exp_list
 
 
-@FILE_READERS.register_module("dpo")
-class DPODataReader(BaseFileReader):
-    def __init__(self, meta: StorageConfig, config: BufferConfig):
-        self.tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
-        self.formatter = DPOFormatter(tokenizer=self.tokenizer, format_config=meta.format)
-        self.read_batch_size = config.train_batch_size
-        self.dataset = _HFBatchReader(
-            load_dataset(meta.path, name=meta.subset_name, split=meta.split),
-            name=meta.name,
-            default_batch_size=self.read_batch_size,
-            total_epochs=meta.total_epochs,
-            drop_last=True,
-            total_steps=meta.total_steps,
-            enable_progress_bar=meta.enable_progress_bar,
-        )  # TODO: support resume
-
-    def _get_assistant_message(self, item) -> dict:
-        if isinstance(item, List):
-            item = item[0]
-        if isinstance(item, str):
-            return {"role": "assistant", "content": item}
-        else:
-            return item
-
-    def read(self, batch_size: Optional[int] = None) -> List:
-        batch_data = self.dataset.read_batch(batch_size or self.read_batch_size)
-        exp_list = []
-        for sample in batch_data:
-            experience = self.formatter.format(sample)
-            exp_list.append(experience)
-        return exp_list
-
-
-@FILE_READERS.register_module("task")
-class RolloutDataReader(BaseFileReader):
+class TaskFileReader(BaseFileReader):
     def __init__(self, meta: StorageConfig, config: BufferConfig):
         self.meta = meta
         self.name = meta.name
@@ -231,7 +193,6 @@ class RolloutDataReader(BaseFileReader):
         return tasks
 
 
-@FILE_READERS.register_module("raw")
 class RawDataReader(BaseFileReader):
     def __init__(self, meta: StorageConfig, config: Optional[BufferConfig]):
         self.returned = False
