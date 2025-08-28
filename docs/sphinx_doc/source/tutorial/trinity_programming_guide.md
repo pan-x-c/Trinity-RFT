@@ -473,7 +473,7 @@ class OPMDAlgorithm(AlgorithmType):
     use_reference: bool = True
     compute_advantage_in_trainer: bool = False
     can_balance_batch: bool = True
-    schema: type = ExperienceModel
+    schema: str = "experience"
 
     @classmethod
     def default_config(cls) -> Dict:

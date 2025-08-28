@@ -229,7 +229,7 @@ class MIXCHORDAlgorithm(AlgorithmType):
 class RAFTAlgorithm(AlgorithmType):
     """RAFT Algorithm.
     This algorithm is conceptually similar to Supervised Fine-Tuning (SFT)
-    but is designed to work with `ExperienceModel` schema from rollouts.
+    but is designed to work with `experience` schema from rollouts.
     """
 
     use_critic: bool = False
