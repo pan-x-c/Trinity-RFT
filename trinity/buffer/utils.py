@@ -18,6 +18,8 @@ def retry_session(session_maker, max_retry_times: int, max_retry_interval: float
             yield session
             session.commit()
             break
+        except StopIteration as e:
+            raise e
         except Exception as e:
             import traceback
 

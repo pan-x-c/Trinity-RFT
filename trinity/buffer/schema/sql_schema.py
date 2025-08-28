@@ -123,12 +123,12 @@ def init_engine(db_url: str, table_name, schema_type: Optional[str]) -> Tuple:
     table_attrs = {
         "__tablename__": table_name,
         "__abstract__": False,
-        "__table_args__": {"extend_existing": True},
+        "__table_args__": {"keep_existing": True},
     }
     table_cls = type(table_name, (base_class,), table_attrs)
 
     try:
-        Base.metadata.create_all(engine, check_first=True)
+        Base.metadata.create_all(engine, checkfirst=True)
     except OperationalError:
         logger.warning(f"Failed to create table {table_name}, assuming it already exists.")
 

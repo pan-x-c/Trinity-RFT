@@ -53,7 +53,7 @@ class TaskFormatter:
         reward_fn_cls = (
             REWARD_FUNCTIONS.get(reward_fn_name) if reward_fn_name else None
         ) or self.default_reward_fn_cls
-
+        assert workflow_cls is not None, "`default_workflow_type` or `workflow_key` is required"
         return Task(
             workflow=workflow_cls,
             reward_fn=reward_fn_cls,

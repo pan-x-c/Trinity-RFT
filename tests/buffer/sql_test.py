@@ -13,8 +13,8 @@ from trinity.common.experience import Experience
 db_path = os.path.join(os.path.dirname(__file__), "test.db")
 
 
-class TestSQLBufferReaderWriter(RayUnittestBaseAysnc):
-    async def test_create_sql_buffer(self) -> None:
+class TestSQLBuffer(RayUnittestBaseAysnc):
+    async def test_sql_buffer_read_write(self) -> None:
         total_num = 8
         put_batch_size = 2
         read_batch_size = 4
@@ -23,7 +23,6 @@ class TestSQLBufferReaderWriter(RayUnittestBaseAysnc):
             schema_type="experience",
             path=f"sqlite:///{db_path}",
             storage_type=StorageType.SQL,
-            wrap_in_ray=True,
         )
         config = BufferConfig(
             max_retry_times=3,

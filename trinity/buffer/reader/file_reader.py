@@ -9,8 +9,6 @@ from datasets import Dataset, load_dataset
 from trinity.buffer.buffer_reader import BufferReader
 from trinity.buffer.schema.formatter import FORMATTER
 from trinity.common.config import BufferConfig, StorageConfig
-from trinity.common.rewards import REWARD_FUNCTIONS
-from trinity.common.workflows import WORKFLOWS, Task
 
 
 class DummyProgressBar:
@@ -149,48 +147,14 @@ class TaskFileReader(BaseFileReader):
             total_steps=meta.total_steps,
             enable_progress_bar=meta.enable_progress_bar,
         )
-        self.workflow_key = meta.format.workflow_key
-        self.reward_fn_key = meta.format.reward_fn_key
-
-        self.is_eval = meta.is_eval
-        self.default_workflow_cls = WORKFLOWS.get(meta.default_workflow_type)  # type: ignore
-        self.default_eval_workflow_cls = None
-        if getattr(meta, "default_eval_workflow_type", None):
-            self.default_eval_workflow_cls = WORKFLOWS.get(meta.default_eval_workflow_type)
-        self.default_reward_fn_cls = REWARD_FUNCTIONS.get(meta.default_reward_fn_type)  # type: ignore
+        self.formatter = FORMATTER.get("task")(meta)
 
     def read(self, batch_size: Optional[int] = None) -> List:
         batch_size = batch_size or self.read_batch_size
         tasks = []
         samples = self.dataset.read_batch(batch_size)
         for sample in samples:
-            if self.is_eval and self.default_eval_workflow_cls:
-                workflow_class = self.default_eval_workflow_cls
-            else:
-                workflow_class = (
-                    WORKFLOWS.get(sample[self.workflow_key])
-                    if self.workflow_key in sample
-                    else self.default_workflow_cls
-                )
-            reward_fn = (
-                REWARD_FUNCTIONS.get(sample[self.reward_fn_key])
-                if self.reward_fn_key in sample
-                else self.default_reward_fn_cls
-            )
-            assert (
-                workflow_class is not None
-            ), "`default_workflow_type` or `workflow_key` is required"
-            task = Task(
-                workflow=workflow_class,
-                repeat_times=self.meta.repeat_times,
-                format_args=self.meta.format,
-                rollout_args=self.meta.rollout_args,
-                workflow_args=self.meta.workflow_args,
-                reward_fn_args=self.meta.reward_fn_args,
-                is_eval=self.meta.is_eval,
-                reward_fn=reward_fn,
-                raw_task=sample,
-            )
+            task = self.formatter.format(sample)
             tasks.append(task)
         return tasks
 

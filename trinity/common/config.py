@@ -79,9 +79,6 @@ class StorageConfig:
     format: FormatConfig = field(default_factory=FormatConfig)
     index: int = 0
 
-    # used for StorageType.SQL/FILE
-    wrap_in_ray: bool = True
-
     # used for StorageType.QUEUE
     capacity: int = 10000
     max_read_timeout: float = 1800
@@ -104,6 +101,9 @@ class StorageConfig:
 
     # get storage from existing experiment
     ray_namespace: Optional[str] = None
+
+    # ! DO NOT SET except you know what you are doing
+    wrap_in_ray: bool = True
 
     # ! DO NOT SET, automatically set
     schema_type: Optional[str] = None

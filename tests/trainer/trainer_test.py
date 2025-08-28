@@ -417,7 +417,6 @@ class TestFullyAsyncMode(unittest.TestCase):
         config.buffer.trainer_input.experience_buffer = StorageConfig(
             name="exp_buffer",
             storage_type=StorageType.QUEUE,
-            wrap_in_ray=True,
             use_priority_queue=use_priority_queue,
         )
         config.synchronizer.sync_method = SyncMethod.CHECKPOINT
@@ -439,7 +438,6 @@ class TestFullyAsyncMode(unittest.TestCase):
         explorer1_config.buffer.trainer_input.experience_buffer = StorageConfig(
             name="exp_buffer",
             storage_type=StorageType.QUEUE,
-            wrap_in_ray=True,
         )
         explorer2_config = deepcopy(explorer1_config)
         explorer1_config.check_and_update()
