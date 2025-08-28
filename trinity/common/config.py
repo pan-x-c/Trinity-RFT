@@ -73,9 +73,6 @@ class StorageConfig:
     path: Optional[str] = None
     repeat_times: Optional[int] = None
 
-    # only available for StorageType.FILE. When requiring data processing on raw data, set the raw to True.
-    raw: bool = False
-
     # used for StorageType.FILE
     split: str = "train"
     subset_name: Optional[str] = None

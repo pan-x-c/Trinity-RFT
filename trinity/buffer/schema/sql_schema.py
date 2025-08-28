@@ -1,11 +1,14 @@
 """SQLAlchemy models for different data."""
 
-from typing import Any, Dict, Optional
+from typing import Dict, Optional, Tuple
 
-from sqlalchemy import JSON, Column, Float, Integer, LargeBinary, Text
+from sqlalchemy import JSON, Column, Float, Integer, LargeBinary, Text, create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.pool import NullPool
 
 from trinity.common.experience import Experience
+from trinity.utils.log import get_logger
 from trinity.utils.registry import Registry
 
 SQL_SCHEMA = Registry("sql_schema")
@@ -107,19 +110,26 @@ class DPODataModel(Base):  # type: ignore
         )
 
 
-def create_dynamic_table(table_name: str, sql_schema_type: Optional[str]) -> Any:
-    """Create a dynamic table based on the provided algorithm type and table name."""
-    if sql_schema_type is None:
-        sql_schema_type = "task"
+def init_engine(db_url: str, table_name, schema_type: Optional[str]) -> Tuple:
+    """Get the sqlalchemy engine."""
+    logger = get_logger(__name__)
+    engine = create_engine(db_url, poolclass=NullPool)
 
-    print(f"table_name: {table_name}, sql_schema_type: {sql_schema_type}")
+    if schema_type is None:
+        schema_type = "task"
 
-    base_class = SQL_SCHEMA.get(sql_schema_type)
+    base_class = SQL_SCHEMA.get(schema_type)
 
     table_attrs = {
         "__tablename__": table_name,
         "__abstract__": False,
         "__table_args__": {"extend_existing": True},
     }
-    print(base_class)
-    return type(table_name, (base_class,), table_attrs)
+    table_cls = type(table_name, (base_class,), table_attrs)
+
+    try:
+        Base.metadata.create_all(engine, check_first=True)
+    except OperationalError:
+        logger.warning(f"Failed to create table {table_name}, assuming it already exists.")
+
+    return engine, table_cls

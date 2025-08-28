@@ -19,14 +19,11 @@ def get_buffer_reader(storage_config: StorageConfig, buffer_config: BufferConfig
     elif storage_config.storage_type == StorageType.FILE:
         from trinity.buffer.reader.file_reader import (
             ExperienceFileReader,
-            RawDataReader,
             TaskFileReader,
         )
 
         schema_type = storage_config.schema_type
-        if storage_config.raw:
-            return RawDataReader(storage_config, buffer_config)
-        elif schema_type:
+        if schema_type:
             # only trainer input has schema type
             return ExperienceFileReader(storage_config, buffer_config)
         else:

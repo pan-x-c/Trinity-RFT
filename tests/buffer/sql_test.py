@@ -13,7 +13,7 @@ from trinity.common.experience import Experience
 db_path = os.path.join(os.path.dirname(__file__), "test.db")
 
 
-class TestSQLBuffer(RayUnittestBaseAysnc):
+class TestSQLBufferReaderWriter(RayUnittestBaseAysnc):
     async def test_create_sql_buffer(self) -> None:
         total_num = 8
         put_batch_size = 2

@@ -6,12 +6,10 @@ from typing import Dict, List, Optional
 import ray
 import transformers
 from datasets import Dataset
-from sqlalchemy import asc, create_engine
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import asc
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
 
-from trinity.buffer.schema import Base, create_dynamic_table
+from trinity.buffer.schema import init_engine
 from trinity.buffer.schema.formatter import FORMATTER, TaskFormatter
 from trinity.buffer.utils import default_storage_path, retry_session
 from trinity.common.config import BufferConfig, StorageConfig
@@ -36,17 +34,11 @@ class SQLStorage:
         self.logger = get_logger(f"sql_{storage_config.name}")
         if storage_config.path is None:
             storage_config.path = default_storage_path(storage_config, config)
-        self.engine = create_engine(storage_config.path, poolclass=NullPool)
-        self.table_model_cls = create_dynamic_table(
-            storage_config.name,
-            storage_config.schema_type,
+        self.engine, self.table_model_cls = init_engine(
+            db_url=storage_config.path,
+            table_name=storage_config.name,
+            schema_type=storage_config.schema_type,
         )
-
-        try:
-            Base.metadata.create_all(self.engine, checkfirst=True)
-        except OperationalError:
-            self.logger.warning("Failed to create database, assuming it already exists.")
-
         self.session = sessionmaker(bind=self.engine)
         self.batch_size = config.train_batch_size
         self.max_retry_times = config.max_retry_times
