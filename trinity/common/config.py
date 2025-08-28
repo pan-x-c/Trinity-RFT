@@ -16,7 +16,6 @@ from trinity.common.constants import (
     StorageType,
     SyncMethod,
     SyncStyle,
-    TaskType,
 )
 from trinity.utils.annotations import Experimental
 from trinity.utils.log import get_logger
@@ -552,7 +551,7 @@ class Config:
             self.buffer.trainer_input.experience_buffer.total_epochs = self.buffer.total_epochs
             self.buffer.trainer_input.experience_buffer.total_steps = self.buffer.total_steps
         else:
-            self.buffer.explorer_input.taskset.is_eval = TaskType.EXPLORE
+            self.buffer.explorer_input.taskset.is_eval = False
             self.buffer.explorer_input.taskset.total_epochs = self.buffer.total_epochs
             self.buffer.explorer_input.taskset.total_steps = self.buffer.total_steps
         if self.buffer.explorer_input.taskset.default_workflow_type is None:
@@ -583,7 +582,7 @@ class Config:
             if not dataset.path:
                 logger.warning(f"Eval dataset [{dataset}]'s path is not configured. Skip.")
                 continue
-            dataset.is_eval = TaskType.EVAL
+            dataset.is_eval = True
             if not dataset.name:
                 dataset.name = f"eval_taskset_{idx}"
             if dataset.repeat_times is None:

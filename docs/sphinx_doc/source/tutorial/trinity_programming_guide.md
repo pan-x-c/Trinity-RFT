@@ -447,7 +447,7 @@ class OPMDPolicyLossFn(PolicyLossFn):
 
 The above steps implement the components needed for the algorithm, but these components are scattered and need to be configured in multiple places to take effect.
 
-To simplify configuration, Trinity-RFT provides {class}`trinity.algorithm.AlgorithmType` to describe a complete algorithm and registers it in {object}`trinity.algorithm.ALGORITHM_TYPE`, enabling one-click configuration.
+To simplify configuration, Trinity-RFT provides {class}`trinity.algorithm.AlgorithmType` to describe a complete algorithm and registers it in {class}`trinity.algorithm.ALGORITHM_TYPE`, enabling one-click configuration.
 
 The `AlgorithmType` class includes the following attributes and methods:
 
