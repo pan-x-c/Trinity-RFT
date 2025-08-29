@@ -179,7 +179,7 @@ class SQLTaskStorage(SQLStorage):
 
     def write(self, data: List[Dict]) -> None:
         with retry_session(
-            self.session, self.max_retry_interval, self.max_retry_interval
+            self.session, self.max_retry_times, self.max_retry_interval
         ) as session:
             tasks = [self.table_model_cls.from_dict(item) for item in data]
             session.add_all(tasks)
@@ -191,7 +191,7 @@ class SQLTaskStorage(SQLStorage):
             raise StopIteration()
         batch_size = batch_size or self.batch_size
         with retry_session(
-            self.session, self.max_retry_interval, self.max_retry_interval
+            self.session, self.max_retry_times, self.max_retry_interval
         ) as session:
             query = (
                 session.query(self.table_model_cls)
