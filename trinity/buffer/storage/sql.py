@@ -62,6 +62,7 @@ class SQLStorage:
                     name=f"sql-{storage_config.name}",
                     namespace=storage_config.ray_namespace or ray.get_runtime_context().namespace,
                     get_if_exists=True,
+                    max_concurrency=5,
                 )
                 .remote(storage_config, config)
             )
@@ -91,6 +92,7 @@ class SQLExperienceStorage(SQLStorage):
     def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
         super().__init__(storage_config, config)
         self.batch_size = config.train_batch_size
+        self.max_timeout = storage_config.max_read_timeout
 
     def write(self, data: List[Experience]) -> None:
         with retry_session(self.session, self.max_retry_times, self.max_retry_interval) as session:
@@ -103,10 +105,16 @@ class SQLExperienceStorage(SQLStorage):
 
         exp_list = []
         batch_size = batch_size or self.batch_size  # type: ignore
+        start_time = time.time()
         while len(exp_list) < batch_size:
             if len(exp_list):
-                self.logger.debug(f"Waiting for {batch_size - len(exp_list)} more experiences...")
+                self.logger.info(f"Waiting for {batch_size - len(exp_list)} more experiences...")
                 time.sleep(1)
+            if time.time() - start_time > self.max_timeout:
+                self.logger.warning(
+                    f"Max read timeout reached ({self.max_timeout} s), only get {len(exp_list)} experiences, stopping..."
+                )
+                raise StopIteration()
             with retry_session(
                 self.session, self.max_retry_times, self.max_retry_interval
             ) as session:
@@ -115,11 +123,12 @@ class SQLExperienceStorage(SQLStorage):
                     session.query(self.table_model_cls)
                     .filter(self.table_model_cls.id > self.offset)
                     .order_by(asc(self.table_model_cls.id))
-                    .limit(batch_size)
+                    .limit(batch_size - len(exp_list))
                     .all()
                 )
                 if experiences:
                     self.offset = experiences[-1].id
+                    start_time = time.time()
                 exp_list.extend([self.table_model_cls.to_experience(exp) for exp in experiences])
         return exp_list
 

@@ -41,7 +41,7 @@ class FileStorage:
             raise ValueError(
                 f"File path must end with '.json' or '.jsonl', got {storage_config.path}"
             )
-        path_dir = os.path.dirname(storage_config.path)
+        path_dir = os.path.dirname(os.path.abspath(storage_config.path))
         os.makedirs(path_dir, exist_ok=True)
         self.file = open(storage_config.path, "a", encoding="utf-8")
         self.encoder = _Encoder(ensure_ascii=False)
