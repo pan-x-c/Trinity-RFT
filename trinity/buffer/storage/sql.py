@@ -48,11 +48,6 @@ class SQLStorage:
         self.stopped = False
         # Assume that the auto-increment ID starts counting from 1, so the default offset should be 0.
         self.offset = storage_config.index
-        if storage_config.total_steps:
-            self.total_samples = self.batch_size * storage_config.total_steps
-        else:
-            # NOTE: SQL storage do not support total_epochs
-            self.total_samples = float("inf")
 
     @classmethod
     def get_wrapper(cls, storage_config: StorageConfig, config: BufferConfig):
@@ -104,8 +99,6 @@ class SQLExperienceStorage(SQLStorage):
 
     def read(self, batch_size: Optional[int] = None) -> List[Experience]:
         if self.stopped:
-            raise StopIteration()
-        if self.offset > self.total_samples:
             raise StopIteration()
 
         exp_list = []
@@ -163,6 +156,14 @@ class SQLTaskStorage(SQLStorage):
         self.default_reward_fn_cls = REWARD_FUNCTIONS.get(storage_config.default_reward_fn_type)  # type: ignore
         self.formatter = TaskFormatter(storage_config)
         self.offset = storage_config.index
+        if storage_config.total_steps:
+            self.total_samples = self.batch_size * storage_config.total_steps
+        else:
+            if storage_config.total_epochs > 1:
+                self.logger.warning(
+                    f"SQL Storage do not support total_epochs, the value {storage_config.total_epochs} will be ignored"
+                )
+            self.total_samples = float("inf")
 
     def write(self, data: List[Dict]) -> None:
         with retry_session(
@@ -173,6 +174,8 @@ class SQLTaskStorage(SQLStorage):
 
     def read(self, batch_size: Optional[int] = None) -> List[Task]:
         if self.stopped:
+            raise StopIteration()
+        if self.offset > self.total_samples:
             raise StopIteration()
         batch_size = batch_size or self.batch_size
         with retry_session(
