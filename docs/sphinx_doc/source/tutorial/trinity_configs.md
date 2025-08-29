@@ -35,7 +35,7 @@ synchronizer:
   # Model weight synchronization settings
   ...
 monitor:
-  # Monitoring configurations (e.g., WandB or TensorBoard)
+  # Monitoring configurations (e.g., WandB, TensorBoard or MLFlow)
   ...
 service:
   # Services to use
@@ -117,13 +117,25 @@ Used to log training metrics during execution.
 ```yaml
 monitor:
   monitor_type: wandb
+  monitor_args:
+    base_url: http://localhost:8080
+    api_key: your_api_key
   enable_ray_timeline: False
 ```
 
 - `monitor_type`: Type of monitoring system. Options:
   - `wandb`: Logs to [Weights & Biases](https://docs.wandb.ai/quickstart/). Requires logging in and setting `WANDB_API_KEY`. Project and run names match the `project` and `name` fields in global configs.
   - `tensorboard`: Logs to [TensorBoard](https://www.tensorflow.org/tensorboard). Files are saved under `<checkpoint_root_dir>/<project>/<name>/monitor/tensorboard`.
-- `enable_ray_timeline`: Whether to export the ray timeline. If set to `True`, a `timeline.json` file will be exported to `<checkpoint_root_dir>/<project>/<name>/monitor`. You can view the timeline file in Chrome at [chrome://tracing](chrome://tracing).
+  - `mlflow`: Logs to [MLFlow](https://mlflow.org/). If [MLFlow authentication](https://mlflow.org/docs/latest/ml/auth/) is setup, set `MLFLOW_TRACKING_USERNAME` and `MLFLOW_TRACKING_PASSWORD` as environment variables before running.
+- `monitor_args`: Dictionary of arguments for monitor initialization.
+  - For `wandb`:
+    - `base_url`: Overrides `WANDB_BASE_URL` if set.
+    - `api_key`: Overrides `WANDB_API_KEY` if set.
+  - For `mlflow`:
+    - `uri`: The URI of your MLFlow instance. Strongly recommended to set; defaults to `http://localhost:5000`.
+    - `username`: Overrides `MLFLOW_TRACKING_USERNAME` if set.
+    - `password`: Overrides `MLFLOW_TRACKING_PASSWORD` if set.
+- `enable_ray_timeline`: If `True`, exports a `timeline.json` file to `<checkpoint_root_dir>/<project>/<name>/monitor`. Viewable in Chrome at [chrome://tracing](chrome://tracing).
 
 ---
 

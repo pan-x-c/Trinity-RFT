@@ -61,6 +61,7 @@ class MonitorType(CaseInsensitiveEnum):
 
     WANDB = "wandb"
     TENSORBOARD = "tensorboard"
+    MLFLOW = "mlflow"
 
 
 class SyncMethodEnumMeta(CaseInsensitiveEnumMeta):
