@@ -25,8 +25,6 @@ class TestSQLBuffer(RayUnittestBaseAysnc):
             storage_type=StorageType.SQL,
         )
         config = BufferConfig(
-            max_retry_times=3,
-            max_retry_interval=1,
             train_batch_size=read_batch_size,
         )
         sql_writer = SQLWriter(meta, config)

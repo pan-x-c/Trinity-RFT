@@ -26,6 +26,9 @@ class SQLReader(BufferReader):
 
     async def read_async(self, batch_size: Optional[int] = None) -> List:
         if self.wrap_in_ray:
-            return await self.storage.read.remote(batch_size)
+            try:
+                return await self.storage.read.remote(batch_size)
+            except StopIteration:
+                raise StopAsyncIteration
         else:
             return self.storage.read(batch_size)

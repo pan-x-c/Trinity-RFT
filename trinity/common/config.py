@@ -88,6 +88,10 @@ class StorageConfig:
         default_factory=lambda: {"priority_fn": "linear_decay", "decay": 0.1}
     )
 
+    # used for StorageType.SQL
+    max_retry_times: int = 3
+    max_retry_interval: int = 1
+
     # used for rollout tasks
     default_workflow_type: Optional[str] = None
     default_eval_workflow_type: Optional[str] = None
@@ -345,10 +349,6 @@ class BufferConfig:
 
     # for trainer
     trainer_input: TrainerInput = field(default_factory=TrainerInput)
-
-    # for storage connection
-    max_retry_times: int = 3
-    max_retry_interval: int = 1
 
     # ! DO NOT SET FOLLOWING FIELDS
     explorer_output: Optional[StorageConfig] = None  # automatically set

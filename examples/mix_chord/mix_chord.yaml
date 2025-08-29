@@ -33,8 +33,6 @@ buffer:
   total_epochs: 4
   batch_size: 32
   train_batch_size: 320
-  max_retry_times: 3
-  max_retry_interval: 1
   explorer_input:
     taskset:
       name: openr1_data_filtered_int

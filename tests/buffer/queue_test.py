@@ -306,8 +306,6 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
         self.train_batch_size = 4
 
         self.config = BufferConfig(
-            max_retry_times=3,
-            max_retry_interval=1,
             train_batch_size=self.train_batch_size,
         )
         if os.path.exists(BUFFER_FILE_PATH):

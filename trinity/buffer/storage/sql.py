@@ -5,7 +5,6 @@ from abc import abstractmethod
 from typing import Dict, List, Optional
 
 import ray
-import transformers
 from datasets import Dataset
 from sqlalchemy import asc
 from sqlalchemy.orm import sessionmaker
@@ -32,7 +31,7 @@ class SQLStorage:
     """
 
     def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
-        self.logger = get_logger(f"sql_{storage_config.name}")
+        self.logger = get_logger(f"sql_{storage_config.name}", in_ray_actor=True)
         if storage_config.path is None:
             storage_config.path = default_storage_path(storage_config, config)
         self.engine, self.table_model_cls = init_engine(
@@ -42,8 +41,8 @@ class SQLStorage:
         )
         self.logger.info(f"Init SQL storage at {storage_config.path}")
         self.session = sessionmaker(bind=self.engine)
-        self.max_retry_times = config.max_retry_times
-        self.max_retry_interval = config.max_retry_interval
+        self.max_retry_times = storage_config.max_retry_times
+        self.max_retry_interval = storage_config.max_retry_interval
         self.ref_count = 0
         self.stopped = False
         # Assume that the auto-increment ID starts counting from 1, so the default offset should be 0.
@@ -107,6 +106,8 @@ class SQLExperienceStorage(SQLStorage):
         batch_size = batch_size or self.batch_size  # type: ignore
         start_time = time.time()
         while len(exp_list) < batch_size:
+            if self.stopped:
+                raise StopIteration()
             if len(exp_list):
                 self.logger.info(f"Waiting for {batch_size - len(exp_list)} more experiences...")
                 time.sleep(1)
@@ -136,6 +137,8 @@ class SQLExperienceStorage(SQLStorage):
     def load_from_dataset(
         cls, dataset: Dataset, storage_config: StorageConfig, config: BufferConfig
     ) -> "SQLExperienceStorage":
+        import transformers
+
         tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path)
         storage = cls(
             storage_config=storage_config,

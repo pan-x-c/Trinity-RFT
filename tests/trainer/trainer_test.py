@@ -239,8 +239,13 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
             "sft_for_gsm8k"
         )
         self.config.buffer.trainer_input.sft_warmup_steps = 3
+        self.config.buffer.trainer_input.experience_buffer = StorageConfig(
+            name="test_sql_storage",
+            max_read_timeout=20,
+            storage_type=StorageType.SQL,
+            max_retry_times=10,
+        )
         self.config.check_and_update()
-        self.config.buffer.trainer_input.experience_buffer.max_read_timeout = 20
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         self.config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr = 1e-5
         both(self.config)
