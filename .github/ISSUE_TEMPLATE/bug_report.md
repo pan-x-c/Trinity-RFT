@@ -23,6 +23,8 @@ Please provide a detailed description of the issue you encountered.
 
 ### Steps to Reproduce
 
+Please provide a minimal, self-contained, and reproducible example.
+
 1. Step 1
 2. Step 2
 3. ...
@@ -38,3 +40,7 @@ Describe what actually happened.
 ### Log Information
 
 If applicable, include any relevant log output here.
+
+### Are You Willing to Fix This Issue?
+
+- [ ] Yes, I am willing to fix this issue!
