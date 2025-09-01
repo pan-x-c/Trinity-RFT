@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>trinity.algorithm.policy_loss_fn.sft_loss module &mdash; Trinity-RFT 0.2.1 documentation</title>
+  <title>trinity.algorithm.policy_loss_fn.sppo_loss_fn module &mdash; Trinity-RFT 0.2.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
 
@@ -19,8 +19,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="trinity.algorithm.policy_loss_fn.sppo_loss_fn module" href="trinity.algorithm.policy_loss_fn.sppo_loss_fn.html" />
-    <link rel="prev" title="trinity.algorithm.policy_loss_fn.ppo_policy_loss module" href="trinity.algorithm.policy_loss_fn.ppo_policy_loss.html" /> 
+    <link rel="next" title="trinity.algorithm.sample_strategy package" href="trinity.algorithm.sample_strategy.html" />
+    <link rel="prev" title="trinity.algorithm.policy_loss_fn.sft_loss module" href="trinity.algorithm.policy_loss_fn.sft_loss.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -87,9 +87,9 @@
           <li class="breadcrumb-item"><a href="../api_reference.html">API Reference</a></li>
           <li class="breadcrumb-item"><a href="trinity.algorithm.html">trinity.algorithm package</a></li>
           <li class="breadcrumb-item"><a href="trinity.algorithm.policy_loss_fn.html">trinity.algorithm.policy_loss_fn package</a></li>
-      <li class="breadcrumb-item active">trinity.algorithm.policy_loss_fn.sft_loss module</li>
+      <li class="breadcrumb-item active">trinity.algorithm.policy_loss_fn.sppo_loss_fn module</li>
       <li class="wy-breadcrumbs-aside">
-              <a href="https://github.com/modelscope/Trinity-RFT/blob/main/docs/sphinx_doc/source/build_api/trinity.algorithm.policy_loss_fn.sft_loss.rst" class="fa fa-github"> Edit on GitHub</a>
+              <a href="https://github.com/modelscope/Trinity-RFT/blob/main/docs/sphinx_doc/source/build_api/trinity.algorithm.policy_loss_fn.sppo_loss_fn.rst" class="fa fa-github"> Edit on GitHub</a>
       </li>
   </ul>
   <hr/>
@@ -97,16 +97,17 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="module-trinity.algorithm.policy_loss_fn.sft_loss">
-<span id="trinity-algorithm-policy-loss-fn-sft-loss-module"></span><h1>trinity.algorithm.policy_loss_fn.sft_loss module<a class="headerlink" href="#module-trinity.algorithm.policy_loss_fn.sft_loss" title="Link to this heading"></a></h1>
-<p>SFT loss function.</p>
+  <section id="module-trinity.algorithm.policy_loss_fn.sppo_loss_fn">
+<span id="trinity-algorithm-policy-loss-fn-sppo-loss-fn-module"></span><h1>trinity.algorithm.policy_loss_fn.sppo_loss_fn module<a class="headerlink" href="#module-trinity.algorithm.policy_loss_fn.sppo_loss_fn" title="Link to this heading"></a></h1>
+<p>sPPO-token policy loss function.
+Relevant paper: <a class="reference external" href="https://arxiv.org/abs/2108.05828">https://arxiv.org/abs/2108.05828</a>.</p>
 <dl class="py class">
-<dt class="sig sig-object py" id="trinity.algorithm.policy_loss_fn.sft_loss.SFTLossFn">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">trinity.algorithm.policy_loss_fn.sft_loss.</span></span><span class="sig-name descname"><span class="pre">SFTLossFn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">backend</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'verl'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_token_level_loss</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/trinity/algorithm/policy_loss_fn/sft_loss.html#SFTLossFn"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#trinity.algorithm.policy_loss_fn.sft_loss.SFTLossFn" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="trinity.algorithm.policy_loss_fn.sppo_loss_fn.sPPOPolicyLossFn">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">trinity.algorithm.policy_loss_fn.sppo_loss_fn.</span></span><span class="sig-name descname"><span class="pre">sPPOPolicyLossFn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">backend</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'verl'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epsilon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/trinity/algorithm/policy_loss_fn/sppo_loss_fn.html#sPPOPolicyLossFn"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#trinity.algorithm.policy_loss_fn.sppo_loss_fn.sPPOPolicyLossFn" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="trinity.algorithm.policy_loss_fn.policy_loss_fn.html#trinity.algorithm.policy_loss_fn.policy_loss_fn.PolicyLossFn" title="trinity.algorithm.policy_loss_fn.policy_loss_fn.PolicyLossFn"><code class="xref py py-class docutils literal notranslate"><span class="pre">PolicyLossFn</span></code></a></p>
 <dl class="py method">
-<dt class="sig sig-object py" id="trinity.algorithm.policy_loss_fn.sft_loss.SFTLossFn.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">backend</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'verl'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_token_level_loss</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/trinity/algorithm/policy_loss_fn/sft_loss.html#SFTLossFn.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#trinity.algorithm.policy_loss_fn.sft_loss.SFTLossFn.__init__" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="trinity.algorithm.policy_loss_fn.sppo_loss_fn.sPPOPolicyLossFn.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">backend</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'verl'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epsilon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.3</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/trinity/algorithm/policy_loss_fn/sppo_loss_fn.html#sPPOPolicyLossFn.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#trinity.algorithm.policy_loss_fn.sppo_loss_fn.sPPOPolicyLossFn.__init__" title="Link to this definition"></a></dt>
 <dd><p>Initialize the policy loss function.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -116,8 +117,8 @@
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="trinity.algorithm.policy_loss_fn.sft_loss.SFTLossFn.default_args">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">default_args</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/trinity/algorithm/policy_loss_fn/sft_loss.html#SFTLossFn.default_args"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#trinity.algorithm.policy_loss_fn.sft_loss.SFTLossFn.default_args" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="trinity.algorithm.policy_loss_fn.sppo_loss_fn.sPPOPolicyLossFn.default_args">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">default_args</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span></span></span><a class="reference internal" href="../_modules/trinity/algorithm/policy_loss_fn/sppo_loss_fn.html#sPPOPolicyLossFn.default_args"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#trinity.algorithm.policy_loss_fn.sppo_loss_fn.sPPOPolicyLossFn.default_args" title="Link to this definition"></a></dt>
 <dd><p>Get default initialization arguments for this loss function.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
@@ -130,8 +131,8 @@
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="trinity.algorithm.policy_loss_fn.sft_loss.SFTLossFn.select_keys">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">select_keys</span></span><a class="headerlink" href="#trinity.algorithm.policy_loss_fn.sft_loss.SFTLossFn.select_keys" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="trinity.algorithm.policy_loss_fn.sppo_loss_fn.sPPOPolicyLossFn.select_keys">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">select_keys</span></span><a class="headerlink" href="#trinity.algorithm.policy_loss_fn.sppo_loss_fn.sPPOPolicyLossFn.select_keys" title="Link to this definition"></a></dt>
 <dd><p>Returns parameter keys mapped to the specific training framework’s naming convention.</p>
 </dd></dl>
 
@@ -143,8 +144,8 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="trinity.algorithm.policy_loss_fn.ppo_policy_loss.html" class="btn btn-neutral float-left" title="trinity.algorithm.policy_loss_fn.ppo_policy_loss module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="trinity.algorithm.policy_loss_fn.sppo_loss_fn.html" class="btn btn-neutral float-right" title="trinity.algorithm.policy_loss_fn.sppo_loss_fn module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="trinity.algorithm.policy_loss_fn.sft_loss.html" class="btn btn-neutral float-left" title="trinity.algorithm.policy_loss_fn.sft_loss module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="trinity.algorithm.sample_strategy.html" class="btn btn-neutral float-right" title="trinity.algorithm.sample_strategy package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
@@ -173,7 +174,7 @@
   <div class="rst-other-versions">
     <dl>
       <dt>Branches</dt>
-      <dd><b><a href="trinity.algorithm.policy_loss_fn.sft_loss.html">main</a> (latest)</b></dd>
+      <dd><b><a href="trinity.algorithm.policy_loss_fn.sppo_loss_fn.html">main</a> (latest)</b></dd>
     </dl>
   </div>
 </div><script>
