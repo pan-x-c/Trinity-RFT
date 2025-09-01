@@ -122,14 +122,12 @@ class SFTFormatter(ExperienceFormatter):
         self,
         messages: List[Dict],
         tools: Optional[List[Dict]] = None,
-        enable_concatenated_multi_turn: bool = False,
     ) -> Experience:
         """Convert messages and tools into an Experience object.
 
         Args:
             messages (List[Dict]): The list of message dictionaries.
             tools (Optional[List[Dict]], optional): The list of tool dictionaries. Defaults to None.
-            enable_concatenated_multi_turn (bool, optional): Whether to enable concatenated multi-turn. If True, the assistant role content will be automatically extracted and marked with action_mask. Defaults to False.
 
         Returns:
             Experience: The resulting Experience object.
@@ -137,7 +135,7 @@ class SFTFormatter(ExperienceFormatter):
         tokens = self.tokenizer.apply_chat_template(
             messages, tools=tools, add_generation_prompt=False, return_tensors="pt"
         )[0]
-        if enable_concatenated_multi_turn:
+        if self.enable_concatenated_multi_turn:
             token_ids, action_mask, prompt_length = self.action_mask_method(
                 tokenizer=self.tokenizer,
                 messages=messages,
@@ -146,7 +144,7 @@ class SFTFormatter(ExperienceFormatter):
             )
             return Experience(
                 tokens=token_ids,
-                action_mask=action_mask,
+                action_mask=action_mask[prompt_length:],
                 prompt_length=prompt_length,
                 messages=messages,
             )

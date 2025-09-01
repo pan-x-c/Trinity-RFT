@@ -1,5 +1,4 @@
-"""A wrapper around the vllm.AsyncEngine to handle async requests.
-"""
+"""A wrapper around the vllm.AsyncEngine to handle async requests."""
 
 import os
 from typing import Any, Dict, List, Optional, Sequence, Union
@@ -202,14 +201,21 @@ class vLLMRolloutModel(InferenceModel):
 
         raise RuntimeError("[vLLM] The request is not finished. This should not happen.")
 
-    async def convert_messages_to_experience(self, messages: List[dict]) -> Experience:
+    async def convert_messages_to_experience(
+        self,
+        messages: List[dict],
+        tools: Optional[List[dict]] = None,
+    ) -> Experience:
         """Convert a list of messages into an experience."""
         if self.tokenizer is None:
             self.tokenizer = await self.async_llm.get_tokenizer()
         if self.chat_template is None:
             self.chat_template = self.tokenizer.get_chat_template()
         token_ids, action_mask, prompt_length = self.action_mask_method(
-            self.tokenizer, messages, self.chat_template
+            tokenizer=self.tokenizer,
+            messages=messages,
+            tools=tools,
+            chat_template=self.chat_template,
         )  # (seq_length, ), (seq_length, )
         logprobs = await self.logprobs(token_ids=token_ids.tolist())  # (seq_length - 1,)
         return Experience(
