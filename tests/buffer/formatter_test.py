@@ -134,7 +134,7 @@ class TestFormatter(unittest.TestCase):
         self.assertIsNotNone(exp.action_mask)
         self.assertEqual(len(exp.action_mask) + exp.prompt_length, len(exp.tokens))
         self.assertTrue(any(exp.action_mask.tolist()) and not all(exp.action_mask.tolist()))
-        prompt = self.tokenizer.decode(exp.tokens[:exp.prompt_length])
+        prompt = self.tokenizer.decode(exp.tokens[: exp.prompt_length])
         response = self.tokenizer.decode(exp.tokens[exp.prompt_length :])
         self.assertIn("What's the weather like in Beijing today?", prompt)
         self.assertNotIn("Let me get the weather for you.", prompt)
