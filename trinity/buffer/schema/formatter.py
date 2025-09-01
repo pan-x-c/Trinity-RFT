@@ -133,7 +133,11 @@ class SFTFormatter(ExperienceFormatter):
             Experience: The resulting Experience object.
         """
         tokens = self.tokenizer.apply_chat_template(
-            messages, tools=tools, add_generation_prompt=False, return_tensors="pt"
+            messages,
+            tools=tools,
+            add_generation_prompt=False,
+            return_tensors="pt",
+            chat_template=self.chat_template,
         )[0]
         if self.enable_concatenated_multi_turn:
             token_ids, action_mask, prompt_length = self.action_mask_method(
@@ -215,6 +219,7 @@ class DPOFormatter(ExperienceFormatter):
     def __init__(self, tokenizer, format_config: FormatConfig):
         self.tokenizer = tokenizer
         self.prompt_type = format_config.prompt_type
+        self.chat_template = format_config.chat_template
         if self.prompt_type == PromptType.PLAINTEXT:
             self.prompt_key = format_config.prompt_key
             self.chosen_key = format_config.chosen_key
@@ -233,13 +238,22 @@ class DPOFormatter(ExperienceFormatter):
         self, prompt_messages, chosen_messages, rejected_messages
     ) -> Experience:
         prompt_tokens = self.tokenizer.apply_chat_template(
-            prompt_messages, add_generation_prompt=True, return_tensors="pt"
+            prompt_messages,
+            add_generation_prompt=True,
+            return_tensors="pt",
+            chat_template=self.chat_template,
         )[0]
         chosen_tokens = self.tokenizer.apply_chat_template(
-            prompt_messages + chosen_messages, add_generation_prompt=False, return_tensors="pt"
+            prompt_messages + chosen_messages,
+            add_generation_prompt=False,
+            return_tensors="pt",
+            chat_template=self.chat_template,
         )[0][len(prompt_tokens) :]
         rejected_tokens = self.tokenizer.apply_chat_template(
-            prompt_messages + rejected_messages, add_generation_prompt=False, return_tensors="pt"
+            prompt_messages + rejected_messages,
+            add_generation_prompt=False,
+            return_tensors="pt",
+            chat_template=self.chat_template,
         )[0][len(prompt_tokens) :]
         return Experience(
             tokens=prompt_tokens,
