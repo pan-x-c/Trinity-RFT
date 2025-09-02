@@ -123,7 +123,7 @@ buffer:
     experience_buffer:
       name: <sft_dataset_name>
       storage_type: file
-      path: `$DATASET_PATH/Mixture-of-Thoughts`
+      path: $DATASET_PATH/Mixture-of-Thoughts
       split: train
       format:
         prompt_type: messages
