@@ -1,3 +1,4 @@
+(Configuration Guide)=
 # Configuration Guide
 
 This section provides a detailed description of the configuration files used in **Trinity-RFT**.
@@ -257,8 +258,19 @@ The configuration for each task dataset is defined as follows:
 - `split`: The split of the task dataset. Default is `train`.
 - `repeat_times`: The number of rollouts generated for a task. If not set, it will be automatically set to `algorithm.repeat_times` for `taskset`, and `1` for `eval_tasksets`.
 - `format`: Defines keys for prompts and responses in the dataset.
-  - `prompt_key`: Specifies which column in the dataset contains the prompt data.
-  - `response_key`: Specifies which column in the dataset contains the response data.
+  - `prompt_type`: Specifies the type of prompts in the dataset. We support `plaintext`, `messages` for now.
+    - `plaintext`: The prompt is in string format.
+    - `messages`: The prompt is organized as a message list.
+  - `prompt_key`: Specifies which column in the dataset contains the user prompt data. Only for `plaintext`.
+  - `response_key`: Specifies which column in the dataset contains the response data. Only for `plaintext`.
+  - `system_prompt_key`: Specifies which column in the dataset contains the system prompt data. Only for `plaintext`.
+  - `system_prompt`: Specifies the system prompt in string format. It has lower priority than `system_prompt_key`. Only for `plaintext`.
+  - `messages_key`: Specifies which column in the dataset contains the messages data. Only for `messages`.
+  - `tools_key`: Specifies which column in the dataset contains the tools data. Support both `plaintext` and `messages`, but the tool data should be organized as a list of dict.
+  - `chosen_key`: Specifies which column in the dataset contains the DPO chosen data. Support both `plaintext` and `messages`, and the data type should be consistent with the prompt type.
+  - `rejected_key`: Similar to `chosen_key`, but it specifies which column in the dataset contains the DPO rejected data.
+  - `enable_concatenated_multi_turn`: Enable concatenated multi-turn style data preprocess. Only for `messages` and only take effect with SFT algorithm.
+  - `chat_template`: Specifies the chat template in string format. If not provided, use `model.custom_chat_template`.
 - `rollout_args`: The parameters for rollout.
   - `temperature`: The temperature for sampling.
 - `default_workflow_type`: Type of workflow logic applied to this dataset. If not specified, the `buffer.default_workflow_type` is used.
