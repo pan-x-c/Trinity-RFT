@@ -2,7 +2,7 @@
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 from torch.distributed._tensor import DTensor, Placement, Shard
@@ -112,7 +112,7 @@ def tokenize_and_mask_messages_default(
     return tokens[0], assistant_token_mask, prompt_length
 
 
-def get_action_mask_method(chat_template: Optional[str] = None):
+def get_action_mask_method(chat_template: Optional[str] = None) -> Callable:
     """Get the action mask method according to the chat template.
 
     Args:
