@@ -17,7 +17,7 @@ from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import Config
 from trinity.common.constants import RunningStatus, SyncMethod, SyncStyle
 from trinity.common.experience import Experiences
-from trinity.manager.manager import StateManager
+from trinity.manager.state_manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
 from trinity.utils.log import get_logger
 from trinity.utils.monitor import MONITOR
