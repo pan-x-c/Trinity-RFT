@@ -160,7 +160,8 @@ class Trainer:
     async def save_checkpoint(self) -> None:
         self.engine.save_checkpoint()
         self.state.save_trainer(
-            self.train_step_num, self.engine.train_step_num * self.config.buffer.train_batch_size
+            current_exp_index=self.engine.train_step_num * self.config.buffer.train_batch_size,
+            current_step=self.train_step_num,
         )
 
     async def shutdown(self) -> None:

@@ -120,7 +120,7 @@ class ExperienceStorageTest(RayUnittestBaseAysnc):
                 self.assertEqual(exp.eid.task, cnt)
                 cnt -= 1
 
-        # expereience buffer support experience reuse
+        # experience buffer support experience reuse
         cnt = self.total_num
         for _ in range(self.total_num // self.train_batch_size):
             exps = reader.read()
