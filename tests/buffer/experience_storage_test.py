@@ -12,7 +12,7 @@ from trinity.buffer.reader.sql_reader import SQLReader
 from trinity.buffer.writer.sql_writer import SQLWriter
 from trinity.common.config import BufferConfig, StorageConfig
 from trinity.common.constants import StorageType
-from trinity.common.experience import Experience, EID
+from trinity.common.experience import EID, Experience
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "test.db")
 
@@ -112,6 +112,15 @@ class ExperienceStorageTest(RayUnittestBaseAysnc):
                 for i in range(1, self.put_batch_size + 1)
             ]
             await writer.write_async(exps)
+        cnt = self.total_num
+        for _ in range(self.total_num // self.train_batch_size):
+            exps = reader.read()
+            self.assertEqual(len(exps), self.train_batch_size)
+            for exp in exps:
+                self.assertEqual(exp.eid.task, cnt)
+                cnt -= 1
+
+        # expereience buffer support experience reuse
         cnt = self.total_num
         for _ in range(self.total_num // self.train_batch_size):
             exps = reader.read()
