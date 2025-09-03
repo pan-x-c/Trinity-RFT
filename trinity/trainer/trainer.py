@@ -76,7 +76,7 @@ class Trainer:
                 self.logger.error(f"Error in Trainer:\n{traceback.format_exc()}")
                 self.train_continue = False
 
-        self.engine.save_checkpoint(block_until_saved=True)
+        self.save_checkpoint(block_until_saved=True)
         await self.synchronizer.set_trainer_status.remote(RunningStatus.STOPPED)
         self.logger.info("--------------------\n> Trainer finished.\n--------------------")
         return self.config.trainer.name
@@ -99,7 +99,7 @@ class Trainer:
                 or self.train_step_num % self.config.trainer.save_interval != 0
             ):
                 self.logger.info(f"Saving at step {self.train_step_num}.")
-                self.engine.save_checkpoint()
+                self.save_checkpoint()
                 self.logger.info(f"Saved at step {self.train_step_num}.")
             return False
         self.logger.info(f"Sampling at step {self.train_step_num + 1} done.")
@@ -142,7 +142,7 @@ class Trainer:
                 self.engine.sync_weight()
                 self.last_trainer_sync_step = self.train_step_num
         elif self.config.synchronizer.sync_method == SyncMethod.CHECKPOINT:
-            self.engine.save_state_dict()
+            self.save_state_dict()
         elif self.config.synchronizer.sync_method == SyncMethod.MEMORY:
             self.engine.upload_state_dict()
         self.logger.info(f"Trainer synchronizing weights at step {self.train_step_num} end.")
@@ -157,8 +157,8 @@ class Trainer:
             )
             self._sample_exps_to_log.clear()
 
-    async def save_checkpoint(self) -> None:
-        self.engine.save_checkpoint()
+    def save_checkpoint(self, block_until_saved: bool = False) -> None:
+        self.engine.save_checkpoint(block_until_saved=block_until_saved)
         self.state.save_trainer(
             current_exp_index=self.engine.train_step_num * self.config.buffer.train_batch_size,
             current_step=self.train_step_num,
