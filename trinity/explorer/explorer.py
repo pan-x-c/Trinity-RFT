@@ -25,7 +25,7 @@ from trinity.common.constants import (
 )
 from trinity.common.models import create_inference_models
 from trinity.explorer.scheduler import Scheduler
-from trinity.manager.manager import StateManager
+from trinity.manager.state_manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
 from trinity.utils.log import get_logger
 from trinity.utils.monitor import MONITOR, gather_metrics

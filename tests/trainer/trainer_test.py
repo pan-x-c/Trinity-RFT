@@ -30,7 +30,7 @@ from trinity.common.constants import (
     SyncStyle,
 )
 from trinity.common.models.utils import get_checkpoint_dir_with_step_num
-from trinity.manager.manager import StateManager
+from trinity.manager.state_manager import StateManager
 
 
 class BaseTrainerCase(RayUnittestBase):
