@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 import ray
 from datasets import Dataset
-from sqlalchemy import asc
+from sqlalchemy import asc, desc
 from sqlalchemy.orm import sessionmaker
 
 from trinity.buffer.schema import init_engine
@@ -88,22 +88,28 @@ class SQLStorage:
 
 
 class SQLExperienceStorage(SQLStorage):
+    """Used as trainer input."""
+
     def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
         super().__init__(storage_config, config)
         self.batch_size = config.train_batch_size
         self.max_timeout = storage_config.max_read_timeout
+        # TODO: optimize the following logic
+        if storage_config.schema_type == "experience":
+            # NOTE: consistent with the old version of experience buffer
+            self._read_method = self._read_priority
+        else:
+            # SFT / DPO uses FIFO style
+            self._read_method = self._read_fifo
 
     def write(self, data: List[Experience]) -> None:
         with retry_session(self.session, self.max_retry_times, self.max_retry_interval) as session:
             experience_models = [self.table_model_cls.from_experience(exp) for exp in data]
             session.add_all(experience_models)
 
-    def read(self, batch_size: Optional[int] = None) -> List[Experience]:
-        if self.stopped:
-            raise StopIteration()
-
+    def _read_fifo(self, batch_size: int) -> List[Experience]:
+        """Read experiences in FIFO order."""
         exp_list = []
-        batch_size = batch_size or self.batch_size  # type: ignore
         start_time = time.time()
         while len(exp_list) < batch_size:
             if self.stopped:
@@ -133,6 +139,33 @@ class SQLExperienceStorage(SQLStorage):
                 exp_list.extend([self.table_model_cls.to_experience(exp) for exp in experiences])
         return exp_list
 
+    def _read_priority(self, batch_size: int) -> List[Experience]:
+        exp_list = []
+        with retry_session(self.session, self.max_retry_times, self.max_retry_interval) as session:
+            experiences = (
+                session.query(self.table_model_cls)
+                .order_by(asc(self.table_model_cls.consumed), desc(self.table_model_cls.id))
+                .limit(batch_size)
+                .with_for_update()
+                .all()
+            )
+            if not experiences:
+                raise StopIteration()
+            ids = [exp.id for exp in experiences]
+            session.query(self.table_model_cls).filter(self.table_model_cls.id.in_(ids)).update(
+                {self.table_model_cls.consumed: self.table_model_cls.consumed + 1},
+                synchronize_session=False,
+            )
+            exp_list.extend([self.table_model_cls.to_experience(exp) for exp in experiences])
+        return exp_list
+
+    def read(self, batch_size: Optional[int] = None) -> List[Experience]:
+        if self.stopped:
+            raise StopIteration()
+
+        batch_size = batch_size or self.batch_size
+        return self._read_method(batch_size)
+
     @classmethod
     def load_from_dataset(
         cls, dataset: Dataset, storage_config: StorageConfig, config: BufferConfig
@@ -158,6 +191,8 @@ class SQLExperienceStorage(SQLStorage):
 
 
 class SQLTaskStorage(SQLStorage):
+    """Used as explorer input."""
+
     def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
         super().__init__(storage_config, config)
         self.batch_size = config.batch_size

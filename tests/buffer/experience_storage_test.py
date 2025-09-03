@@ -31,7 +31,7 @@ class ExperienceStorageTest(RayUnittestBaseAysnc):
     async def test_sql_storage(self):
         meta = StorageConfig(
             name="test_storage",
-            schema_type="experience",
+            schema_type="sft",
             storage_type=StorageType.SQL,
             max_read_timeout=3,
             path=f"sqlite:///{DB_PATH}",

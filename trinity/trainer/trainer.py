@@ -17,6 +17,7 @@ from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import Config
 from trinity.common.constants import RunningStatus, SyncMethod, SyncStyle
 from trinity.common.experience import Experiences
+from trinity.manager.manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
 from trinity.utils.log import get_logger
 from trinity.utils.monitor import MONITOR
@@ -32,6 +33,11 @@ class Trainer:
         load_plugins()
         self.synchronizer = Synchronizer.get_actor(config)
         self.engine = get_trainer_wrapper(config)
+        self.state = StateManager(config)
+        trainer_state = self.state.load_trainer()
+        config.buffer.trainer_input.experience_buffer.index = trainer_state.get(
+            "latest_exp_index", 0
+        )
         self.last_trainer_sync_step = 0
         self.monitor = MONITOR.get(config.monitor.monitor_type)(
             project=config.project,
@@ -150,6 +156,12 @@ class Trainer:
                 "rollout_examples", pd.DataFrame(self._sample_exps_to_log), self.train_step_num
             )
             self._sample_exps_to_log.clear()
+
+    async def save_checkpoint(self) -> None:
+        self.engine.save_checkpoint()
+        self.state.save_trainer(
+            self.train_step_num, self.engine.train_step_num * self.config.buffer.train_batch_size
+        )
 
     async def shutdown(self) -> None:
         self.monitor.close()

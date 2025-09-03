@@ -1,7 +1,7 @@
-from trinity.manager.manager import CacheManager
+from trinity.manager.manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
 
 __all__ = [
-    "CacheManager",
+    "StateManager",
     "Synchronizer",
 ]
