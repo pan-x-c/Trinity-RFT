@@ -59,7 +59,7 @@ class StateManager:
         return {}
 
     def save_trainer(self, current_exp_index: int, current_step: int) -> None:
-        with open(self.trainer_meta_path, "w", encoding="utf-8") as f:
+        with open(self.trainer_state_path, "w", encoding="utf-8") as f:
             json.dump(
                 {"latest_exp_index": current_exp_index, "latest_iteration": current_step},
                 f,
@@ -67,9 +67,9 @@ class StateManager:
             )
 
     def load_trainer(self) -> dict:
-        if os.path.exists(self.trainer_meta_path):
+        if os.path.exists(self.trainer_state_path):
             try:
-                with open(self.trainer_meta_path, "r", encoding="utf-8") as f:
+                with open(self.trainer_state_path, "r", encoding="utf-8") as f:
                     trainer_meta = json.load(f)
                 self.logger.info(
                     "----------------------------------\n"
