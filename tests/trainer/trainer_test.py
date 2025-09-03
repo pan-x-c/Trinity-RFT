@@ -266,7 +266,7 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         self.config.buffer.trainer_input.experience_buffer = StorageConfig(
             name="test_sql_storage",
             max_read_timeout=20,
-            storage_type=StorageType.SQL,
+            storage_type=StorageType.QUEUE,
             max_retry_times=10,
         )
         self.config.check_and_update()

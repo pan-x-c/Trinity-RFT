@@ -106,6 +106,7 @@ class SQLExperienceStorage(SQLStorage):
         with retry_session(self.session, self.max_retry_times, self.max_retry_interval) as session:
             experience_models = [self.table_model_cls.from_experience(exp) for exp in data]
             session.add_all(experience_models)
+        self.logger.info(f"Write {len(experience_models)} experiences to SQL storage.")
 
     def _read_fifo(self, batch_size: int) -> List[Experience]:
         """Read experiences in FIFO order."""
@@ -114,9 +115,6 @@ class SQLExperienceStorage(SQLStorage):
         while len(exp_list) < batch_size:
             if self.stopped:
                 raise StopIteration()
-            if len(exp_list):
-                self.logger.info(f"Waiting for {batch_size - len(exp_list)} more experiences...")
-                time.sleep(1)
             if time.time() - start_time > self.max_timeout:
                 self.logger.warning(
                     f"Max read timeout reached ({self.max_timeout} s), only get {len(exp_list)} experiences, stopping..."
@@ -137,26 +135,52 @@ class SQLExperienceStorage(SQLStorage):
                     self.offset = experiences[-1].id
                     start_time = time.time()
                 exp_list.extend([self.table_model_cls.to_experience(exp) for exp in experiences])
+            if len(exp_list) < batch_size:
+                self.logger.info(f"Waiting for {batch_size - len(exp_list)} more experiences...")
+                time.sleep(1)
         return exp_list
 
     def _read_priority(self, batch_size: int) -> List[Experience]:
         exp_list = []
-        with retry_session(self.session, self.max_retry_times, self.max_retry_interval) as session:
-            experiences = (
-                session.query(self.table_model_cls)
-                .order_by(asc(self.table_model_cls.consumed), desc(self.table_model_cls.id))
-                .limit(batch_size)
-                .with_for_update()
-                .all()
-            )
-            if not experiences:
+        start_time = time.time()
+        latest_size = 0
+        while latest_size < batch_size:
+            if self.stopped:
                 raise StopIteration()
-            ids = [exp.id for exp in experiences]
-            session.query(self.table_model_cls).filter(self.table_model_cls.id.in_(ids)).update(
-                {self.table_model_cls.consumed: self.table_model_cls.consumed + 1},
-                synchronize_session=False,
-            )
-            exp_list.extend([self.table_model_cls.to_experience(exp) for exp in experiences])
+            if time.time() - start_time > self.max_timeout:
+                self.logger.warning(
+                    f"Max read timeout reached ({self.max_timeout} s), only get {latest_size} experiences, stopping..."
+                )
+                raise StopIteration()
+            with retry_session(
+                self.session, self.max_retry_times, self.max_retry_interval
+            ) as session:
+                experiences = (
+                    session.query(self.table_model_cls)
+                    .order_by(asc(self.table_model_cls.consumed), desc(self.table_model_cls.id))
+                    .limit(batch_size)
+                    .with_for_update()
+                    .all()
+                )
+                if len(experiences) != batch_size:
+                    if latest_size != len(experiences):
+                        latest_size = len(experiences)
+                        start_time = time.time()
+                else:
+                    ids = [exp.id for exp in experiences]
+                    session.query(self.table_model_cls).filter(
+                        self.table_model_cls.id.in_(ids)
+                    ).update(
+                        {self.table_model_cls.consumed: self.table_model_cls.consumed + 1},
+                        synchronize_session=False,
+                    )
+                    exp_list.extend(
+                        [self.table_model_cls.to_experience(exp) for exp in experiences]
+                    )
+                    break
+
+            self.logger.info(f"Waiting for {batch_size - len(exp_list)} more experiences...")
+            time.sleep(1)
         return exp_list
 
     def read(self, batch_size: Optional[int] = None) -> List[Experience]:

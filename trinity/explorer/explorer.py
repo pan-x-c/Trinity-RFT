@@ -345,7 +345,6 @@ class Explorer:
     async def _finish_explore_step(self, step: int, model_version: int) -> None:
         statuses, exps = await self.scheduler.get_results(batch_id=step)
         metric = {"rollout/model_version": model_version}
-        # TODO: avoid blocking
         pipeline_metrics = await self.experience_pipeline.process.remote(exps)
         metric.update(pipeline_metrics)
         if statuses:
