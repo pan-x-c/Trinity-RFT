@@ -142,7 +142,7 @@ class Trainer:
                 self.engine.sync_weight()
                 self.last_trainer_sync_step = self.train_step_num
         elif self.config.synchronizer.sync_method == SyncMethod.CHECKPOINT:
-            self.save_state_dict()
+            self.engine.save_state_dict()
         elif self.config.synchronizer.sync_method == SyncMethod.MEMORY:
             self.engine.upload_state_dict()
         self.logger.info(f"Trainer synchronizing weights at step {self.train_step_num} end.")
