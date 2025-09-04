@@ -75,9 +75,9 @@ html_sidebars = {
     "**": [
         "navbar-logo.html",
         "icon-links.html",
+        "versions.html",
         "search-button-field.html",
         "sbt-sidebar-nav.html",
-        "versions.html",
     ]
 }
 

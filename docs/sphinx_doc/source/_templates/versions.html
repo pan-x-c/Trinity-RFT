@@ -12,10 +12,10 @@
           </summary>
           <ul>
             {%- for item in versions.branches %}
-            <li class="toctree-l2 {% if item == current_version %}current{% endif %} "><a class="reference" href="{{item.url}}">{% if item.name == "main" %}latest{% else %}{{item.name}}{% endif %}</a> (latest)</li>
+            <li class="toctree-l2 {% if item == current_version %}current{% endif %} "><a class="reference" href="{{item.url}}">{% if item.name == "main" %}latest{% else %}{{item.name}}{% endif %}</a></li>
             {%- endfor %}
             {%- for item in versions.tags|reverse %}
-            <li class="toctree-l2 {% if item == current_version %}current{% endif %} "><a class="reference" href="{{item.url}}">{% if item.name == "main" %}latest{% else %}{{item.name}}{% endif %}}</a></li>
+            <li class="toctree-l2 {% if item == current_version %}current{% endif %} "><a class="reference" href="{{item.url}}">{% if item.name == "main" %}latest{% else %}{{item.name}}{% endif %}</a></li>
             {%- endfor %}
           </ul>
         </details>
