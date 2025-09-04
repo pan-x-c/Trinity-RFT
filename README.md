@@ -312,11 +312,6 @@ Guidelines for full configurations:
 + See [this document](./docs/sphinx_doc/source/tutorial/trinity_configs.md)
 
 
-Guidelines for Benchmark Toolkit:
-
-+ See [Benchmark Runner](./benchmark/README.md)
-
-
 Guidelines for developers and researchers:
 
 + [Benchmark Toolkit for quick verification and experimentation](./benchmark/README.md)
