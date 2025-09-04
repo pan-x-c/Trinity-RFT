@@ -22,17 +22,13 @@
 
 ## 🚀 News
 
-* [2025-09] ✨ Trinity-RFT v0.3.0 is released! New features include:
+* [2025-09] ✨ [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.3.0)] Trinity-RFT v0.3.0 is released!  New features include:
   * Enhance Buffer functionality
   * Support FSDP2 and Megatron
   * Support multi-modal models
   * More RL algorithms and examples
 * [2025-08] 🎵 We introduce [CHORD](https://github.com/modelscope/Trinity-RFT/tree/main/examples/mix_chord), a dynamic integration of SFT and RL for enhanced LLM fine-tuning ([paper](https://arxiv.org/pdf/2508.11408)).
-* [2025-08] ✨ Trinity-RFT v0.2.1 is released! Enhanced features include:
-  * Agentic RL: support training with general multi-step agentic workflows; check out the [ALFWorld](./docs/sphinx_doc/source/tutorial/example_step_wise.md) and [ReAct](./docs/sphinx_doc/source/tutorial/example_react.md) examples.
-  * Rollout-Training scheduling: introduce Scheduler, [Synchronizer](./docs/sphinx_doc/source/tutorial/synchronizer.md) and priority queue buffer, which facilitates more efficient and dynamic scheduling of the RFT process.
-  * [A benchmark tool](./benchmark) for quick verification and experimentation.
-  * RL algorithms: implement [GSPO](https://github.com/modelscope/Trinity-RFT/pull/154), [AsymRE](https://github.com/modelscope/Trinity-RFT/pull/187), [TOPR, CISPO](https://github.com/modelscope/Trinity-RFT/pull/185), [RAFT](https://github.com/modelscope/Trinity-RFT/pull/174).
+* [2025-08] [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.2.1)]Trinity-RFT v0.2.1 is released.
 * [2025-07] Trinity-RFT v0.2.0 is released.
 * [2025-07] We update the [technical report](https://arxiv.org/abs/2505.17826) (arXiv v2) with new features, examples, and experiments.
 * [2025-06] Trinity-RFT v0.1.1 is released.
@@ -42,90 +38,57 @@
 
 ## 💡 What is Trinity-RFT?
 
-
-
 Trinity-RFT is a general-purpose, flexible and easy-to-use framework for reinforcement fine-tuning (RFT) of large language models (LLM).
-It is designed to support diverse application scenarios and serve as a unified platform for exploring advanced RL paradigms in the [era of experience](https://storage.googleapis.com/deepmind-media/Era-of-Experience%20/The%20Era%20of%20Experience%20Paper.pdf).
 
+Trinity-RFT decomposes the RFT process into three key components and unifies them with a modular architecture:
+
+* **Explorer**: For agent-environment interaction.
+* **Trainer**: For model training.
+* **Buffer**: For data management and processing.
+
+
+![The high-level design of Trinity-RFT](<https://img.alicdn.com/imgextra/i2/O1CN01H3UbpF1yP7E1OCLbi_!!6000000006570-2-tps-1334-638.png>)
 
 
 ## ✨ Key Features
 
-* **Unified RFT Core:**
+* **Flexible RFT Modes:**
 
   Supports synchronous/asynchronous, on-policy/off-policy, and online/offline training. Rollout and training can run separately and scale independently on different devices.
+
+![Some RFT modes supported by Trinity-RFT](https://img.alicdn.com/imgextra/i3/O1CN01E7NskS1FFoTI9jlaQ_!!6000000000458-2-tps-1458-682.png)
 
 * **First-Class Agent-Environment Interaction:**
 
   Handles lagged feedback, long-tailed latencies, and agent/env failures gracefully. Supports general multi-step agent-env interaction.
 
-* **Optimized Data Pipelines:**
+![Agentic workflows](https://img.alicdn.com/imgextra/i1/O1CN01z1i7kk1jlMEVa8ZHV_!!6000000004588-2-tps-1262-695.png)
 
-  Treats rollout tasks and experiences as dynamic assets, enabling active management (prioritization, cleaning, augmentation) throughout the RFT lifecycle.
+* **Powerful Data Pipelines:**
+
+  Support pipeline processing of rollout and experience data, enabling active management (prioritization, cleaning, augmentation) throughout the RFT lifecycle.
+
+![The design of data pipelines](https://img.alicdn.com/imgextra/i2/O1CN01BfeHp61sXSlGjH7zQ_!!6000000005776-2-tps-1734-473.png)
 
 * **User-Friendly Design:**
 
   Modular and decoupled architecture for easy adoption and development, plus rich graphical user interfaces for low-code usage.
 
 
-<p align="center">
-  <img src="https://img.alicdn.com/imgextra/i2/O1CN01H3UbpF1yP7E1OCLbi_!!6000000006570-2-tps-1334-638.png" alt="Trinity-RFT">
-  <em>Figure: The high-level design of Trinity-RFT</em>
-</p>
-
-
-<details>
-<summary>Figure: The architecture of RFT-core</summary>
-
-
-<p align="center">
-  <img src="https://img.alicdn.com/imgextra/i1/O1CN01Ti0o4320RywoAuyhN_!!6000000006847-2-tps-3840-2134.png" alt="Trinity-RFT-core-architecture">
-</p>
-
-</details>
-
-
-<details>
-<summary>Figure: Some RFT modes supported by Trinity-RFT</summary>
-
-<p align="center">
-  <img src="https://img.alicdn.com/imgextra/i3/O1CN01E7NskS1FFoTI9jlaQ_!!6000000000458-2-tps-1458-682.png" alt="Trinity-RFT-modes">
-</p>
-
-</details>
-
-
-<details>
-<summary>Figure: Concatenated and general multi-step workflows</summary>
-
-<p align="center">
-  <img src="https://img.alicdn.com/imgextra/i1/O1CN01z1i7kk1jlMEVa8ZHV_!!6000000004588-2-tps-1262-695.png" alt="Trinity-RFT-multi-step">
-</p>
-
-</details>
-
-
-<details>
-<summary>Figure: The design of data pipelines in Trinity-RFT</summary>
-
-<p align="center">
-  <img src="https://img.alicdn.com/imgextra/i2/O1CN01BfeHp61sXSlGjH7zQ_!!6000000005776-2-tps-1734-473.png" alt="Trinity-RFT-data-pipelines">
-</p>
-
-</details>
+![System architecture](https://img.alicdn.com/imgextra/i1/O1CN01Ti0o4320RywoAuyhN_!!6000000006847-2-tps-3840-2134.png)
 
 
 
 ## 🛠️ What can I use Trinity-RFT for?
 
 
-* **Adaptation to New Scenarios:**
+* **Enhance Your Agent :**
 
   Implement agent-environment interaction logic in a single workflow class ([Example](./docs/sphinx_doc/source/tutorial/example_multi_turn.md)),
   or import existing workflows from agent frameworks like AgentScope ([Example](./docs/sphinx_doc/source/tutorial/example_react.md)).
 
 
-* **RL Algorithm Development:**
+* **RL Algorithm Research:**
 
   Develop custom RL algorithms (loss design, sampling strategy, data processing) in compact, plug-and-play classes ([Example](./docs/sphinx_doc/source/tutorial/example_mix_algo.md)).
 
