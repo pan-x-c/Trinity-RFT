@@ -200,9 +200,9 @@ pip install -e .\[flash_attn\]
 Installation using pip:
 
 ```shell
-pip install trinity-rft==0.2.1
+pip install trinity-rft==0.3.0
 # install flash-attn separately
-pip install flash-attn==2.8.0.post2
+pip install flash-attn==2.8.1
 ```
 
 Installation from docker:

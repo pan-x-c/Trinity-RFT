@@ -174,7 +174,7 @@ pip install -e .\[flash_attn\]
 Installation using pip:
 
 ```shell
-pip install trinity-rft==0.2.1
+pip install trinity-rft==0.3.0
 ```
 
 Installation from docker:
