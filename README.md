@@ -79,7 +79,6 @@ The RFT process is modularized into three core components:
 
 * **Rapid RL algorithm design and validation** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
   - Develop custom RL algorithms (loss, sampling and other tricks) in compact, plug-and-play classes ([example](./docs/sphinx_doc/source/tutorial/example_mix_algo.md)).
-  - Tutorial: [Algorithms for RL Algorithm Developers](./docs/sphinx_doc/source/tutorial/trinity_programming_guide.md#algorithms-for-rl-algorithm-developers)
 
 * **Custom datasets and data pipelines for RFT** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
   - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios ([example](./docs/sphinx_doc/source/tutorial/example_data_functionalities.md)).
