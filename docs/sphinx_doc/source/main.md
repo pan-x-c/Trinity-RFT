@@ -8,12 +8,13 @@
 
 ## 🚀 News
 
+* [2025-09] ✨ Trinity-RFT v0.3.0 is released! New features include:
+  * Enhance Buffer functionality
+  * Support FSDP2 and Megatron
+  * Support multi-modal models
+  * More RL algorithms and examples
 * [2025-08] 🎵 We introduce [CHORD](https://github.com/modelscope/Trinity-RFT/tree/main/examples/mix_chord), a dynamic integration of SFT and RL for enhanced LLM fine-tuning ([paper](https://arxiv.org/pdf/2508.11408)).
-* [2025-08] ✨ Trinity-RFT v0.2.1 is released! Enhanced features include:
-  * Agentic RL: support training with general multi-step agentic workflows; check out the [ALFWorld](/tutorial/example_step_wise.md) and [ReAct](/tutorial/example_react.md) examples.
-  * Rollout-Training scheduling: introduce Scheduler, [Synchronizer](/tutorial/synchronizer.md) and priority queue buffer, which facilitates more efficient and dynamic scheduling of the RFT process.
-  * [A benchmark tool](https://github.com/modelscope/Trinity-RFT/tree/main/benchmark) for quick verification and experimentation.
-  * RL algorithms: implement [GSPO](https://github.com/modelscope/Trinity-RFT/pull/154), [AsymRE](https://github.com/modelscope/Trinity-RFT/pull/187), [TOPR, CISPO](https://github.com/modelscope/Trinity-RFT/pull/185), [RAFT](https://github.com/modelscope/Trinity-RFT/pull/174).
+* [2025-08] Trinity-RFT v0.2.1 is released!
 * [2025-07] Trinity-RFT v0.2.0 is released.
 * [2025-07] We update the [technical report](https://arxiv.org/abs/2505.17826) (arXiv v2) with new features, examples, and experiments.
 * [2025-06] Trinity-RFT v0.1.1 is released.

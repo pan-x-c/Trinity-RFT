@@ -22,12 +22,13 @@
 
 ## 🚀 最新动态
 
+* [2025-09] 🎉 Trinity-RFT v0.3.0 版本发布！新增功能包括：
+  * 增强 Buffer 功能
+  * 支持 FSDP2 和 Megatron
+  * 支持多模态模型
+  * 更多 RL 算法和示例
 * [2025-08] 🎵 我们推出了 [CHORD](https://github.com/modelscope/Trinity-RFT/tree/main/examples/mix_chord)，一种动态整合 SFT 和 RL 来微调 LLM 的方法（[论文](https://arxiv.org/pdf/2508.11408)）。
-* [2025-08] ✨ 发布 Trinity-RFT v0.2.1 版本！新增功能包括：
-  * 智能体 RL：支持通用多轮工作流的训练；请参考 [ALFWorld](./docs/sphinx_doc/source/tutorial/example_step_wise.md) 和 [ReAct](./docs/sphinx_doc/source/tutorial/example_react.md) 例子。
-  * Rollout-Training 调度: 通过引入 Scheduler, [Synchronizer](./docs/sphinx_doc/source/tutorial/synchronizer.md) 以及优先队列类型 Buffer, 支持 RFT 流程中更高效与灵活的调度。
-  * [Benchmark 工具](./benchmark)，用于快速验证与实验。
-  * RL 算法：实现 [GSPO](https://github.com/modelscope/Trinity-RFT/pull/154), [AsymRE](https://github.com/modelscope/Trinity-RFT/pull/187), [TOPR, CISPO](https://github.com/modelscope/Trinity-RFT/pull/185), [RAFT](https://github.com/modelscope/Trinity-RFT/pull/174) 等算法。
+* [2025-08] 发布 Trinity-RFT v0.2.1 版本。
 * [2025-07] 发布 Trinity-RFT v0.2.0 版本，新增了多项功能优化。
 * [2025-07] 更新了[技术报告](https://arxiv.org/abs/2505.17826) (arXiv v2)，增加了新功能、示例和实验。
 * [2025-06] 发布 Trinity-RFT v0.1.1 版本，修复了已知问题并提升系统稳定性。
