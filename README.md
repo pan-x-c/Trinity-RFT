@@ -315,7 +315,7 @@ Guidelines for full configurations:
 Guidelines for developers and researchers:
 
 + [Benchmark Toolkit for quick verification and experimentation](./benchmark/README.md)
-+ [Understand the coordination between explorer and trainer](./docs/sphinx_doc/source/tutorial/synchronizer.md)
++ [Understand the coordination between explorer and trainer](https://modelscope.github.io/Trinity-RFT/main/tutorial/synchronizer.html)
 
 
 ## Upcoming features

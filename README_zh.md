@@ -317,7 +317,7 @@ trinity run --config examples/grpo_gsm8k/gsm8k.yaml
 面向开发者和研究人员的指南：
 
 + [用于快速验证实验的 Benchmark 工具](./benchmark/README.md)
-+ [理解 explorer-trainer 调度逻辑](./docs/sphinx_doc/source/tutorial/synchronizer.md)
++ [理解 explorer-trainer 同步逻辑](https://modelscope.github.io/Trinity-RFT/main/tutorial/synchronizer.html)
 
 
 
