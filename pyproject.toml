@@ -79,7 +79,7 @@ megatron = [
 doc = [
     "sphinx",
     "sphinx-autobuild",
-    "sphinx_rtd_theme",
+    "sphinx-book-theme",
     "myst-parser",
     "sphinxcontrib-apidoc",
     "sphinx-multiversion",
