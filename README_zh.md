@@ -74,7 +74,7 @@ RFT 流程被模块化为三个核心组件：
 ## 🛠️ Trinity-RFT 能做什么？
 
 * **用 RL 训练智能体应用** [[教程]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#workflows-for-rl-environment-developers)
-  - 在 Workflow 中实现智能体-环境交互逻辑 ([示例1](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_multi_turn.html)[示例2](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_step_wise.html))，
+  - 在 Workflow 中实现智能体-环境交互逻辑 ([示例1](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_multi_turn.html)，[示例2](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_step_wise.html))，
   - 或从 Agent 框架（如 AgentScope）导入工作流 ([示例](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_react.html))。
 
 * **快速设计和验证 RL 算法** [[教程]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)

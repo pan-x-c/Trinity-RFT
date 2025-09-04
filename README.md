@@ -74,7 +74,7 @@ The RFT process is modularized into three core components:
 ## 🛠️ What can I use Trinity-RFT for?
 
 * **Train agent applications with RL and minimal migration cost** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#workflows-for-rl-environment-developers)
-  - Implement agent-environment interaction logic in a single workflow class ([example1](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_multi_turn.html), [example2](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_step_wise.html)).,
+  - Implement agent-environment interaction logic in a single workflow class ([example1](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_multi_turn.html), [example2](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_step_wise.html)),
   - Or import workflows from agent frameworks like AgentScope ([example](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_react.html)).
 
 * **Rapid RL algorithm design and validation** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
