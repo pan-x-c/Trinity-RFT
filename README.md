@@ -19,7 +19,6 @@
 </div>
 
 
-
 ## 🚀 News
 
 * [2025-09] ✨ [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.3.0)] Trinity-RFT v0.3.0 released: enhanced Buffer, FSDP2 & Megatron support, multi-modal models, and new RL algorithms/examples.
@@ -43,7 +42,7 @@ The RFT process is modularized into three core components:
 * **Buffer**: Manages data storage and processing
 
 
-<img src="https://img.alicdn.com/imgextra/i2/O1CN01H3UbpF1yP7E1OCLbi_!!6000000006570-2-tps-1334-638.png" alt="The high-level design of Trinity-RFT" width="600" />
+<img src="https://img.alicdn.com/imgextra/i2/O1CN01H3UbpF1yP7E1OCLbi_!!6000000006570-2-tps-1334-638.png" alt="The high-level design of Trinity-RFT" width="800" />
 
 
 
@@ -74,14 +73,15 @@ The RFT process is modularized into three core components:
 
 ## 🛠️ What can I use Trinity-RFT for?
 
-* **Train agent applications with RL and minimal migration cost:**
+* **Train agent applications with RL and minimal migration cost** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#workflows-for-rl-environment-developers)
   - Implement agent-environment interaction logic in a single workflow class ([example](./docs/sphinx_doc/source/tutorial/example_multi_turn.md)),
   - Or import workflows from agent frameworks like AgentScope ([example](./docs/sphinx_doc/source/tutorial/example_react.md)).
 
-* **Rapid RL algorithm design and validation:**
-  - Develop custom RL algorithms (loss, sampling, data processing) in compact, plug-and-play classes ([example](./docs/sphinx_doc/source/tutorial/example_mix_algo.md)).
+* **Rapid RL algorithm design and validation** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
+  - Develop custom RL algorithms (loss, sampling and other tricks) in compact, plug-and-play classes ([example](./docs/sphinx_doc/source/tutorial/example_mix_algo.md)).
+  - Tutorial: [Algorithms for RL Algorithm Developers](./docs/sphinx_doc/source/tutorial/trinity_programming_guide.md#algorithms-for-rl-algorithm-developers)
 
-* **Custom datasets and data pipelines for RFT:**
+* **Custom datasets and data pipelines for RFT** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
   - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios ([example](./docs/sphinx_doc/source/tutorial/example_data_functionalities.md)).
 
 ---
@@ -174,7 +174,7 @@ docker build -f scripts/docker/Dockerfile -t trinity-rft:latest .
 docker run -it --gpus all --shm-size="64g" --rm -v $PWD:/workspace -v <root_path_of_data_and_checkpoints>:/data trinity-rft:latest
 ```
 
-If you want to use Megatron-LM, you can refer to this [example](./docs/sphinx_doc/source/tutorial/example_megatron.md) to setup the environment.
+For training with Megatron-LM, please refer to this [example](./docs/sphinx_doc/source/tutorial/example_megatron.md).
 
 ### Step 2: prepare dataset and model
 
@@ -313,13 +313,15 @@ Guidelines for full configurations:
 + See [this document](./docs/sphinx_doc/source/tutorial/trinity_configs.md)
 
 
+Guidelines for Benchmark Toolkit:
+
++ See [Benchmark Runner](./benchmark/README.md)
+
+
 Guidelines for developers and researchers:
 
-+ [Build new RL scenarios](./docs/sphinx_doc/source/tutorial/trinity_programming_guide.md#workflows-for-rl-environment-developers)
-+ [Implement new RL algorithms](./docs/sphinx_doc/source/tutorial/trinity_programming_guide.md#algorithms-for-rl-algorithm-developers)
-+ [Develop new data operators](./docs/sphinx_doc/source/tutorial/trinity_programming_guide.md#operators-for-data-developers)
++ [Benchmark Toolkit for quick verification and experimentation](./benchmark/README.md)
 + [Understand the coordination between explorer and trainer](./docs/sphinx_doc/source/tutorial/synchronizer.md)
-
 
 
 ## Upcoming features
@@ -327,31 +329,14 @@ Guidelines for developers and researchers:
 A tentative roadmap: [#51](https://github.com/modelscope/Trinity-RFT/issues/51)
 
 
-
 ## Contribution guide
-
 
 This project is currently under active development, and we welcome contributions from the community!
 
-
-Code style check:
-
-```shell
-pre-commit run --all-files
-```
-
-
-
-Unit tests:
-
-```shell
-python -m pytest tests
-```
-
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed contribution guidelines.
 
 
 ## Acknowledgements
-
 
 This project is built upon many excellent open-source projects, including:
 
@@ -363,8 +348,8 @@ This project is built upon many excellent open-source projects, including:
 + we have also drawn inspirations from RL frameworks like [OpenRLHF](https://github.com/OpenRLHF/OpenRLHF), [TRL](https://github.com/huggingface/trl) and [ChatLearn](https://github.com/alibaba/ChatLearn);
 + ......
 
-## Citation
 
+## Citation
 
 ```plain
 @misc{trinity-rft,
