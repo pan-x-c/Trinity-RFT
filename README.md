@@ -74,14 +74,14 @@ The RFT process is modularized into three core components:
 ## 🛠️ What can I use Trinity-RFT for?
 
 * **Train agent applications with RL and minimal migration cost** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#workflows-for-rl-environment-developers)
-  - Implement agent-environment interaction logic in a single workflow class ([example](./docs/sphinx_doc/source/tutorial/example_multi_turn.md)),
-  - Or import workflows from agent frameworks like AgentScope ([example](./docs/sphinx_doc/source/tutorial/example_react.md)).
+  - Implement agent-environment interaction logic in a single workflow class ([example1](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_multi_turn.html), [example2](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_step_wise.html)).,
+  - Or import workflows from agent frameworks like AgentScope ([example](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_react.html)).
 
 * **Rapid RL algorithm design and validation** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
-  - Develop custom RL algorithms (loss, sampling and other tricks) in compact, plug-and-play classes ([example](./docs/sphinx_doc/source/tutorial/example_mix_algo.md)).
+  - Develop custom RL algorithms (loss, sampling and other tricks) in compact, plug-and-play classes ([example](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_mix_algo.html)).
 
 * **Custom datasets and data pipelines for RFT** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
-  - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios ([example](./docs/sphinx_doc/source/tutorial/example_data_functionalities.md)).
+  - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios ([example](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_data_functionalities.html)).
 
 ---
 
@@ -173,7 +173,7 @@ docker build -f scripts/docker/Dockerfile -t trinity-rft:latest .
 docker run -it --gpus all --shm-size="64g" --rm -v $PWD:/workspace -v <root_path_of_data_and_checkpoints>:/data trinity-rft:latest
 ```
 
-For training with Megatron-LM, please refer to this [example](./docs/sphinx_doc/source/tutorial/example_megatron.md).
+For training with Megatron-LM, please refer to this [example](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_megatron.html).
 
 ### Step 2: prepare dataset and model
 
@@ -284,32 +284,32 @@ For studio users, click "Run" in the web interface.
 
 Tutorials for running different RFT modes:
 
-+ [Quick example: GRPO on GSM8k](./docs/sphinx_doc/source/tutorial/example_reasoning_basic.md)
-+ [Off-policy RFT](./docs/sphinx_doc/source/tutorial/example_reasoning_advanced.md)
-+ [Fully asynchronous RFT](./docs/sphinx_doc/source/tutorial/example_async_mode.md)
-+ [Offline learning by DPO or SFT](./docs/sphinx_doc/source/tutorial/example_dpo.md)
++ [Quick example: GRPO on GSM8k](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_reasoning_basic.html)
++ [Off-policy RFT](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_reasoning_advanced.html)
++ [Fully asynchronous RFT](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_async_mode.html)
++ [Offline learning by DPO or SFT](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_dpo.html)
 
 
 Tutorials for adapting Trinity-RFT to multi-step agentic scenarios:
 
-+ [Concatenated multi-turn workflow](./docs/sphinx_doc/source/tutorial/example_multi_turn.md)
-+ [General multi-step workflow](./docs/sphinx_doc/source/tutorial/example_step_wise.md)
-+ [ReAct workflow with an agent framework](./docs/sphinx_doc/source/tutorial/example_react.md)
++ [Concatenated multi-turn workflow](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_multi_turn.html)
++ [General multi-step workflow](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_step_wise.html)
++ [ReAct workflow with an agent framework](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_react.html)
 
 
 Tutorials for data-related functionalities:
 
-+ [Advanced data processing & human-in-the-loop](./docs/sphinx_doc/source/tutorial/example_data_functionalities.md)
++ [Advanced data processing & human-in-the-loop](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_data_functionalities.html)
 
 
 Tutorials for RL algorithm development/research with Trinity-RFT:
 
-+ [RL algorithm development with Trinity-RFT](./docs/sphinx_doc/source/tutorial/example_mix_algo.md)
++ [RL algorithm development with Trinity-RFT](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_mix_algo.html)
 
 
 Guidelines for full configurations:
 
-+ See [this document](./docs/sphinx_doc/source/tutorial/trinity_configs.md)
++ See [this document](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_configs.html)
 
 
 Guidelines for developers and researchers:
