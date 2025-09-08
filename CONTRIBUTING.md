@@ -9,11 +9,6 @@ Thank you for your interest in contributing to Trinity-RFT! We welcome all types
 3. Write or update unit tests (`python -m pytest tests`).
 4. Submit a Pull Request with a clear description of your changes and motivation.
 
-## Coding Standards
-
-- Follow PEP8 guidelines.
-- Run style checks and unit tests before submitting.
-
 ## Issues and Suggestions
 
 - Please submit bug reports and feature requests via [GitHub Issues](https://github.com/modelscope/Trinity-RFT/issues).
