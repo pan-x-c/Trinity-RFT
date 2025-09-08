@@ -78,7 +78,7 @@ The RFT process is modularized into three core components:
   - Or import workflows from agent frameworks like AgentScope ([example](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_react.html)).
 
 * **Rapid RL algorithm design and validation** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
-  - Develop custom RL algorithms (loss, sampling and other tricks) in compact, plug-and-play classes ([example](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_mix_algo.html)).
+  - Develop custom RL algorithms (loss design, sampling strategy, etc.) in compact, plug-and-play classes ([example](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_mix_algo.html)).
 
 * **Custom datasets and data pipelines for RFT** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
   - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios ([example](https://modelscope.github.io/Trinity-RFT/main/tutorial/example_data_functionalities.html)).
@@ -146,7 +146,7 @@ pip install -e .[flash_attn]
 # for zsh
 pip install -e .\[flash_attn\]
 # Try the following command if you encounter errors during flash-attn installation
-# pip install flash-attn==2.8.0.post2 -v --no-build-isolation
+# pip install flash-attn==2.8.1 -v --no-build-isolation
 ```
 
 Installation using pip:
@@ -158,7 +158,6 @@ pip install flash-attn==2.8.1
 ```
 
 Installation from docker:
-we have provided a dockerfile for Trinity-RFT (trinity)
 
 ```shell
 git clone https://github.com/modelscope/Trinity-RFT
@@ -280,6 +279,9 @@ For studio users, click "Run" in the web interface.
 
 
 ## Further tutorials
+
+> [!NOTE]
+> For more tutorials, please refer to the [Trinity-RFT Documentation](https://modelscope.github.io/Trinity-RFT/).
 
 
 Tutorials for running different RFT modes:

@@ -65,3 +65,31 @@ The RFT process is modularized into three core components:
 
 * **Custom datasets and data pipelines for RFT**
   - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios ([example](/tutorial/example_data_functionalities.md)).
+
+
+## Acknowledgements
+
+This project is built upon many excellent open-source projects, including:
+
++ [verl](https://github.com/volcengine/verl) and [PyTorch's FSDP](https://pytorch.org/docs/stable/fsdp.html) for LLM training;
++ [vLLM](https://github.com/vllm-project/vllm) for LLM inference;
++ [Data-Juicer](https://github.com/modelscope/data-juicer?tab=readme-ov-file) for data processing pipelines;
++ [AgentScope](https://github.com/modelscope/agentscope) for agentic workflow;
++ [Ray](https://github.com/ray-project/ray) for distributed systems;
++ we have also drawn inspirations from RL frameworks like [OpenRLHF](https://github.com/OpenRLHF/OpenRLHF), [TRL](https://github.com/huggingface/trl) and [ChatLearn](https://github.com/alibaba/ChatLearn);
++ ......
+
+
+## Citation
+
+```
+@misc{trinity-rft,
+      title={Trinity-RFT: A General-Purpose and Unified Framework for Reinforcement Fine-Tuning of Large Language Models},
+      author={Xuchen Pan and Yanxi Chen and Yushuo Chen and Yuchang Sun and Daoyuan Chen and Wenhao Zhang and Yuexiang Xie and Yilun Huang and Yilei Zhang and Dawei Gao and Yaliang Li and Bolin Ding and Jingren Zhou},
+      year={2025},
+      eprint={2505.17826},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2505.17826},
+}
+```
