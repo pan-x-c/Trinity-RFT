@@ -56,7 +56,7 @@ The RFT process is modularized into three core components:
   - Or import workflows from agent frameworks like AgentScope ([example](/tutorial/example_react.md)).
 
 * **Rapid RL algorithm design and validation**
-  - Develop custom RL algorithms (loss, sampling and other tricks) in compact, plug-and-play classes ([example](/tutorial/example_mix_algo.md)).
+  - Develop custom RL algorithms (loss design, sampling strategy, etc.) in compact, plug-and-play classes ([example](/tutorial/example_mix_algo.md)).
 
 * **Custom datasets and data pipelines for RFT**
   - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios ([example](/tutorial/example_data_functionalities.md)).
