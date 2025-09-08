@@ -347,7 +347,7 @@ This project is built upon many excellent open-source projects, including:
 
 ## Citation
 
-```plain
+```bibtex
 @misc{trinity-rft,
       title={Trinity-RFT: A General-Purpose and Unified Framework for Reinforcement Fine-Tuning of Large Language Models},
       author={Xuchen Pan and Yanxi Chen and Yushuo Chen and Yuchang Sun and Daoyuan Chen and Wenhao Zhang and Yuexiang Xie and Yilun Huang and Yilei Zhang and Dawei Gao and Yaliang Li and Bolin Ding and Jingren Zhou},

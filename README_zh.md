@@ -282,7 +282,7 @@ trinity run --config examples/grpo_gsm8k/gsm8k.yaml
 ## 更多教程
 
 > [!NOTE]
-> 更多教程请参考 [Trinity-RFT 文档](https://modelscope.github.io/Tr
+> 更多教程请参考 [Trinity-RFT 文档](https://modelscope.github.io/Trinity-RFT/)。
 
 运行不同 RFT 模式的教程：
 
@@ -352,7 +352,7 @@ trinity run --config examples/grpo_gsm8k/gsm8k.yaml
 ## 引用
 
 
-```plain
+```bibtex
 @misc{trinity-rft,
       title={Trinity-RFT: A General-Purpose and Unified Framework for Reinforcement Fine-Tuning of Large Language Models},
       author={Xuchen Pan and Yanxi Chen and Yushuo Chen and Yuchang Sun and Daoyuan Chen and Wenhao Zhang and Yuexiang Xie and Yilun Huang and Yilei Zhang and Dawei Gao and Yaliang Li and Bolin Ding and Jingren Zhou},
