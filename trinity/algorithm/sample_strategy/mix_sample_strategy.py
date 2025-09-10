@@ -22,7 +22,7 @@ class MixSampleStrategy(SampleStrategy):
     def __init__(self, buffer_config: BufferConfig, **kwargs):
         super().__init__(buffer_config)
         self.expert_data_ratio = kwargs.get("expert_data_ratio", 0.5)
-        self.sft_dataset_name = kwargs.get("sft_dataset_name", "sft_warmup_dataset")
+        self.sft_dataset_name = kwargs.get("sft_dataset_name", "sft_dataset")
         tot_batch_size = buffer_config.train_batch_size
         expert_batch_size = ceil(self.expert_data_ratio * tot_batch_size)
 
@@ -97,5 +97,5 @@ class MixSampleStrategy(SampleStrategy):
     def default_args(cls) -> Dict:
         return {
             "expert_data_ratio": 0.5,
-            "sft_dataset_name": "sft_warmup_dataset",
+            "sft_dataset_name": "sft_dataset",
         }

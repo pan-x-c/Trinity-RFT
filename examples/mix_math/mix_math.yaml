@@ -53,15 +53,16 @@ buffer:
       name: math_buffer
       storage_type: queue
       path: /PATH/TO/BUFFER/
-    sft_warmup_dataset:
-      total_epochs: 10
-      name: math_sft
-      storage_type: file
-      path: /PATH/TO/EXPERT_DATA/
-      split: 'train'
-      format:
-        prompt_type: messages
-        messages_key: 'messages'
+    auxiliary_buffers:
+      sft_dataset:
+        total_epochs: 10
+        name: math_sft
+        storage_type: file
+        path: /PATH/TO/EXPERT_DATA/
+        split: 'train'
+        format:
+          prompt_type: messages
+          messages_key: 'messages'
 explorer:
   eval_interval: 10
   runner_per_model: 8
