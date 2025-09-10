@@ -338,7 +338,7 @@ class ExplorerInput:
 
 
 @dataclass
-class TrainerInput(dict):
+class TrainerInput:
     """Config for trainer input."""
 
     # The main experience buffer to be used in trainer
@@ -491,6 +491,7 @@ class LogConfig:
 class StageConfig:
     """Configs for a stage."""
 
+    stage_name: Optional[str] = None
     mode: Optional[str] = None
     algorithm: Optional[AlgorithmConfig] = None
     buffer: Optional[BufferConfig] = None
@@ -789,8 +790,10 @@ class Config:
             new_config = copy.deepcopy(self)
             for field_name in stage.__dataclass_fields__:
                 stage_value = getattr(stage, field_name)
-                if stage_value is not None:
+                if stage_value is not None and hasattr(new_config, field_name):
                     setattr(new_config, field_name, stage_value)
+            if stage.stage_name:
+                new_config.name = f"{self.name}/{stage.stage_name}"
             new_config.check_and_update()
             yield new_config
 

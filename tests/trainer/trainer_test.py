@@ -577,10 +577,12 @@ class TestTrainerMIX(BaseTrainerCase):
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.synchronizer.sync_interval = 1
         self.config.trainer.save_interval = 1
-        self.config.buffer.trainer_input.sft_warmup_dataset = get_unittest_dataset_config(
-            "sft_for_gsm8k"
-        )
-        self.config.buffer.trainer_input.sft_warmup_dataset.total_epochs = 8  # test this works
+        self.config.buffer.trainer_input.auxiliary_buffers[
+            "sft_dataset"
+        ] = get_unittest_dataset_config("sft_for_gsm8k")
+        self.config.buffer.trainer_input.auxiliary_buffers[
+            "sft_dataset"
+        ].total_epochs = 8  # test this works
         self.config.check_and_update()
         self.config.buffer.trainer_input.experience_buffer.max_read_timeout = 20
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2

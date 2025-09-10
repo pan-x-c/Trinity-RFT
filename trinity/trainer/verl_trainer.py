@@ -129,11 +129,10 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
             resource_pool_spec=resource_pool_spec, mapping=mapping
         )
         self.algorithm_config = global_config.algorithm
-        self.algorithm = None
 
         # specify advantage function for various rft algorithms
-        algorithm = ALGORITHM_TYPE.get(self.algorithm_config.algorithm_type)
-        if algorithm.compute_advantage_in_trainer:
+        self.algorithm = ALGORITHM_TYPE.get(self.algorithm_config.algorithm_type)
+        if self.algorithm.compute_advantage_in_trainer:
             self.advantage_fn = ADVANTAGE_FN.get(self.algorithm_config.advantage_fn)(
                 **self.algorithm_config.advantage_fn_args
             )
@@ -262,6 +261,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
 
     def prepare(self):
         self.actor_rollout_wg.setup_weight_sync_group()
+        self.actor_rollout_wg.set_algorithm(self.algorithm_config)
 
         # The global step counter, initialized to 0
         # It represents the total number of training steps completed so far
