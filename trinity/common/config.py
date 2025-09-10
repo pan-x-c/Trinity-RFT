@@ -785,29 +785,14 @@ class Config:
         Yields:
             Config: The config after applying each stage.
         """
-        for idx in range(len(self.stages)):
-            current_config = self._apply_stage(idx)
-            yield current_config
-
-    def _apply_stage(self, stage_idx: int) -> Config:
-        """Apply the stage config to the current config.
-
-        Args:
-            stage_idx (int): The index of the stage to apply.
-
-        Returns:
-            Config: The new config after applying the stage config.
-        """
-        if stage_idx < 0 or stage_idx >= len(self.stages):
-            raise ValueError(f"Invalid stage index: {stage_idx}")
-        stage = self.stages[stage_idx]
-        new_config = copy.deepcopy(self)
-        for field_name in stage.__dataclass_fields__:
-            stage_value = getattr(stage, field_name)
-            if stage_value is not None:
-                setattr(new_config, field_name, stage_value)
-        new_config.check_and_update()
-        return new_config
+        for stage in self.stages:
+            new_config = copy.deepcopy(self)
+            for field_name in stage.__dataclass_fields__:
+                stage_value = getattr(stage, field_name)
+                if stage_value is not None:
+                    setattr(new_config, field_name, stage_value)
+            new_config.check_and_update()
+            yield new_config
 
     def check_and_update(self) -> None:  # noqa: C901
         """Check and update the config."""
