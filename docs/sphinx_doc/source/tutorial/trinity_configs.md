@@ -11,7 +11,7 @@ The configuration for **Trinity-RFT** is defined in a `YAML` file and organized 
 project: Trinity-RFT
 name: example
 mode: both
-checkpoint_root_dir: /PATH/TO/CHECKPOINT
+checkpoint_root_dir: ${oc.env:TRINITY_CHECKPOINT_ROOT_DIR,./checkpoints}
 continue_from_checkpoint: true
 
 algorithm:
@@ -67,7 +67,7 @@ These are general settings that apply to the entire experiment.
 project: Trinity-RFT
 name: example
 mode: both
-checkpoint_root_dir: ${oc.env:CHECKPOINT_ROOT_DIR}   # CHECKPOINT_ROOT_DIR is an environment variable set in advance
+checkpoint_root_dir: ${oc.env:TRINITY_CHECKPOINT_ROOT_DIR,./checkpoints}   # TRINITY_CHECKPOINT_ROOT_DIR is an environment variable set in advance
 ```
 
 - `project`: The name of the project.
@@ -217,7 +217,7 @@ buffer:
     taskset:
       name: countdown_train
       storage_type: file
-      path: /PATH/TO/DATA
+      path: ${oc.env:TRINITY_TASKSET_PATH}
       split: train
       format:
         prompt_key: 'question'
@@ -230,7 +230,7 @@ buffer:
     eval_tasksets:
     - name: countdown_eval
       storage_type: file
-      path: /PATH/TO/DATA
+      path: ${oc.env:TRINITY_TASKSET_PATH}
       split: test
       repeat_times: 1
       format:
@@ -285,7 +285,7 @@ buffer:
       sft_dataset:
         name: sft_dataset
         storage_type:
-        path: /PATH/TO/DATA
+        path: ${oc.env:TRINITY_SFT_DATASET_PATH}
         format:
           prompt_key: 'question'
           response_key: 'answer'
@@ -341,7 +341,7 @@ explorer:
     tensor_parallel_size: 1
     enable_history: False
   auxiliary_models:
-  - model_path: /PATH/TO/MODEL
+  - model_path: Qwen/Qwen2.5-7B-Instruct
     tensor_parallel_size: 1
   eval_interval: 100
   eval_on_startup: True
@@ -441,7 +441,7 @@ data_processor:
           input_keys: ["question", "answer"]
           field_names: ["Question", "Answer"]
     inputs:  # the output will be set to the explorer input automatically
-      - /PATH/TO/GSM8K/DATA/FILE
+      - ${oc.env:TRINITY_TASKSET_PATH}
     target_fields: ["question", "answer"]
   experience_pipeline:
     operators:
