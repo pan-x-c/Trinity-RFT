@@ -13,7 +13,6 @@ import ray
 import torch
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from trinity.algorithm.algorithm_manager import AlgorithmManager
 from trinity.buffer.buffer import get_buffer_reader
 from trinity.buffer.pipelines.experience_pipeline import ExperiencePipeline
 from trinity.common.config import Config
@@ -44,7 +43,6 @@ class Explorer:
         self.last_sync_step = self.explore_step_num if self.explore_step_num > 0 else -1
         self.synchronizer = Synchronizer.get_actor(config)
         self.config = config
-        self.algorithm_manager = AlgorithmManager(config)
         self.models, self.auxiliary_models = create_inference_models(config)
         self.experience_pipeline = self._init_experience_pipeline()
         self.config.buffer.explorer_input.taskset.index = explorer_state.get("latest_task_index", 0)
@@ -209,11 +207,6 @@ class Explorer:
         return self.config.explorer.name
 
     async def explore_step(self) -> bool:
-        algo_config = self.algorithm_manager.get_current_algorithm_config(self.explore_step_num + 1)
-        # skip warmup
-        if algo_config.algorithm_type == "sft":
-            self.explore_step_num += 1
-            return True
         try:
             tasks = await self.taskset.read_async()
         except StopAsyncIteration:

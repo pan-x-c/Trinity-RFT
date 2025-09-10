@@ -167,6 +167,7 @@ trainer:
 ### Run the Experiment
 
 Run the RFT process with the following command:
+
 ```bash
 trinity run --config examples/grpo_gsm8k/gsm8k.yaml
 ```

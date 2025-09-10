@@ -29,8 +29,7 @@ from verl.utils.debug import marked_timer
 from verl.utils.fs import copy_local_path_from_hdfs
 
 from trinity.algorithm import ADVANTAGE_FN, KL_FN, SAMPLE_STRATEGY
-from trinity.algorithm.algorithm import ALGORITHM_TYPE, SFTAlgorithm
-from trinity.algorithm.algorithm_manager import AlgorithmManager
+from trinity.algorithm.algorithm import ALGORITHM_TYPE
 from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import Config
 from trinity.common.experience import Experiences
@@ -131,7 +130,6 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         )
         self.algorithm_config = global_config.algorithm
         self.algorithm = None
-        self.algorithm_manager = AlgorithmManager(global_config)
 
         # specify advantage function for various rft algorithms
         algorithm = ALGORITHM_TYPE.get(self.algorithm_config.algorithm_type)
@@ -304,13 +302,6 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         metrics = {}
         self.global_steps += 1
         timing_raw = {}
-        algorithm_config = self.algorithm_manager.get_current_algorithm_config(self.global_steps)
-        algorithm = ALGORITHM_TYPE.get(algorithm_config.algorithm_type)
-        if self.algorithm != algorithm:
-            self.actor_rollout_wg.set_algorithm(algorithm_config)
-            if self.algorithm == SFTAlgorithm:
-                self.sft_to_rft()
-            self.algorithm = algorithm
 
         with marked_timer("step", timing_raw):
             batch.meta_info["temperature"] = self.config.actor_rollout_ref.rollout.temperature
@@ -370,13 +361,9 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         )
 
         train_status = self.global_steps < self.total_training_steps
-        if (
-            not train_status
-            or self.algorithm_manager.need_save(self.global_steps)
-            or (
-                self.config.trainer.save_freq > 0
-                and self.global_steps % self.config.trainer.save_freq == 0
-            )
+        if not train_status or (
+            self.config.trainer.save_freq > 0
+            and self.global_steps % self.config.trainer.save_freq == 0
         ):
             self.logger.info(f"Saving at step {self.global_steps}.")
             with marked_timer("save_checkpoint", timing_raw):
