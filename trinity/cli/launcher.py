@@ -124,13 +124,25 @@ def both(config: Config) -> None:
         logger.error(f"Explorer or Trainer failed:\n{traceback.format_exc()}")
 
 
+def run_stage(config: Config) -> None:
+    pprint(config)
+    check_and_run_task_pipeline(config)
+    if config.mode == "explore":
+        explore(config)
+    elif config.mode == "train":
+        train(config)
+    elif config.mode == "both":
+        both(config)
+    elif config.mode == "bench":
+        bench(config)
+
+
 def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
     if plugin_dir:
         os.environ[PLUGIN_DIRS_ENV_VAR] = plugin_dir
     load_plugins()
     config = load_config(config_path)
     config.check_and_update()
-    pprint(config)
 
     envs = {
         PLUGIN_DIRS_ENV_VAR: os.environ.get(PLUGIN_DIRS_ENV_VAR, ""),
@@ -149,18 +161,22 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
             namespace=config.ray_namespace, ignore_reinit_error=True, runtime_env={"env_vars": envs}
         )
 
-    # try to run task pipeline for raw data
-    check_and_run_task_pipeline(config)
-
     try:
-        if config.mode == "explore":
-            explore(config)
-        elif config.mode == "train":
-            train(config)
-        elif config.mode == "both":
-            both(config)
-        elif config.mode == "bench":
-            bench(config)
+        if config.stages:
+            for i, stage_config in enumerate(config):
+                logger.info(
+                    "===========================================================\n"
+                    f"> Starting stage {i + 1}/{len(config.stages)}...\n"
+                    "==========================================================="
+                )
+                run_stage(stage_config)
+                logger.info(
+                    "===========================================================\n"
+                    f"> Stage {i + 1}/{len(config.stages)} finished.\n"
+                    "==========================================================="
+                )
+        else:
+            run_stage(config)
     finally:
         if config.monitor.enable_ray_timeline:
             timeline_file = os.path.join(config.monitor.cache_dir, "timeline.json")

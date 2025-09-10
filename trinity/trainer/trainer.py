@@ -172,7 +172,7 @@ class Trainer:
         """Get the current training step number."""
         return self.engine.train_step_num
 
-    def is_alive(self) -> bool:
+    async def is_alive(self) -> bool:
         """Check if the trainer is alive."""
         return True
 
