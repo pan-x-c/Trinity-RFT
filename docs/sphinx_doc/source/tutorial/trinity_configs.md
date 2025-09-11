@@ -284,7 +284,7 @@ buffer:
     auxiliary_buffers:
       sft_dataset:
         name: sft_dataset
-        storage_type:
+        storage_type: file
         path: ${oc.env:TRINITY_SFT_DATASET_PATH}
         format:
           prompt_key: 'question'

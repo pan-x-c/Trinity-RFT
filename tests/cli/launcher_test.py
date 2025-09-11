@@ -4,12 +4,6 @@ from unittest import mock
 
 from tests.tools import get_template_config
 from trinity.cli import launcher
-from trinity.common.constants import (
-    LOG_DIR_ENV_VAR,
-    LOG_LEVEL_ENV_VAR,
-    LOG_NODE_IP_ENV_VAR,
-    PLUGIN_DIRS_ENV_VAR,
-)
 
 
 class TestLauncherMain(unittest.TestCase):
@@ -47,14 +41,18 @@ class TestLauncherMain(unittest.TestCase):
             mock_load.reset_mock()
             mapping[mode].reset_mock()
 
+    @mock.patch("trinity.cli.launcher.stop_ray_cluster")
     @mock.patch("trinity.cli.launcher.setup_ray_cluster")
     @mock.patch("trinity.cli.launcher.both")
     @mock.patch("trinity.cli.launcher.load_config")
-    def test_main_run_in_dlc(self, mock_load, mock_both, mock_setup):
+    @mock.patch("ray.init")
+    def test_main_run_in_dlc(self, mock_init, mock_load, mock_both, mock_setup, mock_stop):
         config = get_template_config()
+        namespace = f"{config.project}-{config.name}"
         config.mode = "both"
         config.log.level = "WARNING"
         config.log.group_by_node = True
+        mock_setup.return_value = "auto"
         mock_load.return_value = config
         with mock.patch(
             "argparse.ArgumentParser.parse_args",
@@ -63,16 +61,26 @@ class TestLauncherMain(unittest.TestCase):
             ),
         ):
             launcher.main()
+        mock_init.assert_called_once()
+        mock_init.assert_called_once_with(
+            address="auto",
+            namespace=config.ray_namespace,
+            runtime_env={
+                "env_vars": {
+                    launcher.PLUGIN_DIRS_ENV_VAR: "/path/to/plugins",
+                    launcher.LOG_DIR_ENV_VAR: config.log.save_dir,
+                    launcher.LOG_LEVEL_ENV_VAR: config.log.level,
+                    launcher.LOG_NODE_IP_ENV_VAR: "1",
+                }
+            },
+        )
         mock_load.assert_called_once_with("dummy.yaml")
         mock_both.assert_called_once_with(config)
         mock_setup.assert_called_once_with(
-            namespace=config.ray_namespace,
-            envs={
-                PLUGIN_DIRS_ENV_VAR: "/path/to/plugins",
-                LOG_DIR_ENV_VAR: config.log.save_dir,
-                LOG_LEVEL_ENV_VAR: "WARNING",
-                LOG_NODE_IP_ENV_VAR: "1",
-            },
+            namespace=namespace,
+        )
+        mock_stop.assert_called_once_with(
+            namespace=namespace,
         )
 
     @mock.patch("trinity.cli.launcher.studio")

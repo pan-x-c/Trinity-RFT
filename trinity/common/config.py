@@ -491,7 +491,7 @@ class LogConfig:
 class StageConfig:
     """Configs for a stage."""
 
-    stage_name: Optional[str] = None
+    stage_name: str
     mode: Optional[str] = None
     algorithm: Optional[AlgorithmConfig] = None
     buffer: Optional[BufferConfig] = None

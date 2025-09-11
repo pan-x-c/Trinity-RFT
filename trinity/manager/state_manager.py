@@ -33,10 +33,19 @@ class StateManager:
                     f"The current config is inconsistent with the backup config in {backup_config_path}."
                 )
 
-    def save_explorer(self, current_task_index: int, current_step: int) -> None:
+    def save_explorer(
+        self,
+        current_task_index: int,
+        current_step: int,
+        current_stage: int = 0,
+    ) -> None:
         with open(self.explorer_state_path, "w", encoding="utf-8") as f:
             json.dump(
-                {"latest_task_index": current_task_index, "latest_iteration": current_step},
+                {
+                    "latest_task_index": current_task_index,
+                    "latest_iteration": current_step,
+                    "latest_stage": current_stage,
+                },
                 f,
                 indent=2,
             )
@@ -58,10 +67,19 @@ class StateManager:
                 self.logger.error(f"Failed to load explore state file: {e}")
         return {}
 
-    def save_trainer(self, current_exp_index: int, current_step: int) -> None:
+    def save_trainer(
+        self,
+        current_exp_index: int,
+        current_step: int,
+        current_stage: int = 0,
+    ) -> None:
         with open(self.trainer_state_path, "w", encoding="utf-8") as f:
             json.dump(
-                {"latest_exp_index": current_exp_index, "latest_iteration": current_step},
+                {
+                    "latest_exp_index": current_exp_index,
+                    "latest_iteration": current_step,
+                    "latest_stage": current_stage,
+                },
                 f,
                 indent=2,
             )

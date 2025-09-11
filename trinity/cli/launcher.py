@@ -17,8 +17,9 @@ from trinity.common.constants import (
     PLUGIN_DIRS_ENV_VAR,
 )
 from trinity.explorer.explorer import Explorer
+from trinity.manager.state_manager import StateManager
 from trinity.trainer.trainer import Trainer
-from trinity.utils.dlc_utils import setup_ray_cluster
+from trinity.utils.dlc_utils import is_running, setup_ray_cluster, stop_ray_cluster
 from trinity.utils.log import get_logger
 from trinity.utils.plugin_loader import load_plugins
 
@@ -124,7 +125,18 @@ def both(config: Config) -> None:
         logger.error(f"Explorer or Trainer failed:\n{traceback.format_exc()}")
 
 
-def run_stage(config: Config) -> None:
+def run_stage(config: Config, ray_address: str) -> None:
+    envs = {
+        PLUGIN_DIRS_ENV_VAR: os.environ.get(PLUGIN_DIRS_ENV_VAR, ""),
+        LOG_DIR_ENV_VAR: config.log.save_dir,
+        LOG_LEVEL_ENV_VAR: config.log.level,
+        LOG_NODE_IP_ENV_VAR: "1" if config.log.group_by_node else "0",
+    }
+    ray.init(
+        address=ray_address,
+        namespace=config.ray_namespace,
+        runtime_env={"env_vars": envs},
+    )
     pprint(config)
     check_and_run_task_pipeline(config)
     if config.mode == "explore":
@@ -135,6 +147,7 @@ def run_stage(config: Config) -> None:
         both(config)
     elif config.mode == "bench":
         bench(config)
+    ray.shutdown()
 
 
 def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
@@ -142,41 +155,44 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
         os.environ[PLUGIN_DIRS_ENV_VAR] = plugin_dir
     load_plugins()
     config = load_config(config_path)
-    config.check_and_update()
 
-    envs = {
-        PLUGIN_DIRS_ENV_VAR: os.environ.get(PLUGIN_DIRS_ENV_VAR, ""),
-        LOG_DIR_ENV_VAR: config.log.save_dir,
-        LOG_LEVEL_ENV_VAR: config.log.level,
-        LOG_NODE_IP_ENV_VAR: "1" if config.log.group_by_node else "0",
-    }
+    ray_address = "auto"
+
     if dlc:
-        setup_ray_cluster(namespace=config.ray_namespace, envs=envs)
-    else:
-        from trinity.utils.dlc_utils import is_running
+        cluster_namespace = f"{config.project}-{config.name}"
+        ray_address = setup_ray_cluster(namespace=cluster_namespace)
 
-        if not is_running:
-            raise RuntimeError("Ray is not running, please start it by `ray start --head`.")
-        ray.init(
-            namespace=config.ray_namespace, ignore_reinit_error=True, runtime_env={"env_vars": envs}
-        )
+    if not is_running():
+        raise RuntimeError("Ray is not running, please start it by `ray start --head`.")
 
     try:
         if config.stages:
+            state_manager = StateManager(config, check_config=True)
+            trainer_state = state_manager.load_trainer().get("latest_stage", 0)
             for i, stage_config in enumerate(config):
+                if i < trainer_state:
+                    logger.info(
+                        "===========================================================\n"
+                        f"> Skipping completed stage {i + 1}/{len(config.stages)}...\n"
+                        "==========================================================="
+                    )
+                    continue
                 logger.info(
                     "===========================================================\n"
                     f"> Starting stage {i + 1}/{len(config.stages)}...\n"
                     "==========================================================="
                 )
-                run_stage(stage_config)
+                state_manager.save_trainer(0, 0, i)
+                run_stage(stage_config, ray_address=ray_address)
                 logger.info(
                     "===========================================================\n"
                     f"> Stage {i + 1}/{len(config.stages)} finished.\n"
                     "==========================================================="
                 )
         else:
-            run_stage(config)
+            config.check_and_update()
+            run_stage(config, ray_address=ray_address)
+
     finally:
         if config.monitor.enable_ray_timeline:
             timeline_file = os.path.join(config.monitor.cache_dir, "timeline.json")
@@ -185,9 +201,7 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
             logger.info("Done. You can open the timeline file in `chrome://tracing`")
 
         if dlc:
-            from trinity.utils.dlc_utils import stop_ray_cluster
-
-            stop_ray_cluster(namespace=config.ray_namespace)
+            stop_ray_cluster(namespace=cluster_namespace)
 
 
 def studio(port: int = 8501):
