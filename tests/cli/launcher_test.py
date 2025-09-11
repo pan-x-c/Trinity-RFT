@@ -5,7 +5,12 @@ import unittest
 from unittest import mock
 from unittest.mock import MagicMock
 
-from tests.tools import get_template_config, get_unittest_dataset_config
+from tests.tools import (
+    get_checkpoint_path,
+    get_model_path,
+    get_template_config,
+    get_unittest_dataset_config,
+)
 from trinity.cli import launcher
 from trinity.common.config import (
     AlgorithmConfig,
@@ -19,6 +24,8 @@ class TestLauncherMain(unittest.TestCase):
     def setUp(self):
         self._orig_argv = sys.argv.copy()
         self.config = get_template_config()
+        self.config.checkpoint_root_dir = get_checkpoint_path()
+        self.config.model.model_path = get_model_path()
         self.config.check_and_update()
         shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
@@ -76,6 +83,7 @@ class TestLauncherMain(unittest.TestCase):
         mock_init.assert_called_once()
         mock_init.assert_called_once_with(
             address="auto",
+            ignore_reinit_error=True,
             namespace=config.ray_namespace,
             runtime_env={
                 "env_vars": {
@@ -83,7 +91,6 @@ class TestLauncherMain(unittest.TestCase):
                     launcher.LOG_DIR_ENV_VAR: config.log.save_dir,
                     launcher.LOG_LEVEL_ENV_VAR: config.log.level,
                     launcher.LOG_NODE_IP_ENV_VAR: "1",
-                    launcher.PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR: "",
                 }
             },
         )
@@ -105,6 +112,7 @@ class TestLauncherMain(unittest.TestCase):
             launcher.main()
         mock_studio.assert_called_once_with(9999)
 
+    @mock.patch("trinity.trainer.verl.utils.get_latest_hf_checkpoint_path")
     @mock.patch("trinity.cli.launcher.both")
     @mock.patch("trinity.cli.launcher.train")
     @mock.patch("trinity.cli.launcher.load_config")
@@ -117,9 +125,12 @@ class TestLauncherMain(unittest.TestCase):
         mock_load: MagicMock,
         mock_train: MagicMock,
         mock_both: MagicMock,
+        mock_checkpoint_path: MagicMock,
     ):
         config = get_template_config()
         config.ray_namespace = ""
+        config.checkpoint_root_dir = get_checkpoint_path()
+        config.model.model_path = get_model_path()
         config.stages = [
             StageConfig(
                 mode="train",
@@ -144,6 +155,7 @@ class TestLauncherMain(unittest.TestCase):
             ),
         ]
         mock_load.return_value = config
+        mock_checkpoint_path.return_value = "/path/to/hf/checkpoint"
         with mock.patch(
             "argparse.ArgumentParser.parse_args",
             return_value=mock.Mock(
@@ -151,14 +163,14 @@ class TestLauncherMain(unittest.TestCase):
             ),
         ):
             launcher.main()
-        config.check_and_update()
-        mock_init.call_count == 2
-        mock_shutdown.call_count == 2
+        self.assertEqual(mock_init.call_count, 2)
+        self.assertEqual(mock_shutdown.call_count, 2)
         mock_train.assert_called_once()
         mock_both.assert_called_once()
         expected_calls = [
             mock.call(
                 address="auto",
+                ignore_reinit_error=True,
                 namespace=f"{config.project}/{config.name}/sft_warmup",
                 runtime_env={
                     "env_vars": {
@@ -171,12 +183,12 @@ class TestLauncherMain(unittest.TestCase):
                         ),
                         launcher.LOG_LEVEL_ENV_VAR: config.log.level,
                         launcher.LOG_NODE_IP_ENV_VAR: "0",
-                        launcher.PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR: "",
                     }
                 },
             ),
             mock.call(
                 address="auto",
+                ignore_reinit_error=True,
                 namespace=f"{config.project}/{config.name}/grpo",
                 runtime_env={
                     "env_vars": {
@@ -186,14 +198,18 @@ class TestLauncherMain(unittest.TestCase):
                         ),
                         launcher.LOG_LEVEL_ENV_VAR: config.log.level,
                         launcher.LOG_NODE_IP_ENV_VAR: "0",
-                        launcher.PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR: os.path.join(
-                            config.checkpoint_root_dir, config.project, f"{config.name}/sft_warmup"
-                        ),
                     }
                 },
             ),
         ]
         mock_init.assert_has_calls(expected_calls)
+        self.assertEqual(mock_checkpoint_path.call_count, 2)
+        self.assertEqual(mock_train.call_args[0][0].model.model_path, config.model.model_path)
+        self.assertEqual(mock_both.call_args[0][0].model.model_path, "/path/to/hf/checkpoint")
+        self.assertEqual(
+            mock_both.call_args[0][0].trainer.trainer_config.actor_rollout_ref.model.path,
+            "/path/to/hf/checkpoint",
+        )
 
 
 if __name__ == "__main__":

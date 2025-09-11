@@ -104,7 +104,7 @@ class MixSampleStrategy(SampleStrategy):
             expert_buffer_config,
         )
 
-    def sample(self, step: int) -> Tuple[Experiences, Dict, List]:
+    async def sample(self, step: int) -> Tuple[Experiences, Dict, List]:
         metrics = {}
         with Timer(metrics, "read_time"):
             usual_exp_list = await self.usual_exp_buffer.read_async()

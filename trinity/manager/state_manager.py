@@ -21,6 +21,7 @@ class StateManager:
     ):
         self.logger = get_logger(__name__, in_ray_actor=True)
         self.cache_dir = path
+        os.makedirs(self.cache_dir, exist_ok=True)  # type: ignore
         self.stage_state_path = os.path.join(self.cache_dir, "stage_meta.json")  # type: ignore
         self.explorer_state_path = os.path.join(self.cache_dir, f"{explorer_name}_meta.json")  # type: ignore
         self.trainer_state_path = os.path.join(self.cache_dir, f"{trainer_name}_meta.json")  # type: ignore

@@ -796,7 +796,6 @@ class Config:
             if stage.stage_name:
                 new_config.name = f"{self.name}/{stage.stage_name}"
             new_config.stages = []
-            new_config.check_and_update()
             yield new_config
 
     def check_and_update(self) -> None:  # noqa: C901

@@ -78,7 +78,7 @@ class Trainer:
                 self.logger.error(f"Error in Trainer:\n{traceback.format_exc()}")
                 self.train_continue = False
 
-        self.save_checkpoint(block_until_saved=True)
+        self.save_checkpoint(block_until_saved=True, save_as_hf=True)
         await self.synchronizer.set_trainer_status.remote(RunningStatus.STOPPED)
         self.logger.info("--------------------\n> Trainer finished.\n--------------------")
         return self.config.trainer.name
@@ -159,8 +159,8 @@ class Trainer:
             )
             self._sample_exps_to_log.clear()
 
-    def save_checkpoint(self, block_until_saved: bool = False) -> None:
-        self.engine.save_checkpoint(block_until_saved=block_until_saved)
+    def save_checkpoint(self, block_until_saved: bool = False, save_as_hf: bool = False) -> None:
+        self.engine.save_checkpoint(block_until_saved=block_until_saved, save_as_hf=save_as_hf)
         self.state.save_trainer(
             current_exp_index=self.engine.train_step_num * self.config.buffer.train_batch_size,
             current_step=self.train_step_num,
@@ -213,7 +213,7 @@ class TrainEngineWrapper(ABC):
         """
 
     @abstractmethod
-    def save_checkpoint(self, block_until_saved: bool = False) -> None:
+    def save_checkpoint(self, block_until_saved: bool = False, save_as_hf: bool = False) -> None:
         """Save the checkpoint."""
 
     @abstractmethod

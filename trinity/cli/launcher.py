@@ -15,7 +15,6 @@ from trinity.common.constants import (
     LOG_LEVEL_ENV_VAR,
     LOG_NODE_IP_ENV_VAR,
     PLUGIN_DIRS_ENV_VAR,
-    PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR,
 )
 from trinity.explorer.explorer import Explorer
 from trinity.manager.state_manager import StateManager
@@ -132,12 +131,10 @@ def run_stage(config: Config, ray_address: str) -> None:
         LOG_DIR_ENV_VAR: config.log.save_dir,
         LOG_LEVEL_ENV_VAR: config.log.level,
         LOG_NODE_IP_ENV_VAR: "1" if config.log.group_by_node else "0",
-        PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR: os.environ.get(
-            PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR, ""
-        ),
     }
     ray.init(
         address=ray_address,
+        ignore_reinit_error=True,
         namespace=config.ray_namespace,
         runtime_env={"env_vars": envs},
     )
@@ -177,11 +174,14 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
         raise RuntimeError("Ray is not running, please start it by `ray start --head`.")
 
     try:
+        from trinity.trainer.verl.utils import get_latest_hf_checkpoint_path
+
         if config.stages:
             state_manager = StateManager(
                 path=os.path.join(config.checkpoint_root_dir, config.project, config.name)
             )
             latest_stage = state_manager.load_stage().get("latest_stage", 0)
+            prev_stage_checkpoint = None
             for i, stage_config in enumerate(config):
                 if i < latest_stage:
                     logger.info(
@@ -196,13 +196,16 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
                         "==========================================================="
                     )
                     state_manager.save_stage(i)
+                    if prev_stage_checkpoint is not None:
+                        stage_config.model.model_path = prev_stage_checkpoint
+                    stage_config.check_and_update()
                     run_stage(stage_config, ray_address=ray_address)
                     logger.info(
                         "===========================================================\n"
                         f"> Stage {i + 1}/{len(config.stages)} finished.\n"
                         "==========================================================="
                     )
-                os.environ[PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR] = stage_config.checkpoint_job_dir
+                prev_stage_checkpoint = get_latest_hf_checkpoint_path(stage_config)
         else:
             config.check_and_update()
             run_stage(config, ray_address=ray_address)
