@@ -15,6 +15,7 @@ from trinity.common.constants import (
     LOG_LEVEL_ENV_VAR,
     LOG_NODE_IP_ENV_VAR,
     PLUGIN_DIRS_ENV_VAR,
+    PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR,
 )
 from trinity.explorer.explorer import Explorer
 from trinity.manager.state_manager import StateManager
@@ -131,6 +132,9 @@ def run_stage(config: Config, ray_address: str) -> None:
         LOG_DIR_ENV_VAR: config.log.save_dir,
         LOG_LEVEL_ENV_VAR: config.log.level,
         LOG_NODE_IP_ENV_VAR: "1" if config.log.group_by_node else "0",
+        PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR: os.environ.get(
+            PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR, ""
+        ),
     }
     ray.init(
         address=ray_address,
@@ -138,16 +142,23 @@ def run_stage(config: Config, ray_address: str) -> None:
         runtime_env={"env_vars": envs},
     )
     pprint(config)
-    check_and_run_task_pipeline(config)
-    if config.mode == "explore":
-        explore(config)
-    elif config.mode == "train":
-        train(config)
-    elif config.mode == "both":
-        both(config)
-    elif config.mode == "bench":
-        bench(config)
-    ray.shutdown()
+    try:
+        check_and_run_task_pipeline(config)
+        if config.mode == "explore":
+            explore(config)
+        elif config.mode == "train":
+            train(config)
+        elif config.mode == "both":
+            both(config)
+        elif config.mode == "bench":
+            bench(config)
+    finally:
+        if config.monitor.enable_ray_timeline:
+            timeline_file = os.path.join(config.monitor.cache_dir, "timeline.json")
+            logger.info(f"Exporting Ray timeline to {timeline_file}...")
+            ray.timeline(filename=timeline_file)
+            logger.info("Done. You can open the timeline file in `chrome://tracing`")
+        ray.shutdown()
 
 
 def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
@@ -167,39 +178,36 @@ def run(config_path: str, dlc: bool = False, plugin_dir: str = None):
 
     try:
         if config.stages:
-            state_manager = StateManager(config, check_config=True)
-            trainer_state = state_manager.load_trainer().get("latest_stage", 0)
+            state_manager = StateManager(
+                path=os.path.join(config.checkpoint_root_dir, config.project, config.name)
+            )
+            latest_stage = state_manager.load_stage().get("latest_stage", 0)
             for i, stage_config in enumerate(config):
-                if i < trainer_state:
+                if i < latest_stage:
                     logger.info(
                         "===========================================================\n"
                         f"> Skipping completed stage {i + 1}/{len(config.stages)}...\n"
                         "==========================================================="
                     )
-                    continue
-                logger.info(
-                    "===========================================================\n"
-                    f"> Starting stage {i + 1}/{len(config.stages)}...\n"
-                    "==========================================================="
-                )
-                state_manager.save_trainer(0, 0, i)
-                run_stage(stage_config, ray_address=ray_address)
-                logger.info(
-                    "===========================================================\n"
-                    f"> Stage {i + 1}/{len(config.stages)} finished.\n"
-                    "==========================================================="
-                )
+                else:
+                    logger.info(
+                        "===========================================================\n"
+                        f"> Starting stage {i + 1}/{len(config.stages)}...\n"
+                        "==========================================================="
+                    )
+                    state_manager.save_stage(i)
+                    run_stage(stage_config, ray_address=ray_address)
+                    logger.info(
+                        "===========================================================\n"
+                        f"> Stage {i + 1}/{len(config.stages)} finished.\n"
+                        "==========================================================="
+                    )
+                os.environ[PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR] = stage_config.checkpoint_job_dir
         else:
             config.check_and_update()
             run_stage(config, ray_address=ray_address)
 
     finally:
-        if config.monitor.enable_ray_timeline:
-            timeline_file = os.path.join(config.monitor.cache_dir, "timeline.json")
-            logger.info(f"Exporting Ray timeline to {timeline_file}...")
-            ray.timeline(filename=timeline_file)
-            logger.info("Done. You can open the timeline file in `chrome://tracing`")
-
         if dlc:
             stop_ray_cluster(namespace=cluster_namespace)
 

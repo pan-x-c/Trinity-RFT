@@ -2,6 +2,7 @@
 """State manager."""
 import json
 import os
+from typing import Optional
 
 from trinity.common.config import Config, load_config
 from trinity.utils.log import get_logger
@@ -10,12 +11,20 @@ from trinity.utils.log import get_logger
 class StateManager:
     """A Manager class for managing the running state of Explorer and Trainer."""
 
-    def __init__(self, config: Config, check_config: bool = False):
+    def __init__(
+        self,
+        path: str,
+        trainer_name: Optional[str] = None,
+        explorer_name: Optional[str] = None,
+        config: Optional[Config] = None,
+        check_config: bool = False,
+    ):
         self.logger = get_logger(__name__, in_ray_actor=True)
-        self.cache_dir = config.monitor.cache_dir  # type: ignore
-        self.explorer_state_path = os.path.join(self.cache_dir, f"{config.explorer.name}_meta.json")  # type: ignore
-        self.trainer_state_path = os.path.join(self.cache_dir, f"{config.trainer.name}_meta.json")  # type: ignore
-        if check_config:
+        self.cache_dir = path
+        self.stage_state_path = os.path.join(self.cache_dir, "stage_meta.json")  # type: ignore
+        self.explorer_state_path = os.path.join(self.cache_dir, f"{explorer_name}_meta.json")  # type: ignore
+        self.trainer_state_path = os.path.join(self.cache_dir, f"{trainer_name}_meta.json")  # type: ignore
+        if check_config and config is not None:
             self._check_config_consistency(config)
 
     def _check_config_consistency(self, config: Config) -> None:
@@ -37,14 +46,12 @@ class StateManager:
         self,
         current_task_index: int,
         current_step: int,
-        current_stage: int = 0,
     ) -> None:
         with open(self.explorer_state_path, "w", encoding="utf-8") as f:
             json.dump(
                 {
                     "latest_task_index": current_task_index,
                     "latest_iteration": current_step,
-                    "latest_stage": current_stage,
                 },
                 f,
                 indent=2,
@@ -71,14 +78,12 @@ class StateManager:
         self,
         current_exp_index: int,
         current_step: int,
-        current_stage: int = 0,
     ) -> None:
         with open(self.trainer_state_path, "w", encoding="utf-8") as f:
             json.dump(
                 {
                     "latest_exp_index": current_exp_index,
                     "latest_iteration": current_step,
-                    "latest_stage": current_stage,
                 },
                 f,
                 indent=2,
@@ -99,4 +104,31 @@ class StateManager:
                 return trainer_meta
             except Exception as e:
                 self.logger.warning(f"Failed to load trainer state file: {e}")
+        return {}
+
+    def save_stage(self, current_stage: int) -> None:
+        with open(self.stage_state_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "latest_stage": current_stage,
+                },
+                f,
+                indent=2,
+            )
+
+    def load_stage(self) -> dict:
+        if os.path.exists(self.stage_state_path):
+            try:
+                with open(self.stage_state_path, "r", encoding="utf-8") as f:
+                    stage_meta = json.load(f)
+                self.logger.info(
+                    "----------------------------------\n"
+                    "Found existing stage checkpoint:\n"
+                    f"  > {stage_meta}\n"
+                    "Continue from this point.\n"
+                    "----------------------------------"
+                )
+                return stage_meta
+            except Exception as e:
+                self.logger.warning(f"Failed to load stage state file: {e}")
         return {}

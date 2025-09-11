@@ -32,6 +32,7 @@ from trinity.algorithm import ADVANTAGE_FN, KL_FN, SAMPLE_STRATEGY
 from trinity.algorithm.algorithm import ALGORITHM_TYPE
 from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import Config
+from trinity.common.constants import PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR
 from trinity.common.experience import Experiences
 from trinity.trainer.trainer import TrainEngineWrapper
 from trinity.trainer.verl.utils import compute_data_metrics, to_data_proto
@@ -73,6 +74,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         self,
         global_config: Config,
     ):
+        self.logger = get_logger(__name__, in_ray_actor=True)
         train_config = global_config.trainer
         config = OmegaConf.structured(train_config.trainer_config)
         # download the checkpoint from hdfs
@@ -153,7 +155,6 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
             processor=processor,
         )
         self.init_workers()
-        self.logger = get_logger(__name__, in_ray_actor=True)
         self.last_full_save_step = None
 
     def _validate_config(self):  # TODO
@@ -383,49 +384,52 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
     def sync_weight(self) -> None:
         self.actor_rollout_wg.sync_weight()
 
-    def sft_to_rft(self) -> None:
-        # load from hdfs
-        if self.config.trainer.default_hdfs_dir is not None:
-            raise NotImplementedError("load from hdfs is not implemented yet")
-        else:
-            checkpoint_folder = self.config.trainer.default_local_dir  # TODO: check path
-            if not os.path.isabs(checkpoint_folder):
-                working_dir = os.getcwd()
-                checkpoint_folder = os.path.join(working_dir, checkpoint_folder)
-            global_step_folder = find_latest_ckpt_path(checkpoint_folder)  # None if no latest
+    def _load_checkpoint(self) -> None:
+        prev_stage_ckpt_dir = os.environ.get(PREVIOUS_STAGE_CHECKPOINT_DIR_ENV_VAR, "")
+        has_prev_stage_ckpt = prev_stage_ckpt_dir != ""
+
+        checkpoint_folder = self.config.trainer.default_local_dir
+        global_step_folder = find_latest_ckpt_path(checkpoint_folder)  # None if no latest
+        if global_step_folder is None and has_prev_stage_ckpt:
+            self.logger.info(f"Looking for checkpoint in previous stage dir: {prev_stage_ckpt_dir}")
+            global_step_folder = find_latest_ckpt_path(prev_stage_ckpt_dir)
+            if global_step_folder is not None:
+                self.logger.info(f"Found checkpoint from previous stage: {global_step_folder}")
+                # link the previous stage checkpoint to current stage checkpoint folder as step 0
+                target_folder = os.path.join(self.config.trainer.default_local_dir, "global_step_0")
+                os.makedirs(target_folder, exist_ok=True)
+                os.symlink(global_step_folder, target_folder)
+                local_latest_checkpointed_iteration = os.path.join(
+                    self.config.trainer.default_local_dir, "latest_checkpointed_iteration.txt"
+                )
+                with open(local_latest_checkpointed_iteration, "w") as f:
+                    f.write(str(0))
+                global_step_folder = target_folder
 
         # find global_step_folder
-        self.actor_rollout_wg.wait_on_save_thread()
         if self.config.trainer.resume_mode == "auto":
             if global_step_folder is None:
                 self.logger.info("Training from scratch")
                 return
-        else:
-            if not (self.config.trainer.resume_from_path and global_step_folder is not None):
-                assert isinstance(
-                    self.config.trainer.resume_mode, str
-                ), "resume ckpt must be str type"
-                assert (
-                    "global_step_" in self.config.trainer.resume_mode
-                ), "resume ckpt must specify the global_steps"
-                global_step_folder = self.config.trainer.resume_mode
-                if not os.path.isabs(global_step_folder):
-                    working_dir = os.getcwd()
-                    global_step_folder = os.path.join(working_dir, global_step_folder)
+
         self.logger.info(f"Load from checkpoint folder: {global_step_folder}")
         # set global step
-        global_steps = int(global_step_folder.split("global_step_")[-1])
-        assert self.global_steps == global_steps + 1
+        self.global_steps = int(global_step_folder.split("global_step_")[-1])
 
+        self.logger.info(f"Setting trainer step to {self.global_steps}")
         self.logger.info(f"Resuming from {global_step_folder}")
 
         actor_path = os.path.join(global_step_folder, "actor")
-        self.logger.info(f"Loading actor from {actor_path} to ref_policy_wg")
-        self.ref_policy_wg.load_checkpoint(actor_path, del_local_after_load=False)
-        self.actor_rollout_wg.clear_optimizer_state()
+        critic_path = os.path.join(global_step_folder, "critic")
+        # load actor
+        self.actor_rollout_wg.load_checkpoint(
+            actor_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load
+        )
+        # load critic
         if self.use_critic:
-            self.critic_wg.clear_optimizer_state()
-        self.logger.info("sft to rft finished")
+            self.critic_wg.load_checkpoint(
+                critic_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load
+            )
 
     def post_process_batch(self, batch: DataProto) -> DataProto:
         """Adapted from verl/utils/dataset/rl_dataset.py"""

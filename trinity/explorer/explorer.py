@@ -37,7 +37,9 @@ class Explorer:
     def __init__(self, config: Config):
         self.logger = get_logger(config.explorer.name, in_ray_actor=True)
         load_plugins()
-        self.state = StateManager(config)
+        self.state = StateManager(
+            path=config.checkpoint_job_dir, explorer_name=config.explorer.name, config=config
+        )
         explorer_state = self.state.load_explorer()
         self.explore_step_num = explorer_state.get("latest_iteration", 0)
         self.last_sync_step = self.explore_step_num if self.explore_step_num > 0 else -1

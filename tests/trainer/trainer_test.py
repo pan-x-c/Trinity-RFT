@@ -516,10 +516,20 @@ class TestFullyAsyncMode(unittest.TestCase):
         rollout_metrics = parser.metric_list("rollout")
         self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 4)
         # check the checkpoint
-        explorer1_cache = StateManager(explorer1_config)
+        explorer1_cache = StateManager(
+            path=explorer1_config.checkpoint_job_dir,
+            trainer_name=None,
+            explorer_name="explorer1",
+            config=explorer1_config,
+        )
         cache = explorer1_cache.load_explorer()
         self.assertEqual(cache["latest_iteration"], 4)
-        explorer2_cache = StateManager(explorer2_config)
+        explorer2_cache = StateManager(
+            path=explorer2_config.checkpoint_job_dir,
+            trainer_name=None,
+            explorer_name="explorer2",
+            config=explorer2_config,
+        )
         cache = explorer2_cache.load_explorer()
         self.assertEqual(cache["latest_iteration"], 4)
         # check the lastest checkpoint

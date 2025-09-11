@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from shutil import copy
 from typing import Any, Dict, List, Optional
 
 from omegaconf import OmegaConf
@@ -495,6 +495,7 @@ class StageConfig:
     mode: Optional[str] = None
     algorithm: Optional[AlgorithmConfig] = None
     buffer: Optional[BufferConfig] = None
+    data_processor: Optional[DataProcessorConfig] = None
     explorer: Optional[ExplorerConfig] = None
     trainer: Optional[TrainerConfig] = None
 
@@ -787,13 +788,14 @@ class Config:
             Config: The config after applying each stage.
         """
         for stage in self.stages:
-            new_config = copy.deepcopy(self)
+            new_config = deepcopy(self)
             for field_name in stage.__dataclass_fields__:
                 stage_value = getattr(stage, field_name)
                 if stage_value is not None and hasattr(new_config, field_name):
                     setattr(new_config, field_name, stage_value)
             if stage.stage_name:
                 new_config.name = f"{self.name}/{stage.stage_name}"
+            new_config.stages = []
             new_config.check_and_update()
             yield new_config
 

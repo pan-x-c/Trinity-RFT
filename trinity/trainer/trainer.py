@@ -33,7 +33,9 @@ class Trainer:
         load_plugins()
         self.synchronizer = Synchronizer.get_actor(config)
         self.engine = get_trainer_wrapper(config)
-        self.state = StateManager(config)
+        self.state = StateManager(
+            path=config.checkpoint_job_dir, trainer_name=config.trainer.name, config=config
+        )
         trainer_state = self.state.load_trainer()
         config.buffer.trainer_input.experience_buffer.index = trainer_state.get(
             "latest_exp_index", 0
