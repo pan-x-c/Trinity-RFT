@@ -303,7 +303,7 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
 
         run(config_path="dummy.yaml")
 
-        stage_configs = [cfg for cfg in self.config]
+        stage_configs = [cfg.check_and_update() for cfg in self.config]
 
         # sft warmup stage
         sft_config = stage_configs[0]
@@ -311,6 +311,7 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         rollout_metrics = parser.metric_list("rollout")
         self.assertTrue(len(rollout_metrics) == 0)
         sft_metrics = parser.metric_list("actor/sft")
+        self.assertTrue(len(sft_metrics) > 0)
         self.assertEqual(parser.metric_max_step(sft_metrics[0]), 3)
         response_metrics = parser.metric_list("response_length")
         self.assertTrue(len(response_metrics) > 0)
@@ -348,8 +349,7 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
 
     def tearDown(self):
         # TODO: remove dir only when the test passed
-        pass
-        # shutil.rmtree(self.config.checkpoint_job_dir)
+        shutil.rmtree(self.config.checkpoint_job_dir)
 
 
 class TestTrainerDPO(BaseTrainerCase):

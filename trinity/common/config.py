@@ -798,7 +798,7 @@ class Config:
             new_config.stages = []
             yield new_config
 
-    def check_and_update(self) -> None:  # noqa: C901
+    def check_and_update(self) -> Config:  # noqa: C901
         """Check and update the config."""
         self._check_deprecated()
 
@@ -942,6 +942,7 @@ class Config:
 
         # check log
         self.log.save_dir = os.path.join(self.checkpoint_job_dir, "log")
+        return self
 
     def flatten(self) -> Dict[str, Any]:
         """Flatten the config into a single-level dict with dot-separated keys for nested fields."""
