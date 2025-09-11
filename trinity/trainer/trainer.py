@@ -96,13 +96,6 @@ class Trainer:
             )
         except StopAsyncIteration:
             self.logger.info("No more samples to train. Stopping training.")
-            if (
-                self.config.trainer.save_interval == 0
-                or self.train_step_num % self.config.trainer.save_interval != 0
-            ):
-                self.logger.info(f"Saving at step {self.train_step_num}.")
-                self.save_checkpoint()
-                self.logger.info(f"Saved at step {self.train_step_num}.")
             return False
         self.logger.info(f"Sampling at step {self.train_step_num + 1} done.")
         continue_run, metrics = self.engine.train_step(batch)
