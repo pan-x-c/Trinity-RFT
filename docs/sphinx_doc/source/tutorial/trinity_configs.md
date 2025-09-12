@@ -47,6 +47,10 @@ data_processor:
 log:
   # Ray actor logging
   ...
+
+stages:
+  # Stages configuration
+  ...
 ```
 
 Each of these sections will be explained in detail below. For additional details about specific parameters not covered here, please refer to the [source code](https://github.com/modelscope/Trinity-RFT/blob/main/trinity/common/config.py).
@@ -470,6 +474,35 @@ log:
 
 - `level`: The logging level (supports `DEBUG`, `INFO`, `WARNING`, `ERROR`).
 - `group_by_node`: Whether to group logs by node IP. If set to `True`, an actor's logs will be save to `<checkpoint_root_dir>/<project>/<name>/log/<node_ip>/<actor_name>.log`, otherwise it will be saved to `<checkpoint_root_dir>/<project>/<name>/log/<actor_name>.log`.
+
+---
+
+## Stages Configuration
+
+For multi-stage training, you can define multiple stages in the `stages` field. Each stage can have its own `algorithm`, `buffer` and other configurations. If a parameter is not specified in a stage, it will inherit the value from the global configuration. Multiple stages will be executed sequentially as defined.
+
+```yaml
+stages:
+  - stage_name: sft_warmup
+    mode: train
+    algorithm:
+      algorithm_type: sft
+    buffer:
+      train_batch_size: 64
+      total_steps: 100
+      trainer_input:
+        experience_buffer:
+          name: sft_buffer
+          path: ${oc.env:TRINITY_DATASET_PATH}
+  - stage_name: rft
+```
+
+- `stage_name`: Name of the stage. It should be unique and will be used as a suffix for the experiment name.
+- `mode`: Running mode of Trinity-RFT for this stage. If not specified, it will inherit from the global `mode`.
+- `algorithm`: Algorithm configuration for this stage. If not specified, it will inherit from the global `algorithm`.
+- `buffer`: Buffer configuration for this stage. If not specified, it will inherit from the global `buffer`.
+- `explorer`: Explorer configuration for this stage. If not specified, it will inherit from the global `explorer`.
+- `trainer`: Trainer configuration for this stage. If not specified, it will inherit from the global `trainer`.
 
 ---
 
