@@ -28,12 +28,12 @@ def verify_with_timeout(gold: str, target: str, timeout_seconds: int = 5, **kwar
             raise TimeoutError("Verification timed out")
 
 
-def simple_answer_parser(response: str) -> str:
+def simple_answer_parser(response: str) -> list[str]:
     search_ans = re.search(r"<answer>(.*?)</answer>", response)
     if search_ans:
         response = search_ans.group(1)
 
-    return parse_with_timeout(response)[0]
+    return parse_with_timeout(response)
 
 
 def find_boxed_answer(raw_answer, timeout=10):
