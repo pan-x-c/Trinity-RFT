@@ -5,7 +5,7 @@ Modified from verl/trainer/ppo/ray_trainer.py
 """
 import os
 import sys
-from typing import Dict, Tuple
+from typing import Dict
 
 import ray
 import torch
@@ -268,7 +268,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
     def upload_state_dict(self):  # state dict sync
         self.actor_rollout_wg.upload_state_dict(self.global_steps)
 
-    def train_step(self, batch: Experiences) -> Tuple[bool, Dict]:  # noqa C901
+    def train_step(self, batch: Experiences) -> Dict:  # noqa C901
         batch = to_data_proto(batch)
         batch = self.post_process_batch(batch)
         metrics = {}
@@ -332,8 +332,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
             compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus)
         )
 
-        train_status = self.global_steps < self.total_training_steps
-        return train_status, metrics
+        return metrics
 
     def save_checkpoint(self, block_until_saved: bool = False, save_as_hf: bool = False) -> None:
         if self.last_full_save_step != self.global_steps:

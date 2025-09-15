@@ -1,4 +1,5 @@
 import math
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -371,7 +372,7 @@ class veRLConfig:
             raise ValueError(
                 f"batch_size ({config.buffer.train_batch_size}) must be divisible by ({world_size})"
             )
-
+        self.trainer.total_training_steps = config.trainer.total_steps or sys.maxsize
         self.trainer.sync_freq = config.synchronizer.sync_interval
         self.trainer.save_freq = config.trainer.save_interval
         self.trainer.project_name = config.project
@@ -395,6 +396,7 @@ class veRLConfig:
         # Actor / Critic config
         self.actor_rollout_ref.model.path = config.model.model_path
         self.actor_rollout_ref.model.custom_chat_template = config.model.custom_chat_template
+        self.actor_rollout_ref.actor.optim.total_training_steps = self.trainer.total_training_steps
         self.critic.strategy = self.actor_rollout_ref.actor.strategy
         self.critic.model.path = config.model.critic_model_path
         self.critic.model.tokenizer_path = config.model.critic_model_path
@@ -405,6 +407,7 @@ class veRLConfig:
         self.actor_rollout_ref.rollout.n = config.algorithm.repeat_times
         self.critic.ppo_mini_batch_size = config.buffer.train_batch_size
         self.critic.rollout_n = self.actor_rollout_ref.rollout.n
+        self.critic.optim.total_training_steps = self.trainer.total_training_steps
 
         if config.trainer.actor_grad_clip is not None:
             self.actor_rollout_ref.actor.grad_clip = config.trainer.actor_grad_clip

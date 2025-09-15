@@ -412,6 +412,9 @@ class TrainerConfig:
     trainer_type: str = "verl"
     save_interval: int = 0
     enable_preview: bool = True  # enable rollout preview in wandb
+    total_steps: Optional[
+        int
+    ] = None  # total training steps, training stops when reaching this step, None means no limit
 
     # trainer configs
     actor_grad_clip: Optional[float] = None

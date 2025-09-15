@@ -4,6 +4,7 @@ Trainer Class
 """
 from __future__ import annotations
 
+import asyncio
 import traceback
 from abc import ABC, abstractmethod
 from typing import Dict, List, Tuple
@@ -53,8 +54,8 @@ class Trainer:
             **config.algorithm.sample_strategy_args,
         )
         self.save_interval = config.trainer.save_interval
-        self.train_continue = True
         self.last_sync_step = None
+        self.total_steps = config.trainer.total_steps or float("inf")
 
     async def prepare(self) -> None:
         """Prepare the trainer."""
@@ -64,26 +65,38 @@ class Trainer:
 
     async def train(self) -> str:
         """Train the model."""
-        while self.train_continue:
+        while self.train_step_num < self.total_steps:
             try:
-                self.train_continue, metrics = await self.train_step()
-                if not self.train_continue:
-                    break
+                # sample may be blocked due to explorer does not generate enough data
+                sample_task = asyncio.create_task(self._sample_data())
+                while not sample_task.done():
+                    # sync weight to make sure the explorer can continue to explore and generate enough data
+                    if await self.need_sync():
+                        # Currently, we do not record the metrics of sync_weight here
+                        await self.sync_weight()
+                    await asyncio.sleep(1)
+                exps, metrics, repr_samples = await sample_task
+                metrics.update(await self.train_step(exps))
                 if await self.need_sync():
                     metrics.update(await self.sync_weight())
                 if self.need_save():
                     metrics.update(self.save_checkpoint())
+                if self.config.trainer.enable_preview:
+                    self._log_experiences(repr_samples)
                 self.monitor.log(metrics, self.train_step_num)
+            except StopAsyncIteration:
+                self.logger.info("No more samples to train. Stopping training.")
+                break
             except Exception:
                 self.logger.error(f"Error in Trainer:\n{traceback.format_exc()}")
-                self.train_continue = False
+                break
 
         self.save_checkpoint(block_until_saved=True, save_as_hf=True)
         await self.synchronizer.set_trainer_status.remote(RunningStatus.STOPPED)
         self.logger.info("--------------------\n> Trainer finished.\n--------------------")
         return self.config.trainer.name
 
-    async def train_step(self) -> Tuple[bool, Dict]:
+    async def train_step(self, exps: Experiences) -> Dict:
         """Train one step.
 
         Returns:
@@ -91,21 +104,27 @@ class Trainer:
             Dict: Metrics of the training step.
         """
         self.logger.info(f"Training at step {self.train_step_num + 1} started.")
-        try:
+        metrics = {}
+        self.logger.info(f"Sampling at step {self.train_step_num + 1} done.")
+        with Timer(metrics, "time/train_step"):
+            train_metrics = self.engine.train_step(exps)
+        self.logger.info(f"Training at step {self.train_step_num} finished.")
+        metrics.update(train_metrics)
+        return metrics
+
+    async def _sample_data(self) -> Tuple[Experiences, Dict, List[Dict]]:
+        """Sample a batch of experiences.
+
+        Returns:
+            Experiences: A batch of experiences.
+            Dict: Metrics of the sampling step.
+            List[Dict]: A list of representative samples for logging.
+        """
+        with Timer({}, "time/sample_data"):
             batch, metrics, repr_samples = await self.sample_strategy.sample(
                 self.train_step_num + 1
             )
-        except StopAsyncIteration:
-            self.logger.info("No more samples to train. Stopping training.")
-            return False, {}
-        self.logger.info(f"Sampling at step {self.train_step_num + 1} done.")
-        with Timer(metrics, "time/train_step"):
-            continue_run, train_metrics = self.engine.train_step(batch)
-        self.logger.info(f"Training at step {self.train_step_num} finished.")
-        metrics.update(train_metrics)
-        if self.config.trainer.enable_preview:
-            self._log_experiences(repr_samples)
-        return continue_run, metrics
+        return batch, metrics, repr_samples
 
     async def need_sync(self) -> bool:
         """Whether to sync the model weight."""
@@ -207,14 +226,13 @@ class TrainEngineWrapper(ABC):
         """Get the current training step number."""
 
     @abstractmethod
-    def train_step(self, batch: Experiences) -> Tuple[bool, Dict]:
+    def train_step(self, batch: Experiences) -> Dict:
         """Training one step.
 
         Args:
             batch (Experiences): A batch of experiences to train.
 
         Returns:
-            bool: Whether to continue training.
             Dict: Metrics of the training step.
         """
 
