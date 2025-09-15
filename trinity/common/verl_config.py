@@ -41,7 +41,7 @@ class Optim:
     lr_warmup_steps_ratio: float = 0.0
     min_lr_ratio: Optional[float] = 0.0
     warmup_style: str = "constant"
-    total_training_steps: int = -1
+    total_training_steps: int = -1  # ! DO NOT SET, use trainer.total_steps
     betas: List[float] = field(default_factory=lambda: [0.9, 0.999])
     optimizer: str = "adam"
     clip_grad: float = 1.0
@@ -293,7 +293,7 @@ class Algorithm:
 class Trainer:
     balance_batch: bool = True
     total_epochs: int = 30
-    total_training_steps: Optional[int] = None
+    total_training_steps: Optional[int] = None  # ! DO NOT SET, use trainer.total_steps
     project_name: str = ""
     group_name: str = ""
     experiment_name: str = ""
