@@ -7,23 +7,23 @@ import aiohttp
 import ray
 import torch
 import vllm
+from packaging.version import parse as parse_version
 from transformers import AutoProcessor
 from vllm.sampling_params import RequestOutputKind
-from packaging.version import parse as parse_version
 
 from trinity.common.config import InferenceModelConfig
 from trinity.common.experience import Experience
+from trinity.common.models.api.vllm_patch import get_vllm_version
 from trinity.common.models.mm_utils import (
     attach_images_to_messages,
     build_multi_modal_inputs,
 )
 from trinity.common.models.model import InferenceModel
 from trinity.common.models.utils import get_action_mask_method
-from trinity.common.models.api.vllm_patch import get_vllm_version
 from trinity.utils.log import get_logger
 
 
-# TODO: remove V0 when V1 is stable
+# V0 engine is deprecated since vLLM v0.10.2, related code will be removed in the future.
 class vLLMRolloutModel(InferenceModel):
     """Wrapper around the vLLM engine to handle async requests.
 

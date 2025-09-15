@@ -91,20 +91,16 @@ CHAT_TEMPLATE = r"""
     (
         "tensor_parallel_size",
         "engine_num",
-        "use_v1",
         "repeat_times",
         "enable_history",
         "use_async",
         "max_model_len",
     ),
     [
-        # (1, 2, False, 2, True, False, None),
-        # (1, 2, False, 2, True, True, 20),
-        # (1, 2, False, 2, True, False, 20),
-        # (2, 2, False, 1, False, True, None),
-        (2, 2, True, 2, True, False, None),
-        (1, 2, True, 1, False, True, None),
-        (2, 1, True, 3, True, True, None),
+        (2, 2, 2, True, False, None),
+        (1, 2, 1, False, True, None),
+        (2, 1, 3, True, True, None),
+        (1, 2, 2, True, False, 20),
     ],
 )
 class ModelWrapperTest(RayUnittestBaseAysnc):
@@ -116,7 +112,6 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
         self.config.model.max_model_len = self.max_model_len
         self.config.explorer.rollout_model.engine_num = self.engine_num
         self.config.explorer.rollout_model.tensor_parallel_size = self.tensor_parallel_size
-        self.config.explorer.rollout_model.use_v1 = self.use_v1
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.algorithm.repeat_times = self.repeat_times
         self.config.explorer.rollout_model.enable_history = self.enable_history
