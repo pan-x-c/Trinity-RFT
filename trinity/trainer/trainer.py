@@ -105,7 +105,6 @@ class Trainer:
         """
         self.logger.info(f"Training at step {self.train_step_num + 1} started.")
         metrics = {}
-        self.logger.info(f"Sampling at step {self.train_step_num + 1} done.")
         with Timer(metrics, "time/train_step"):
             train_metrics = self.engine.train_step(exps)
         self.logger.info(f"Training at step {self.train_step_num} finished.")

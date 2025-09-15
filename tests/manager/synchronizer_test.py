@@ -34,14 +34,13 @@ CHECKPOINT_ROOT_DIR = os.path.join(os.path.dirname(__file__), "temp_checkpoint_d
 
 
 def trainer_monkey_patch(config: Config, max_steps: int, intervals: List[int]):
-    async def new_train_step(self) -> Tuple[bool, Dict]:
+    async def new_train_step(self) -> Dict:
         self.engine.algorithm = ALGORITHM_TYPE.get(config.algorithm.algorithm_type)
         self.engine.global_steps += 1
         self.logger.info(f"Training at step {self.engine.global_steps} started.")
         await asyncio.sleep(0.1)
         time.sleep(intervals[self.engine.global_steps - 1])
         metrics = {"actor/step": self.engine.global_steps}
-        self.monitor.log(data=metrics, step=self.engine.global_steps)
         self.logger.info(f"Training at step {self.engine.global_steps} finished.")
         return self.engine.global_steps < max_steps, metrics
 
