@@ -164,12 +164,9 @@ class Trainer:
         metrics = {}
         with Timer(metrics, "time/save_checkpoint"):
             self.logger.info(f"Saving checkpoint at step {self.train_step_num}...")
-            self.engine.save_checkpoint(
-                block_until_saved=block_until_saved, save_as_hf=save_as_hf
-            )
+            self.engine.save_checkpoint(block_until_saved=block_until_saved, save_as_hf=save_as_hf)
             self.state.save_trainer(
-                current_exp_index=self.engine.train_step_num
-                * self.config.buffer.train_batch_size,
+                current_exp_index=self.engine.train_step_num * self.config.buffer.train_batch_size,
                 current_step=self.train_step_num,
             )
             self.logger.info(f"Checkpoint at step {self.train_step_num} saved.")
