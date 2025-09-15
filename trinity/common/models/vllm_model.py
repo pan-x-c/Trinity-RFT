@@ -9,6 +9,7 @@ import torch
 import vllm
 from transformers import AutoProcessor
 from vllm.sampling_params import RequestOutputKind
+from packaging.version import parse as parse_version
 
 from trinity.common.config import InferenceModelConfig
 from trinity.common.experience import Experience
@@ -18,6 +19,7 @@ from trinity.common.models.mm_utils import (
 )
 from trinity.common.models.model import InferenceModel
 from trinity.common.models.utils import get_action_mask_method
+from trinity.common.models.api.vllm_patch import get_vllm_version
 from trinity.utils.log import get_logger
 
 
@@ -73,11 +75,14 @@ class vLLMRolloutModel(InferenceModel):
             dtype=config.dtype,
             trust_remote_code=True,
             task="generate",
-            disable_log_requests=True,
             gpu_memory_utilization=config.gpu_memory_utilization,
             enable_chunked_prefill=config.enable_chunked_prefill,
             # max_num_batched_tokens=256, # you can further set this parameter to reduce the vllm peak memory usage
         )
+        if get_vllm_version() > parse_version("0.10.0"):
+            engine_args.enable_log_requests = False
+        else:
+            engine_args.disable_log_requests = True
         self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
         self.processor = None
         self.tokenizer = None
