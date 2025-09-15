@@ -68,6 +68,7 @@ class Trainer:
         while self.train_step_num < self.total_steps:
             try:
                 # sample may be blocked due to explorer does not generate enough data
+                self.logger.info(f"Sample data for step {self.train_step_num + 1} started.")
                 sample_task = asyncio.create_task(self._sample_data())
                 while not sample_task.done():
                     # sync weight to make sure the explorer can continue to explore and generate enough data
@@ -76,6 +77,7 @@ class Trainer:
                         await self.sync_weight()
                     await asyncio.sleep(1)
                 exps, metrics, repr_samples = await sample_task
+                self.logger.info(f"Sample data for step {self.train_step_num + 1} finished.")
                 metrics.update(await self.train_step(exps))
                 if await self.need_sync():
                     metrics.update(await self.sync_weight())
