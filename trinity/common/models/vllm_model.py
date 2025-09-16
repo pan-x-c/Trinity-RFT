@@ -52,7 +52,7 @@ class vLLMRolloutModel(InferenceModel):
             n=1,
             temperature=0.0,
             max_tokens=config.max_response_tokens,
-            min_tokens=1,
+            min_tokens=config.min_response_tokens,
             truncate_prompt_tokens=config.max_prompt_tokens,
             skip_special_tokens=True,
             include_stop_str_in_output=False,
@@ -291,7 +291,8 @@ class vLLMRolloutModel(InferenceModel):
         to align with the actual response length.
 
         Args:
-            token_ids (List[int]): The input token ids (seq_length).
+            token_ids (List[int]): The input token ids (seq_length). Please make sure the length of
+                it does not exceed `max_model_len - 1`.
 
         Returns:
             A tensor of logprobs (seq_length - 1).

@@ -152,14 +152,18 @@ Defines the model paths and token limits.
 model:
   model_path: ${oc.env:MODEL_PATH}  # MODEL_PATH is an environment variable set in advance
   critic_model_path: ${model.model_path}  # use the value of model.model_path
-  max_response_tokens: 16384
   max_model_len: 20480
+  max_prompt_tokens: 4096
+  max_response_tokens: 16384
+  min_response_tokens: 1
 ```
 
 - `model_path`: Path to the model being trained.
 - `critic_model_path`: Optional path to a separate critic model. If empty, defaults to `model_path`.
-- `max_response_tokens`: Maximum number of tokens allowed in generated responses.
-- `max_model_len`: Maximum number of tokens in a sequence.
+- `max_model_len`: Maximum number of tokens in a sequence. It is recommended to set this value manually. If not set, it will be inferred from the model configuration.
+- `max_response_tokens`: Maximum number of tokens allowed in generated responses. Only for `chat` and `generate` methods in `InferenceModel`.
+- `max_prompt_tokens`: Maximum number of tokens allowed in prompts. Only for `chat` and `generate` methods in `InferenceModel`.
+- `min_response_tokens`: Minimum number of tokens allowed in generated responses. Only for `chat` and `generate` methods in `InferenceModel`. Default is `1`. It must be less than `max_response_tokens`.
 
 ---
 
