@@ -1,9 +1,9 @@
 import unittest
 
 import torch
+from openai import BadRequestError
 from parameterized import parameterized_class
 from transformers import AutoTokenizer
-from openai import BadRequestError
 
 from tests.tools import (
     RayUnittestBase,
