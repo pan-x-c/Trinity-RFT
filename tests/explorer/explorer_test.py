@@ -1,11 +1,18 @@
 """Tests for explorer."""
+import asyncio
 import json
+import multiprocessing
 import os
 from abc import abstractmethod
 from datetime import datetime
 
+import httpx
+import openai
+import ray
+
 from tests.tools import (
     RayUnittestBase,
+    RayUnittestBaseAysnc,
     TensorBoardParser,
     get_checkpoint_path,
     get_model_path,
@@ -13,7 +20,9 @@ from tests.tools import (
     get_unittest_dataset_config,
 )
 from trinity.buffer.utils import default_storage_path
-from trinity.cli.launcher import explore
+from trinity.cli.launcher import explore, run_stage
+from trinity.explorer.explorer import Explorer
+from trinity.manager.state_manager import StateManager
 
 
 class BaseExplorerCase(RayUnittestBase):
@@ -75,10 +84,6 @@ class TestExplorerCountdownNoEval(BaseExplorerCase):
 
 class TestExplorerGSM8k(BaseExplorerCase):
     def test_explorer(self):
-        import ray
-
-        from trinity.explorer.explorer import Explorer
-
         self.config.algorithm.repeat_times = 2
         self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
@@ -122,3 +127,77 @@ class TestExplorerGSM8k(BaseExplorerCase):
             exp = json.loads(lines[0])
             self.assertEqual(exp["response_length"], 8192)
         ray.get(explorer.shutdown.remote())
+
+
+def run_serve(config):
+    config.check_and_update()
+    run_stage(config, "auto")
+
+
+def run_agent(base_url, model_path: str):
+    client = openai.Client(base_url=base_url, api_key="testkey")
+    response = client.chat.completions.create(
+        model=model_path,
+        messages=[{"role": "user", "content": "Hello!"}],
+    )
+    return response.choices[0].message["content"]
+
+
+class ServeTest(RayUnittestBaseAysnc):
+    def setUp(self):
+        self.config = get_template_config()
+        self.config.mode = "serve"
+        self.config.model.model_path = get_model_path()
+        self.config.explorer.rollout_model.engine_type = "vllm"
+        self.config.algorithm.repeat_times = 1
+        self.config.monitor.monitor_type = "tensorboard"
+        self.config.project = "Trinity-unittest"
+        self.config.explorer.rollout_model.engine_num = 4
+        self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.checkpoint_root_dir = get_checkpoint_path()
+        self.config.explorer.api_port = 8010
+        self.config.check_and_update()
+        if multiprocessing.get_start_method(allow_none=True) != "spawn":
+            multiprocessing.set_start_method("spawn", force=True)
+
+    async def test_serve(self):
+        serve_process = multiprocessing.Process(target=run_serve, args=(self.config,))
+        serve_process.start()
+        await asyncio.sleep(10)
+
+        state_manager = StateManager(
+            path=self.config.monitor.cache_dir,
+            explorer_name=self.config.explorer.name,
+        )
+
+        # wait for explorer initialization
+        for i in range(20):
+            try:
+                server_url = state_manager.load_explorer_server_url()
+            except Exception:
+                server_url = None
+            if server_url:
+                break
+            await asyncio.sleep(2)
+
+        # wait for server setup
+        for i in range(10):
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(f"{server_url}/health")
+                    if response.status_code == 200:
+                        break
+            except Exception:
+                pass
+            await asyncio.sleep(2)
+
+        # explorer_actor = ray.get_actor(
+        #     self.config.explorer.name, namespace=self.config.ray_namespace
+        # )
+
+        response = run_agent(base_url=f"{server_url}/v1", model_path=self.config.model.model_path)
+        print(response)
+        self.assertIsInstance(response, str)
+        self.assertTrue(len(response) > 0)
+        serve_process.terminate()
+        serve_process.join(timeout=10)

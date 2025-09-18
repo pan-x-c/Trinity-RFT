@@ -36,7 +36,6 @@ class APIServer:
             self.running_models.append(i)
 
         self.serve_task = asyncio.create_task(run_app(self.explorer, self.port))
-        self.logger.info(f"API server started on port {self.port}")
 
     async def schedule_weights_sync(self, model_version: int):
         if not self.running:

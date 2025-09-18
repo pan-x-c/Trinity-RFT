@@ -925,7 +925,7 @@ class Config:
         self._check_algorithm()
 
         # check mode
-        if self.mode not in ["explore", "train", "both", "bench"]:
+        if self.mode not in ["explore", "train", "both", "bench", "serve"]:
             raise ValueError(f"Invalid mode: {self.mode}")
 
         # prepare for the checkpoint directory

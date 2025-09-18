@@ -68,6 +68,7 @@ def serve(config: Config) -> None:
     try:
         explorer = Explorer.get_actor(config)
         ray.get(explorer.prepare.remote())
+        ray.get(explorer.sync_weight.remote())
         ray.get(explorer.serve.remote())
         ray.get(explorer.shutdown.remote())
     except Exception:
@@ -160,6 +161,8 @@ def run_stage(config: Config, ray_address: str) -> None:
             both(config)
         elif config.mode == "bench":
             bench(config)
+        elif config.mode == "serve":
+            serve(config)
     finally:
         if config.monitor.enable_ray_timeline:
             timeline_file = os.path.join(config.monitor.cache_dir, "timeline.json")

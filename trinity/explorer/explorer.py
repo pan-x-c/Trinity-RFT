@@ -158,11 +158,6 @@ class Explorer:
             if self.config.mode != "serve":
                 self.scheduler = Scheduler(self.config, self.models, self.auxiliary_models)
                 await self.scheduler.start()
-            else:
-                from trinity.explorer.api.server import APIServer
-
-                self.server = APIServer(self, self.config.explorer.api_port, self.config.localmode)
-                await self.server.serve()
             if self.config.explorer.eval_on_startup and self.explore_step_num == 0:
                 await self.eval()
 
@@ -421,6 +416,13 @@ class Explorer:
                 messages=[{"role": "user", "content": "Hello!"}]
             )
         """
+        from trinity.explorer.api.server import APIServer
+
+        self.server = APIServer(self, self.config.explorer.api_port, self.config.localmode)
+        await self.server.serve()
+        self.server_url = f"http://{ray.util.get_node_ip_address()}:{self.server.port}"
+        self.logger.info(f"Explorer API Server is started on {self.server_url}")
+        self.state.save_explorer_server_url(self.server_url)
         while True:
             await asyncio.sleep(self.config.explorer.check_interval)
             self.experience_pipeline.process.remote([])
