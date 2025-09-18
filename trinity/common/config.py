@@ -414,6 +414,11 @@ class ExplorerConfig:
     # for benchmark
     bench_on_latest_checkpoint: bool = False  # only benchmark the latest checkpoint
 
+    # for serve mode
+    api_port: int = 8010
+    check_interval: int = 60  # check the status of models every 60 seconds
+    min_running_model_num: int = 1  # keep at least 1 model in running status
+
 
 @dataclass
 class TrainerConfig:

@@ -63,6 +63,17 @@ def train(config: Config) -> None:
         logger.error(f"Trainer failed:\n{traceback.format_exc()}")
 
 
+def serve(config: Config) -> None:
+    """Run explorer in server mode."""
+    try:
+        explorer = Explorer.get_actor(config)
+        ray.get(explorer.prepare.remote())
+        ray.get(explorer.serve.remote())
+        ray.get(explorer.shutdown.remote())
+    except Exception:
+        logger.error(f"Explorer failed:\n{traceback.format_exc()}")
+
+
 def both(config: Config) -> None:
     """Setup both explorer and trainer.
 

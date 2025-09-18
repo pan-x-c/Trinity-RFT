@@ -1,9 +1,9 @@
 """A wrapper around the vllm.AsyncEngine to handle async requests."""
 
+import asyncio
 import os
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence
 
-import aiohttp
 import ray
 import torch
 import vllm
@@ -94,6 +94,7 @@ class vLLMRolloutModel(InferenceModel):
         self.model_version = 0  # TODO: resume the value from the checkpoint
         self.api_server_host = None
         self.api_server_port = None
+        self.api_server = None
 
     async def _initialize_tokenizer(self):
         if self.tokenizer is None:
@@ -431,39 +432,30 @@ class vLLMRolloutModel(InferenceModel):
         from trinity.common.models.api.vllm_patch import run_api_server_in_ray_actor
 
         self.api_server_host, self.api_server_port = self.get_available_address()
-        await run_api_server_in_ray_actor(
-            self.async_llm,
-            self.api_server_host,
-            self.api_server_port,
-            self.config.model_path,
-            self.config.enable_auto_tool_choice,
-            self.config.tool_call_parser,
-            self.config.reasoning_parser,
+        self.api_server = asyncio.create_task(
+            run_api_server_in_ray_actor(
+                self.async_llm,
+                self.api_server_host,
+                self.api_server_port,
+                self.config.model_path,
+                self.config.enable_auto_tool_choice,
+                self.config.tool_call_parser,
+                self.config.reasoning_parser,
+            )
         )
 
-    async def has_api_server(self) -> bool:
+    def has_api_server(self) -> bool:
         return self.config.enable_openai_api
 
-    async def api_server_ready(self) -> Union[str, None]:
-        """Check if the OpenAI API server is ready.
+    def get_api_server_url(self) -> Optional[str]:
+        """Get the URL of the OpenAI API server.
 
         Returns:
             api_url (str): The URL of the OpenAI API server.
         """
-        if not await self.has_api_server():
+        if not self.has_api_server():
             return None
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"http://{self.api_server_host}:{self.api_server_port}/health"
-                ) as response:
-                    if response.status == 200:
-                        return f"http://{self.api_server_host}:{self.api_server_port}/v1"
-                    else:
-                        return None
-        except Exception as e:
-            self.logger.error(e)
-            return None
+        return f"http://{self.api_server_host}:{self.api_server_port}"
 
     async def reset_prefix_cache(self) -> None:
         await self.async_llm.reset_prefix_cache()
