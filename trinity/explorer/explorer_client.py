@@ -21,17 +21,17 @@ class ExplorerClient:
             api_key="EMPTY",
         )
         client.chat.completions.create = partial(
-            self._create_chat_completion, extra_body={"session_id": self.session_id}
+            client.chat.completions.create, extra_body={"session_id": self.session_id}
         )
         return client
 
-    def get_openai_async_client(self) -> openai.OpenAIAsync:
-        client = openai.OpenAIAsync(
+    def get_openai_async_client(self) -> openai.AsyncOpenAI:
+        client = openai.AsyncOpenAI(
             base_url=self.base_url + "/v1",
             api_key="EMPTY",
         )
         client.chat.completions.create = partial(
-            self._create_chat_completion_async, extra_body={"session_id": self.session_id}
+            client.chat.completions.create, extra_body={"session_id": self.session_id}
         )
         return client
 
@@ -46,19 +46,4 @@ class ExplorerClient:
             response = await client.post(
                 f"{self.base_url}/feedback", json={"session_id": self.session_id, "reward": reward}
             )
-            return response.json()
-
-    def _create_chat_completion(self, *args, extra_body=None, **kwargs):
-        if extra_body is None:
-            extra_body = {}
-        body = {**kwargs, **extra_body}
-        response = requests.post(f"{self.base_url}/v1/chat/completions", json=body)
-        return response.json()
-
-    async def _create_chat_completion_async(self, *args, extra_body=None, **kwargs):
-        if extra_body is None:
-            extra_body = {}
-        body = {**kwargs, **extra_body}
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{self.base_url}/v1/chat/completions", json=body)
             return response.json()

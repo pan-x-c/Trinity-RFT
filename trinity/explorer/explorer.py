@@ -423,6 +423,7 @@ class Explorer:
         """
         while True:
             await asyncio.sleep(self.config.explorer.check_interval)
+            self.experience_pipeline.process.remote([])
             if await self.need_sync():
                 await self.continuous_sync_weight()
 

@@ -108,7 +108,9 @@ class ModelWrapper:
                 except Exception as e:
                     self.logger.info(f"API server not ready (attempt {i+1}/{max_retries}): {e}")
                 await asyncio.sleep(interval)
-            self.logger.error(f"API server not ready after {max_retries} attempts.")
+            raise RuntimeError(
+                f"API server at {self.api_address} not ready after {max_retries} attempts."
+            )
 
     def _record_history(self, exps: Union[Experience, List[Experience]]) -> None:
         """Record experiences to history."""

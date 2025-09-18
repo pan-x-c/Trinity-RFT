@@ -16,9 +16,7 @@ class APIServer:
         self.port = port
         self.localmode = localmode
         self.running = False
-        self.models: List[ModelWrapper] = [
-            ModelWrapper(model) for model in enumerate(explorer.models)
-        ]
+        self.models: List[ModelWrapper] = [ModelWrapper(model) for model in explorer.models]
         self.running_models: deque[int] = deque()
         self.requiring_sync_models: Set[int] = set()
         self.waiting_sync_models: Set[int] = set()
@@ -34,8 +32,8 @@ class APIServer:
         self.running = True
         await asyncio.gather(*[model.prepare() for model in self.models])
 
-        for model in self.models:
-            self.running_models.append(model)
+        for i, _ in enumerate(self.models):
+            self.running_models.append(i)
 
         self.serve_task = asyncio.create_task(run_app(self.explorer, self.port))
         self.logger.info(f"API server started on port {self.port}")
@@ -75,7 +73,7 @@ class APIServer:
             self.logger.warning("Server is not running.")
             return
         await asyncio.gather(
-            *[self._sync_model_weights(idx) for idx in list(self.requiring_sync_models.keys())]
+            *[self._sync_model_weights(idx) for idx in list(self.requiring_sync_models)]
         )
 
     async def write_buffer(self, experience):
