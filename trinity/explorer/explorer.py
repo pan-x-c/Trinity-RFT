@@ -421,7 +421,17 @@ class Explorer:
                 messages=[{"role": "user", "content": "Hello!"}]
             )
         """
-        pass
+        while True:
+            await asyncio.sleep(self.config.explorer.check_interval)
+            if await self.need_sync():
+                await self.continuous_sync_weight()
+
+    @Experimental
+    async def continuous_sync_weight(self) -> None:
+        """Synchronize model weights in a continuous way."""
+        latest_model_version = self.synchronizer.set_model_state_dict_weight_step_num()
+        self.server.latest_model_version = latest_model_version
+        await self.server.schedule_weights_sync(latest_model_version)
 
     @classmethod
     def get_actor(cls, config: Config):

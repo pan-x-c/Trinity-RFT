@@ -276,6 +276,10 @@ class ModelWrapper:
             data = response.json()
             return data["server_load"]
 
+    async def sync_model_weights(self, model_version: int) -> None:
+        """Sync the model weights"""
+        await self.model.sync_model.remote(model_version)
+
     @property
     def running_status(self) -> RunningStatus:
         """Get the running status of the model."""

@@ -385,12 +385,12 @@ class vLLMRolloutModel(InferenceModel):
                 method, timeout, args, kwargs
             )
 
-    async def sync_model(self, model_version: int) -> bool:
+    async def sync_model(self, model_version: int) -> int:
         """Sync model weights to vLLM."""
         await self._collective_rpc("update_weight")
         self.logger.info("Sync model weights to vLLM successfully.")
         self.model_version = model_version
-        return True
+        return model_version
 
     async def init_process_group(
         self,

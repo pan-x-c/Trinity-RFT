@@ -1,5 +1,6 @@
 import traceback
-from typing import Dict, List, Optional
+from queue import Queue
+from typing import Dict, List, Optional, Union
 
 from trinity.buffer.buffer import BufferWriter, get_buffer_reader, get_buffer_writer
 from trinity.buffer.operators.experience_operator import ExperienceOperator
@@ -49,6 +50,7 @@ class ExperiencePipeline:
             buffer_config.trainer_input.experience_buffer,  # type: ignore [arg-type]
             buffer_config,
         )
+        self.queue = Queue()
 
     def _init_input_storage(
         self,
@@ -114,6 +116,13 @@ class ExperiencePipeline:
         """
         if self.input_store is not None:
             await self.input_store.write_async(exps)
+
+        if exps is None or len(exps) == 0:
+            # get all experiences from the queue
+            exps = []
+            while not self.queue.empty():
+                exps.append(self.queue.get())
+
         metrics = {}
 
         # Process experiences through operators
@@ -133,6 +142,20 @@ class ExperiencePipeline:
                 result_metrics[f"pipeline/{key}"] = float(value)
 
         return result_metrics
+
+    async def write(self, exps: Union[Experience, List[Experience]]) -> None:
+        """Write experiences to the pipeline and prepare for processing.
+
+        Args:
+            exps (Union[Experience, List[Experience]]): A single experience or a list of experiences to process.
+        """
+        if not isinstance(exps, list):
+            exps = [exps]
+        for exp in exps:
+            self.queue.put(exp)
+
+        if self.input_store is not None:
+            await self.input_store.write_async(exps)
 
     async def close(self) -> None:
         try:
