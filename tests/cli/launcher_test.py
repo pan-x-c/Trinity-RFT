@@ -38,7 +38,9 @@ class TestLauncherMain(unittest.TestCase):
     @mock.patch("trinity.cli.launcher.both")
     @mock.patch("trinity.cli.launcher.bench")
     @mock.patch("trinity.cli.launcher.load_config")
-    def test_main_run_command(self, mock_load, mock_bench, mock_both, mock_train, mock_explore, mock_serve):
+    def test_main_run_command(
+        self, mock_load, mock_bench, mock_both, mock_train, mock_explore, mock_serve
+    ):
         config = get_template_config()
         mapping = {
             "explore": mock_explore,
@@ -47,13 +49,16 @@ class TestLauncherMain(unittest.TestCase):
             "bench": mock_bench,
             "serve": mock_serve,
         }
-        with mock.patch.dict(launcher.MODE_MAP, {
-            "explore": mock_explore,
-            "train": mock_train,
-            "both": mock_both,
-            "bench": mock_bench,
-            "serve": mock_serve,
-        }):
+        with mock.patch.dict(
+            launcher.MODE_MAP,
+            {
+                "explore": mock_explore,
+                "train": mock_train,
+                "both": mock_both,
+                "bench": mock_bench,
+                "serve": mock_serve,
+            },
+        ):
             for mode in ["explore", "train", "both", "bench", "serve"]:
                 config.mode = mode
                 mock_load.return_value = config
@@ -82,9 +87,12 @@ class TestLauncherMain(unittest.TestCase):
         config.log.group_by_node = True
         mock_setup.return_value = "auto"
         mock_load.return_value = config
-        with mock.patch.dict(launcher.MODE_MAP, {
-            "both": mock_both,
-        }):
+        with mock.patch.dict(
+            launcher.MODE_MAP,
+            {
+                "both": mock_both,
+            },
+        ):
             with mock.patch(
                 "argparse.ArgumentParser.parse_args",
                 return_value=mock.Mock(
@@ -168,10 +176,13 @@ class TestLauncherMain(unittest.TestCase):
         ]
         mock_load.return_value = config
         mock_checkpoint_path.return_value = "/path/to/hf/checkpoint"
-        with mock.patch.dict(launcher.MODE_MAP, {
-            "train": mock_train,
-            "both": mock_both,
-        }):
+        with mock.patch.dict(
+            launcher.MODE_MAP,
+            {
+                "train": mock_train,
+                "both": mock_both,
+            },
+        ):
             with mock.patch(
                 "argparse.ArgumentParser.parse_args",
                 return_value=mock.Mock(
@@ -210,7 +221,10 @@ class TestLauncherMain(unittest.TestCase):
                         "env_vars": {
                             launcher.PLUGIN_DIRS_ENV_VAR: "/path/to/plugins",
                             launcher.LOG_DIR_ENV_VAR: os.path.join(
-                                config.checkpoint_root_dir, config.project, f"{config.name}/grpo", "log"
+                                config.checkpoint_root_dir,
+                                config.project,
+                                f"{config.name}/grpo",
+                                "log",
                             ),
                             launcher.LOG_LEVEL_ENV_VAR: config.log.level,
                             launcher.LOG_NODE_IP_ENV_VAR: "0",
