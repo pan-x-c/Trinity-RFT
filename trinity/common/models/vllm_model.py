@@ -421,12 +421,7 @@ class vLLMRolloutModel(InferenceModel):
         )
 
     async def run_api_server(self):
-        """Run the OpenAI API server in a Ray actor.
-
-        Note:
-            Do not use `ray.get()` on this method.
-            This method will run forever until the server is shut down.
-        """
+        """Run the OpenAI API server in a Ray actor."""
         if not (self.api_server_host is None or self.api_server_port is None):
             raise RuntimeError("API server is already running.")
         from trinity.common.models.api.vllm_patch import run_api_server_in_ray_actor

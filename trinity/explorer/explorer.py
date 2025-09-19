@@ -421,32 +421,36 @@ class Explorer:
                 messages=[{"role": "user", "content": "Hello!"}]
             )
         """
-        from trinity.explorer.api.server import APIServer
+        from trinity.explorer.api.service import ExplorerService
 
-        self.server = APIServer(
+        self.service = ExplorerService(
             self,
             listen_address=self.config.explorer.listen_address,
             port=self.config.explorer.api_port,
         )
-        await self.server.serve()
-        self.server_url = f"http://{ray.util.get_node_ip_address()}:{self.server.port}"
+        await self.service.serve()
+        self.server_url = f"http://{ray.util.get_node_ip_address()}:{self.service.port}"
         self.logger.info(
-            f"Explorer API Server is started on {self.server_url} and listening to {self.server.listen_address}."
+            f"Explorer API Server is started on {self.server_url} and listening to {self.service.listen_address}."
         )
         self.state.save_explorer_server_url(self.server_url)
         while True:
-            await asyncio.sleep(self.config.explorer.check_interval)
-            self.experience_pipeline.process.remote([])
+            self.explore_step_num += 1
+            await asyncio.sleep(self.config.explorer.service_status_check_interval)
+            # process experiences generated in the last interval
+            exps = await self.service.get_all_experiences()
+            metrics = await self.experience_pipeline.process.remote(exps)
             if await self.need_sync():
                 await self.continuous_sync_weight()
-            self.explore_step_num += 1
+            metrics.update(self.service.collect_metrics())
+            self.monitor.log(metrics, self.explore_step_num)
 
     @Experimental
     async def continuous_sync_weight(self) -> None:
         """Synchronize model weights in a continuous way."""
         latest_model_version = self.synchronizer.set_model_state_dict_weight_step_num()
-        self.server.latest_model_version = latest_model_version
-        await self.server.schedule_weights_sync(latest_model_version)
+        self.service.latest_model_version = latest_model_version
+        await self.service.schedule_weights_sync(latest_model_version)
 
     @classmethod
     def get_actor(cls, config: Config):

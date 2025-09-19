@@ -6,7 +6,6 @@ from parameterized import parameterized_class
 from transformers import AutoTokenizer
 
 from tests.tools import (
-    RayUnittestBase,
     RayUnittestBaseAysnc,
     get_api_model_path,
     get_model_path,
@@ -229,7 +228,7 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
         (20, None, 1),
     ],
 )
-class TestModelLen(RayUnittestBase):
+class TestModelLen(RayUnittestBaseAysnc):
     def setUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
@@ -243,7 +242,8 @@ class TestModelLen(RayUnittestBase):
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
 
-    def test_model_len(self):
+    async def test_model_len(self):
+        await self.model_wrapper.prepare()
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "What's the weather like today?"},

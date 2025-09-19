@@ -1,14 +1,17 @@
 import asyncio
 from collections import deque
-from typing import List, Set
+from typing import Dict, List, Set
+
+import torch
 
 from trinity.common.constants import RunningStatus
+from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
 from trinity.explorer.explorer import Explorer
 from trinity.utils.log import get_logger
 
 
-class APIServer:
+class ExplorerService:
     def __init__(self, explorer: Explorer, listen_address: str = "localhost", port: int = 8010):
         self.logger = get_logger(__name__)
         self.explorer = explorer
@@ -21,6 +24,8 @@ class APIServer:
         self.requiring_sync_models: Set[int] = set()
         self.waiting_sync_models: Set[int] = set()
         self.latest_model_version = 0
+        self.experience_queue = asyncio.Queue()
+        self.experience_count = 0
 
     async def serve(self):
         from trinity.explorer.api.api import run_app
@@ -36,7 +41,7 @@ class APIServer:
             self.running_models.append(i)
 
         self.serve_task = asyncio.create_task(
-            run_app(server=self, listen_address=self.listen_address, port=self.port)
+            run_app(service=self, listen_address=self.listen_address, port=self.port)
         )
 
     async def schedule_weights_sync(self, model_version: int):
@@ -55,7 +60,7 @@ class APIServer:
     async def _sync_model_weights(self, index: int):
         if self.models[index].status != RunningStatus.REQUIRE_SYNC:
             return
-        current_load = await self.models[index].get_load()
+        current_load = await self.models[index].get_current_load()
         if current_load == 0:
             self.models[index].status = RunningStatus.WAITING_SYNC
             self.requiring_sync_models.remove(index)
@@ -64,10 +69,20 @@ class APIServer:
         else:
             self.logger.info(f"Model {index} still requires synchronization.")
 
-    async def get_running_model_url(self) -> str:
+    async def allocate_model(self, increase_count: bool = True) -> str:
         model = self.models[self.running_models[0]]
+        if increase_count:
+            model.request_count += 1
         self.running_models.rotate(-1)
         return model.api_address
+
+    def collect_metrics(self) -> Dict:
+        metrics = {}
+        for i, model in enumerate(self.models):
+            metrics[f"rollout/model_{i}/total_request_count"] = model.request_count
+            metrics[f"rollout/model_{i}/model_version"] = model.model_version
+        metrics["rollout/total_experience_count"] = self.experience_count
+        return metrics
 
     async def check_requiring_sync_models(self):
         if not self.running:
@@ -77,8 +92,30 @@ class APIServer:
             *[self._sync_model_weights(idx) for idx in list(self.requiring_sync_models)]
         )
 
-    async def write_buffer(self, experience):
-        await self.explorer.experience_pipeline.write(experience)
+    async def record_experience(self, response):
+        experiences = []
+        for choice in response["choices"]:
+            exp = Experience(
+                tokens=torch.cat(
+                    (
+                        torch.tensor(response["prompt_token_ids"], dtype=torch.int32),
+                        torch.tensor(choice["token_ids"], dtype=torch.int32),
+                    )
+                ),
+                logprobs=choice.get("logprobs", None),
+                prompt_length=len(response["prompt_token_ids"]),
+                response_text=choice.get("message", {}).get("content", ""),
+            )
+            experiences.append(exp)
+        self.experience_count += len(experiences)
+        for exp in experiences:
+            await self.experience_queue.put(exp)
+
+    async def get_all_experiences(self) -> List:
+        experiences = []
+        while not self.experience_queue.empty():
+            experiences.append(await self.experience_queue.get())
+        return experiences
 
     async def shutdown(self):
         if not self.running:

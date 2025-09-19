@@ -87,7 +87,7 @@ class ModelWrapper:
         self.enable_history = enable_history
         self.history = []
         self.status = RunningStatus.RUNNING
-        self.current_load = 0
+        self.request_count = 0
 
     async def prepare(self) -> None:
         """Prepare the model wrapper."""
@@ -267,7 +267,7 @@ class ModelWrapper:
         setattr(self.openai_async_client, "model_path", openai_client.models.list().data[0].id)
         return self.openai_async_client
 
-    async def get_load(self) -> int:
+    async def get_current_load(self) -> int:
         """Get the current load metrics of the model."""
         if not self.api_address:
             raise ValueError(
@@ -281,11 +281,6 @@ class ModelWrapper:
     async def sync_model_weights(self, model_version: int) -> None:
         """Sync the model weights"""
         await self.model.sync_model.remote(model_version)
-
-    @property
-    def running_status(self) -> RunningStatus:
-        """Get the running status of the model."""
-        return self.status
 
     def extract_experience_from_history(self, clear_history: bool = True) -> List[Experience]:
         """Extract experiences from the history."""

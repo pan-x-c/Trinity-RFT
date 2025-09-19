@@ -3,7 +3,8 @@ import asyncio
 import json
 import multiprocessing
 import os
-from abc import abstractmethod
+import random
+import shutil
 from datetime import datetime
 
 import httpx
@@ -19,8 +20,11 @@ from tests.tools import (
     get_template_config,
     get_unittest_dataset_config,
 )
+from trinity.buffer import get_buffer_reader
 from trinity.buffer.utils import default_storage_path
 from trinity.cli.launcher import explore, run_stage
+from trinity.common.config import StorageConfig
+from trinity.common.constants import StorageType
 from trinity.explorer.explorer import Explorer
 from trinity.manager.state_manager import StateManager
 
@@ -38,10 +42,6 @@ class BaseExplorerCase(RayUnittestBase):
         self.config.checkpoint_root_dir = get_checkpoint_path()
         self.config.synchronizer.sync_interval = 2
         self.config.explorer.eval_interval = 4
-
-    @abstractmethod
-    def test_explorer(self):
-        """Test explorer"""
 
 
 class TestExplorerCountdownEval(BaseExplorerCase):
@@ -136,9 +136,21 @@ def run_serve(config):
 
 def run_agent(base_url, model_path: str):
     client = openai.Client(base_url=base_url, api_key="testkey")
+    contents = [
+        "Hello, how are you?",
+        "What is the capital of China?",
+        "Tell me a joke.",
+        "Explain the theory of relativity.",
+        "What is the meaning of life?",
+        "How does a computer work?",
+        "What is the weather like today?",
+        "Can you recommend a good book?",
+        "What is the best way to learn programming?",
+        "Describe the process of photosynthesis.",
+    ]
     response = client.chat.completions.create(
         model=model_path,
-        messages=[{"role": "user", "content": "Hello!"}],
+        messages=[{"role": "user", "content": random.choice(contents)}],
     )
     return response.choices[0].message.content
 
@@ -156,11 +168,16 @@ class ServeTest(RayUnittestBaseAysnc):
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.checkpoint_root_dir = get_checkpoint_path()
         self.config.explorer.api_port = 8010
+        self.config.explorer.service_status_check_interval = 30
+        self.config.buffer.trainer_input.experience_buffer = StorageConfig(
+            name="experience_buffer",
+            storage_type=StorageType.SQL,
+        )
         self.config.check_and_update()
         if multiprocessing.get_start_method(allow_none=True) != "spawn":
             multiprocessing.set_start_method("spawn", force=True)
 
-    async def test_serve(self):
+    async def test_serve(self):  # noqa: C901
         serve_process = multiprocessing.Process(target=run_serve, args=(self.config,))
         serve_process.start()
         await asyncio.sleep(10)
@@ -192,13 +209,51 @@ class ServeTest(RayUnittestBaseAysnc):
                 pass
             await asyncio.sleep(2)
 
-        # explorer_actor = ray.get_actor(
-        #     self.config.explorer.name, namespace=self.config.ray_namespace
-        # )
-        print(f"Server URL: {server_url}")
-        response = run_agent(base_url=f"{server_url}/v1", model_path=self.config.model.model_path)
-        print(response)
-        self.assertIsInstance(response, str)
-        self.assertTrue(len(response) > 0)
+        task_num = 10
+        apps = []
+        for i in range(task_num):
+            app_process = multiprocessing.Process(
+                target=run_agent, args=(server_url + "/v1", self.config.model.model_path)
+            )
+            apps.append(app_process)
+            app_process.start()
+
+        for app in apps:
+            app.join(timeout=60)
+            self.assertFalse(app.is_alive())
+
+        finish_step = None
+
+        for i in range(20):
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{server_url}/metrics")
+                self.assertEqual(response.status_code, 200)
+                metrics = response.json()
+                metrics_keys = list(metrics.keys())
+                self.assertIn("explore_step_num", metrics_keys)
+                self.assertIn("rollout/total_experience_count", metrics_keys)
+                self.assertIn("rollout/model_0/total_request_count", metrics_keys)
+                self.assertIn("rollout/model_3/model_version", metrics_keys)
+                if not finish_step and metrics["rollout/total_experience_count"] == task_num:
+                    finish_step = metrics["explore_step_num"]
+                if finish_step and metrics["explore_step_num"] >= finish_step + 1:
+                    # wait for one more step to ensure all data are written to buffer
+                    break
+            await asyncio.sleep(3)
+
         serve_process.terminate()
         serve_process.join(timeout=10)
+
+        # check buffer
+        self.config.buffer.trainer_input.experience_buffer.max_read_timeout = 5
+        buffer_reader = get_buffer_reader(
+            self.config.buffer.trainer_input.experience_buffer,
+            self.config.buffer,
+        )
+        exps = await buffer_reader.read_async(batch_size=10)
+        for exp in exps:
+            self.assertTrue(len(exp.tokens) > 0)
+        self.assertEqual(len(exps), task_num)
+
+    def tearDown(self):
+        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
