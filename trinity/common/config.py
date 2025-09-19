@@ -416,6 +416,7 @@ class ExplorerConfig:
 
     # for serve mode
     api_port: int = 8010
+    listen_address: str = "0.0.0.0"
     check_interval: int = 60  # check the status of models every 60 seconds
     min_running_model_num: int = 1  # keep at least 1 model in running status
 

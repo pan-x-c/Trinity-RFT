@@ -104,7 +104,7 @@ class ModelWrapper:
                     async with httpx.AsyncClient() as client:
                         response = await client.get(self.api_address + "/health", timeout=5)
                         if response.status_code == 200:
-                            break
+                            return
                 except Exception as e:
                     self.logger.info(f"API server not ready (attempt {i+1}/{max_retries}): {e}")
                 await asyncio.sleep(interval)

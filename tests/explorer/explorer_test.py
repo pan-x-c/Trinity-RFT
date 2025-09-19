@@ -140,7 +140,7 @@ def run_agent(base_url, model_path: str):
         model=model_path,
         messages=[{"role": "user", "content": "Hello!"}],
     )
-    return response.choices[0].message["content"]
+    return response.choices[0].message.content
 
 
 class ServeTest(RayUnittestBaseAysnc):
@@ -166,20 +166,21 @@ class ServeTest(RayUnittestBaseAysnc):
         await asyncio.sleep(10)
 
         state_manager = StateManager(
-            path=self.config.monitor.cache_dir,
+            path=self.config.checkpoint_job_dir,
             explorer_name=self.config.explorer.name,
         )
 
         # wait for explorer initialization
-        for i in range(20):
+        for i in range(30):
             try:
                 server_url = state_manager.load_explorer_server_url()
             except Exception:
                 server_url = None
             if server_url:
                 break
-            await asyncio.sleep(2)
-
+            await asyncio.sleep(3)
+        if not server_url:
+            raise RuntimeError("Explorer server URL not found.")
         # wait for server setup
         for i in range(10):
             try:
@@ -194,7 +195,7 @@ class ServeTest(RayUnittestBaseAysnc):
         # explorer_actor = ray.get_actor(
         #     self.config.explorer.name, namespace=self.config.ray_namespace
         # )
-
+        print(f"Server URL: {server_url}")
         response = run_agent(base_url=f"{server_url}/v1", model_path=self.config.model.model_path)
         print(response)
         self.assertIsInstance(response, str)

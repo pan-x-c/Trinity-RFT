@@ -81,6 +81,7 @@ class StateManager:
     def save_explorer_server_url(self, url: str) -> None:
         with open(self.explorer_server_url_path, "w", encoding="utf-8") as f:
             f.write(url)
+        self.logger.info(f"Saved explorer server URL to {self.explorer_server_url_path}")
 
     def load_explorer_server_url(self) -> Optional[str]:
         if os.path.exists(self.explorer_server_url_path):

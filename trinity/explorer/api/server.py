@@ -9,12 +9,12 @@ from trinity.utils.log import get_logger
 
 
 class APIServer:
-    def __init__(self, explorer: Explorer, port: int = 8010, localmode: bool = True):
+    def __init__(self, explorer: Explorer, listen_address: str = "localhost", port: int = 8010):
         self.logger = get_logger(__name__)
         self.explorer = explorer
         self.app = None
         self.port = port
-        self.localmode = localmode
+        self.listen_address = listen_address
         self.running = False
         self.models: List[ModelWrapper] = [ModelWrapper(model) for model in explorer.models]
         self.running_models: deque[int] = deque()
@@ -35,7 +35,9 @@ class APIServer:
         for i, _ in enumerate(self.models):
             self.running_models.append(i)
 
-        self.serve_task = asyncio.create_task(run_app(self.explorer, self.port))
+        self.serve_task = asyncio.create_task(
+            run_app(server=self, listen_address=self.listen_address, port=self.port)
+        )
 
     async def schedule_weights_sync(self, model_version: int):
         if not self.running:

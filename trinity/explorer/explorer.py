@@ -49,8 +49,10 @@ class Explorer:
         self.models, self.auxiliary_models = create_inference_models(config)
         self.experience_pipeline = self._init_experience_pipeline()
         self.config.buffer.explorer_input.taskset.index = explorer_state.get("latest_task_index", 0)
-        self.taskset = get_buffer_reader(
-            self.config.buffer.explorer_input.taskset, self.config.buffer
+        self.taskset = (
+            get_buffer_reader(self.config.buffer.explorer_input.taskset, self.config.buffer)
+            if self.config.mode != "serve"
+            else None
         )
         self.scheduler = None
         self.monitor = MONITOR.get(self.config.monitor.monitor_type)(
@@ -146,7 +148,7 @@ class Explorer:
         """Preparation before running."""
         try:
             await self.experience_pipeline.prepare.remote()
-
+            self.logger.info("Experience pipeline is ready.")
             # make sure all rollout models are ready
             model_ready_ref = [model.__ray_ready__.remote() for model in self.models]
             await asyncio.gather(*model_ready_ref)
@@ -301,7 +303,10 @@ class Explorer:
         return True
 
     async def save_checkpoint(self, sync_weight: bool = False) -> None:
-        await self._finish_steps(self.last_sync_step + 1, self.explore_step_num, self.model_version)
+        if self.scheduler:
+            await self._finish_steps(
+                self.last_sync_step + 1, self.explore_step_num, self.model_version
+            )
 
         if sync_weight:
             # sync weights
@@ -418,16 +423,23 @@ class Explorer:
         """
         from trinity.explorer.api.server import APIServer
 
-        self.server = APIServer(self, self.config.explorer.api_port, self.config.localmode)
+        self.server = APIServer(
+            self,
+            listen_address=self.config.explorer.listen_address,
+            port=self.config.explorer.api_port,
+        )
         await self.server.serve()
         self.server_url = f"http://{ray.util.get_node_ip_address()}:{self.server.port}"
-        self.logger.info(f"Explorer API Server is started on {self.server_url}")
+        self.logger.info(
+            f"Explorer API Server is started on {self.server_url} and listening to {self.server.listen_address}."
+        )
         self.state.save_explorer_server_url(self.server_url)
         while True:
             await asyncio.sleep(self.config.explorer.check_interval)
             self.experience_pipeline.process.remote([])
             if await self.need_sync():
                 await self.continuous_sync_weight()
+            self.explore_step_num += 1
 
     @Experimental
     async def continuous_sync_weight(self) -> None:

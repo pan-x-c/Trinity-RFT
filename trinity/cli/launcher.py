@@ -137,6 +137,15 @@ def both(config: Config) -> None:
         logger.error(f"Explorer or Trainer failed:\n{traceback.format_exc()}")
 
 
+MODE_MAP = {
+    "explore": explore,
+    "train": train,
+    "both": both,
+    "bench": bench,
+    "serve": serve,
+}
+
+
 def run_stage(config: Config, ray_address: str) -> None:
     envs = {
         PLUGIN_DIRS_ENV_VAR: os.environ.get(PLUGIN_DIRS_ENV_VAR, ""),
@@ -153,16 +162,7 @@ def run_stage(config: Config, ray_address: str) -> None:
     pprint(config)
     try:
         check_and_run_task_pipeline(config)
-        if config.mode == "explore":
-            explore(config)
-        elif config.mode == "train":
-            train(config)
-        elif config.mode == "both":
-            both(config)
-        elif config.mode == "bench":
-            bench(config)
-        elif config.mode == "serve":
-            serve(config)
+        MODE_MAP[config.mode](config)
     finally:
         if config.monitor.enable_ray_timeline:
             timeline_file = os.path.join(config.monitor.cache_dir, "timeline.json")

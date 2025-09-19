@@ -26,15 +26,13 @@ async def health(request: Request) -> Response:
     return Response(status_code=200)
 
 
-async def serve_http(app: FastAPI, port: int = None, localmode: bool = False):
-    host = "localhost" if localmode else "0.0.0.0"
+async def serve_http(app: FastAPI, host: str, port: int = None):
     config = uvicorn.Config(app, host=host, port=port)
     server = uvicorn.Server(config)
     await server.serve()
 
 
-async def run_app(server, port: int = None, localmode: bool = False) -> FastAPI:
+async def run_app(server, listen_address: str, port: int = None) -> FastAPI:
     app.state.server = server
-    port = port
-    print(f"API server running on localhost:{port}")
-    await serve_http(app, port, localmode=localmode)
+    print(f"API server running on {listen_address}:{port}")
+    await serve_http(app, listen_address, port)
