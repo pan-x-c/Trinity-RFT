@@ -70,7 +70,11 @@ async def feedback(request: Request):
         return JSONResponse(
             status_code=400, content={"error": "session_id and reward are required"}
         )
-    await request.app.state.service.explorer.record_feedback(session_id, reward)
+    if not isinstance(session_id, int) or not isinstance(reward, (int, float)):
+        return JSONResponse(
+            status_code=400, content={"error": "session_id must be int and reward must be float"}
+        )
+    await request.app.state.service.record_feedback(session_id, reward)
     return JSONResponse(content={"status": "success"})
 
 

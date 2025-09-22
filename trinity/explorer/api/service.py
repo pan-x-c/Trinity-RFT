@@ -140,6 +140,8 @@ class ExplorerService:
                 prompt_length=len(response["prompt_token_ids"]),
                 response_text=choice.get("message", {}).get("content", ""),
             )
+            if session_id is not None:
+                exp.eid.task = session_id
             experiences.append(exp)
         self.experience_count += len(experiences)
 
