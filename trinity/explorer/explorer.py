@@ -23,6 +23,7 @@ from trinity.common.constants import (
     SyncStyle,
 )
 from trinity.common.models import create_inference_models
+from trinity.common.models.utils import get_checkpoint_dir_with_step_num
 from trinity.explorer.scheduler import Scheduler
 from trinity.manager.state_manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
@@ -403,7 +404,7 @@ class Explorer:
     async def serve(self) -> None:
         """Run the explorer in serving mode.
 
-        In serving mode, the explorer starts an openAI compatible server to handle requests.
+        In serving mode, the explorer starts an OpenAI compatible server to handle requests.
         Agent applications can be deployed separately and interact with the explorer via the API.
 
 
@@ -440,17 +441,13 @@ class Explorer:
             # process experiences generated in the last interval
             exps = await self.service.get_all_experiences()
             metrics = await self.experience_pipeline.process.remote(exps)
-            if await self.need_sync():
-                await self.continuous_sync_weight()
             metrics.update(self.service.collect_metrics())
             self.monitor.log(metrics, self.explore_step_num)
-
-    @Experimental
-    async def continuous_sync_weight(self) -> None:
-        """Synchronize model weights in a continuous way."""
-        latest_model_version = self.synchronizer.set_model_state_dict_weight_step_num()
-        self.service.latest_model_version = latest_model_version
-        await self.service.schedule_weights_sync(latest_model_version)
+            # get the latest checkpoint
+            _, step_num = get_checkpoint_dir_with_step_num(
+                self.config.checkpoint_job_dir, raise_error=False
+            )
+            self.service.set_latest_model_version(step_num)
 
     @classmethod
     def get_actor(cls, config: Config):
