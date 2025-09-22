@@ -421,11 +421,12 @@ class ExplorerConfig:
 
     # for serve mode
     api_port: int = 8010
+    # listen on all interfaces by default
     listen_address: str = "0.0.0.0"
-    service_status_check_interval: int = (
-        60  # check the running status of the server every 60 seconds
-    )
-    min_running_model_num: int = 1  # keep at least 1 model in running status
+    # check the running status of the server every 60 seconds
+    service_status_check_interval: int = 60
+    # keep at least 1 model in running status
+    min_running_model_num: int = 1
 
 
 @dataclass
@@ -934,7 +935,7 @@ class Config:
             * self.explorer.rollout_model.tensor_parallel_size
         )
         if (
-            self.mode in ["train", "explore", "bench"]
+            self.mode in ["train", "explore", "bench", "serve"]
             and self.synchronizer.sync_method == SyncMethod.NCCL
         ):
             self.synchronizer.sync_method = SyncMethod.CHECKPOINT
