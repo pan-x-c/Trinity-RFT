@@ -351,12 +351,19 @@ class vLLMRolloutModel(InferenceModel):
             action_mask=action_mask[prompt_length:],  # Exclude the prompt tokens
         )
 
-    def shutdown(self):
+    async def shutdown(self):
         """Shutdown the vLLM v1 engine. This kills child processes forked
         by the vLLM engine. If not called, the child processes will be
         orphaned and will not be killed when the parent process exits,
         and they won't be able to be tracked by Ray anymore.
         """
+        if self.api_server is not None:
+            self.api_server.cancel()
+            try:
+                await self.api_server
+            except asyncio.CancelledError:
+                pass
+            self.api_server = None
         if hasattr(self.async_llm, "shutdown"):
             self.logger.info("Shutting down vLLM engine")
             self.async_llm.shutdown()
