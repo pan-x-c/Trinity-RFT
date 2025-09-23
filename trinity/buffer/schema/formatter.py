@@ -220,8 +220,12 @@ class SFTFormatter(ExperienceFormatter):
         messages: List[Dict],
         mm_data: Dict,
     ) -> Experience:
-        from trinity.common.models.mm_utils import build_multi_modal_inputs
+        from trinity.common.models.mm_utils import (
+            build_multi_modal_inputs,
+            convert_messages_to_mm_format,
+        )
 
+        messages = convert_messages_to_mm_format(messages)
         sequence: str = self.processor.apply_chat_template(
             messages,
             add_generation_prompt=False,

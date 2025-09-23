@@ -19,7 +19,7 @@ from tests.tools import (
     get_model_path,
     get_template_config,
     get_unittest_dataset_config,
-    get_vision_languge_model_path,
+    get_vision_language_model_path,
 )
 from trinity.cli.launcher import bench, both, explore, run, train
 from trinity.common.config import (
@@ -683,13 +683,13 @@ class TestTrainerMIX(BaseTrainerCase):
 
 
 class TestTrainerMultiModal(BaseTrainerCase):
-    @unittest.skip("Require specific vllm/transformers version")
+    # @unittest.skip("Require specific vllm/transformers version")
     def test_trainer(self):
         """Test both mode with multi-modal data."""
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config(
             "geometry"
         )  # Total 8 tasks
-        self.config.model.model_path = get_vision_languge_model_path()
+        self.config.model.model_path = get_vision_language_model_path()
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.advantage_fn = "grpo"
         self.config.algorithm.kl_loss_fn = "none"

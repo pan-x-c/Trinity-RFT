@@ -1,8 +1,13 @@
 import unittest
 
+from datasets import load_dataset
 from transformers import AutoTokenizer
 
-from tests.tools import get_model_path
+from tests.tools import (
+    get_model_path,
+    get_unittest_dataset_config,
+    get_vision_language_model_path,
+)
 from trinity.buffer.schema.formatter import FORMATTER
 from trinity.common.config import FormatConfig, StorageConfig
 from trinity.common.constants import PromptType
@@ -308,3 +313,22 @@ class TestFormatter(unittest.TestCase):
         self.assertTrue(task.workflow_args.get("use_base"))
         self.assertFalse(task.workflow_args.get("with_think"))
         self.assertEqual(task.raw_task, sample)
+
+    def test_multi_modal_sft_formatter(self):
+        storage_config = get_unittest_dataset_config("geometry")
+
+        formatter = FORMATTER.get("sft")(
+            tokenizer_path=get_vision_language_model_path(), format_config=storage_config.format
+        )
+        ds = load_dataset(storage_config.path, split=storage_config.split)
+        for sample in ds:
+            exp = formatter.format(sample)
+            self.assertIsInstance(exp, Experience)
+            self.assertIsNotNone(exp.tokens)
+            self.assertIn(
+                151655, exp.tokens
+            )  # image token id, only for Qwen2.5 VL, if changed, please update this test
+            self.assertIsNotNone(exp.prompt_length)
+            self.assertTrue(exp.prompt_length < len(exp.tokens))
+            self.assertIsNotNone(exp.multi_modal_inputs)
+            self.assertTrue(len(exp.multi_modal_inputs) > 0)
