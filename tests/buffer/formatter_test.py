@@ -18,7 +18,7 @@ class TestFormatter(unittest.TestCase):
             prompt_type=PromptType.MESSAGES,
             messages_key="message_list",
         )
-        formatter = FORMATTER.get("sft")(tokenizer=self.tokenizer, format_config=config)
+        formatter = FORMATTER.get("sft")(tokenizer_path=get_model_path(), format_config=config)
         sample = {
             "message_list": [
                 {"role": "user", "content": "Hi"},
@@ -100,7 +100,7 @@ class TestFormatter(unittest.TestCase):
             tools_key="tools",
             enable_concatenated_multi_turn=False,
         )
-        formatter = FORMATTER.get("sft")(tokenizer=self.tokenizer, format_config=config)
+        formatter = FORMATTER.get("sft")(tokenizer_path=get_model_path(), format_config=config)
         exp = formatter.format(sample)
         self.assertIsInstance(exp, Experience)
         self.assertIsNotNone(exp.tokens)
@@ -125,7 +125,7 @@ class TestFormatter(unittest.TestCase):
             tools_key="tools",
             enable_concatenated_multi_turn=True,
         )
-        formatter = FORMATTER.get("sft")(tokenizer=self.tokenizer, format_config=config)
+        formatter = FORMATTER.get("sft")(tokenizer_path=get_model_path(), format_config=config)
         exp = formatter.format(sample)
         self.assertIsInstance(exp, Experience)
         self.assertIsNotNone(exp.tokens)
@@ -157,7 +157,7 @@ class TestFormatter(unittest.TestCase):
             prompt_key="prompt",
             response_key="response",
         )
-        formatter = FORMATTER.get("sft")(tokenizer=self.tokenizer, format_config=config)
+        formatter = FORMATTER.get("sft")(tokenizer_path=get_model_path(), format_config=config)
         sample = {
             "system": "You are a helpful assistant.",
             "prompt": "What is 2+2?",
@@ -181,7 +181,7 @@ class TestFormatter(unittest.TestCase):
             prompt_key="prompt",
             response_key="response",
         )
-        formatter = FORMATTER.get("sft")(tokenizer=self.tokenizer, format_config=config)
+        formatter = FORMATTER.get("sft")(tokenizer_path=get_model_path(), format_config=config)
 
         exp = formatter.format(sample)
         self.assertIsInstance(exp, Experience)
@@ -201,7 +201,7 @@ class TestFormatter(unittest.TestCase):
             chosen_key="chosen",
             rejected_key="rejected",
         )
-        formatter = FORMATTER.get("dpo")(tokenizer=self.tokenizer, format_config=config)
+        formatter = FORMATTER.get("dpo")(tokenizer_path=get_model_path(), format_config=config)
         sample = {"prompt": "What is 2+2?", "chosen": "2+2=4", "rejected": "2+2=5"}
         exp = formatter.format(sample)
         self.assertIsInstance(exp, Experience)
@@ -227,7 +227,7 @@ class TestFormatter(unittest.TestCase):
             chosen_key="chosen",
             rejected_key="rejected",
         )
-        formatter = FORMATTER.get("dpo")(tokenizer=self.tokenizer, format_config=config)
+        formatter = FORMATTER.get("dpo")(tokenizer_path=get_model_path(), format_config=config)
         sample = {
             "messages": [
                 {"role": "user", "content": "What is your name?"},
