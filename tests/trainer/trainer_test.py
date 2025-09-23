@@ -682,6 +682,30 @@ class TestTrainerMIX(BaseTrainerCase):
         shutil.rmtree(self.config.checkpoint_job_dir)
 
 
+class TestServeWithTrainer(unittest.TestCase):
+
+    def setUp(self):
+        if multiprocessing.get_start_method(allow_none=True) != "spawn":
+            multiprocessing.set_start_method("spawn", force=True)
+        checkpoint_path = get_checkpoint_path()
+        shutil.rmtree(os.path.join(checkpoint_path, "unittest"), ignore_errors=True)
+
+
+    def test_serve_with_trainer(self):
+        config = get_template_config()
+        config.project = "unittest"
+        config.name = f"serve_with_trainer_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        config.checkpoint_root_dir = get_checkpoint_path()
+        config.buffer.batch_size = 4
+        config.algorithm.algorithm_type = "ppo"
+        config.algorithm.repeat_times = 1
+        config.trainer.save_interval = 1
+        config.buffer.trainer_input.experience_buffer = StorageConfig(
+            name="exp_buffer",
+            storage_type=StorageType.SQL,
+        )
+        config.synchronizer.sync_method = SyncMethod.CHECKPOINT
+
 class TestTrainerMultiModal(BaseTrainerCase):
     @unittest.skip("Require specific vllm/transformers version")
     def test_trainer(self):

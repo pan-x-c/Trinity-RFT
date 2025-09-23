@@ -33,10 +33,13 @@ async def chat_completions(request: Request):
 
 @app.get("/v1/models")
 async def show_available_models(request: Request):
+    if hasattr(request.app.state, "models"):
+        return JSONResponse(content=request.app.state.models)
     body = await request.json()
     url = await request.app.state.service.allocate_model(increase_count=False)
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"{url}/v1/models", json=body)
+    request.app.state.models = resp.json()
     return JSONResponse(content=resp.json())
 
 
