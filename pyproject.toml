@@ -121,7 +121,7 @@ exclude = '''
 known_third_party = ["wandb"]
 
 [tool.uv.extra-build-dependencies]
-flash-attn = ["torch"]
+flash-attn = ["torch", "numpy"]
 
 [project.urls]
 "Homepage" = "https://github.com/modelscope/Trinity-RFT"

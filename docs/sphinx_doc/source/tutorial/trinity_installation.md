@@ -50,7 +50,7 @@ pip install -e ".[flash_attn]"
 # pip install flash-attn==2.8.1 --no-build-isolation
 ```
 
-#### Use `uv`
+#### Using `uv`
 
 [`uv`](https://github.com/astral-sh/uv) is a modern Python package installer.
 

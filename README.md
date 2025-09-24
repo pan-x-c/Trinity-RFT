@@ -110,8 +110,6 @@ The RFT process is modularized into three core components:
 
 ### Step 1: installation
 
-#### Prerequisites
-
 Before installing, make sure your system meets the following requirements:
 
 - **Python**: version 3.10 to 3.12 (inclusive)
@@ -119,9 +117,9 @@ Before installing, make sure your system meets the following requirements:
 - **GPUs**: at least 2 GPUs
 
 
-#### Option A: Install from Source (Recommended)
+#### From Source (Recommended)
 
-This method gives you full control and is best if you plan to customize or contribute to the project.
+If you plan to customize or contribute to Trinity-RFT, this is the best option.
 
 ##### 1. Clone the Repository
 
@@ -132,69 +130,59 @@ cd Trinity-RFT
 
 ##### 2. Set Up a Virtual Environment
 
-Choose one of the following options to create an isolated environment:
+Choose one of the following options:
 
 ###### Using Conda
+
 ```bash
 conda create -n trinity python=3.10
 conda activate trinity
+
+pip install -e ".[dev]"
+pip install -e ".[flash_attn]"
+# if you encounter issues when installing flash-attn, try:
+# pip install flash-attn==2.8.1 --no-build-isolation
 ```
 
 ###### Using venv
+
 ```bash
 python3.10 -m venv .venv
 source .venv/bin/activate
-```
 
-##### 3. Install the Package
-
-Install in editable mode so you can make changes without reinstalling:
-
-```bash
 pip install -e ".[dev]"
+pip install -e ".[flash_attn]"
+# if you encounter issues when installing flash-attn, try:
+# pip install flash-attn==2.8.1 --no-build-isolation
 ```
 
-##### 4. Install Flash Attention
+###### Using `uv`
 
-Flash Attention boosts training speed. It takes a few minutes to compile — please be patient!
+[`uv`](https://github.com/astral-sh/uv) is a modern Python package installer.
 
 ```bash
-pip install flash-attn==2.8.1
-```
-
-If you encounter issues during installation, try this alternative:
-
-```bash
-pip install flash-attn==2.8.1 --no-build-isolation
+uv sync --extra dev --extra flash_attn
 ```
 
 
-##### ⚡ Fast Alternative: Use `uv` (Optional)
-
-If you'd like a faster installation, try [`uv`](https://github.com/astral-sh/uv), a modern Python package installer:
-
-```bash
-uv venv
-source .venv/bin/activate
-
-uv pip install -e ".[dev]"
-uv pip install flash-attn==2.8.1 --no-build-isolation
-```
-
-#### Option B: Install via pip (Quick Start)
+#### Via PyPI
 
 If you just want to use the package without modifying the code:
 
 ```bash
 pip install trinity-rft==0.3.0
-pip install flash-attn==2.8.1  # Install Flash Attention separately
-
-# Use uv to install trinity-rft
-# uv pip install trinity-rft==0.3.0
-# uv pip install flash-attn==2.8.1
+pip install flash-attn==2.8.1
 ```
 
-#### Option C: Use Docker
+Or with `uv`:
+
+```bash
+uv pip install trinity-rft==0.3.0
+uv pip install flash-attn==2.8.1
+```
+
+
+#### Using Docker
 
 We provide a Docker setup for hassle-free environment configuration.
 
@@ -202,11 +190,11 @@ We provide a Docker setup for hassle-free environment configuration.
 git clone https://github.com/modelscope/Trinity-RFT
 cd Trinity-RFT
 
-## Build the Docker image
+# Build the Docker image
 ## Tip: You can modify the Dockerfile to add mirrors or set API keys
 docker build -f scripts/docker/Dockerfile -t trinity-rft:latest .
 
-## Run the container
+# Run the container, replacing <path_to_your_data_and_checkpoints> with your actual path
 docker run -it \
   --gpus all \
   --shm-size="64g" \
@@ -216,9 +204,7 @@ docker run -it \
   trinity-rft:latest
 ```
 
-💡 **Note**: Replace `<path_to_your_data_and_checkpoints>` with the actual path on your machine where datasets and model checkpoints are stored.
-
-> If you'd like to integrate with **Megatron-LM**, check out our [example setup guide for Megatron](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_megatron.html).
+> For training with **Megatron-LM**, please refer to [Megatron-LM Backend](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_megatron.html).
 
 ### Step 2: prepare dataset and model
 

@@ -111,19 +111,17 @@ RFT 流程被模块化为三个核心组件：
 
 ### 第一步：安装
 
-#### 环境要求
 在安装之前，请确保您的系统满足以下要求：
 
 - **Python**：版本 3.10 至 3.12（含）
 - **CUDA**：版本 12.4 至 12.8（含）
 - **GPU**：至少 2 块 GPU
 
+#### 源码安装（推荐）
 
-#### 方式 A：从源码安装（推荐）
+如果您计划自定义或向 Trinity-RFT 贡献代码，推荐使用此方法。
 
-这种方式可以让您完全控制项目代码，适合打算自定义功能或参与项目开发的用户。
-
-##### 1. 克隆代码仓库
+##### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/modelscope/Trinity-RFT
@@ -132,82 +130,69 @@ cd Trinity-RFT
 
 ##### 2. 创建虚拟环境
 
-选择以下任意一种方式，创建一个独立的 Python 环境：
+可选择以下任一方式：
 
 ###### 使用 Conda
+
 ```bash
 conda create -n trinity python=3.10
 conda activate trinity
+
+pip install -e ".[dev]"
+pip install -e ".[flash_attn]"
+# 如果安装 flash-attn 时遇到问题，可尝试：
+# pip install flash-attn==2.8.1 --no-build-isolation
 ```
 
 ###### 使用 venv
+
 ```bash
 python3.10 -m venv .venv
 source .venv/bin/activate
-```
 
-##### 3. 安装软件包
-
-以“可编辑模式”安装，这样您可以修改代码而无需重新安装：
-
-```bash
 pip install -e ".[dev]"
+pip install -e ".[flash_attn]"
+# 如果安装 flash-attn 时遇到问题，可尝试：
+# pip install flash-attn==2.8.1 --no-build-isolation
 ```
 
-##### 4. 安装 Flash Attention
+###### 使用 `uv`
 
-Flash Attention 可以显著提升训练速度。编译需要几分钟时间，请耐心等待！
+[`uv`](https://github.com/astral-sh/uv) 是现代的 Python 包管理工具。
 
 ```bash
-pip install flash-attn==2.8.1
+uv sync --extra dev --extra flash_attn
 ```
 
-如果安装过程中出现问题，可以尝试以下命令：
+#### 通过 PyPI 安装
 
-```bash
-pip install flash-attn==2.8.1 --no-build-isolation
-```
-
-
-##### ⚡ 快速替代方案：使用 `uv`（可选）
-
-如果您希望安装得更快，可以试试 [`uv`](https://github.com/astral-sh/uv)，这是一个现代化的 Python 包安装工具：
-
-```bash
-uv venv
-source .venv/bin/activate
-
-uv pip install -e ".[dev]"
-uv pip install flash-attn==2.8.1 --no-build-isolation
-```
-
-#### 方式 B：通过 pip 安装（快速开始）
-
-如果您只是想使用这个工具，不需要修改代码，可以选择这种方式：
+如果您只需使用 Trinity-RFT 而不打算修改代码：
 
 ```bash
 pip install trinity-rft==0.3.0
-pip install flash-attn==2.8.1  # 单独安装 Flash Attention
-
-# 也可以用 uv 来安装 trinity-rft
-# uv pip install trinity-rft==0.3.0
-# uv pip install flash-attn==2.8.1
+pip install flash-attn==2.8.1
 ```
 
-#### 方式 C：使用 Docker
+或使用 `uv`：
 
-我们提供了 Docker 配置，可以免去复杂的环境设置。
+```bash
+uv pip install trinity-rft==0.3.0
+uv pip install flash-attn==2.8.1
+```
+
+#### 使用 Docker
+
+我们提供了 Docker 环境，方便快速配置。
 
 ```bash
 git clone https://github.com/modelscope/Trinity-RFT
 cd Trinity-RFT
 
 # 构建 Docker 镜像
-# 注意：您可以编辑 Dockerfile 来定制环境
-# 例如，设置 pip 镜像源或设置 API 密钥
+## 提示：可根据需要修改 Dockerfile 添加镜像源或设置 API 密钥
 docker build -f scripts/docker/Dockerfile -t trinity-rft:latest .
 
-# 启动容器
+# 运行容器，请将 <path_to_your_data_and_checkpoints> 替换为实际需要挂载的路径
 docker run -it \
   --gpus all \
   --shm-size="64g" \
@@ -217,9 +202,7 @@ docker run -it \
   trinity-rft:latest
 ```
 
-💡 **注意**：请将 `<path_to_your_data_and_checkpoints>` 替换为您电脑上实际存放数据集和模型文件的路径。
-
-> 如果您想集成 **Megatron-LM**，请参考我们的 [Megatron 示例配置指南](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_megatron.html)。
+> 如果您想使用 **Megatron-LM** 训练，请参考我们的 [Megatron 示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_megatron.html)。
 
 
 ### 第二步：准备数据集和模型

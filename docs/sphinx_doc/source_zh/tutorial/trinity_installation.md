@@ -55,10 +55,7 @@ pip install -e ".[flash_attn]"
 [`uv`](https://github.com/astral-sh/uv) 是现代的 Python 包管理工具。
 
 ```bash
-uv venv
-source .venv/bin/activate
-uv pip install -e ".[dev]"
-uv pip install -e ".[flash_attn]"
+uv sync --extra dev --extra flash_attn
 ```
 
 ---
