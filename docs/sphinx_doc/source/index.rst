@@ -9,6 +9,18 @@ Welcome to Trinity-RFT's documentation!
 .. include:: main.md
    :parser: myst_parser.sphinx_
 
+.. toctree::
+   :maxdepth: 2
+   :glob:
+   :hidden:
+   :caption: Guidelines
+
+   tutorial/trinity_installation.md
+   tutorial/trinity_programming_guide.md
+   tutorial/trinity_configs.md
+   tutorial/example_mix_algo.md
+   tutorial/synchronizer.md
+
 
 .. toctree::
    :maxdepth: 1
@@ -26,17 +38,6 @@ Welcome to Trinity-RFT's documentation!
    tutorial/example_dpo.md
    tutorial/example_megatron.md
    tutorial/example_data_functionalities.md
-
-.. toctree::
-   :maxdepth: 2
-   :glob:
-   :hidden:
-   :caption: Guidelines
-
-   tutorial/trinity_programming_guide.md
-   tutorial/trinity_configs.md
-   tutorial/example_mix_algo.md
-   tutorial/synchronizer.md
 
 .. toctree::
    :maxdepth: 2
