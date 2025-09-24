@@ -15,9 +15,12 @@
    :caption: 教程
 
    tutorial/trinity_installation.md
-   tutorial/trinity_programming_guide.md
-   tutorial/trinity_configs.md
+   tutorial/develop_overview.md
+   tutorial/develop_workflow.md
+   tutorial/develop_algorithm.md
    tutorial/example_mix_algo.md
+   tutorial/develop_operator.md
+   tutorial/trinity_configs.md
    tutorial/synchronizer.md
 
 .. toctree::
