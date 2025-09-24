@@ -6,11 +6,14 @@ Modified from: verl/utils/dataset/rl_dataset.py
 import re
 from typing import Any, Dict, List
 
+import numpy as np
+from PIL import Image
+
 
 def build_multi_modal_inputs(
     prompt: str,
-    images: List,
-    videos: List,
+    images: List[Image.Image],
+    videos: List[np.ndarray],
     processor: Any,
 ) -> Dict[str, Any]:
     """
