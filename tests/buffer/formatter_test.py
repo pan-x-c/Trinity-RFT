@@ -315,20 +315,22 @@ class TestFormatter(unittest.TestCase):
         self.assertEqual(task.raw_task, sample)
 
     def test_multi_modal_sft_formatter(self):
+        IMAGE_TOKEN_ID = 151655  # only for Qwen2.5 VL, if changed, please update this test
         storage_config = get_unittest_dataset_config("geometry")
 
         formatter = FORMATTER.get("sft")(
             tokenizer_path=get_vision_language_model_path(), format_config=storage_config.format
         )
         ds = load_dataset(storage_config.path, split=storage_config.split)
+        count = 0
         for sample in ds:
             exp = formatter.format(sample)
             self.assertIsInstance(exp, Experience)
             self.assertIsNotNone(exp.tokens)
-            self.assertIn(
-                151655, exp.tokens
-            )  # image token id, only for Qwen2.5 VL, if changed, please update this test
+            self.assertIn(IMAGE_TOKEN_ID, exp.tokens)
             self.assertIsNotNone(exp.prompt_length)
             self.assertTrue(exp.prompt_length < len(exp.tokens))
             self.assertIsNotNone(exp.multi_modal_inputs)
             self.assertTrue(len(exp.multi_modal_inputs) > 0)
+            count += 1
+        self.assertEqual(count, 8)  # there are total 8 samples in geometry dataset

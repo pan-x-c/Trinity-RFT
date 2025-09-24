@@ -682,8 +682,8 @@ class TestTrainerMIX(BaseTrainerCase):
         shutil.rmtree(self.config.checkpoint_job_dir)
 
 
-class TestTrainerMultiModal(BaseTrainerCase):
-    # @unittest.skip("Require specific vllm/transformers version")
+class TestMultiModalGRPO(BaseTrainerCase):
+    @unittest.skip("Require specific vllm/transformers version")
     def test_trainer(self):
         """Test both mode with multi-modal data."""
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config(
@@ -696,9 +696,7 @@ class TestTrainerMultiModal(BaseTrainerCase):
         self.config.algorithm.repeat_times = 4
         self.config.buffer.batch_size = 4
         self.config.buffer.total_epochs = 1
-        self.config.trainer.save_interval = 1
-        self.config.cluster.node_num = 1
-        self.config.cluster.gpu_per_node = 4
+        self.config.trainer.save_interval = 2
         self.config.check_and_update()
         both(self.config)
         # check metrics are available
@@ -712,7 +710,46 @@ class TestTrainerMultiModal(BaseTrainerCase):
         response_metrics = parser.metric_list("response_length")
         self.assertTrue(len(response_metrics) > 0)
         self.assertEqual(parser.metric_max_step(response_metrics[0]), 2)
-        ray.shutdown(_exiting_interpreter=True)
+        # check save lastest checkpoint
+        checkpoint_step_2, step_num = get_checkpoint_dir_with_step_num(
+            checkpoint_root_path=self.config.checkpoint_job_dir,
+            trainer_type=self.config.trainer.trainer_type,
+        )
+        self.assertTrue(len(os.listdir(os.path.join(checkpoint_step_2, "actor"))) > 0)
+        self.assertEqual(step_num, 2)
+
+    def tearDown(self):
+        # remove dir only when the test passed
+        shutil.rmtree(self.config.checkpoint_job_dir)
+
+
+class TestMultiModalSFT(BaseTrainerCase):
+    @unittest.skip("Require specific vllm/transformers version")
+    def test_trainer(self):
+        """Test SFT mode with multi-modal data."""
+        self.config.mode = "train"
+        self.config.buffer.trainer_input.experience_buffer = get_unittest_dataset_config(
+            "geometry"
+        )  # Total 8 tasks
+        self.config.model.model_path = get_vision_language_model_path()
+        self.config.algorithm.algorithm_type = "sft"
+        self.config.algorithm.policy_loss_fn = "sft"
+        self.config.algorithm.policy_loss_fn_args = {}
+        self.config.algorithm.kl_loss_fn = "none"
+        self.config.algorithm.entropy_loss_fn = "none"
+        self.config.buffer.train_batch_size = 4
+        self.config.buffer.total_epochs = 1
+        self.config.trainer.save_interval = 2
+        self.config.check_and_update()
+        train(self.config)
+        # check metrics are available
+        parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
+        actor_metrics = parser.metric_list("actor")
+        self.assertTrue(len(actor_metrics) > 0)
+        self.assertEqual(parser.metric_max_step(actor_metrics[0]), 2)
+        response_metrics = parser.metric_list("response_length")
+        self.assertTrue(len(response_metrics) > 0)
+        self.assertEqual(parser.metric_max_step(response_metrics[0]), 2)
         # check save lastest checkpoint
         checkpoint_step_2, step_num = get_checkpoint_dir_with_step_num(
             checkpoint_root_path=self.config.checkpoint_job_dir,

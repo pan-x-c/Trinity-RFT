@@ -244,7 +244,6 @@ class vLLMRolloutModel(InferenceModel):
             images=images,
             videos=videos,
             processor=self.processor,
-            **kwargs,
         )
 
         vllm_inputs = {

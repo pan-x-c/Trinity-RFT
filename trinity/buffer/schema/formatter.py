@@ -203,8 +203,15 @@ class SFTFormatter(ExperienceFormatter):
     def load_mm_data(self, sample: Dict) -> Dict:
         """Load multi-modal data such as images or videos.
 
+        NOTE: You can override this method for custom data loading.
+
+        Args:
+            sample (Dict): The raw sample dictionary containing multi-modal data.
+
         Returns:
-            Dict: A dictionary containing multi-modal data.
+            Dict: A dictionary containing multi-modal data. Specifically, it may contain:
+                - images: A list of `PIL.Image.Image` if `self.image_key` is set
+                - videos: A list of `numpy.ndarray` if `self.video_key` is set
         """
         from verl.utils.dataset.vision_utils import process_image, process_video
 
