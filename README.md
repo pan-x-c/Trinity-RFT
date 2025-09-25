@@ -23,7 +23,7 @@
 Trinity-RFT is a flexible, general-purpose framework for reinforcement fine-tuning (RFT) of large language models (LLMs). It provides three independent modules for users with different needs:
 
 * 🤖 **Explorer**：For agent application developers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_workflow.html)
-  - Train an agent application to complete tasks in a specified environment with minimal migration cost
+  - Train an agent application to enhance its ability to complete tasks in a specified environment
   - Examples: [Multi-Turn Interaction](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_multi_turn.html), [ReAct Agent](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_react.html)
 
 * 🧠 **Trainer**: For RL algorithm researchers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
