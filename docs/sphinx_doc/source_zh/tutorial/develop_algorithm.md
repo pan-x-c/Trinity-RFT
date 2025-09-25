@@ -87,7 +87,7 @@ class OPMDGroupAdvantage(GroupAdvantage):
 
 实现后，你需要通过 {class}`trinity.algorithm.ADVANTAGE_FN` 注册此模块。注册后，该模块可在配置文件中使用注册名称进行配置。
 
-#### 步骤 1.3：实现 `PolicyLossFn`
+#### 步骤 1.2：实现 `PolicyLossFn`
 
 开发者需要实现 {class}`trinity.algorithm.PolicyLossFn` 接口，其与 `AdvantageFn` 类似，包含两个方法：
 
@@ -127,7 +127,7 @@ class OPMDPolicyLossFn(PolicyLossFn):
 
 ---
 
-### 步骤 2：注册你的算法
+### 步骤 2：注册新算法
 
 上述步骤实现了算法所需的组件，但这些组件是分散的，需要在多个地方配置才能生效。
 
@@ -172,9 +172,20 @@ class OPMDAlgorithm(AlgorithmType):
         }
 ```
 
+
+```{tip}
+为了保证注册生效，请确保在对应的 __init__.py 文件中导入了新实现的模块，例如：
+
+- 在 `trinity/algorithm/advantage_fn/__init__.py` 中导入 `OPMDGroupAdvantage`
+- 在 `trinity/algorithm/policy_loss_fn/__init__.py` 中导入 `OPMDPolicyLossFn`
+- 在 `trinity/algorithm/__init__.py` 中导入 `OPMDAlgorithm`
+
+也可以将这些类放在 `trinity/plugins` 目录下，Trinity-RFT 会在启动时自动加载 `plugins` 目录中的所有模块，无需在 `__init__.py` 中导入。
+```
+
 ---
 
-### 步骤 3：使用你的算法
+### 步骤 3：使用新算法
 
 完成上述所有步骤后，你可以通过 YAML 配置文件使用新注册的算法。
 
