@@ -26,11 +26,11 @@ Trinity-RFT 是一个灵活、通用的大语言模型（LLM）强化微调（RF
   - 训练智能体应用，以增强其在指定环境中完成任务的能力
   - 示例：[多轮交互](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_multi_turn.html)，[ReAct 智能体](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_react.html)
 
-* 🧠 **Trainer**：面向 RL 算法研究者。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
+* 🧠 **Trainer**：面向 RL 算法研究者。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/develop_algorithm.html)
   - 在简洁、可插拔的类中设计和验证新的 RL 算法
   - 示例：[混合 RL 算法](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_mix_algo.html)
 
-* 🗄️ **Buffer**：面向数据工程师。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
+* 🗄️ **Buffer**：面向数据工程师。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/develop_operator.html)
   - 设计任务定制数据集，构建数据流水线以支持清洗、增强和人类参与场景
   - 示例：[数据功能](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_data_functionalities.html)
 
@@ -73,16 +73,16 @@ Trinity-RFT 统一了上述三个模块，并提供以下核心特性：
 ## 目录
 
 
-- [快速上手](#getting-started)
-  - [第一步：安装](#step-1-installation)
-  - [第二步：准备数据集和模型](#step-2-prepare-dataset-and-model)
-  - [第三步：配置](#step-3-configurations)
-  - [第四步：运行 RFT 流程](#step-4-run-the-rft-process)
-- [更多教程](#further-tutorials)
-- [未来功能](#upcoming-features)
-- [贡献指南](#contribution-guide)
-- [致谢](#acknowledgements)
-- [引用](#citation)
+- [快速上手](#快速上手)
+  - [第一步：安装](#第一步安装)
+  - [第二步：准备数据集和模型](#第二步准备数据集和模型)
+  - [第三步：准备配置文件](#第三步准备配置文件)
+  - [第四步：运行 RFT 流程](#第四步运行-rft-流程)
+- [更多教程](#更多教程)
+- [开发路线图](#开发路线图)
+- [贡献指南](#贡献指南)
+- [致谢](#致谢)
+- [引用](#引用)
 
 
 
@@ -223,7 +223,7 @@ modelscope download --dataset {dataset_name} --local_dir $DATASET_PATH/{dataset_
 
 
 
-### 第三步：配置
+### 第三步：准备配置文件
 
 
 Trinity-RFT 提供了一个 Web 界面来配置您的 RFT 流程。
@@ -335,7 +335,7 @@ trinity run --config examples/grpo_gsm8k/gsm8k.yaml
 
 
 
-## 未来功能
+## 开发路线图
 
 路线图：[#51](https://github.com/modelscope/Trinity-RFT/issues/51)
 

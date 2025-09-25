@@ -26,11 +26,11 @@ Trinity-RFT is a flexible, general-purpose framework for reinforcement fine-tuni
   - Train an agent application to enhance its ability to complete tasks in a specified environment
   - Examples: [Multi-Turn Interaction](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_multi_turn.html), [ReAct Agent](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_react.html)
 
-* 🧠 **Trainer**: For RL algorithm researchers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
+* 🧠 **Trainer**: For RL algorithm researchers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_algorithm.html)
   - Design and validate new RL algorithms in compact, plug-and-play classes
   - Examples: [Mixture of RL Algorithms](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_mix_algo.html)
 
-* 🗄️ **Buffer**: For data engineers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
+* 🗄️ **Buffer**: For data engineers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_operator.html)
   - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios
   - Examples: [Data Functionalities](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_data_functionalities.html)
 
@@ -75,7 +75,7 @@ Trinity-RFT unifies the above three modules and provides the following key featu
 ## Table of contents
 
 
-- [Getting started](#getting-started)
+- [Quick Start](#quick-start)
   - [Step 1: installation](#step-1-installation)
   - [Step 2: prepare dataset and model](#step-2-prepare-dataset-and-model)
   - [Step 3: configurations](#step-3-configurations)
@@ -88,7 +88,7 @@ Trinity-RFT unifies the above three modules and provides the following key featu
 
 
 
-## Getting started
+## Quick Start
 
 
 > [!NOTE]
