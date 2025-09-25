@@ -1,42 +1,32 @@
 ## 💡 What is Trinity-RFT?
 
-Trinity-RFT is a flexible, general-purpose framework for reinforcement fine-tuning (RFT) of large language models (LLMs). It supports a wide range of applications and provides a unified platform for RL research in the [era of experience](https://storage.googleapis.com/deepmind-media/Era-of-Experience%20/The%20Era%20of%20Experience%20Paper.pdf).
+Trinity-RFT is a flexible, general-purpose framework for reinforcement fine-tuning (RFT) of large language models (LLMs). It provides three independent modules for users with different needs:
 
-The RFT process is modularized into three core components:
+* 🤖 **Explorer**：For agent application developers. [[tutorial]](/tutorial/develop_workflow.md)
+  - Train an agent application to enhance its ability to complete tasks in a specified environment
+  - Examples: [Multi-Turn Interaction](/tutorial/example_multi_turn.md), [ReAct Agent](/tutorial/example_react.md)
 
-* **Explorer**: Handles agent-environment interaction
-* **Trainer**: Manages model training
-* **Buffer**: Manages data storage and processing
+* 🧠 **Trainer**: For RL algorithm researchers. [[tutorial]](/tutorial/develop_algorithm.md)
+  - Design and validate new RL algorithms in compact, plug-and-play classes
+  - Examples: [Mixture of RL Algorithms](/tutorial/example_mix_algo.md)
 
-<img src="https://img.alicdn.com/imgextra/i2/O1CN01H3UbpF1yP7E1OCLbi_!!6000000006570-2-tps-1334-638.png" alt="The high-level design of Trinity-RFT" width="800" />
+* 🗃️ **Buffer**: For data engineers. [[tutorial]](/tutorial/develop_operator.md)
+  - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios
+  - Examples: [Data Functionalities](/tutorial/example_data_functionalities.md)
 
-
-## 🛠️ What can I use Trinity-RFT for?
-
-* **Train agent applications with RL and minimal migration cost**
-  - Implement agent-environment interaction logic in a single workflow class ([example 1](tutorial/example_multi_turn.md), [example 2](tutorial/example_step_wise.md)),
-  - Or import workflows from agent frameworks like AgentScope ([example](/tutorial/example_react.md)).
-
-* **Rapid RL algorithm design and validation**
-  - Develop custom RL algorithms (loss design, sampling strategy, etc.) in compact, plug-and-play classes ([tutorial](tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers), [example](tutorial/example_mix_algo.md)).
-
-* **Custom datasets and data pipelines for RFT**
-  - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios ([tutorial](tutorial/trinity_programming_guide.md#operators-for-data-developers), [example](tutorial/example_data_functionalities.md)).
-
-
-## ✨ Key Features
+Trinity-RFT unifies the above three modules and provides the following key features:
 
 * **Flexible RFT Modes:**
   - Supports synchronous/asynchronous, on-policy/off-policy, and online/offline training. Rollout and training can run separately and scale independently across devices.
 
   <img src="https://img.alicdn.com/imgextra/i3/O1CN01E7NskS1FFoTI9jlaQ_!!6000000000458-2-tps-1458-682.png" alt="RFT modes supported by Trinity-RFT" width="600" />
 
-* **Agent Framework Compatible Workflows:**
-  - Supports both concatenated and general multi-turn agentic workflows. Automatically collects training data from model API clients (e.g., OpenAI) and is compatible with agent frameworks like AgentScope.
+* **General Agentic-RL Support:**
+  - Supports both concatenated and general multi-turn agentic workflows. Able to directly train agent applications developed using agent frameworks like AgentScope.
 
   <img src="https://img.alicdn.com/imgextra/i1/O1CN01z1i7kk1jlMEVa8ZHV_!!6000000004588-2-tps-1262-695.png" alt="Agentic workflows" width="600" />
 
-* **Powerful Data Pipelines:**
+* **Full Lifecycle Data Pipelines:**
   - Enables pipeline processing of rollout and experience data, supporting active management (prioritization, cleaning, augmentation) throughout the RFT lifecycle.
 
   <img src="https://img.alicdn.com/imgextra/i2/O1CN01BfeHp61sXSlGjH7zQ_!!6000000005776-2-tps-1734-473.png" alt="Data pipeline design" width="600" />
