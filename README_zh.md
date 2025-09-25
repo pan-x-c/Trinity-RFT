@@ -19,31 +19,28 @@
 </div>
 
 
-## 🚀 新闻
-
-* [2025-09] ✨ [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.3.0)] Trinity-RFT v0.3.0 发布：增强的 Buffer、FSDP2 & Megatron 支持，多模态模型，以及全新 RL 算法/示例。
-* [2025-08] 🎵 推出 [CHORD](https://github.com/modelscope/Trinity-RFT/tree/main/examples/mix_chord)：动态 SFT + RL 集成，实现进阶 LLM 微调（[论文](https://arxiv.org/pdf/2508.11408)）。
-* [2025-08] [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.2.1)] Trinity-RFT v0.2.1 发布。
-* [2025-07] [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.2.0)] Trinity-RFT v0.2.0 发布。
-* [2025-07] 技术报告（arXiv v2）更新，包含新功能、示例和实验：[链接](https://arxiv.org/abs/2505.17826)。
-* [2025-06] [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.1.1)] Trinity-RFT v0.1.1 发布。
-* [2025-05] [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.1.0)] Trinity-RFT v0.1.0 发布，同时发布 [技术报告](https://arxiv.org/abs/2505.17826)。
-* [2025-04] Trinity-RFT 开源。
-
-
 ## 💡 什么是 Trinity-RFT？
 
-Trinity-RFT 是一个灵活、通用的大语言模型（LLM）强化微调（RFT）框架。它支持广泛的应用场景，并为 [Experience 时代](https://storage.googleapis.com/deepmind-media/Era-of-Experience%20/The%20Era%20of%20Experience%20Paper.pdf) 的 RL 研究提供统一平台。
+Trinity-RFT 是一个灵活、通用的大语言模型（LLM）强化微调（RFT）框架。
 
-RFT 流程被模块化为三个核心组件：
+RFT 流程被分为三个独立模块，用户可根据需求专注于不同模块：
 
-* **Explorer**：负责智能体与环境的交互
-* **Trainer**：负责模型训练
-* **Buffer**：负责数据存储与处理
+* **Explorer**：负责智能体与环境的交互 (面向智能体应用开发者)
+* **Trainer**：负责模型训练 (面向 RL 算法研究者)
+* **Buffer**：负责数据存储与处理 (面向数据工程师)
 
 
-<img src="https://img.alicdn.com/imgextra/i2/O1CN01H3UbpF1yP7E1OCLbi_!!6000000006570-2-tps-1334-638.png" alt="Trinity-RFT 整体设计" width="800" />
+## 🛠️ Trinity-RFT 能做什么？
 
+* **用 RL 训练智能体应用** [[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#workflows-for-rl-environment-developers)
+  - 在 Workflow 中实现智能体-环境交互逻辑 ([示例1](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_multi_turn.html)，[示例2](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_step_wise.html))，
+  - 直接训练基于 Agent 框架（如 AgentScope）编写的工作流 ([示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_react.html))。
+
+* **快速设计和验证 RL 算法** [[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
+  - 在简洁、可插拔的类中开发自定义 RL 算法（损失、采样及其他技巧）([示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_react.html))。
+
+* **为 RFT 定制数据集和数据流水线** [[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
+  - 设计任务定制数据集，构建数据流水线以支持清洗、增强和人类参与场景 ([示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_data_functionalities.html))。
 
 
 ## ✨ 核心特性
@@ -69,20 +66,16 @@ RFT 流程被模块化为三个核心组件：
   <img src="https://img.alicdn.com/imgextra/i1/O1CN01Ti0o4320RywoAuyhN_!!6000000006847-2-tps-3840-2134.png" alt="系统架构" width="600" />
 
 
+## 🚀 新闻
 
-
-## 🛠️ Trinity-RFT 能做什么？
-
-* **用 RL 训练智能体应用** [[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#workflows-for-rl-environment-developers)
-  - 在 Workflow 中实现智能体-环境交互逻辑 ([示例1](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_multi_turn.html)，[示例2](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_step_wise.html))，
-  - 或直接使用 Agent 框架（如 AgentScope）编写好的工作流 ([示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_react.html))。
-
-* **快速设计和验证 RL 算法** [[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
-  - 在简洁、可插拔的类中开发自定义 RL 算法（损失、采样及其他技巧）([示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_react.html))。
-
-* **为 RFT 定制数据集和数据流水线** [[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
-  - 设计任务定制数据集，构建数据流水线以支持清洗、增强和人类参与场景 ([示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_data_functionalities.html))。
-
+* [2025-09] ✨ [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.3.0)] Trinity-RFT v0.3.0 发布：增强的 Buffer、FSDP2 & Megatron 支持，多模态模型，以及全新 RL 算法/示例。
+* [2025-08] 🎵 推出 [CHORD](https://github.com/modelscope/Trinity-RFT/tree/main/examples/mix_chord)：动态 SFT + RL 集成，实现进阶 LLM 微调（[论文](https://arxiv.org/pdf/2508.11408)）。
+* [2025-08] [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.2.1)] Trinity-RFT v0.2.1 发布。
+* [2025-07] [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.2.0)] Trinity-RFT v0.2.0 发布。
+* [2025-07] 技术报告（arXiv v2）更新，包含新功能、示例和实验：[链接](https://arxiv.org/abs/2505.17826)。
+* [2025-06] [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.1.1)] Trinity-RFT v0.1.1 发布。
+* [2025-05] [[发布说明](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.1.0)] Trinity-RFT v0.1.0 发布，同时发布 [技术报告](https://arxiv.org/abs/2505.17826)。
+* [2025-04] Trinity-RFT 开源。
 
 ---
 

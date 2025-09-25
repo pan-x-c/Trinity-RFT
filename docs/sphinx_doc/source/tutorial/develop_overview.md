@@ -1,14 +1,16 @@
 # Developer Guide
 
-Trinity-RFT divides the RL training process into three modules: **Explorer**, **Trainer**, and **Buffer**. Each module provides extension interfaces that developers can use to implement their own modules, enabling customized development of Trinity-RFT.
+Trinity-RFT divides the RL training process into three modules: **Explorer**, **Trainer**, and **Buffer**.
 
-The table below lists the main functions of each module, the corresponding extension interfaces, and development goals. Developers can refer to the corresponding module development tutorials and choose to extend based on their needs.
+Explorer provides the `Workflow` interface to customize agent-environment interaction, Trainer provides the `Algorithm` interface to customize RL algorithms, and Buffer provides the `Operator` interface to customize data processing operators.
 
-| Module   | Main Function                                | Extension Interface | Development Goal        | Tutorial Link              |
-|----------|----------------------------------------------|---------------------|-------------------------|----------------------------|
-| Explorer | Responsible for Agent-Environment interaction and generating trajectory data | `Workflow`          | Improve the ability of agent to complete tasks in a specified environment (Agentic-RL). | [🔗](./develop_workflow.md) |
-| Trainer  | Responsible for model training and updating | `Algorithm`         | Design new RL algorithms | [🔗](./develop_algorithm.md) |
-| Buffer   | Responsible for storing and preprocessing task and generated trajectory data | `Operator`          | Design new data cleaning and augmentation strategies | [🔗](./develop_operator.md) |
+The table below lists the main functions of each extension interface, its target users, and the corresponding development tutorials. Developers can refer to the respective module development tutorials and extend Trinity-RFT based on their needs.
+
+| Extension Interface | Target Users      | Main Functions                            | Tutorial Link              |
+|---------------------|-------------------|------------------------------------------|----------------------------|
+| `Workflow`          | Agent Application Developers | Enhance agent's ability to complete tasks in a specified environment | [🔗](./develop_workflow.md) |
+| `Algorithm`         | RL Algorithm Researchers | Design new RL algorithms                 | [🔗](./develop_algorithm.md) |
+| `Operator`          | Data Engineers    | Design new data cleaning and augmentation strategies | [🔗](./develop_operator.md) |
 
 ```{tip}
 Trinity-RFT provides a modular development approach, allowing you to flexibly add custom modules without modifying the framework code.
