@@ -23,7 +23,7 @@
 Trinity-RFT 是一个灵活、通用的大语言模型（LLM）强化微调（RFT）框架。其提供三个独立模块，满足不同用户的需求：
 
 * 🤖 **Explorer**：面向智能体应用开发者。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/develop_workflow.html)
-  - 训练智能体应用以在指定环境中完成任务
+  - 训练智能体应用，以增强其在指定环境中完成任务的能力
   - 示例：[多轮交互](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_multi_turn.html)，[ReAct 智能体](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_react.html)
 
 * 🧠 **Trainer**：面向 RL 算法研究者。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
