@@ -93,7 +93,7 @@ class OPMDGroupAdvantage(GroupAdvantage):
 After implementation, you need to register this module through {class}`trinity.algorithm.ADVANTAGE_FN`. Once registered, the module can be configured in the configuration file using the registered name.
 
 
-#### Step 1.3: Implement `PolicyLossFn`
+#### Step 1.2: Implement `PolicyLossFn`
 
 Developers need to implement the {class}`trinity.algorithm.PolicyLossFn` interface, which is similar to `AdvantageFn` and includes two methods:
 
