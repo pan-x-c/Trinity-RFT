@@ -18,44 +18,35 @@
 
 </div>
 
+## 💡 什么是 Trinity-RFT ?
 
-## 💡 什么是 Trinity-RFT？
+Trinity-RFT 是一个灵活、通用的大语言模型（LLM）强化微调（RFT）框架。其提供三个独立模块，满足不同用户的需求：
 
-Trinity-RFT 是一个灵活、通用的大语言模型（LLM）强化微调（RFT）框架。
+* 🤖 **Explorer**：面向智能体应用开发者。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/develop_workflow.html)
+  - 训练智能体应用以在指定环境中完成任务，迁移成本低
+  - 示例：[多轮交互](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_multi_turn.html)，[ReAct 智能体](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_react.html)
 
-RFT 流程被分为三个独立模块，用户可根据需求专注于不同模块：
+* 🧠 **Trainer**：面向 RL 算法研究者。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
+  - 在简洁、可插拔的类中设计和验证新的 RL 算法
+  - 示例：[混合 RL 算法](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_mix_algo.html)
 
-* **Explorer**：负责智能体与环境的交互 (面向智能体应用开发者)
-* **Trainer**：负责模型训练 (面向 RL 算法研究者)
-* **Buffer**：负责数据存储与处理 (面向数据工程师)
+* 🗄️ **Buffer**：面向数据工程师。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
+  - 设计任务定制数据集，构建数据流水线以支持清洗、增强和人类参与场景
+  - 示例：[数据功能](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_data_functionalities.html)
 
-
-## 🛠️ Trinity-RFT 能做什么？
-
-* **用 RL 训练智能体应用** [[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#workflows-for-rl-environment-developers)
-  - 在 Workflow 中实现智能体-环境交互逻辑 ([示例1](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_multi_turn.html)，[示例2](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_step_wise.html))，
-  - 直接训练基于 Agent 框架（如 AgentScope）编写的工作流 ([示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_react.html))。
-
-* **快速设计和验证 RL 算法** [[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
-  - 在简洁、可插拔的类中开发自定义 RL 算法（损失、采样及其他技巧）([示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_react.html))。
-
-* **为 RFT 定制数据集和数据流水线** [[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
-  - 设计任务定制数据集，构建数据流水线以支持清洗、增强和人类参与场景 ([示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_data_functionalities.html))。
-
-
-## ✨ 核心特性
+Trinity-RFT 统一了上述三个模块，并提供以下核心特性：
 
 * **灵活的 RFT 模式：**
   - 支持同步/异步、on-policy/off-policy 以及在线/离线训练。采样与训练可分离运行，并可在多设备上独立扩展。
 
   <img src="https://img.alicdn.com/imgextra/i3/O1CN01E7NskS1FFoTI9jlaQ_!!6000000000458-2-tps-1458-682.png" alt="Trinity-RFT 支持的 RFT 模式" width="600" />
 
-* **兼容 Agent 框架的工作流：**
-  - 支持拼接式和通用多轮智能体工作流。可自动收集来自模型 API 客户端（如 OpenAI）的训练数据，并兼容 AgentScope 等智能体框架。
+* **通用 Agentic-RL：**
+  - 支持拼接式和通用多轮交互，能够直接训练使用 AgentScope 等智能体框架开发的 Agent 应用。
 
   <img src="https://img.alicdn.com/imgextra/i1/O1CN01z1i7kk1jlMEVa8ZHV_!!6000000004588-2-tps-1262-695.png" alt="智能体工作流" width="600" />
 
-* **强大的数据流水线：**
+* **全流程的数据流水线：**
   - 支持 rollout 和经验数据的流水线处理，贯穿 RFT 生命周期实现主动管理（优先级、清洗、增强等）。
 
   <img src="https://img.alicdn.com/imgextra/i2/O1CN01BfeHp61sXSlGjH7zQ_!!6000000005776-2-tps-1734-473.png" alt="数据流水线设计" width="600" />

@@ -18,44 +18,36 @@
 
 </div>
 
-
 ## 💡 What is Trinity-RFT?
 
-Trinity-RFT is a flexible, general-purpose framework for reinforcement fine-tuning (RFT) of large language models (LLMs).
+Trinity-RFT is a flexible, general-purpose framework for reinforcement fine-tuning (RFT) of large language models (LLMs). It provides three independent modules for users with different needs:
 
-Trinity-RFT splits the RFT process into three independent modules for users with different needs:
+* 🤖 **Explorer**：For agent application developers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_workflow.html)
+  - Train an agent application to complete tasks in a specified environment with minimal migration cost
+  - Examples: [Multi-Turn Interaction](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_multi_turn.html), [ReAct Agent](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_react.html)
 
-* **Explorer**: Handles agent-environment interaction (For agent application developers)
-* **Trainer**: Manages model training (For RL algorithm researchers)
-* **Buffer**: Manages data storage and processing (For data engineers)
+* 🧠 **Trainer**: For RL algorithm researchers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
+  - Design and validate new RL algorithms in compact, plug-and-play classes
+  - Examples: [Mixture of RL Algorithms](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_mix_algo.html)
 
-
-## 🛠️ What can I use Trinity-RFT for?
-
-* **Train agent applications with RL and minimal migration cost** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_programming_guide.html#workflows-for-rl-environment-developers)
-  - Implement agent-environment interaction logic in a single workflow class ([example1](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_multi_turn.html), [example2](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_step_wise.html)),
-  - Train an existing agent application implemented with agent frameworks like AgentScope ([example](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_react.html)).
-
-* **Rapid RL algorithm design and validation** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_programming_guide.html#algorithms-for-rl-algorithm-developers)
-  - Develop custom RL algorithms (loss design, sampling strategy, etc.) in compact, plug-and-play classes ([example](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_mix_algo.html)).
-
-* **Custom datasets and data pipelines for RFT** [[Tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
-  - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios ([example](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_data_functionalities.html)).
+* 🗄️ **Buffer**: For data engineers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_programming_guide.html#operators-for-data-developers)
+  - Design task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios
+  - Examples: [Data Functionalities](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_data_functionalities.html)
 
 
-## ✨ Key Features
+Trinity-RFT unifies the above three modules and provides the following key features:
 
 * **Flexible RFT Modes:**
   - Supports synchronous/asynchronous, on-policy/off-policy, and online/offline training. Rollout and training can run separately and scale independently across devices.
 
   <img src="https://img.alicdn.com/imgextra/i3/O1CN01E7NskS1FFoTI9jlaQ_!!6000000000458-2-tps-1458-682.png" alt="RFT modes supported by Trinity-RFT" width="600" />
 
-* **Agent Framework Compatible Workflows:**
-  - Supports both concatenated and general multi-turn agentic workflows. Automatically collects training data from model API clients (e.g., OpenAI) and is compatible with agent frameworks like AgentScope.
+* **General Agentic-RL Support:**
+  - Supports both concatenated and general multi-turn agentic workflows. Able to directly train agent applications developed using agent frameworks like AgentScope.
 
   <img src="https://img.alicdn.com/imgextra/i1/O1CN01z1i7kk1jlMEVa8ZHV_!!6000000004588-2-tps-1262-695.png" alt="Agentic workflows" width="600" />
 
-* **Powerful Data Pipelines:**
+* **Full Lifecycle Data Pipelines:**
   - Enables pipeline processing of rollout and experience data, supporting active management (prioritization, cleaning, augmentation) throughout the RFT lifecycle.
 
   <img src="https://img.alicdn.com/imgextra/i2/O1CN01BfeHp61sXSlGjH7zQ_!!6000000005776-2-tps-1734-473.png" alt="Data pipeline design" width="600" />
