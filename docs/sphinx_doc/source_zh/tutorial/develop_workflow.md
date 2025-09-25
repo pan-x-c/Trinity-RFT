@@ -17,8 +17,7 @@
 - **工作流（Workflow）** ({class}`trinity.common.workflows.Workflow`)：描述 `Task` 如何执行。它定义了 Agent 与 Environment 的交互流程，包括类似其他框架中的 *Rollout* 和 *Reward* 计算逻辑。执行后生成一组 `Experience`。Trinity-RFT 包含多个内置工作流：
   - `MathWorkflow` ({class}`trinity.common.workflows.MathWorkflow`)：用于数学场景，将问题提交给 LLM，解析 LLM 响应，并计算分数（奖励）。
   - `WebShopWorkflow` ({class}`trinity.common.workflows.WebShopWorkflow`)：用于 webshop 场景，包含与环境的多轮交互。
-  - `CodeWorkflow`（即将推出）：用于编码场景，执行返回的代码，运行测试，并根据测试结果计算奖励。
-  - ...
+  -  `AgentScopeReactMathWorkflow` ({class}`trinity.common.workflows.AgentScopeReactMathWorkflow`)：用于数学场景，直接使用现有的 ReActAgent（基于 AgentScope）来解决数学问题。
 
 - **经验（Experience）** ({class}`trinity.common.experience.Experience`)：运行 `Workflow` 的输出。内部数据格式取决于所使用的训练算法。例如，对于常见的 PPO/GRPO 算法，`Experience` 包含 token ID 列表、动作掩码（标识哪些 token 是由 LLM 生成的）、对数概率、奖励等。
 

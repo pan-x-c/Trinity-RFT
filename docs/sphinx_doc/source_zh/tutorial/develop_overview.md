@@ -6,7 +6,7 @@ Trinity-RFT 将 RL 训练过程拆分为了三个模块：**Explorer**、**Train
 
 | 模块     | 主要功能                                     | 扩展接口     | 开发目标         |  教程链接                   |
 |--------|----------------------------------------------|-------------|------------------------|----------------------------|
-| Explorer | 负责 Agent-Environment 交互，生成轨迹数据     | `Workflow`   | 将现有 RL 算法拓展到新场景  | [🔗](./develop_workflow.md) |
+| Explorer | 负责 Agent-Environment 交互，生成轨迹数据     | `Workflow`   | 提升 Agent 在指定环境中完成任务的能力（Agentic RL）  | [🔗](./develop_workflow.md) |
 | Trainer  | 负责模型训练和更新                           | `Algorithm`  | 设计新的 RL 算法           | [🔗](./develop_algorithm.md) |
 | Buffer   | 负责任务以及生成的轨迹数据的存储和预处理        | `Operator`   | 设计新的数据清洗、增强策略   | [🔗](./develop_operator.md) |
 

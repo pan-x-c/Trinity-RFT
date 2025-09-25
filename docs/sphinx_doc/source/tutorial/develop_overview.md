@@ -6,7 +6,7 @@ The table below lists the main functions of each module, the corresponding exten
 
 | Module   | Main Function                                | Extension Interface | Development Goal        | Tutorial Link              |
 |----------|----------------------------------------------|---------------------|-------------------------|----------------------------|
-| Explorer | Responsible for Agent-Environment interaction and generating trajectory data | `Workflow`          | Extend existing RL algorithms to new scenarios | [🔗](./develop_workflow.md) |
+| Explorer | Responsible for Agent-Environment interaction and generating trajectory data | `Workflow`          | Improve the ability of agent to complete tasks in a specified environment (Agentic-RL). | [🔗](./develop_workflow.md) |
 | Trainer  | Responsible for model training and updating | `Algorithm`         | Design new RL algorithms | [🔗](./develop_algorithm.md) |
 | Buffer   | Responsible for storing and preprocessing task and generated trajectory data | `Operator`          | Design new data cleaning and augmentation strategies | [🔗](./develop_operator.md) |
 
