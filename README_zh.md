@@ -101,22 +101,22 @@ Trinity-RFT 统一了上述三个模块，并提供以下核心特性：
 - **CUDA**：版本 12.4 至 12.8（含）
 - **GPU**：至少 2 块 GPU
 
-#### 源码安装（推荐）
+## 源码安装（推荐）
 
-如果您计划自定义或向 Trinity-RFT 贡献代码，推荐使用此方法。
+如需修改、扩展 Trinity-RFT，推荐使用此方法。
 
-##### 1. 克隆仓库
+### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/modelscope/Trinity-RFT
 cd Trinity-RFT
 ```
 
-##### 2. 创建虚拟环境
+### 2. 创建虚拟环境
 
 可选择以下任一方式：
 
-###### 使用 Conda
+#### 使用 Conda
 
 ```bash
 conda create -n trinity python=3.10
@@ -128,7 +128,7 @@ pip install -e ".[flash_attn]"
 # pip install flash-attn==2.8.1 --no-build-isolation
 ```
 
-###### 使用 venv
+#### 使用 venv
 
 ```bash
 python3.10 -m venv .venv
@@ -140,7 +140,7 @@ pip install -e ".[flash_attn]"
 # pip install flash-attn==2.8.1 --no-build-isolation
 ```
 
-###### 使用 `uv`
+#### 使用 `uv`
 
 [`uv`](https://github.com/astral-sh/uv) 是现代的 Python 包管理工具。
 
@@ -148,7 +148,7 @@ pip install -e ".[flash_attn]"
 uv sync --extra dev --extra flash_attn
 ```
 
-#### 通过 PyPI 安装
+## 通过 PyPI 安装
 
 如果您只需使用 Trinity-RFT 而不打算修改代码：
 
@@ -164,7 +164,7 @@ uv pip install trinity-rft==0.3.0
 uv pip install flash-attn==2.8.1
 ```
 
-#### 使用 Docker
+## 使用 Docker
 
 我们提供了 Docker 环境，方便快速配置。
 
@@ -186,7 +186,9 @@ docker run -it \
   trinity-rft:latest
 ```
 
-> 如果您想使用 **Megatron-LM** 训练，请参考我们的 [Megatron 示例](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_megatron.html)。
+```{note}
+如需使用 **Megatron-LM** 进行训练，请参考 {ref}`Megatron-LM Backend <Megatron-LM>`。
+```
 
 
 ### 第二步：准备数据集和模型
