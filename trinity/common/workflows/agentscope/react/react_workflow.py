@@ -31,7 +31,7 @@ class AgentScopeReActWorkflow(Workflow):
         )
         self.model_client = model.get_openai_async_client()
 
-        task_type = task.workflow_args.get("type", "default")
+        task_type = task.workflow_args.get("type", "gsm8k")
         template = TEMPLATE_MAP.get(task_type, None)
         if template is None:
             raise ValueError(
@@ -55,7 +55,10 @@ class AgentScopeReActWorkflow(Workflow):
             model_name=self.model_client.model_path,
             openai_client=self.model_client,
             system_prompt=template.system_prompt,
-            generate_kwargs=self.rollout_args,
+            generate_kwargs={
+                "temperature": self.rollout_args.get("temperature", 1.0),
+                "max_tokens": self.rollout_args.get("max_tokens", 4096),
+            },
             response_structure=template.response_structure,
         )
 
@@ -74,7 +77,7 @@ class AgentScopeReActWorkflow(Workflow):
         Returns:
             Union[float, Dict[str, float]]: The reward value or a dictionary of reward value.
         """
-        return self.reward_fn(response=response, answer=self.answer)
+        return self.reward_fn(response=response, truth=self.answer)
 
     def construct_experiences(self, reward: Union[float, Dict[str, float]]) -> List[Experience]:
         """Construct experiences from the agent's interaction history.
@@ -98,3 +101,8 @@ class AgentScopeReActWorkflow(Workflow):
     def asynchronous(self):
         """AgentScope's ReAct agent only supports asynchronous calls, so we set this to True."""
         return True
+
+    @property
+    def repeatable(self):
+        """This workflow is not repeatable."""
+        return False

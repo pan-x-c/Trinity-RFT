@@ -20,7 +20,7 @@ class GSM8KRewardFn(MathBoxedRewardFn):
         self,
         response: dict,
         truth: str,
-        format_score_coef: Optional[float] = 0.1,
+        format_score_coef: float = 0.1,
         **kwargs,
     ) -> dict[str, float]:
         # parse GSM8K truth

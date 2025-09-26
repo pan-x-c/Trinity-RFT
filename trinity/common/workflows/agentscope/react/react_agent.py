@@ -28,6 +28,7 @@ class AgentScopeReActAgent:
         """
         # patch the OpenAIChatModel to use the openai_client provided by Trinity-RFT
         self.agent_model = OpenAIChatModel(
+            api_key="EMPTY",
             model_name=model_name,
             generate_kwargs=generate_kwargs,
             stream=False,
