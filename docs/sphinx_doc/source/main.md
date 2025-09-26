@@ -8,11 +8,11 @@ Trinity-RFT is a flexible, general-purpose framework for reinforcement fine-tuni
 
 * 🧠 For RL algorithm researchers. [[tutorial]](/tutorial/develop_algorithm.md)
   - Design and validate new reinforcement learning algorithms using compact, plug-and-play modules.
-  - Examples: [Mixture of RL Algorithms](/tutorial/example_mix_algo.md)
+  - Example: [Mixture of SFT and GRPO](/tutorial/example_mix_algo.md)
 
 * 📊 For data engineers. [[tutorial]](/tutorial/develop_operator.md)
   - Create task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios.
-  - Examples: [Data Functionalities](/tutorial/example_data_functionalities.md)
+  - Example: [Data Processing](/tutorial/example_data_functionalities.md)
 
 
 ## 🌟 Key Features

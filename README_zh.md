@@ -28,11 +28,11 @@ Trinity-RFT 是一个灵活、通用的大语言模型（LLM）强化微调（RF
 
 * 🧠 面向 RL 算法研究者。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/develop_algorithm.html)
   - 在简洁、可插拔的类中设计和验证新的 RL 算法
-  - 示例：[混合 RL 算法](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_mix_algo.html)
+  - 示例：[SFT/GRPO混合算法](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_mix_algo.html)
 
 * 📊 面向数据工程师。[[教程]](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/develop_operator.html)
   - 设计任务定制数据集，构建数据流水线以支持清洗、增强和人类参与场景
-  - 示例：[数据功能](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_data_functionalities.html)
+  - 示例：[数据处理](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_data_functionalities.html)
 
 # 🌟 核心特性
 
@@ -186,7 +186,7 @@ docker run -it \
   trinity-rft:latest
 ```
 
-> 如需使用 **Megatron-LM** 进行训练，请参考 [Megatron-LM 支持](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_megatron.html).
+> 如需使用 **Megatron-LM** 进行训练，请参考 [Megatron-LM 支持](https://modelscope.github.io/Trinity-RFT/zh/main/tutorial/example_megatron.html)
 
 
 ### 第二步：准备数据集和模型
