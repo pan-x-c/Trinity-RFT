@@ -17,7 +17,7 @@ Install the project in editable mode with Megatron support:
 pip install -e ".[megatron]"
 
 # for uv
-# uv sync -extras megatron
+# uv sync -extra megatron
 ```
 
 Then, install NVIDIA's Apex library for mixed-precision training:

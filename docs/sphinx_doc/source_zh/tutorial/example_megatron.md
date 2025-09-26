@@ -17,7 +17,7 @@
 pip install -e ".[megatron]"
 
 # for uv
-# uv sync -extras megatron
+# uv sync -extra megatron
 ```
 
 另外还需要从源码安装 NVIDIA 的 Apex 库以支持混合精度训练：
