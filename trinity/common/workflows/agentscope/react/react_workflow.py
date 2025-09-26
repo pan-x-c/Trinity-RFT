@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
-from trinity.common.workflows import WORKFLOWS, Task, Workflow
+from trinity.common.workflows.workflow import WORKFLOWS, Task, Workflow
 
 from .templates import TEMPLATE_MAP
 
