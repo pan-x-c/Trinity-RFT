@@ -6,19 +6,19 @@ from pydantic import BaseModel, Field
 from trinity.common.rewards import MathBoxedRewardFn, RewardFn
 
 # For GSM8K task
-
-
-class GSM8KStructure(BaseModel):
-    response: str
-
-
 GSM8KSystemPrompt = """You are an agent specialized in solving math problems with tools. Please solve the math problem given to you. You can write and execute Python code to perform calculation or verify your answer. You should return your final answer within \\boxed{{}}."""
+
+
+class GSM8KResponseStructure(BaseModel):
+    result: str = Field(
+        description="Your solution of the given math problem. Put your final answer in boxed format, e.g., \\boxed{42}"
+    )
 
 
 class GSM8KRewardFn(MathBoxedRewardFn):
     def __call__(  # type: ignore [override]
         self,
-        response: str,
+        response: dict,
         truth: str,
         format_score_coef: Optional[float] = 0.1,
         **kwargs,
@@ -29,18 +29,12 @@ class GSM8KRewardFn(MathBoxedRewardFn):
         else:
             truth = str(truth)
         return super().__call__(
-            response=response,
+            response=response["result"],
             truth=truth,
             with_think=False,
             format_score_coef=format_score_coef,
             **kwargs,
         )
-
-
-class GSM8KResponseStructure(BaseModel):
-    result: str = Field(
-        description="Your solution of the given math problem. Put your final answer in boxed format, e.g., \\boxed{42}"
-    )
 
 
 # Registry for different templates
@@ -51,7 +45,7 @@ class Template:
     """A template for different task types, including system prompt and response structure."""
 
     system_prompt: str
-    response_structure: BaseModel
+    response_structure: Type[BaseModel]
     reward_fn_cls: Type[RewardFn]
 
 

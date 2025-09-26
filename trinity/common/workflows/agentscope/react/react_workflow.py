@@ -32,7 +32,11 @@ class AgentScopeReActWorkflow(Workflow):
         self.model_client = model.get_openai_async_client()
 
         task_type = task.workflow_args.get("type", "default")
-        template = TEMPLATE_MAP.get(task_type)
+        template = TEMPLATE_MAP.get(task_type, None)
+        if template is None:
+            raise ValueError(
+                f"Unsupported task type {task_type} for AgentScope ReAct Agent, please add a template first."
+            )
         # extract the query and the answer from the task
         self.query = task.raw_task.get(task.format_args.prompt_key)  # type: ignore [index]
         self.answer = task.raw_task.get(task.format_args.response_key)  # type: ignore [index]
