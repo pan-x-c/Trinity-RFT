@@ -91,7 +91,7 @@ class AgentScopeReActWorkflow(Workflow):
         exps = self.model.extract_experience_from_history()
         for exp in exps:
             exp.reward = reward if isinstance(reward, float) else sum(reward.values())
-            exp.metrics = {"react_memory_length": len(self.agent.agent.memory)}
+            exp.metrics = {"react_memory_length": len(self.agent.agent.memory.content)}
             # record detailed reward if available
             if isinstance(reward, dict):
                 exp.metrics.update(reward)

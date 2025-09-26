@@ -54,6 +54,7 @@ class AgentScopeReActAgent:
             BaseModel: The structured response parsed into the specified Pydantic model.
         """
 
-        return await self.agent.reply(
+        response = await self.agent.reply(
             Msg("user", query, role="user"), structured_model=self.response_structure
         )
+        return response.metadata
