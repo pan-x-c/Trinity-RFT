@@ -86,7 +86,7 @@ class AgentScopeReActWorkflow(Workflow):
     ):
         # initialize the agent
         self.agent = AgentScopeReActAgent(
-            openai_client=model.get_openai_client(),
+            openai_client=model.get_openai_async_client(),
             # some other params
         )
         # get query from the task

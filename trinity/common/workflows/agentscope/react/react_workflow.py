@@ -3,10 +3,9 @@
 This workflow is a demonstration of how to integrate the AgentScope framework within the Trinity-RFT workflow system with minimal modifications.
 """
 
-from typing import Dict, List, Optional, Type, Union
+from typing import Dict, List, Optional, Union
 
 import openai
-from pydantic import BaseModel
 
 from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
@@ -71,7 +70,7 @@ class AgentScopeReActWorkflow(Workflow):
         # Step 3: construct experiences from the interaction history and return them
         return self.construct_experiences(reward)
 
-    async def calculate_reward(self, response: Type[BaseModel]) -> Union[float, Dict[str, float]]:
+    async def calculate_reward(self, response) -> Union[float, Dict[str, float]]:
         """Calculate the reward for the workflow.
 
         Returns:

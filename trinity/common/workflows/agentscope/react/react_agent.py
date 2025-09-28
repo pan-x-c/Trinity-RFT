@@ -1,4 +1,4 @@
-from typing import Type
+from typing import Dict, Type
 
 import openai
 from agentscope.agent import ReActAgent
@@ -44,14 +44,14 @@ class AgentScopeReActAgent:
         )
         self.response_structure = response_structure
 
-    async def reply(self, query: str) -> BaseModel:
+    async def reply(self, query: str) -> Dict:
         """Generate a response from the agent given a query.
 
         Args:
             query (str): The input query for the agent.
 
         Returns:
-            BaseModel: The structured response parsed into the specified Pydantic model.
+            Dict: The structured response.
         """
 
         response = await self.agent.reply(
