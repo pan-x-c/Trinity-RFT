@@ -1,4 +1,4 @@
-# ReAct Agent 训练示例
+# ReAct Agent 训练
 
 本节将会展示如何借助 Trinity-RFT 训练一个基于智能体框架实现的 ReAct Agent。这里我们以 [AgentScope](https://github.com/agentscope-ai/agentscope) 框架为例，并使用其内置的 ReAct 智能体来解决 GSM8K 数学问题。开发者可以参考此示例，将 Trinity-RFT 的训练工作流适配到自己的智能体项目中。
 
@@ -29,7 +29,7 @@
 
 ### 1. 更换智能体的 OpenAI 客户端
 
-{class}`trinity.common.workflows.agentscope.react.react_agent.AgentScopeReActAgent` 封装了 AgentScope 的 ReAct 智能体，并在初始化时注入 Trinity-RFT 提供的 `openai.AsyncOpenAI` 实例，而后续的执行过程均由 AgentScope 智能体自行处理，无需任何修改。
+{class}`AgentScopeReActAgent <trinity.common.workflows.agentscope.react.react_agent.AgentScopeReActAgent>` 封装了 AgentScope 的 ReAct 智能体，并在初始化时注入 Trinity-RFT 提供的 `openai.AsyncOpenAI` 实例，而后续的执行过程均由 AgentScope 智能体自行处理，无需任何修改。
 
 
 ```python
@@ -74,7 +74,7 @@ class AgentScopeReActAgent:
 
 ### 2. 实现训练工作流
 
-{class}`trinity.common.workflows.agentscope.react.react_workflow.AgentScopeReActWorkflow` 展示了智能体的训练流程，其核心 `run_async` 方法包含三个步骤：
+{class}`AgentScopeReActWorkflow <trinity.common.workflows.agentscope.react.react_workflow.AgentScopeReActWorkflow>` 展示了智能体的训练流程，其核心 `run_async` 方法包含三个步骤：
 
   1. 调用智能体完成指定任务并获取任务结果。
   2. 对任务结果进行评估，计算奖励。

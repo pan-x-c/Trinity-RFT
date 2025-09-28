@@ -1,4 +1,4 @@
-# ReAct Agent Training Example
+# ReAct Agent Training
 
 This section demonstrates how to train a ReAct Agent using Trinity-RFT. We use [AgentScope](https://github.com/agentscope-ai/agentscope) as an example and leverage its built-in ReAct agent to solve GSM8K math problems. Developers can refer to this example to adapt Trinity-RFT's training to their own agent projects.
 
@@ -24,7 +24,7 @@ We will walk through how to train a ReAct agent implemented with AgentScope usin
 
 ### 1. Change the OpenAI client of your Agent
 
-The {class}`trinity.common.workflows.agentscope.react.react_agent.AgentScopeReActAgent` wraps AgentScope's ReAct agent and injects Trinity-RFT's `openai.AsyncOpenAI` instance during initialization. The subsequent execution is handled by the AgentScope agent itself, with no code modification required.
+The {class}`AgentScopeReActAgent <trinity.common.workflows.agentscope.react.react_agent.AgentScopeReActAgent>` wraps AgentScope's ReAct agent and injects Trinity-RFT's `openai.AsyncOpenAI` instance during initialization. The subsequent execution is handled by the AgentScope agent itself, with no code modification required.
 
 ```python
 # A simplified version of trinity.common.workflows.agentscope.react.react_agent.AgentScopeReActAgent
@@ -68,7 +68,7 @@ In practice, you can directly modify the OpenAI client of your existing agent wi
 
 ### 2. Implement the Training Workflow
 
-The {class}`trinity.common.workflows.agentscope.react.react_workflow.AgentScopeReActWorkflow` demonstrates the agent training workflow. Its core `run_async` method includes three steps:
+The {class}`AgentScopeReActWorkflow <trinity.common.workflows.agentscope.react.react_workflow.AgentScopeReActWorkflow>` demonstrates the agent training workflow. Its core `run_async` method includes three steps:
 
   1. Call the agent to complete the task and return the result.
   2. Evaluate the result and calculate the reward.
