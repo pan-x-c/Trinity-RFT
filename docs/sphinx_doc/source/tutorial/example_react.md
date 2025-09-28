@@ -1,6 +1,6 @@
 # ReAct Agent Training Example
 
-This section demonstrates how to train a ReAct Agent using Trinity-RFT. We use [AgentScope](https://github.com/agentscope-ai/agentscope) as an example and leverage its built-in ReAct agent to solve GSM8K math problems. Developers can refer to this example to adapt Trinity-RFT's training workflow to their own agent projects.
+This section demonstrates how to train a ReAct Agent using Trinity-RFT. We use [AgentScope](https://github.com/agentscope-ai/agentscope) as an example and leverage its built-in ReAct agent to solve GSM8K math problems. Developers can refer to this example to adapt Trinity-RFT's training to their own agent projects.
 
 ## Key Features
 
@@ -12,17 +12,17 @@ There are many agent development frameworks, each with different model wrapping 
 
 ### No Need to Modify Agent Code
 
-Training agents requires collecting dialogue history and other relevant information (such as `token_id`, `logprobs`) during agent execution, which often means modifying the agent application code. Trinity-RFT avoids this by wrapping the `openai.OpenAI` or `openai.AsyncOpenAI` instances, automatically collecting all necessary training information during model calls, so you don't need to change your agent code.
+Training agents requires collecting dialogue history and other relevant information (such as `token_id`, `logprobs`) during agent execution, which often requires modifying source code of the agent application. Trinity-RFT avoids this by wrapping the `openai.OpenAI` or `openai.AsyncOpenAI` instances, automatically collecting all necessary training information during model calls, so that you don't need to change your agent code.
 
 ### Supports Multi-Turn Interaction
 
-Agent tasks often involve multi-step reasoning. Trinity-RFT natively supports training tasks with multi-turn interactions, without limiting the number of turns (just ensure each model call's sequence length does not exceed the model's maximum). This allows you to design dynamic-length interactions based on task complexity. Trinity-RFT's dynamic synchronization mechanism enables training to start as soon as enough samples are collected, improving efficiency.
+Agent tasks often involve multiple steps of reasoning and actioning. Trinity-RFT natively supports RL training for tasks with multi-turn interactions, without limiting the number of turns (just ensure each LLM call's sequence length does not exceed the model's maximum). This allows you to design dynamic-length interactions based on task complexity. Trinity-RFT's dynamic synchronization mechanism enables training to start as soon as enough samples are collected, improving efficiency.
 
 ## Implementation
 
 We will walk through how to train a ReAct agent implemented with AgentScope using Trinity-RFT.
 
-### 1. Import the Agent Class
+### 1. Change the OpenAI client of your Agent
 
 The {class}`trinity.common.workflows.agentscope.react.react_agent.AgentScopeReActAgent` wraps AgentScope's ReAct agent and injects Trinity-RFT's `openai.AsyncOpenAI` instance during initialization. The subsequent execution is handled by the AgentScope agent itself, with no code modification required.
 
@@ -31,7 +31,7 @@ The {class}`trinity.common.workflows.agentscope.react.react_agent.AgentScopeReAc
 class AgentScopeReActAgent:
     def __init__(
         self,
-        openai_client: openai.AsyncOpenAI,
+        openai_client: openai.AsyncOpenAI,  # provided by Trinity-RFT
         # some other params
     ):
         """Initialize the AgentScope ReAct agent with specified tools and model.
@@ -52,13 +52,19 @@ class AgentScopeReActAgent:
             model=self.agent_model,
         )
 
-    async def reply(self, query: str) -> BaseModel:
+    async def reply(self, query):
         """Generate a response based on the query."""
         # no need to modify your agent logic
         return await self.agent.reply(
             Msg("user", query, role="user")
         )
 ```
+
+```{note}
+We encapsulate AgentScope's ReAct agent in a new class here to clearly demonstrate the process of replacing the OpenAI client.
+In practice, you can directly modify the OpenAI client of your existing agent without creating a new class.
+```
+
 
 ### 2. Implement the Training Workflow
 
@@ -146,7 +152,7 @@ algorithm:
 
 #### Dynamic Synchronization Configuration
 
-Since agent applications may have variable interaction rounds and sample counts, enable Trinity-RFT's dynamic synchronization to improve efficiency. Relevant configuration:
+Since agent applications may have variable interaction rounds and sample counts, we enable Trinity-RFT's dynamic synchronization to improve efficiency. Relevant configuration:
 
 ```yaml
 synchronizer:

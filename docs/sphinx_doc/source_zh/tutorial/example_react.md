@@ -27,9 +27,9 @@
 我们将逐步介绍如何使用 Trinity-RFT 训练一个基于 AgentScope 实现的 ReAct 智能体。
 
 
-### 1. 引入 Agent 类
+### 1. 更换智能体的 OpenAI 客户端
 
-({class}`trinity.common.workflows.agentscope.react.react_agent.AgentScopeReActAgent`)封装了 AgentScope 的 ReAct 智能体，并在初始化时注入 Trinity-RFT 提供的 `openai.AsyncOpenAI` 实例，而后续的执行过程均由 AgentScope 智能体自行处理，无需任何修改。
+{class}`trinity.common.workflows.agentscope.react.react_agent.AgentScopeReActAgent` 封装了 AgentScope 的 ReAct 智能体，并在初始化时注入 Trinity-RFT 提供的 `openai.AsyncOpenAI` 实例，而后续的执行过程均由 AgentScope 智能体自行处理，无需任何修改。
 
 
 ```python
@@ -37,7 +37,7 @@
 class AgentScopeReActAgent:
     def __init__(
         self,
-        openai_client: openai.AsyncOpenAI,
+        openai_client: openai.AsyncOpenAI,  # provided by Trinity-RFT
         # some other params
     ):
         """Initialize the AgentScope ReAct agent with specified tools and model.
@@ -58,7 +58,7 @@ class AgentScopeReActAgent:
             model=self.agent_model,
         )
 
-    async def reply(self, query: str) -> BaseModel:
+    async def reply(self, query):
         """Generate a response based on the query."""
         # no need to modify your agent logic
         return await self.agent.reply(
@@ -66,10 +66,15 @@ class AgentScopeReActAgent:
         )
 ```
 
+```{note}
+这里用一个新类封装 AgentScope 的 ReAct 智能体主要是为了清晰地展示更换 OpenAI 客户端的过程。
+在实践中，你可以直接修改现有智能体的 OpenAI 客户端，而无需创建一个新的类。
+```
+
+
 ### 2. 实现训练工作流
 
-
-({class}`trinity.common.workflows.agentscope.react.react_workflow.AgentScopeReActWorkflow`) 展示了智能体的训练流程，其核心 `run_async` 方法包含三个步骤：
+{class}`trinity.common.workflows.agentscope.react.react_workflow.AgentScopeReActWorkflow` 展示了智能体的训练流程，其核心 `run_async` 方法包含三个步骤：
 
   1. 调用智能体完成指定任务并获取任务结果。
   2. 对任务结果进行评估，计算奖励。
