@@ -1,6 +1,6 @@
 # ReAct Agent Training Example
 
-This section demonstrates how to train a ReAct Agent using Trinity-RFT. We use [AgentScope](https://github.com/modelscope/agentscope) as an example and leverage its built-in ReAct agent to solve GSM8K math problems. Developers can refer to this example to adapt Trinity-RFT's training workflow to their own agent projects.
+This section demonstrates how to train a ReAct Agent using Trinity-RFT. We use [AgentScope](https://github.com/agentscope-ai/agentscope) as an example and leverage its built-in ReAct agent to solve GSM8K math problems. Developers can refer to this example to adapt Trinity-RFT's training workflow to their own agent projects.
 
 ## Key Features
 

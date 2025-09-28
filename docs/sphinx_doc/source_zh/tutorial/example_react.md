@@ -1,6 +1,6 @@
 # ReAct Agent 训练示例
 
-本节将会展示如何借助 Trinity-RFT 训练一个基于智能体框架实现的 ReAct Agent。这里我们以 [AgentScope](https://github.com/modelscope/agentscope) 框架为例，并使用其内置的 ReAct 智能体来解决 GSM8K 数学问题。开发者可以参考此示例，将 Trinity-RFT 的训练工作流适配到自己的智能体项目中。
+本节将会展示如何借助 Trinity-RFT 训练一个基于智能体框架实现的 ReAct Agent。这里我们以 [AgentScope](https://github.com/agentscope-ai/agentscope) 框架为例，并使用其内置的 ReAct 智能体来解决 GSM8K 数学问题。开发者可以参考此示例，将 Trinity-RFT 的训练工作流适配到自己的智能体项目中。
 
 
 ## 关键特性
