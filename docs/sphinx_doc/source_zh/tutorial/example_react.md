@@ -135,6 +135,7 @@ explorer:
   rollout_model:
     # ...
     enable_openai_client: true     # 启用 OpenAI Client
+    enable_history: true           # 启用调用历史自动记录
     enable_auto_tool_choice: true  # 允许模型生成 `tool_calls`
     tool_call_parser: hermes       # 指定格式化解析工具调用输出的解析器
     reasoning_parser: deepseek_r1  # 有助于解析模型的思维过程
@@ -164,19 +165,51 @@ synchronizer:
 
 ## 运行示例
 
-1. **安装依赖库**：按照 [安装指南](/tutorial/installation.md) 成功安装 Trinity-RFT，并且安装了 AgentScope 的 v1.0 及以上版本。
+1. 安装依赖库：按照 [安装指南](/tutorial/installation.md) 成功安装 Trinity-RFT，并且安装了 AgentScope 的 v1.0 及以上版本。
 
-2. 下载模型和数据集，并填写 `examples/agentscope_react/gsm8k.yaml` 或 `examples/agentscope_react/dapo.yaml` 中的配置文件
+```bash
+pip install agentscope>=1.0.5
+```
 
-3. **启动训练任务**：从仓库根目录运行以下命令。
+2. 下载模型和数据集:
 
+```bash
+huggingface-cli download Qwen/Qwen3-8B
+huggingface-cli download openai/gsm8k --repo-type dataset
+huggingface-cli download open-r1/GSM8K-Processed --repo-type dataset
+```
 
-  GSM8k 数据集：
+3. 启动训练任务:
+
   ```bash
+  # Navigate to the Trinity-RFT root directory
+  cd /path/to/Trinity-RFT
+
+  # For GSM8k dataset:
   trinity run --config examples/agentscope_react/gsm8k.yaml
-  ```
 
-  DAPO 数据集：
-  ```bash
+  # For DAPO dataset:
   trinity run --config examples/agentscope_react/dapo.yaml
   ```
+
+
+## 结果展示
+
+### GSM8k 数据集
+
+reward 变化曲线：
+
+![](../../assets/agentscope_gsm8k_reward.png)
+
+Agent 交互轮次变化曲线：
+![](../../assets/agentscope_gsm8k_turns.png)
+
+
+### DAPO 数据集
+
+reward 变化曲线：
+
+![](../../assets/agentscope_dapo_reward.png)
+
+Agent 交互轮次变化曲线：
+![](../../assets/agentscope_dapo_turns.png)
