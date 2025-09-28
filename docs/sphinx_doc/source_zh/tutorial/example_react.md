@@ -159,7 +159,7 @@ algorithm:
 ```yaml
 synchronizer:
   sync_style: dynamic_by_explorer # 当产生足够训练数据时，trainer 立即启动训练任务，而不是将生成的数据补齐到一个固定规模，能够有效提升训练效率
-  sync_interval: 2  # 每隔两步检查是否有足够的数据启动训练
+  sync_interval: 2  # 每执行两个批次的任务后检查是否需要同步更新模型参数
 ```
 
 
@@ -168,7 +168,7 @@ synchronizer:
 1. 安装依赖库：按照 [安装指南](/tutorial/installation.md) 成功安装 Trinity-RFT，并且安装了 AgentScope 的 v1.0 及以上版本。
 
 ```bash
-pip install agentscope>=1.0.5
+pip install agentscope>=1.0.4
 ```
 
 2. 下载模型和数据集:
@@ -195,6 +195,3 @@ huggingface-cli download openai/gsm8k --repo-type dataset
 reward 变化曲线：
 
 ![](../../assets/agentscope_gsm8k_reward.png)
-
-Agent 交互轮次变化曲线：
-![](../../assets/agentscope_gsm8k_turns.png)
