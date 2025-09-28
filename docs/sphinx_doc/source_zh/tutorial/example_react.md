@@ -195,7 +195,7 @@ huggingface-cli download open-r1/GSM8K-Processed --repo-type dataset
 
 ## 结果展示
 
-### GSM8k 数据集
+这里展示了 GSM8k 数据集上的训练结果
 
 reward 变化曲线：
 
@@ -203,13 +203,3 @@ reward 变化曲线：
 
 Agent 交互轮次变化曲线：
 ![](../../assets/agentscope_gsm8k_turns.png)
-
-
-### DAPO 数据集
-
-reward 变化曲线：
-
-![](../../assets/agentscope_dapo_reward.png)
-
-Agent 交互轮次变化曲线：
-![](../../assets/agentscope_dapo_turns.png)
