@@ -19,7 +19,7 @@
 
 ### 支持多轮次交互
 
-智能体任务通常涉及多步推理、工具使用和观察。为了支持训练智能体应用，Trinity-RFT 原生支持包含多轮交互的训练任务，且不限制交互轮次（但 token 总长度不能超过模型所能支持的上限），这意味着你可以根据任务的复杂度，设计动态长度的交互过程。不同于其他框架通过 padding 的方式凑够固定长度的交互，Trinity-RFT 通过动态同步机制，能够在收集到足够的训练样本后立即启动训练任务，从而提升训练效率。
+智能体任务通常涉及多步推理、工具使用和观察。为了支持训练智能体应用，Trinity-RFT 原生支持包含多轮交互的训练任务，且不限制交互轮次（但 token 总长度不能超过模型所能支持的上限），这意味着你可以根据任务的复杂度，设计动态长度的交互过程。不同于其他框架通过补充空数据的方式凑够固定长度的交互，Trinity-RFT 通过动态同步机制，能够在收集到足够的训练样本后立即启动训练任务，从而提升训练效率。
 
 
 ## 实现流程
@@ -90,13 +90,12 @@ class AgentScopeReActWorkflow(Workflow):
             openai_client=model.get_openai_client(),
             # some other params
         )
-        # get query and answer from the task
+        # get query from the task
         self.query = task.raw_task.get(task.format_args.prompt_key)  # type: ignore [index]
-        self.answer = task.raw_task.get(task.format_args.response_key)  # type: ignore [index]
 
     async def run_async(self):
         """Run the workflow asynchronously."""
-        # Step 1: call the react agent to solve the task
+        # Step 1: call the ReAct agent to solve the task
         response = await self.agent.reply(self.query)
         # Step 2: calculate the reward based on the response
         reward = await self.calculate_reward(response)
