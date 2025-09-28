@@ -19,7 +19,7 @@
 
 ### 支持多轮次交互
 
-智能体任务通常涉及多步推理、工具使用和观察。为了支持训练智能体应用，Trinity-RFT 原生支持包含多轮交互的训练任务，且不限制交互轮次（但 token 总长度不能超过模型所能支持的上限），这意味着你可以根据任务的复杂度，设计动态长度的交互过程。不同于其他框架通过补充空数据的方式凑够固定长度的交互，Trinity-RFT 通过动态同步机制，能够在收集到足够的训练样本后立即启动训练任务，从而提升训练效率。
+智能体任务通常涉及多步推理、工具使用和观察。为了支持训练智能体应用，Trinity-RFT 原生支持包含多轮交互的训练任务，且不限制交互轮次（只需确保每次模型调用的序列长度不超过模型所支持的上限），这意味着你可以根据任务的复杂度，设计动态长度的交互过程。Trinity-RFT 通过动态同步机制，能够在收集到足够的训练样本后立即启动训练任务，从而提升训练效率。
 
 
 ## 实现流程
@@ -102,7 +102,7 @@ class AgentScopeReActWorkflow(Workflow):
         # Step 3: construct experiences from the interaction history and return them
         return self.construct_experiences(reward)
 
-    async calculate_reward(self, response) -> float:
+    async def calculate_reward(self, response) -> float:
         """Calculate the reward based on the response."""
         # your reward logic
 
@@ -139,7 +139,7 @@ explorer:
     enable_auto_tool_choice: true  # 允许模型生成 `tool_calls`
     tool_call_parser: hermes       # 指定格式化解析工具调用输出的解析器
     reasoning_parser: deepseek_r1  # 有助于解析模型的思维过程
-    enable_thinking: true          # 是否允许思考（主要针对 Qwen3 系列模型）
+    enable_thinking: true          # 是否启用模型深度思考能力（主要针对 Qwen3 系列模型）
 ```
 
 #### 多步训练算法
@@ -154,11 +154,11 @@ algorithm:
 
 #### 动态同步配置
 
-由于智能体应用在完成不同任务时，交互轮次往往不固定，为此需要开启 Trinity-RFT 的动态同步功能，以便在收集到足够的训练样本后立即启动训练任务，从而提升训练效率。相关配置如下：
+由于智能体应用在完成不同任务时，交互轮次往往不固定，导致生成的训练样本数量也不固定；为此需要开启 Trinity-RFT 的动态同步功能，以便在收集到足够的训练样本后立即启动训练任务，从而提升训练效率。相关配置如下：
 
 ```yaml
 synchronizer:
-  sync_style: dynamic_by_explorer # 当产生足够训练数据时，trainer 立即启动训练任务，而不是对生成的数据补齐到一个固定规模，能够有效提升训练效率
+  sync_style: dynamic_by_explorer # 当产生足够训练数据时，trainer 立即启动训练任务，而不是将生成的数据补齐到一个固定规模，能够有效提升训练效率
   sync_interval: 2  # 每隔两步检查是否有足够的数据启动训练
 ```
 
@@ -176,7 +176,6 @@ pip install agentscope>=1.0.5
 ```bash
 huggingface-cli download Qwen/Qwen3-8B
 huggingface-cli download openai/gsm8k --repo-type dataset
-huggingface-cli download open-r1/GSM8K-Processed --repo-type dataset
 ```
 
 3. 启动训练任务:
@@ -185,17 +184,13 @@ huggingface-cli download open-r1/GSM8K-Processed --repo-type dataset
   # Navigate to the Trinity-RFT root directory
   cd /path/to/Trinity-RFT
 
-  # For GSM8k dataset:
+  # Run the training for GSM8k dataset:
   trinity run --config examples/agentscope_react/gsm8k.yaml
-
-  # For DAPO dataset:
-  trinity run --config examples/agentscope_react/dapo.yaml
   ```
 
 
 ## 结果展示
 
-这里展示了 GSM8k 数据集上的训练结果
 
 reward 变化曲线：
 
