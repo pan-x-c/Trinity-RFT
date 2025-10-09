@@ -2,7 +2,7 @@
 ## Workflow 开发指南
 
 在 Trinity-RFT 中，工作流（Workflow）是定义 Agent 与 Environment 之间交互的核心组件。
-一个合格的工作流需要使用训练好的模型完成指定任务，并从环境中获取反馈信息（奖励）。以下是创建新工作流的步骤：
+一个合格的工作流需要使用被训练模型完成指定任务，并从环境中获取反馈信息（奖励）。本节将会介绍如何开发一个新的工作流。
 
 ---
 
@@ -13,7 +13,7 @@
 ```{mermaid}
 flowchart LR
     A([Task]) & B([Model]) --> C[Workflow]
-    C --> D@{ shape: docs, label: Experience }
+    C --> D([Experience])
 ```
 
 - **任务（Task）** ({class}`trinity.common.workflows.Task`)：结构化的数据实例，包含了工作流一次运行所需的各种信息。一般情况下由训练数据集提供，数据集中的每个样本都会被转化为一个 `Task` 实例。`Task` 的内容根据任务类型而异：
@@ -130,9 +130,9 @@ class ExampleWorkflow(Workflow):
 `run` 方法是工作流的核心方法。该方法没有输入参数，返回一个 `Experience` 列表。
 以下是一个数学工作流的简单实现。
 
-我们首先调用模型，使用给定的问题和 rollout 参数生成多个答案。
-然后使用 `calculate_reward` 函数计算每个答案的奖励。
-最后，我们将生成的答案和奖励封装为 `Experience` 实例并返回。
+我们首先调用模型，使用给定的问题和 rollout 参数生成答案。
+然后使用 `calculate_reward` 函数计算答案的奖励。
+最后，我们将生成的答案和奖励封装为`Experience` 实例并返回。
 
 ```python
 class ExampleWorkflow(Workflow):
@@ -154,23 +154,17 @@ class ExampleWorkflow(Workflow):
                     "content": f"Question:\n{self.question}",
                 }
             ],
-            n=self.rollout_args.n,
             temperature=self.rollout_args.temperature,
         )
-        experiences = []
-        for response in responses:
-            # calulcate reward
-            reward: float = self.calculate_reward(response.response_text, self.answer)
-            # construct Experience
-            experiences.append(
-                Experience(
-                    tokens=response.tokens,
-                    prompt_length=response.prompt_length,
-                    reward=reward,
-                    logprobs=response.logprobs,
-                )
+        response = responses[0]  # there is only one response
+        return [
+            Experience(
+                tokens=response.tokens,
+                prompt_length=response.prompt_length,
+                reward=self.calculate_reward(response.response_text, self.answer),
+                logprobs=response.logprobs,
             )
-        return experiences
+        ]
 ```
 
 #### 注册你的工作流
@@ -198,9 +192,13 @@ __all__ = [
 ]
 ```
 
-#### 避免重复初始化
+#### 性能调优
 
-对于重型工作流，每次重新初始化会带来额外计算开销。
+以下是一些可选的性能调优方法，能够提升工作流的运行效率。当然，这些方法并非所有工作流都需要实现，具体取决于你的工作流设计。
+
+##### 避免重复初始化
+
+对于较为复杂的工作流，每次重新初始化会带来额外计算开销。
 此时，你可以实现 `resettable` 和 `reset` 方法以避免重复初始化。
 `resettable` 方法返回一个布尔值，指示工作流是否支持重置。
 `reset` 方法接受一个新的 `Task` 实例，并使用该实例更新工作流的状态。
@@ -219,6 +217,55 @@ class ExampleWorkflow(Workflow):
         self.question = task.raw_task.get("question")
         self.answer = task.raw_task.get("answer")
 ```
+
+##### 批量运行推理任务
+
+当前流行的很多 RL 算法需要多次运行同一个任务(例如 GRPO)。该场景下一些简单任务可以直接通过模型批量推理来获得一个问题的多个回复以提升效率。
+针对该情况，你可以实现 `repeatable` 属性以及 `set_repeat_times` 方法。
+`repeatable` 属性返回一个布尔值，指示工作流是否支持在 `run` 方法内多次执行。
+`set_repeat_times` 方法接受两个参数：`repeat_times` 指定了在 `run` 方法内需要执行的次数，`run_id_base` 是一个整数，用于标识多次运行中第一次的运行 ID，之后各次的 ID 基于此递增（该参数用于多轮交互场景，单次模型调用即可完成的任务可以忽略该项）。
+
+```python
+@WORKFLOWS.register_module("example_workflow")
+class ExampleWorkflow(Workflow):
+    # some code
+
+    @property
+    def repeatable(self) -> bool:
+        return True
+
+    def set_repeat_times(self, repeat_times, run_id_base):
+        self.repeat_times = repeat_times
+        self.run_id_base = run_id_base
+
+    def run(self) -> List[Experience]:
+        # call the model to generate multiple responses
+        responses = self.model.chat(
+            [
+                {
+                    "role": "user",
+                    "content": f"Question:\n{self.question}",
+                }
+            ],
+            n=self.repeat_times,  # run multiple times in one call
+            temperature=self.rollout_args.temperature,
+        )
+        experiences = []
+        for response in responses:
+            # calulcate reward
+            reward: float = self.calculate_reward(response.response_text, self.answer)
+            # construct Experience
+            experiences.append(
+                Experience(
+                    tokens=response.tokens,
+                    prompt_length=response.prompt_length,
+                    reward=reward,
+                    logprobs=response.logprobs,
+                )
+            )
+        return experiences
+```
+
 
 #### 完整代码示例
 
@@ -265,12 +312,21 @@ class ExampleWorkflow(Workflow):
             )
         return experiences
 
+    @property
     def resettable(self):
         return True
 
     def reset(self, task: Task):
         self.question = task.raw_task.get("question")
         self.answer = task.raw_task.get("answer")
+
+    @property
+    def repeatable(self) -> bool:
+        return True
+
+    def set_repeat_times(self, repeat_times, run_id_base):
+        self.repeat_times = repeat_times
+        self.run_id_base = run_id_base
 ```
 
 ---
@@ -301,7 +357,7 @@ trinity run --config <your_yaml_file>
 
 #### async 支持
 
-本节样例主要针对同步模式，如果你的工作流需要使用异步方法（例如异步 API）,你可以实现 `asynchronous` 属性并将其设置为 `True`，然后实现 `run_async` 方法，在这种情况下不再需要实现 `run` 方法。
+本节样例主要针对同步模式，如果你的工作流需要使用异步方法（例如异步 API）,你可以实现 `asynchronous` 属性并将其设置为 `True`，然后实现 `run_async` 方法，在这种情况下不再需要实现 `run` 方法，其余方法和属性不受影响。
 
 ```python
 @WORKFLOWS.register_module("example_workflow_async")

@@ -100,7 +100,7 @@ class Workflow:
     @property
     def repeatable(self):
         """A workflow is repeatable if it can be run multiple times within the run() or run_async() method."""
-        return True
+        return False
 
     @property
     def asynchronous(self):
