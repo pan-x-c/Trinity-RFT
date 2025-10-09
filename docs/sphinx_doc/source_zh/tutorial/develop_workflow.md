@@ -408,6 +408,9 @@ class ExampleWorkflow(Workflow):
         # self.client: openai.AsyncOpenAI = self.model.get_openai_async_client()
         self.agent = MyAgent(openai_client=self.client)
 
+    def calculate_reward(self, response: str) -> float:
+        # your reward calculation logic
+
     def run(self) -> List[Experience]:
         # run your agent
         response = self.agent.run()

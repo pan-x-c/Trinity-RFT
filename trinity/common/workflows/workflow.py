@@ -224,6 +224,10 @@ class SimpleWorkflow(Workflow):
         else:
             raise ValueError("`reward_fn` must be a subclass of `RewardFn`")
 
+    @property
+    def repeatable(self):
+        return True
+
     def set_repeat_times(self, repeat_times, run_id_base):
         self.repeat_times = repeat_times
         self.task.rollout_args.n = repeat_times
