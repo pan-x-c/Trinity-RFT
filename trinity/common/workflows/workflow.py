@@ -153,6 +153,10 @@ class MultiTurnWorkflow(Workflow):
             auxiliary_models=auxiliary_models,
         )
 
+    @property
+    def repeatable(self):
+        return True
+
     def set_repeat_times(self, repeat_times, run_id_base):
         self.repeat_times = repeat_times
         self.run_id_base = run_id_base
