@@ -157,11 +157,12 @@ class ExampleWorkflow(Workflow):
             temperature=self.rollout_args.temperature,
         )
         response = responses[0]  # there is only one response
+        reward: float = self.calculate_reward(response.response_text, self.answer)
         return [
             Experience(
                 tokens=response.tokens,
                 prompt_length=response.prompt_length,
-                reward=self.calculate_reward(response.response_text, self.answer),
+                reward=reward,
                 logprobs=response.logprobs,
             )
         ]
@@ -200,7 +201,9 @@ __all__ = [
 
 对于较为复杂的工作流，每次重新初始化会带来额外计算开销。
 此时，你可以实现 `resettable` 和 `reset` 方法以避免重复初始化。
-`resettable` 方法返回一个布尔值，指示工作流是否支持重置。
+
+`resettable` 方法返回一个布尔值，指示工作流是否支持轻量化重置。
+
 `reset` 方法接受一个新的 `Task` 实例，并使用该实例更新工作流的状态。
 
 ```python
@@ -222,7 +225,9 @@ class ExampleWorkflow(Workflow):
 
 当前流行的很多 RL 算法需要多次运行同一个任务(例如 GRPO)。该场景下一些简单任务可以直接通过模型批量推理来获得一个问题的多个回复以提升效率。
 针对该情况，你可以实现 `repeatable` 属性以及 `set_repeat_times` 方法。
+
 `repeatable` 属性返回一个布尔值，指示工作流是否支持在 `run` 方法内多次执行。
+
 `set_repeat_times` 方法接受两个参数：`repeat_times` 指定了在 `run` 方法内需要执行的次数，`run_id_base` 是一个整数，用于标识多次运行中第一次的运行 ID，之后各次的 ID 基于此递增（该参数用于多轮交互场景，单次模型调用即可完成的任务可以忽略该项）。
 
 ```python

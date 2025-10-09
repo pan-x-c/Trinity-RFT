@@ -357,3 +357,71 @@ Now you can run your workflow in Trinity-RFT using the command:
 ```
 trinity run --config <your_yaml_file>
 ```
+
+---
+
+### Advanced Features
+
+#### Async Support
+
+The example above mainly targets synchronous mode. If your workflow needs to use asynchronous methods (e.g., asynchronous API), you can implement the `asynchronous` property and set it to `True`, then implement the `run_async` method. In this case, you no longer need to implement the `run` method, while other methods and properties remain unaffected.
+
+```python
+@WORKFLOWS.register_module("example_workflow_async")
+class ExampleWorkflowAsync(Workflow):
+
+    @property
+    def asynchronous(self):
+        return True
+
+    async def run_async(self) -> List[Experience]:
+        # your async code here
+
+    # no need to implement run() method
+```
+
+#### Using OpenAI API
+
+Trinity-RFT provides an option to use the OpenAI API for model inference. You can enable this feature by setting `explorer.rollout_model.enable_openai_api` to `true` in your configuration file.  This allows you to obtain an `openai.OpenAI` instance via the `get_openai_client` method of the model instance provided by Trinity-RFT.
+
+Additionally, since the OpenAI API does not provide all the data required for training, you also need to set `explorer.rollout_model.enable_history` to `true`. This lets the framework automatically record data that can be used for training and convert it into a list of `Experience`. You can extract these experiences using the `extract_experience_from_history` method.
+
+```yaml
+# example config snippet
+explorer:
+  rollout_model:
+    enable_openai_api: true
+    enable_history: true
+    # Other fields
+```
+
+```python
+@WORKFLOWS.register_module("example_workflow")
+class ExampleWorkflow(Workflow):
+
+    def __init__(self, task: Task, model: ModelWrapper, auxiliary_models: List):
+        super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
+        self.model = model
+        self.client: openai.OpenAI = self.model.get_openai_client()
+        # or async client
+        # self.client: openai.AsyncOpenAI = self.model.get_openai_async_client()
+        self.agent = MyAgent(openai_client=self.client)
+
+    def run(self) -> List[Experience]:
+        # run your agent
+        response = self.agent.run()
+        # calculate reward
+        reward = self.calculate_reward(response)
+        # extract experiences from history recorded in self.model
+        experiences = self.model.extract_experience_from_history()
+        for exp in experiences:
+            exp.reward = reward
+        return experiences
+```
+
+
+```{tip}
+1. Currently, the OpenAI API will only automatically record calls to `openai.OpenAI.chat.completions.create` and `openai.AsyncOpenAI.chat.completions.create`, and convert them into `Experience` objects. Streaming output is not supported.
+2. When calling `chat.completions.create`, the `model` field can be obtained via `openai_client.models.list().data[0].id` or `openai_client.model_path`.
+3. For more complex workflow examples using the OpenAI API, refer to [ReAct Agent Training](./example_react.md).
+```
