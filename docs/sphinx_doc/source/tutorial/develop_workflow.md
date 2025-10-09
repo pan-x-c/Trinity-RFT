@@ -2,7 +2,7 @@
 ## Workflow Development Guide
 
 In Trinity-RFT, workflows are the core components that define the interaction between Agents and Environments.
-A qualified workflow needs to use the trained model to complete the specified task and obtain feedback information (reward) from the environment. Below are the steps to create a new workflow:
+A qualified workflow needs to use a model to complete the specified task and obtain feedback information (reward) from the environment. Below are the steps to create a new workflow:
 
 ---
 
@@ -259,7 +259,7 @@ class ExampleWorkflow(Workflow):
         )
         experiences = []
         for response in responses:
-            # calulcate reward
+            # calculate reward
             reward: float = self.calculate_reward(response.response_text, self.answer)
             # construct Experience
             experiences.append(

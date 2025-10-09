@@ -257,7 +257,7 @@ class ExampleWorkflow(Workflow):
         )
         experiences = []
         for response in responses:
-            # calulcate reward
+            # calculate reward
             reward: float = self.calculate_reward(response.response_text, self.answer)
             # construct Experience
             experiences.append(
