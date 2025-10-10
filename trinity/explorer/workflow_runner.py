@@ -177,11 +177,9 @@ class DebugWorkflowRunner(WorkflowRunner):
         with VizTracer(output_file=self.output_file):
             status, exps = await self.run_task(task, task.repeat_times, 0)
         if status.ok:
-            self.logger.info(
-                f"Task {task.task_id} completed successfully with metrics: {status.metric}"
-            )
+            print(f"Task {task.task_id} completed successfully with metrics:\n{status.metric}")
             for exp in exps:
-                self.logger.info(f"Generated experience: {exp}")
+                print(f"Generated experience:\n{exp}")
         else:
             self.logger.error(f"Task {task.task_id} failed with message: {status.message}")
         self.logger.info("Debugging completed.")

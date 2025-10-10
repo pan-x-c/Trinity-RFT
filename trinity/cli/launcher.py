@@ -3,7 +3,6 @@ import argparse
 import asyncio
 import os
 import sys
-import time
 import traceback
 from pathlib import Path
 from pprint import pprint
@@ -251,23 +250,25 @@ def debug(
     config = load_config(config_path)
     config.check_and_update()
     config.ray_namespace = DEBUG_NAMESPACE_ENV_VAR
-    ray.init(namespace=config.ray_namespace, runtime_env={"env_vars": config.get_envs()})
+    ray.init(
+        namespace=config.ray_namespace,
+        runtime_env={"env_vars": config.get_envs()},
+        ignore_reinit_error=True,
+    )
     from trinity.common.models import create_debug_inference_model
 
     if module == "inference_model":
-        logger.info("Creating inference models for debugging...")
         create_debug_inference_model(config)
-        logger.info("Inference models started successfully for debugging. Press Ctrl+C to exit.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("Exiting...")
+
     elif module == "workflow":
         from trinity.explorer.workflow_runner import DebugWorkflowRunner
 
         runner = DebugWorkflowRunner(config, output_file)
         asyncio.run(runner.debug())
+    else:
+        raise ValueError(
+            f"Only support 'inference_model' and 'workflow' for debugging, got {module}"
+        )
 
 
 def main() -> None:
@@ -323,7 +324,7 @@ def main() -> None:
     elif args.command == "studio":
         studio(args.port)
     elif args.command == "debug":
-        debug(args.config, args.module)
+        debug(args.config, args.module, args.output_file, args.plugin_dir)
 
 
 if __name__ == "__main__":

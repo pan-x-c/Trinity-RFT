@@ -1,6 +1,8 @@
+import multiprocessing
 import os
 import shutil
 import sys
+import time
 import unittest
 from unittest import mock
 from unittest.mock import MagicMock
@@ -18,6 +20,7 @@ from trinity.common.config import (
     StageConfig,
     TrainerInput,
 )
+from trinity.common.models import get_debug_inference_model
 
 
 class TestLauncherMain(unittest.TestCase):
@@ -241,6 +244,50 @@ class TestLauncherMain(unittest.TestCase):
                 "/path/to/hf/checkpoint",
             )
 
+    @mock.patch("trinity.cli.launcher.load_config")
+    def test_debug_mode(self, mock_load):
+        process = multiprocessing.Process(target=debug_inference_model_process)
+        process.start()
+        time.sleep(15)  # wait for the model to be created
+        for _ in range(10):
+            try:
+                get_debug_inference_model(self.config)
+                break
+            except Exception:
+                time.sleep(3)
+        output_file = os.path.join(self.config.checkpoint_job_dir, "debug.html")
+        self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
+        mock_load.return_value = self.config
+        with mock.patch(
+            "argparse.ArgumentParser.parse_args",
+            return_value=mock.Mock(
+                command="debug",
+                config="dummy.yaml",
+                module="workflow",
+                output_file=output_file,
+                plugin_dir="",
+            ),
+        ):
+            launcher.main()
+        process.join(timeout=10)
+        process.terminate()
+        self.assertTrue(os.path.exists(output_file))
 
-if __name__ == "__main__":
-    unittest.main()
+
+def debug_inference_model_process():
+    config = get_template_config()
+    config.checkpoint_root_dir = get_checkpoint_path()
+    config.model.model_path = get_model_path()
+    config.check_and_update()
+    with mock.patch("trinity.cli.launcher.load_config", return_value=config):
+        with mock.patch(
+            "argparse.ArgumentParser.parse_args",
+            return_value=mock.Mock(
+                command="debug",
+                config="dummy.yaml",
+                module="inference_model",
+                plugin_dir=None,
+                output_file=None,
+            ),
+        ):
+            launcher.main()

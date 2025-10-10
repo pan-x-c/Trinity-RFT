@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict
 from typing import List, Tuple
 
@@ -149,6 +150,8 @@ def create_debug_inference_model(config: Config) -> None:
     """Create inference models for debugging."""
     import ray
 
+    logger = get_logger(__name__)
+    logger.info("Creating inference models for debugging...")
     # only create one engine for each model
     config.explorer.rollout_model.engine_num = 1
     for model in config.explorer.auxiliary_models:
@@ -160,6 +163,18 @@ def create_debug_inference_model(config: Config) -> None:
     for models in auxiliary_models:
         for m in models:
             ray.get(m.get_model_path.remote())
+    logger.info(
+        "----------------------------------------------------\n"
+        "Inference models started successfully for debugging.\n"
+        "Press Ctrl+C to exit.\n"
+        "----------------------------------------------------"
+    )
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Exiting...")
 
 
 def get_debug_inference_model(config: Config) -> Tuple[InferenceModel, List[InferenceModel]]:
