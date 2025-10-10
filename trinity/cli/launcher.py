@@ -11,7 +11,7 @@ import ray
 
 from trinity.buffer.pipelines.task_pipeline import check_and_run_task_pipeline
 from trinity.common.config import Config, load_config
-from trinity.common.constants import DEBUG_NAMESPACE_ENV_VAR, PLUGIN_DIRS_ENV_VAR
+from trinity.common.constants import DEBUG_NAMESPACE, PLUGIN_DIRS_ENV_VAR
 from trinity.explorer.explorer import Explorer
 from trinity.manager.state_manager import StateManager
 from trinity.trainer.trainer import Trainer
@@ -249,7 +249,7 @@ def debug(
     load_plugins()
     config = load_config(config_path)
     config.check_and_update()
-    config.ray_namespace = DEBUG_NAMESPACE_ENV_VAR
+    config.ray_namespace = DEBUG_NAMESPACE
     ray.init(
         namespace=config.ray_namespace,
         runtime_env={"env_vars": config.get_envs()},

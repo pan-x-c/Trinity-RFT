@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import List, Tuple
 
 from trinity.common.config import Config
-from trinity.common.constants import DEBUG_NAMESPACE_ENV_VAR
+from trinity.common.constants import DEBUG_NAMESPACE
 from trinity.common.models.model import InferenceModel
 from trinity.utils.log import get_logger
 
@@ -184,12 +184,12 @@ def get_debug_inference_model(config: Config) -> Tuple[InferenceModel, List[Infe
     import ray
 
     rollout_model = ray.get_actor(
-        f"{config.explorer.name}_rollout_model_0", namespace=DEBUG_NAMESPACE_ENV_VAR
+        f"{config.explorer.name}_rollout_model_0", namespace=DEBUG_NAMESPACE
     )
     auxiliary_models = []
     for i in range(len(config.explorer.auxiliary_models)):
         model = ray.get_actor(
-            f"{config.explorer.name}_auxiliary_model_{i}_0", namespace=DEBUG_NAMESPACE_ENV_VAR
+            f"{config.explorer.name}_auxiliary_model_{i}_0", namespace=DEBUG_NAMESPACE
         )
         auxiliary_models.append(model)
     return rollout_model, auxiliary_models
