@@ -428,3 +428,39 @@ class ExampleWorkflow(Workflow):
 2. When calling `chat.completions.create`, the `model` field can be obtained via `openai_client.models.list().data[0].id` or `openai_client.model_path`.
 3. For more complex workflow examples using the OpenAI API, refer to [ReAct Agent Training](./example_react.md).
 ```
+
+
+Here is the polished English version of the Debug Mode documentation section:
+
+
+#### Debug Mode
+
+During Workflow development, repeatedly launching the full training process for testing is time-consuming and inefficient. To address this, Trinity-RFT provides a Debug Mode for developers. This mode leverages a pre-launched inference model to quickly run specified workflows and obtain results, avoiding repeated model loading and initialization delays, and significantly improving development efficiency. The process is illustrated below:
+
+```{mermaid}
+flowchart LR
+    A[Start Inference Model] --> B[Debug Workflow]
+    B --> B
+```
+
+To start the inference model, use the following command:
+
+```bash
+trinity debug --config <config_file_path> --module inference_model
+```
+
+Here, `<config_file_path>` is the path to a YAML configuration file, which should follow the same format as the one used by the `trinity run` command. The `explorer.rollout_model` and `explorer.auxiliary_models` fields in the config will be loaded to initialize the inference model.
+
+Once started, the model will keep running and wait for debug instructions; it will not exit automatically. You can then run the following command in another terminal to debug your workflow:
+
+```bash
+trinity debug --config <config_file_path> --module workflow --output_file <output_file_path> --plugin_dir <plugin_dir>
+```
+
+- `<config_file_path>`: Path to the YAML configuration file, usually the same as used for starting the inference model.
+- `<output_file_path>`: Path to save the performance profiling results. Debug Mode uses [viztracer](https://github.com/gaogaotiantian/viztracer) to profile the workflow execution and saves the results as an HTML file for easy viewing in a browser.
+- `<plugin_dir>` (optional): Path to the plugin directory. If your workflow or reward function modules are not built into Trinity-RFT, you can specify this parameter to load custom modules.
+
+During debugging, the `buffer.explorer_input.taskset` field in the config will be loaded to initialize the workflow's required task dataset and instance. Note that Debug Mode only reads the first sample in the dataset for testing. After running the above command, the workflow's return value will be automatically formatted and printed in the terminal for easy inspection.
+
+When debugging is complete, you can terminate the inference model by pressing `Ctrl+C` in its terminal.

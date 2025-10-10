@@ -428,3 +428,35 @@ class ExampleWorkflow(Workflow):
 2. 调用 `chat.completions.create` 时，其中的 `model` 字段可通过 `openai_client.models.list().data[0].id` 或 `openai_client.model_path` 获取。
 3. 更复杂的使用 OpenAI API 的工作流实例可参考 [ReAct Agent 训练](./example_react.md)。
 ```
+
+#### 调试模式（Debug Mode）
+
+在 Workflow 开发过程中，频繁启动完整训练流程进行测试既耗时又低效。为此，Trinity-RFT 为开发者提供了调试模式。该模式通过预先启动推理模型，能够快速运行指定的工作流并获取结果，避免因模型加载和初始化带来的重复等待，大幅提升开发效率。流程如下：
+
+```{mermaid}
+flowchart LR
+    A[启动推理模型] --> B[调试 Workflow]
+    B --> B
+```
+
+启动推理模型的命令如下：
+
+```bash
+trinity debug --config <config_file_path> --module inference_model
+```
+
+其中，`config_file_path` 为 YAML 格式的配置文件路径，格式与 `trinity run` 命令所用配置文件一致。配置文件中的 `explorer.rollout_model` 和 `explorer.auxiliary_models` 字段会被加载，用于初始化推理模型。
+
+模型启动后会持续运行并等待调试指令，不会自动退出。此时，你可在另一个终端执行如下命令进行 Workflow 调试：
+
+```bash
+trinity debug --config <config_file_path> --module workflow --output_file <output_file_path> --plugin_dir <plugin_dir>
+```
+
+- `config_file_path`：YAML 配置文件路径，通常与启动推理模型时使用的配置文件相同。
+- `output_file_path`：性能分析结果输出路径。调试模式会使用 [viztracer](https://github.com/gaogaotiantian/viztracer) 对 Workflow 运行过程进行性能分析，并将结果保存为 HTML 文件，便于在浏览器中查看。
+- `plugin_dir`（可选）：插件目录路径。如果你的 Workflow 或奖励函数等模块未内置于 Trinity-RFT，可通过该参数加载自定义模块。
+
+调试过程中，配置文件中的 `buffer.explorer_input.taskset` 字段会被加载，用于初始化 Workflow 所需的任务数据集和实例。需注意，调试模式仅会读取数据集中的第一条数据进行测试。运行上述命令后，Workflow 的返回值会自动格式化并打印在终端，方便查看运行结果。
+
+调试完成后，可在推理模型终端输入 `Ctrl+C` 以终止模型运行。
