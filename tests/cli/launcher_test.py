@@ -20,6 +20,11 @@ from trinity.common.config import (
     StageConfig,
     TrainerInput,
 )
+from trinity.common.constants import (
+    LOG_DIR_ENV_VAR,
+    LOG_LEVEL_ENV_VAR,
+    LOG_NODE_IP_ENV_VAR,
+)
 from trinity.common.models import get_debug_inference_model
 
 
@@ -111,9 +116,9 @@ class TestLauncherMain(unittest.TestCase):
                 runtime_env={
                     "env_vars": {
                         launcher.PLUGIN_DIRS_ENV_VAR: "/path/to/plugins",
-                        launcher.LOG_DIR_ENV_VAR: config.log.save_dir,
-                        launcher.LOG_LEVEL_ENV_VAR: config.log.level,
-                        launcher.LOG_NODE_IP_ENV_VAR: "1",
+                        LOG_DIR_ENV_VAR: config.log.save_dir,
+                        LOG_LEVEL_ENV_VAR: config.log.level,
+                        LOG_NODE_IP_ENV_VAR: "1",
                     }
                 },
             )
@@ -205,14 +210,14 @@ class TestLauncherMain(unittest.TestCase):
                     runtime_env={
                         "env_vars": {
                             launcher.PLUGIN_DIRS_ENV_VAR: "/path/to/plugins",
-                            launcher.LOG_DIR_ENV_VAR: os.path.join(
+                            LOG_DIR_ENV_VAR: os.path.join(
                                 config.checkpoint_root_dir,
                                 config.project,
                                 f"{config.name}/sft_warmup",
                                 "log",
                             ),
-                            launcher.LOG_LEVEL_ENV_VAR: config.log.level,
-                            launcher.LOG_NODE_IP_ENV_VAR: "0",
+                            LOG_LEVEL_ENV_VAR: config.log.level,
+                            LOG_NODE_IP_ENV_VAR: "0",
                         }
                     },
                 ),
@@ -223,14 +228,14 @@ class TestLauncherMain(unittest.TestCase):
                     runtime_env={
                         "env_vars": {
                             launcher.PLUGIN_DIRS_ENV_VAR: "/path/to/plugins",
-                            launcher.LOG_DIR_ENV_VAR: os.path.join(
+                            LOG_DIR_ENV_VAR: os.path.join(
                                 config.checkpoint_root_dir,
                                 config.project,
                                 f"{config.name}/grpo",
                                 "log",
                             ),
-                            launcher.LOG_LEVEL_ENV_VAR: config.log.level,
-                            launcher.LOG_NODE_IP_ENV_VAR: "0",
+                            LOG_LEVEL_ENV_VAR: config.log.level,
+                            LOG_NODE_IP_ENV_VAR: "0",
                         }
                     },
                 ),
