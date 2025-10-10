@@ -429,8 +429,77 @@ class ExampleWorkflow(Workflow):
 3. For more complex workflow examples using the OpenAI API, refer to [ReAct Agent Training](./example_react.md).
 ```
 
+#### LLM-as-a-judge Support
 
-Here is the polished English version of the Debug Mode documentation section:
+LLM-as-a-judge is a common reward calculation method, especially suitable for open-ended tasks (such as programming, writing, etc.). In these scenarios, the Workflow needs to leverage an additional LLM to evaluate the answer quality and compute the reward signal.
+
+To support this, Trinity-RFT provides an Auxiliary Models mechanism. Auxiliary models are a set of models not involved in training; the Workflow can use these models to assist with tasks, such as acting as a judge to calculate rewards.
+
+You can specify one or more auxiliary models in the configuration file via the `explorer.auxiliary_models` field. For example:
+
+```yaml
+explorer:
+  auxiliary_models:
+    - model_path: Qwen/Qwen2.5-32B-Instruct
+      engine_num: 1
+      tensor_parallel_size: 2
+      enable_thinking: false
+      max_prompt_tokens: 12288
+      max_response_tokens: 12288
+      max_model_len: 16384
+    - model_path: Qwen/Qwen3-8B
+      engine_num: 1
+      tensor_parallel_size: 2
+      enable_thinking: false
+      max_prompt_tokens: 12288
+      max_response_tokens: 12288
+      max_model_len: 16384
+```
+
+Note that each auxiliary model will independently occupy `tensor_parallel_size * engine_num` GPUs. Please configure according to your hardware resources. After enabling auxiliary models, the number of GPUs available to the Trainer is the total GPU count minus those occupied by all auxiliary models and the inference model being trained (`rollout_model`).
+
+The auxiliary models specified in the configuration file will automatically activate the OpenAI API and pass the corresponding `openai.OpenAI` instances to the `auxiliary_models` parameter of the `Workflow` initialization method. For example:
+
+```python
+class MyWorkflow(Workflow):
+    def __init__(
+        self,
+        *,
+        task: Task,
+        model: ModelWrapper,
+        auxiliary_models: Optional[List[openai.OpenAI]] = None,
+    ):
+        super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
+        self.judge_model = self.auxiliary_models[0]  # Use the first auxiliary model as the judge
+
+    def run(self) -> List[Experience]:
+        response = self.do_something()
+        reward_response = self.judge_model.chat.completions.create(
+            model=self.judge_model.model_path,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a judge. You need to give a score from 0 to 1 based on the quality of the answer.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Question:\n{self.task.raw_task['question']}\nAnswer:\n{response.response_text}\nPlease give a score from 0 to 1.",
+                },
+            ],
+            temperature=0.0,
+            max_tokens=10,
+        )
+        # Parse the reward score
+        reward = float(reward_response.choices[0].message.content.strip())
+        return [
+            Experience(
+                tokens=response.tokens,
+                prompt_length=response.prompt_length,
+                reward=reward,
+                logprobs=response.logprobs,
+            )
+        ]
+```
 
 
 #### Debug Mode
