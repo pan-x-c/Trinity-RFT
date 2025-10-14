@@ -1,6 +1,6 @@
 services:
   trinity-node-1:
-    image: trinity-rft-unittest:20250918
+    image: trinity-rft-unittest:20250924
     pull_policy: never
     command: sh -c "pip install -e .[dev] && ray start --head --dashboard-host 0.0.0.0 --include-dashboard true --block"
     environment:
@@ -8,6 +8,7 @@ services:
       - RAY_ADDRESS=auto
       - TRINITY_CHECKPOINT_ROOT_DIR=/mnt/checkpoints
       - TRINITY_TASKSET_PATH=/mnt/data
+      - TRINITY_EVAL_TASKSET_PATH=/mnt/data
       - TRINITY_SFT_DATASET_PATH=/mnt/data
       - TRINITY_MODEL_PATH=/mnt/models/Qwen3-0.6B
       - TRINITY_API_MODEL_PATH=/mnt/models/Qwen3-1.7B
@@ -28,7 +29,7 @@ services:
             capabilities: [gpu]
 
   trinity-node-2:
-    image: trinity-rft-unittest:20250918
+    image: trinity-rft-unittest:20250924
     pull_policy: never
     command: sh -c "pip install -e .[dev] && ray start --address=trinity-node-1:6379 --block"
     environment:

@@ -1,82 +1,32 @@
+(Megatron-LM)=
 # Megatron-LM Backend
 
 This guide walks you through how to train models using **Megatron-LM** in a clear way.
 
----
-
-## Step 1: Installation
-
-### Minimum Requirements
-
-Before you begin, make sure your system meets these requirements:
-
-- **GPUs**: At least 2 GPUs (for distributed training)
-- **CUDA**: Version 12.4 or higher
-- **Python**: Version 3.10 or higher
+```{note}
+This guide assumes you have already set up your environment from source code following {ref}`Installation <Installation>`. If you haven't done so, please refer to that guide first.
+```
 
 ---
 
-### Install Dependencies
-
-Start by cloning the repository and setting up a virtual environment:
-
-```bash
-# Clone the repository
-git clone https://github.com/modelscope/Trinity-RFT
-cd Trinity-RFT
-```
-
-#### Option A: Using Conda
-
-```bash
-# Create and activate a new environment
-conda create -n trinity python=3.10
-conda activate trinity
-```
-
-#### Option B: Using venv
-
-```bash
-# Create and activate a virtual environment
-python3.10 -m venv .venv
-source .venv/bin/activate
-```
-
-#### Install the Package
+## Step 1: Install Megatron-LM Support
 
 Install the project in editable mode with Megatron support:
 
 ```bash
-# For bash users
-pip install -e .[megatron]
+pip install -e ".[megatron]"
 
-# For zsh users (escape the brackets)
-pip install -e .\[megatron\]
+# for uv
+# uv sync -extra megatron
 ```
 
-#### Install Flash Attention
-
-After installing the base dependencies, install `flash-attn`. This may take several minutes to compile — please be patient!
-
-```bash
-pip install flash-attn==2.8.1 -v
-```
-
-If you run into installation issues, try this alternative:
-
-```bash
-pip install flash-attn -v --no-build-isolation
-```
-
-#### Install Apex (from NVIDIA)
-
-Finally, install NVIDIA's Apex library for mixed-precision training:
+Then, install NVIDIA's Apex library for mixed-precision training:
 
 ```bash
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation \
     --config-settings "--build-option=--cpp_ext" \
     --config-settings "--build-option=--cuda_ext" \
-    --resume-retries 999 git+https://github.com/NVIDIA/apex.git
+    --resume-retries 10 git+https://github.com/NVIDIA/apex.git
 ```
 
 ---
@@ -87,11 +37,10 @@ We provide a Docker setup to simplify environment management.
 
 #### Build the Docker Image
 
-```bash
-git clone https://github.com/modelscope/Trinity-RFT
-cd Trinity-RFT
 
-# Build the image
+Trinity-RFT provides a dedicated Dockerfile for Megatron-LM located at `scripts/docker_for_megatron/Dockerfile`. You can build the image using the following command:
+
+```bash
 docker build -f scripts/docker_for_megatron/Dockerfile -t trinity-rft-megatron:latest .
 ```
 

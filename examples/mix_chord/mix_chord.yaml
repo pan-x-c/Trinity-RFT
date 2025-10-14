@@ -6,6 +6,7 @@ algorithm:
   repeat_times: 8 # or 16 for better performance in math related tasks
   kl_loss_fn_args:
     kl_coef: 0.0
+  entropy_loss_fn: mix
   sample_strategy_args:
     expert_data_ratio: 0.20
   policy_loss_fn_args: # feel free to change, we encourage you to try out different hyperparameters

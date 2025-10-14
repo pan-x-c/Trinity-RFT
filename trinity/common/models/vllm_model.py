@@ -4,19 +4,22 @@ import asyncio
 import os
 from typing import Any, Dict, List, Optional, Sequence
 
+import numpy as np
 import ray
 import torch
 import vllm
 from packaging.version import parse as parse_version
+from PIL import Image
 from transformers import AutoProcessor
+from vllm.lora.request import LoRARequest
 from vllm.sampling_params import RequestOutputKind
 
 from trinity.common.config import InferenceModelConfig
 from trinity.common.experience import Experience
 from trinity.common.models.api.vllm_patch import get_vllm_version
 from trinity.common.models.mm_utils import (
-    attach_images_to_messages,
     build_multi_modal_inputs,
+    convert_messages_to_mm_format,
 )
 from trinity.common.models.model import InferenceModel
 from trinity.common.models.utils import get_action_mask_method
@@ -63,6 +66,8 @@ class vLLMRolloutModel(InferenceModel):
         self.enable_thinking = config.enable_thinking
         self.request_id = 0
         max_model_len = config.max_model_len
+        self.enable_lora = config.enable_lora
+        self.default_lora_path = config.lora_kwargs.pop("default_lora_path", None)
         engine_args = vllm.AsyncEngineArgs(
             model=config.model_path,
             enforce_eager=config.enforce_eager,
@@ -78,6 +83,8 @@ class vLLMRolloutModel(InferenceModel):
             gpu_memory_utilization=config.gpu_memory_utilization,
             enable_chunked_prefill=config.enable_chunked_prefill,
             # max_num_batched_tokens=256, # you can further set this parameter to reduce the vllm peak memory usage
+            enable_lora=config.enable_lora,
+            **config.lora_kwargs,
         )
         if get_vllm_version() > parse_version("0.10.0"):
             engine_args.enable_log_requests = False
@@ -98,8 +105,10 @@ class vLLMRolloutModel(InferenceModel):
 
     async def _initialize_tokenizer(self):
         if self.tokenizer is None:
-            if self.processor and hasattr(self.processor, "tokenizer"):
-                self.tokenizer = self.processor.tokenizer
+            if self.enable_lora:
+                self.tokenizer = await self.async_llm.get_tokenizer(
+                    lora_request=self.get_lora_request()
+                )
             else:
                 self.tokenizer = await self.async_llm.get_tokenizer()
         self.tokenizer.truncation_side = "left"
@@ -110,7 +119,9 @@ class vLLMRolloutModel(InferenceModel):
         )
         self.tokenizer = self.processor.tokenizer
 
-    async def chat(self, messages: List[Dict], **kwargs) -> Sequence[Experience]:
+    async def chat(
+        self, messages: List[Dict], lora_request: LoRARequest = None, **kwargs
+    ) -> Sequence[Experience]:
         """Chat with the model with a list of messages in async.
 
         Args:
@@ -139,9 +150,11 @@ class vLLMRolloutModel(InferenceModel):
                 chat_template=self.chat_template,
                 enable_thinking=self.enable_thinking,
             )
-        return await self.generate(prompt=prompt, **kwargs)
+        return await self.generate(prompt=prompt, lora_request=lora_request, **kwargs)
 
-    async def generate(self, prompt: str, **kwargs) -> Sequence[Experience]:
+    async def generate(
+        self, prompt: str, lora_request: LoRARequest = None, **kwargs
+    ) -> Sequence[Experience]:
         """Generate a response from the provided prompt in async.
 
         Args:
@@ -156,7 +169,9 @@ class vLLMRolloutModel(InferenceModel):
         token_ids = self.tokenizer(  # type: ignore
             prompt, truncation=True, max_length=self.config.max_prompt_tokens, return_tensors="pt"
         )["input_ids"][0].tolist()
-        output = await self._generate_internal(prompt={"prompt_token_ids": token_ids}, **kwargs)
+        output = await self._generate_internal(
+            prompt={"prompt_token_ids": token_ids}, lora_request=lora_request, **kwargs
+        )
         experiences = [
             Experience(
                 tokens=torch.cat(
@@ -185,7 +200,7 @@ class vLLMRolloutModel(InferenceModel):
         return experiences
 
     async def chat_mm(
-        self, messages: List[Dict], raw_mm_data: Dict, **kwargs
+        self, messages: List[Dict], images: List[Image.Image], videos: List[np.ndarray], **kwargs
     ) -> Sequence[Experience]:
         """Chat with the model with a list of messages in async.
 
@@ -197,13 +212,11 @@ class vLLMRolloutModel(InferenceModel):
         Returns:
             A list of experiences.
         """
-        # if self.tokenizer is None:
-        #     await self._initialize_tokenizer()
         if self.processor is None:
             self._initialize_processor()
         if self.chat_template is None:
             self.chat_template = self.tokenizer.get_chat_template()
-        messages = attach_images_to_messages(messages, raw_mm_data)
+        messages = convert_messages_to_mm_format(messages)
         if messages[-1]["role"] == "assistant":
             prompt = self.processor.apply_chat_template(
                 messages,
@@ -220,38 +233,31 @@ class vLLMRolloutModel(InferenceModel):
                 enable_thinking=self.enable_thinking,
             )
 
-        mm_inputs = build_multi_modal_inputs(
-            prompt=prompt,
-            raw_mm_data=raw_mm_data,
-            processor=self.processor,
-            **kwargs,
-        )
-        return await self.generate_mm(mm_inputs=mm_inputs, **kwargs)
+        return await self.generate_mm(prompt=prompt, images=images, videos=videos, **kwargs)
 
     async def generate_mm(
-        self, prompt: str = None, raw_mm_data: Dict = None, mm_inputs: Dict = None, **kwargs
+        self,
+        prompt: str = None,
+        images: List[Image.Image] = None,
+        videos: List[np.ndarray] = None,
+        **kwargs,
     ) -> Sequence[Experience]:
         """Generate a response from the provided prompt in async.
 
         Args:
             prompt (str): The input prompt.
-            raw_mm_data (dict): The raw multi-modal data.
-            mm_inputs (dict): The multi-modal inputs, already processed.
-                - keys: "prompt", "multi_modal_data", "multi_modal_inputs".
-            kwargs (dict): A dictionary of sampling parameters.
-
-            Either (`prompt`, raw_mm_data) or (mm_inputs) should be provided.
+            images (List): The list of image inputs.
+            videos (List): The list of video inputs.
 
         Returns:
             A list of experiences.
         """
-        if mm_inputs is None:
-            mm_inputs = build_multi_modal_inputs(
-                prompt=prompt,
-                raw_mm_data=raw_mm_data,
-                processor=self.processor,
-                **kwargs,
-            )
+        mm_inputs = build_multi_modal_inputs(
+            prompt=prompt,
+            images=images,
+            videos=videos,
+            processor=self.processor,
+        )
 
         vllm_inputs = {
             "prompt": mm_inputs["prompt"],
@@ -287,7 +293,9 @@ class vLLMRolloutModel(InferenceModel):
         ]
         return experiences
 
-    async def logprobs(self, token_ids: List[int]) -> torch.Tensor:
+    async def logprobs(
+        self, token_ids: List[int], lora_request: LoRARequest = None
+    ) -> torch.Tensor:
         """Calculate the logprobs of the given tokens in async. Please slice the result carefully
         to align with the actual response length.
 
@@ -300,6 +308,7 @@ class vLLMRolloutModel(InferenceModel):
         """
         output = await self._generate_internal(
             prompt={"prompt_token_ids": token_ids},
+            lora_request=lora_request,
             n=1,
             max_tokens=1,
             prompt_logprobs=0,  # vLLM return `prompt_logprobs + 1` logrpobs for each token
@@ -309,13 +318,16 @@ class vLLMRolloutModel(InferenceModel):
             dtype=torch.float32,
         )
 
-    async def _generate_internal(self, prompt: Any, **kwargs) -> Any:
+    async def _generate_internal(
+        self, prompt: Any, lora_request: LoRARequest = None, **kwargs
+    ) -> Any:
         # Send the request to the LLM engine.
         self.request_id += 1
         stream = self.async_llm.generate(
             request_id=str(self.request_id),
             prompt=prompt,
             sampling_params=self._create_sampling_params(**kwargs),
+            lora_request=lora_request,
         )
 
         # Consume the stream until the request is finished.
@@ -334,7 +346,7 @@ class vLLMRolloutModel(InferenceModel):
     ) -> Experience:
         """Convert a list of messages into an experience."""
         if self.tokenizer is None:
-            self.tokenizer = await self.async_llm.get_tokenizer()
+            await self._initialize_tokenizer()
         if self.chat_template is None:
             self.chat_template = self.tokenizer.get_chat_template()
         token_ids, action_mask, prompt_length = self.action_mask_method(
@@ -342,6 +354,7 @@ class vLLMRolloutModel(InferenceModel):
             messages=messages,
             tools=tools,
             chat_template=self.chat_template,
+            enable_thinking=self.enable_thinking,
         )  # (seq_length, ), (seq_length, )
         logprobs = await self.logprobs(token_ids=token_ids.tolist())  # (seq_length - 1,)
         return Experience(
@@ -394,6 +407,20 @@ class vLLMRolloutModel(InferenceModel):
 
     async def sync_model(self, model_version: int) -> int:
         """Sync model weights to vLLM."""
+        if self.enable_lora:
+            # Revise the lora path; no need to sync weights manually.
+            self.default_lora_path = self.default_lora_path.replace(
+                f"global_step_{self.model_version}", f"global_step_{model_version}"
+            )
+            self.logger.info(
+                f"Redirect `lora_path` from old_model_version={self.model_version} to {model_version=} successfully."
+            )
+            lora_int_ids = await self.async_llm.list_loras()
+            for lora_id in lora_int_ids:
+                await self.async_llm.remove_lora(lora_id)
+            await self.async_llm.add_lora(self.get_lora_request(self.default_lora_path))
+            self.model_version = model_version
+            return model_version
         await self._collective_rpc("update_weight")
         self.logger.info("Sync model weights to vLLM successfully.")
         self.model_version = model_version
@@ -464,6 +491,17 @@ class vLLMRolloutModel(InferenceModel):
 
     def get_model_version(self) -> int:
         return self.model_version
+
+    def get_model_path(self) -> str:
+        return self.config.model_path
+
+    def get_lora_request(self, lora_path: Optional[str] = None) -> LoRARequest:
+        assert self.config.lora_modules is not None
+        lora_request = LoRARequest(**self.config.lora_modules[0])
+        if lora_path is not None:
+            self.config.lora_modules[0]["lora_path"] = lora_path  # for consistency
+            lora_request.lora_path = lora_path
+        return lora_request
 
     async def sleep(self, level: int = 1) -> None:
         await self.async_llm.sleep(level=level)

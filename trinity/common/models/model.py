@@ -6,10 +6,13 @@ from abc import ABC, abstractmethod
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
 import httpx
+import numpy as np
 import openai
 import ray
 import torch
+from PIL import Image
 from torch import Tensor
+from vllm.lora.request import LoRARequest
 
 from trinity.common.constants import RunningStatus
 from trinity.common.experience import Experience
@@ -55,6 +58,10 @@ class InferenceModel(ABC):
         """Get the API server URL if available."""
         return None
 
+    def get_model_path(self) -> Optional[str]:
+        """Get the model path"""
+        return None
+
 
 def _history_recorder(func):
     """Decorator to record history of the model calls."""
@@ -77,13 +84,20 @@ def _history_recorder(func):
 class ModelWrapper:
     """A wrapper for the InferenceModel Ray Actor"""
 
-    def __init__(self, model: Any, engine_type: str = "vllm", enable_history: bool = False):
+    def __init__(
+        self,
+        model: Any,
+        engine_type: str = "vllm",
+        enable_lora: bool = False,
+        enable_history: bool = False,
+    ):
         assert engine_type.startswith("vllm"), "Only vLLM model is supported for now."
         self.model = model
         self.api_address: str = None
         self.openai_client: openai.OpenAI = None
         self.openai_async_client: openai.AsyncOpenAI = None
         self.logger = get_logger(__name__)
+        self.enable_lora = enable_lora
         self.enable_history = enable_history
         self.history = []
         self.status = RunningStatus.RUNNING
@@ -106,7 +120,7 @@ class ModelWrapper:
                         if response.status_code == 200:
                             return
                 except Exception as e:
-                    self.logger.info(f"API server not ready (attempt {i+1}/{max_retries}): {e}")
+                    self.logger.info(f"API server not ready (attempt {i + 1}/{max_retries}): {e}")
                 await asyncio.sleep(interval)
             raise RuntimeError(
                 f"API server at {self.api_address} not ready after {max_retries} attempts."
@@ -124,38 +138,50 @@ class ModelWrapper:
     @_history_recorder
     def generate(self, prompts: List[str], **kwargs) -> List[Experience]:
         """Generate a list of experiences from a list of prompts."""
-        results = ray.get([self.model.generate.remote(prompt, **kwargs) for prompt in prompts])
+        lora_request = self.get_lora_request()
+        results = ray.get(
+            [self.model.generate.remote(prompt, lora_request, **kwargs) for prompt in prompts]
+        )
         return [exp for exps in results for exp in exps]
 
     @_history_recorder
     async def generate_async(self, prompts: List[str], **kwargs) -> List[Experience]:
         """Generate a list of experiences from a list of prompts in async."""
+        lora_request = await self.get_lora_request_async()
         results = await asyncio.gather(
-            *[self.model.generate.remote(prompt, **kwargs) for prompt in prompts]
+            *[self.model.generate.remote(prompt, lora_request, **kwargs) for prompt in prompts]
         )
         return [exp for exps in results for exp in exps]
 
     @_history_recorder
     def generate_mm(
-        self, prompts: List[str], raw_mm_data_list: List[dict], **kwargs
+        self,
+        prompts: List[str],
+        images: List[List[Image.Image]],
+        videos: List[List[np.ndarray]],
+        **kwargs,
     ) -> List[Experience]:
-        """Generate a list of experiences from a list of prompts and raw_mm_data."""
+        """Generate a list of experiences from a list of prompts and multi-modal data."""
         results = ray.get(
             [
-                self.model.generate_mm.remote(prompt, mm_data, **kwargs)
-                for prompt, mm_data in zip(prompts, raw_mm_data_list)
+                self.model.generate_mm.remote(prompt, images=img, videos=vid, **kwargs)
+                for prompt, img, vid in zip(prompts, images, videos)
             ]
         )
         return [exp for exps in results for exp in exps]
 
     @_history_recorder
     async def generate_mm_async(
-        self, prompts: List[str], raw_mm_data_list: List[dict], **kwargs
+        self,
+        prompts: List[str],
+        images: List[List[Image.Image]],
+        videos: List[List[np.ndarray]],
+        **kwargs,
     ) -> List[Experience]:
         results = await asyncio.gather(
             *[
-                self.model.generate_mm.remote(p, m, **kwargs)
-                for p, m in zip(prompts, raw_mm_data_list)
+                self.model.generate_mm.remote(p, images=img, videos=vid, **kwargs)
+                for p, img, vid in zip(prompts, images, videos)
             ]
         )
         return [exp for exps in results for exp in exps]
@@ -163,22 +189,26 @@ class ModelWrapper:
     @_history_recorder
     def chat(self, messages: List[dict], **kwargs) -> List[Experience]:
         """Generate a list of experiences from a list of messages."""
-        return ray.get(self.model.chat.remote(messages, **kwargs))
+        lora_request = self.get_lora_request()
+        return ray.get(self.model.chat.remote(messages, lora_request, **kwargs))
 
     @_history_recorder
     async def chat_async(self, messages: List[dict], **kwargs) -> List[Experience]:
         """Generate a list of experiences from a list of messages in async."""
-        return await self.model.chat.remote(messages, **kwargs)
+        lora_request = await self.get_lora_request_async()
+        return await self.model.chat.remote(messages, lora_request, **kwargs)
 
     @_history_recorder
-    def chat_mm(self, messages: List[dict], raw_mm_data: dict, **kwargs) -> List[Experience]:
-        return ray.get(self.model.chat_mm.remote(messages, raw_mm_data, **kwargs))
+    def chat_mm(
+        self, messages: List[dict], images: List[Image.Image], videos: List[np.ndarray], **kwargs
+    ) -> List[Experience]:
+        return ray.get(self.model.chat_mm.remote(messages, images=images, videos=videos, **kwargs))
 
     @_history_recorder
     async def chat_mm_async(
-        self, messages: List[dict], raw_mm_data: dict, **kwargs
+        self, messages: List[dict], images: List[Image.Image], videos: List[np.ndarray], **kwargs
     ) -> List[Experience]:
-        return await self.model.chat_mm.remote(messages, raw_mm_data, **kwargs)
+        return await self.model.chat_mm.remote(messages, images=images, videos=videos, **kwargs)
 
     def logprobs(self, tokens: List[int]) -> Tensor:
         """Calculate the logprobs of the given tokens."""
@@ -205,6 +235,28 @@ class ModelWrapper:
     async def model_version_async(self) -> int:
         """Get the version of the model."""
         return await self.model.get_model_version.remote()
+
+    @property
+    def model_path(self) -> str:
+        """Get the model path."""
+        return ray.get(self.model.get_model_path.remote())
+
+    @property
+    async def model_path_async(self) -> str:
+        """Get the model path."""
+        return await self.model.get_model_path.remote()
+
+    def get_lora_request(self) -> Optional[LoRARequest]:
+        if self.enable_lora:
+            return ray.get(self.model.get_lora_request.remote())
+        else:
+            return None
+
+    async def get_lora_request_async(self) -> Optional[LoRARequest]:
+        if self.enable_lora:
+            return await self.model.get_lora_request.remote()
+        else:
+            return None
 
     def get_openai_client(self) -> openai.OpenAI:
         """Get the openai client.

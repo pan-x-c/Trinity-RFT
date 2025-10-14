@@ -16,10 +16,11 @@ from tests.tools import (
     RayUnittestBase,
     TensorBoardParser,
     get_checkpoint_path,
+    get_lora_config,
     get_model_path,
     get_template_config,
     get_unittest_dataset_config,
-    get_vision_languge_model_path,
+    get_vision_language_model_path,
 )
 from trinity.cli.launcher import bench, both, explore, run, train
 from trinity.common.config import (
@@ -461,6 +462,19 @@ def run_explorer(config: Config) -> None:
     explore(config)
 
 
+def run_both(config: Config) -> None:
+    ray.init(
+        namespace=config.ray_namespace,
+        runtime_env={
+            "env_vars": {
+                LOG_DIR_ENV_VAR: config.log.save_dir,
+                LOG_LEVEL_ENV_VAR: "INFO",
+            }
+        },
+    )
+    both(config)
+
+
 @parameterized_class(
     ("use_priority_queue", "strategy"),
     [(False, "fsdp"), (True, "fsdp"), (True, "megatron")],
@@ -623,6 +637,151 @@ class TestFullyAsyncMode(unittest.TestCase):
         shutil.rmtree(os.path.join(checkpoint_path, "unittest"))
 
 
+@parameterized_class(
+    ("strategy",),
+    [
+        ("fsdp",),
+        ("megatron",),
+    ],
+)
+class TestTrainerCheckpointSave(unittest.TestCase):
+    def setUp(self):
+        if multiprocessing.get_start_method(allow_none=True) != "spawn":
+            multiprocessing.set_start_method("spawn", force=True)
+        self.config = get_template_config()
+        self.config.buffer.total_epochs = 1
+        self.config.buffer.batch_size = 4
+        self.config.model.model_path = get_model_path()
+        self.config.explorer.rollout_model.engine_type = "vllm_async"
+        self.config.algorithm.repeat_times = 3
+        self.config.project = "Trainer-unittest"
+        self.config.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        self.config.monitor.monitor_type = "tensorboard"
+        self.config.checkpoint_root_dir = get_checkpoint_path()
+        self.config.synchronizer.sync_interval = 1
+        self.config.synchronizer.sync_method = SyncMethod.CHECKPOINT
+        self.config.explorer.eval_interval = 4
+        self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
+        self.config.trainer.save_interval = 4
+        self.config.check_and_update()
+
+    def test_trainer(self):
+        """Test the checkpoint saving."""
+        _trainer_config = self.config.trainer.trainer_config
+        if self.strategy == "megatron":
+            _trainer_config.actor_rollout_ref.actor.strategy = "megatron"
+            _trainer_config.actor_rollout_ref.actor.megatron.tensor_model_parallel_size = 2
+            _trainer_config.actor_rollout_ref.ref.megatron.tensor_model_parallel_size = 2
+            _trainer_config.critic.strategy = "megatron"
+            _trainer_config.critic.megatron.tensor_model_parallel_size = 2
+        _trainer_config.trainer.max_actor_ckpt_to_keep = 2
+        _trainer_config.trainer.max_critic_ckpt_to_keep = 2
+
+        trainer_process = multiprocessing.Process(target=run_both, args=(self.config,))
+        trainer_process.start()
+
+        default_local_dir = _trainer_config.trainer.default_local_dir
+        state_dict_iteration = checkpoint_iteration = 0
+        state_dict_iteration_file = os.path.join(
+            default_local_dir, "latest_state_dict_iteration.txt"
+        )
+        checkpoint_iteration_file = os.path.join(
+            default_local_dir, "latest_checkpointed_iteration.txt"
+        )
+
+        megatron_dist_ckpt_items = {
+            "__0_1.distcp",
+            "__1_0.distcp",
+            "common.pt",
+            ".metadata",
+            "metadata.json",
+            "__1_1.distcp",
+            "__0_0.distcp",
+        }
+        while state_dict_iteration < 4 and checkpoint_iteration < 4:
+            if os.path.exists(state_dict_iteration_file):
+                try:
+                    with open(state_dict_iteration_file, "r") as f:
+                        state_dict_iteration = int(f.read().strip())
+                except (IOError, ValueError):
+                    pass
+            if os.path.exists(checkpoint_iteration_file):
+                try:
+                    with open(checkpoint_iteration_file, "r") as f:
+                        checkpoint_iteration = int(f.read().strip())
+                except (IOError, ValueError):
+                    pass
+
+            if state_dict_iteration > 0:
+                iteration_dir = os.path.join(
+                    default_local_dir, f"global_step_{state_dict_iteration}", "actor"
+                )
+                if self.strategy == "fsdp":
+                    items = os.listdir(iteration_dir)
+                    self.assertIn("model_world_size_2_rank_0.pt", items)
+                    self.assertIn("model_world_size_2_rank_1.pt", items)
+                else:  # megatron
+                    dist_ckpt_dir = os.path.join(iteration_dir, "dist_ckpt")
+                    self.assertEqual(
+                        set(os.listdir(dist_ckpt_dir)),
+                        megatron_dist_ckpt_items,
+                    )
+                    huggingface_dir = os.path.join(iteration_dir, "huggingface")
+                    items = os.listdir(huggingface_dir)
+                    self.assertIn("config.json", items)
+                    self.assertIn("generation_config.json", items)
+                print(f"State dict check at {state_dict_iteration} iteration passed.")
+
+            if checkpoint_iteration > 0:
+                for sub_dir_name in ["actor", "critic"]:
+                    iteration_dir = os.path.join(
+                        default_local_dir, f"global_step_{checkpoint_iteration}", sub_dir_name
+                    )
+                    if self.strategy == "fsdp":
+                        self.assertEqual(
+                            set(os.listdir(iteration_dir)),
+                            {
+                                "model_world_size_2_rank_0.pt",
+                                "model_world_size_2_rank_1.pt",
+                                "optim_world_size_2_rank_1.pt",
+                                "optim_world_size_2_rank_0.pt",
+                                "extra_state_world_size_2_rank_0.pt",
+                                "extra_state_world_size_2_rank_1.pt",
+                                "huggingface",
+                                "fsdp_config.json",
+                            },
+                        )
+                    else:  # megatron
+                        dist_ckpt_dir = os.path.join(iteration_dir, "dist_ckpt")
+                        self.assertEqual(
+                            set(os.listdir(dist_ckpt_dir)),
+                            megatron_dist_ckpt_items,
+                        )
+                    huggingface_dir = os.path.join(iteration_dir, "huggingface")
+                    self.assertEqual(
+                        set(os.listdir(huggingface_dir)) - {"generation_config.json"},
+                        {
+                            "vocab.json",
+                            "merges.txt",
+                            "added_tokens.json",
+                            "tokenizer.json",
+                            "config.json",
+                            "chat_template.jinja",
+                            "tokenizer_config.json",
+                            "special_tokens_map.json",
+                        },
+                    )
+                print(f"Checkpoint check at {checkpoint_iteration} iteration passed.")
+
+            time.sleep(1)
+        trainer_process.join()
+
+    def tearDown(self):
+        # remove dir only when the test passed
+        # shutil.rmtree(self.config.checkpoint_job_dir)
+        pass
+
+
 class TestTrainerMIX(BaseTrainerCase):
     def test_trainer(self):
         """Test MIX algorithm."""
@@ -706,23 +865,108 @@ class TestServeWithTrainer(unittest.TestCase):
         )
         config.synchronizer.sync_method = SyncMethod.CHECKPOINT
 
-class TestTrainerMultiModal(BaseTrainerCase):
+class TestMultiModalGRPO(BaseTrainerCase):
     @unittest.skip("Require specific vllm/transformers version")
     def test_trainer(self):
         """Test both mode with multi-modal data."""
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config(
             "geometry"
         )  # Total 8 tasks
-        self.config.model.model_path = get_vision_languge_model_path()
+        self.config.model.model_path = get_vision_language_model_path()
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.advantage_fn = "grpo"
         self.config.algorithm.kl_loss_fn = "none"
         self.config.algorithm.repeat_times = 4
         self.config.buffer.batch_size = 4
         self.config.buffer.total_epochs = 1
-        self.config.trainer.save_interval = 1
+        self.config.trainer.save_interval = 2
+        self.config.check_and_update()
+        both(self.config)
+        # check metrics are available
+        parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
+        rollout_metrics = parser.metric_list("rollout")
+        self.assertTrue(len(rollout_metrics) > 0)
+        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 2)
+        actor_metrics = parser.metric_list("actor")
+        self.assertTrue(len(actor_metrics) > 0)
+        self.assertEqual(parser.metric_max_step(actor_metrics[0]), 2)
+        response_metrics = parser.metric_list("response_length")
+        self.assertTrue(len(response_metrics) > 0)
+        self.assertEqual(parser.metric_max_step(response_metrics[0]), 2)
+        # check save lastest checkpoint
+        checkpoint_step_2, step_num = get_checkpoint_dir_with_step_num(
+            checkpoint_root_path=self.config.checkpoint_job_dir,
+            trainer_type=self.config.trainer.trainer_type,
+        )
+        self.assertTrue(len(os.listdir(os.path.join(checkpoint_step_2, "actor"))) > 0)
+        self.assertEqual(step_num, 2)
+
+    def tearDown(self):
+        # remove dir only when the test passed
+        shutil.rmtree(self.config.checkpoint_job_dir)
+
+
+class TestMultiModalSFT(BaseTrainerCase):
+    @unittest.skip("Require specific vllm/transformers version")
+    def test_trainer(self):
+        """Test SFT mode with multi-modal data."""
+        self.config.mode = "train"
+        self.config.buffer.trainer_input.experience_buffer = get_unittest_dataset_config(
+            "geometry"
+        )  # Total 8 tasks
+        self.config.model.model_path = get_vision_language_model_path()
+        self.config.algorithm.algorithm_type = "sft"
+        self.config.algorithm.policy_loss_fn = "sft"
+        self.config.algorithm.policy_loss_fn_args = {}
+        self.config.algorithm.kl_loss_fn = "none"
+        self.config.algorithm.entropy_loss_fn = "none"
+        self.config.buffer.train_batch_size = 4
+        self.config.buffer.total_epochs = 1
+        self.config.trainer.save_interval = 2
+        self.config.check_and_update()
+        train(self.config)
+        # check metrics are available
+        parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
+        actor_metrics = parser.metric_list("actor")
+        self.assertTrue(len(actor_metrics) > 0)
+        self.assertEqual(parser.metric_max_step(actor_metrics[0]), 2)
+        response_metrics = parser.metric_list("response_length")
+        self.assertTrue(len(response_metrics) > 0)
+        self.assertEqual(parser.metric_max_step(response_metrics[0]), 2)
+        # check save lastest checkpoint
+        checkpoint_step_2, step_num = get_checkpoint_dir_with_step_num(
+            checkpoint_root_path=self.config.checkpoint_job_dir,
+            trainer_type=self.config.trainer.trainer_type,
+        )
+        self.assertTrue(len(os.listdir(os.path.join(checkpoint_step_2, "actor"))) > 0)
+        self.assertEqual(step_num, 2)
+
+    def tearDown(self):
+        # remove dir only when the test passed
+        shutil.rmtree(self.config.checkpoint_job_dir)
+
+
+class TestTrainerLoRA(BaseTrainerCase):
+    def test_trainer(self):
+        """Test both mode with LoRA request."""
+        self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
+        self.config.buffer.explorer_input.eval_tasksets.append(
+            get_unittest_dataset_config("gsm8k", "test")
+        )
+        self.config.model.model_path = get_model_path()
+        self.config.algorithm.algorithm_type = "grpo"
+        self.config.algorithm.advantage_fn = "grpo"
+        self.config.algorithm.kl_loss_fn = "none"
+        self.config.algorithm.repeat_times = 4
+        self.config.buffer.batch_size = 4
+        self.config.buffer.total_steps = 2
         self.config.cluster.node_num = 1
         self.config.cluster.gpu_per_node = 4
+        self.config.explorer.eval_interval = 2
+        self.config.model.lora_configs = [get_lora_config()]
+        self.config.synchronizer.sync_method = SyncMethod.CHECKPOINT
+        self.config.synchronizer.sync_interval = 2
+        self.config.trainer.save_interval = 2
         self.config.check_and_update()
         both(self.config)
         # check metrics are available
@@ -743,8 +987,24 @@ class TestTrainerMultiModal(BaseTrainerCase):
             trainer_type=self.config.trainer.trainer_type,
         )
         self.assertTrue(len(os.listdir(os.path.join(checkpoint_step_2, "actor"))) > 0)
+        self.assertTrue(
+            len(os.listdir(os.path.join(checkpoint_step_2, "actor", "lora_adapter"))) > 0
+        )
         self.assertEqual(step_num, 2)
 
+        # test bench mode
+        ray.init(ignore_reinit_error=True, namespace=self.config.ray_namespace)
+        self.config.mode = "bench"
+        self.config.synchronizer.sync_method = SyncMethod.CHECKPOINT
+        self.config.explorer.bench_on_latest_checkpoint = False
+        self.config.check_and_update()
+        bench(self.config)
+        parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
+        for prefix in ["eval", "bench"]:
+            gsm8k_metrics = parser.metric_list(f"{prefix}/gsm8k")
+            self.assertTrue(len(gsm8k_metrics) > 0)
+            gsm8k_metric_steps = parser.metric_steps(gsm8k_metrics[0])
+            self.assertEqual([0, 2], gsm8k_metric_steps)
+
     def tearDown(self):
-        # remove dir only when the test passed
         shutil.rmtree(self.config.checkpoint_job_dir)
