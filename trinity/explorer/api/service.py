@@ -189,4 +189,4 @@ class ExplorerService:
         except asyncio.CancelledError:
             pass
         self.running = False
-        self.logger.info("API server shut down.")
+        self.logger.info("API server shutdown.")

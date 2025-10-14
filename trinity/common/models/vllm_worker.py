@@ -88,3 +88,7 @@ class WorkerExtension:
         torch.distributed.barrier(group=self._model_update_group)
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
+
+    def update_weight_from_checkpoint(self):
+        """Update weight from checkpoint without broadcasting"""
+        pass
