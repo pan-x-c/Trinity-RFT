@@ -13,7 +13,7 @@ class ExplorerClient:
         self.session_id = self.init_session()
 
     def init_session(self) -> str:
-        response = requests.post(f"{self.explorer_api_url}/allocate")
+        response = requests.get(f"{self.explorer_api_url}/allocate")
         data = response.json()
         return data["session_id"]
 

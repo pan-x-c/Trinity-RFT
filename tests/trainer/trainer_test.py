@@ -878,7 +878,8 @@ async def run_math_workflow(serve_url: str, task: dict):
         {"role": "user", "content": query},
     ]
 
-    model = openai_client.models.list().data[0].id
+    models = await openai_client.models.list()
+    model = models.data[0].id
 
     response = await openai_client.chat.completions.create(
         model=model,
@@ -901,6 +902,7 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         config.project = "unittest"
         config.name = f"serve_with_trainer_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         config.checkpoint_root_dir = get_checkpoint_path()
+        config.model.model_path = get_model_path()
         config.buffer.batch_size = 4
         config.algorithm.algorithm_type = "ppo"
         config.algorithm.repeat_times = 1
@@ -911,10 +913,11 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         config.buffer.train_batch_size = 4
         config.trainer.total_steps = 4
-        config.trainer.save_interval = 2
+        config.trainer.save_interval = 4
         config.synchronizer.sync_interval = 2
         config.synchronizer.sync_method = SyncMethod.CHECKPOINT
         config.explorer.rollout_model.engine_num = 2
+        config.explorer.rollout_model.enable_openai_api = True
         config.explorer.rollout_model.tensor_parallel_size = 1
         config.explorer.service_status_check_interval = 10
 
@@ -925,6 +928,13 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         trainer_process = multiprocessing.Process(target=run_trainer, args=(trainer_config,))
         trainer_process.start()
 
+        await asyncio.sleep(10)
+        serve_config = deepcopy(config)
+        serve_config.mode = "serve"
+        serve_config.check_and_update()
+        serve_process = multiprocessing.Process(target=run_serve, args=(serve_config,))
+        serve_process.start()
+
         ray.init(ignore_reinit_error=True)
         while True:
             try:
@@ -932,13 +942,7 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
                 break
             except ValueError:
                 print("waiting for trainer to start.")
-                time.sleep(5)
-
-        serve_config = deepcopy(config)
-        serve_config.mode = "serve"
-        serve_config.check_and_update()
-        serve_process = multiprocessing.Process(target=run_explorer, args=(serve_config,))
-        serve_process.start()
+                await asyncio.sleep(5)
 
         state_manager = StateManager(
             path=serve_config.checkpoint_job_dir,
@@ -978,8 +982,6 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
             end_time = time.time()
             while time.time() - end_time < config.explorer.service_status_check_interval:
                 await asyncio.sleep(1)
-
-            # check for trainer new checkpoint
 
 
 class TestMultiModalGRPO(BaseTrainerCase):

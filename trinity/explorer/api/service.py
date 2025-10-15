@@ -108,6 +108,10 @@ class ExplorerService:
         if increase_count:
             model.request_count += 1
         self.running_models.rotate(-1)
+        if model.api_address is None:
+            raise ValueError(
+                "Model does not have a valid API address, please set `enable_openai_api` to `True`."
+            )
         return model.api_address
 
     def collect_metrics(self) -> Dict:
@@ -136,7 +140,14 @@ class ExplorerService:
                         torch.tensor(choice["token_ids"], dtype=torch.int32),
                     )
                 ),
-                logprobs=choice.get("logprobs", None),
+                logprobs=(
+                    torch.tensor(
+                        [logprob["logprob"] for logprob in choice["logprobs"]["content"]],
+                        dtype=torch.float32,
+                    )
+                    if "logprobs" in choice and choice["logprobs"] is not None
+                    else torch.tensor([], dtype=torch.float32)
+                ),
                 prompt_length=len(response["prompt_token_ids"]),
                 response_text=choice.get("message", {}).get("content", ""),
             )
