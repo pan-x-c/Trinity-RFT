@@ -164,6 +164,7 @@ def get_checkpoint_dir_with_step_num(
     else:
         raise NotImplementedError(f"Unsupported trainer type {trainer_type}")
 
+
 def get_latest_state_dict(
     checkpoint_root_path: str,
     trainer_type: str = "verl",
@@ -179,13 +180,18 @@ def get_latest_state_dict(
     """
     if trainer_type != "verl":
         raise NotImplementedError(f"Unsupported trainer type {trainer_type}")
-    latest_state_dict_iteration_path = os.path.join(checkpoint_root_path, "latest_state_dict_iteration.txt")
+    latest_state_dict_iteration_path = os.path.join(
+        checkpoint_root_path, "latest_state_dict_iteration.txt"
+    )
     if os.path.exists(latest_state_dict_iteration_path):
         with open(latest_state_dict_iteration_path, "r", encoding="utf-8") as f:
             iteration = f.read().strip()
-            state_dict_path = os.path.join(checkpoint_root_path, f"global_step_{iteration}", "actor")
+            state_dict_path = os.path.join(
+                checkpoint_root_path, f"global_step_{iteration}", "actor"
+            )
             return state_dict_path, int(iteration)
-    return None, 0
+    return None, 0  # type: ignore
+
 
 def load_state_dict(checkpoint_dir: str, config: TrainerConfig) -> Union[dict, Tuple[str, str]]:
     """Load state dict from a checkpoint dir.

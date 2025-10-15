@@ -1,5 +1,6 @@
 """Tests for trainer."""
 
+import asyncio
 import multiprocessing
 import os
 import shutil
@@ -8,9 +9,8 @@ import unittest
 from copy import deepcopy
 from datetime import datetime
 from unittest import mock
-import asyncio
-import httpx
 
+import httpx
 import ray
 from parameterized import parameterized_class
 
@@ -24,7 +24,8 @@ from tests.tools import (
     get_unittest_dataset_config,
     get_vision_language_model_path,
 )
-from trinity.cli.launcher import bench, both, explore, run, train, serve
+from trinity.buffer import get_buffer_reader
+from trinity.cli.launcher import bench, both, explore, run, serve, train
 from trinity.common.config import (
     AlgorithmConfig,
     BufferConfig,
@@ -42,9 +43,8 @@ from trinity.common.constants import (
     SyncStyle,
 )
 from trinity.common.models.utils import get_checkpoint_dir_with_step_num
-from trinity.manager.state_manager import StateManager
-from trinity.buffer import get_buffer_reader
 from trinity.explorer.explorer_client import ExplorerClient
+from trinity.manager.state_manager import StateManager
 
 
 class BaseTrainerCase(RayUnittestBase):
@@ -478,6 +478,7 @@ def run_both(config: Config) -> None:
     )
     both(config)
 
+
 def run_serve(config: Config) -> None:
     ray.init(
         namespace=config.ray_namespace,
@@ -885,17 +886,15 @@ async def run_math_workflow(serve_url: str, task: dict):
     )
     answer = response.choices[0].message.content
     reward = reward_fn(response=answer, truth=truth, prompt=query)
-    await explorer_client.feedback_async(reward)
+    await explorer_client.feedback_async(sum(reward.values()))
 
 
 class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
-
     def setUp(self):
         if multiprocessing.get_start_method(allow_none=True) != "spawn":
             multiprocessing.set_start_method("spawn", force=True)
         checkpoint_path = get_checkpoint_path()
         shutil.rmtree(os.path.join(checkpoint_path, "unittest"), ignore_errors=True)
-
 
     async def test_serve_with_trainer(self):
         config = get_template_config()
@@ -979,6 +978,8 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
             end_time = time.time()
             while time.time() - end_time < config.explorer.service_status_check_interval:
                 await asyncio.sleep(1)
+
+            # check for trainer new checkpoint
 
 
 class TestMultiModalGRPO(BaseTrainerCase):
