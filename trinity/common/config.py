@@ -148,6 +148,9 @@ class StorageConfig:
     ray_namespace: Optional[str] = None
 
     # ! DO NOT SET except you know what you are doing
+    default_workflow_cls: Optional[Any] = None
+
+    # ! DO NOT SET except you know what you are doing
     wrap_in_ray: bool = True
 
     # ! DO NOT SET, automatically set
