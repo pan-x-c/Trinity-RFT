@@ -34,7 +34,12 @@ class AgentScopeWorkflowAdapter(Workflow):
         )
         self.workflow_func: Callable[
             [Dict, TrinityChatModel], Awaitable[float]
-        ] = task.workflow_args.get("workflow_func")
+        ] = task.workflow_args.get("workflow_func", None)
+
+        if self.workflow_func is None:
+            raise ValueError(
+                "The 'workflow_func' is not provided.",
+            )
 
         self.chat_model: TrinityChatModel = TrinityChatModel(
             model.get_openai_async_client(),
