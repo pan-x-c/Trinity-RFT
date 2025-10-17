@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 from unittest.mock import MagicMock
 
+import ray
 from parameterized import parameterized, parameterized_class
 from torch import Tensor
 
@@ -490,6 +491,9 @@ class MultiTurnWorkflowTest(unittest.TestCase):
         else:
             answer = workflow.run()
         self.assertEqual(len(answer), 2)
+
+    def tearDown(self):
+        ray.shutdown(_exiting_interpreter=True)
 
 
 class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
