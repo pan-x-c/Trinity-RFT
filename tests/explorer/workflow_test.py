@@ -2,9 +2,9 @@
 """Test for the workflow module"""
 import asyncio
 import unittest
-from unittest import mock
 from dataclasses import dataclass, field
 from typing import Dict, Optional
+from unittest import mock
 from unittest.mock import MagicMock
 
 import openai
@@ -14,7 +14,6 @@ from torch import Tensor
 
 from tests.common.vllm_test import CHAT_TEMPLATE
 from tests.tools import get_model_path, get_template_config, get_unittest_dataset_config
-from trinity.explorer.workflow_runner import WorkflowRunner
 from trinity.common.experience import EID, Experience
 from trinity.common.models import create_inference_models
 from trinity.common.models.model import ModelWrapper
@@ -28,6 +27,7 @@ from trinity.common.workflows import (
     Workflow,
 )
 from trinity.common.workflows.workflow import MultiTurnWorkflow, Task
+from trinity.explorer.workflow_runner import WorkflowRunner
 
 
 @dataclass
@@ -67,6 +67,7 @@ class DummyWorkflow(Workflow):
         exps = []
         if self.output_format == "json":
             import json
+
             for i in range(self.repeat_times):
                 exp = Experience(tokens=Tensor([0, 1, 2, 3]), prompt_length=1)
                 exp.response_text = json.dumps(self.obj)
@@ -74,6 +75,7 @@ class DummyWorkflow(Workflow):
             return exps
         elif self.output_format == "yaml":
             import yaml
+
             for i in range(self.repeat_times):
                 exp = Experience(tokens=Tensor([0, 1, 2, 3]), prompt_length=1)
                 exp.response_text = yaml.safe_dump(self.obj)
@@ -110,6 +112,7 @@ class DummyAsyncWorkflow(Workflow):
         exps = []
         if self.output_format == "json":
             import json
+
             for i in range(self.repeat_times):
                 exp = Experience(tokens=Tensor([0, 1, 2, 3]), prompt_length=1)
                 exp.response_text = json.dumps(self.obj)
@@ -117,6 +120,7 @@ class DummyAsyncWorkflow(Workflow):
             return exps
         elif self.output_format == "yaml":
             import yaml
+
             for i in range(self.repeat_times):
                 exp = Experience(tokens=Tensor([0, 1, 2, 3]), prompt_length=1)
                 exp.response_text = yaml.safe_dump(self.obj)
@@ -543,7 +547,6 @@ class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
 
 
 class DummyModelWrapper:
-
     def __init__(self, model, engine_type="vllm", **kwargs):
         pass
 
@@ -560,10 +563,9 @@ class DummyModelWrapper:
     async def model_version_async(self):
         return 0
 
+
 class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
-
     async def test_workflow_runner(self):
-
         config = get_template_config()
 
         with mock.patch(
