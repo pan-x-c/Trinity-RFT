@@ -46,9 +46,6 @@ class AgentScopeV0ReactMathWorkflow(Workflow):
         self.openai_client = model.get_openai_client()
         self.model_name = self.openai_client.model_path
 
-        temperature = self.rollout_args.get("temperature", 1.0)
-        max_tokens = self.rollout_args.get("max_tokens", 4096)
-
         agentscope.init(
             model_configs=[
                 {
@@ -57,8 +54,8 @@ class AgentScopeV0ReactMathWorkflow(Workflow):
                     "model_name": self.model_name,
                     "api_key": "EMPTY",
                     "generate_args": {
-                        "temperature": temperature,
-                        "max_tokens": max_tokens,
+                        "temperature": self.task.rollout_args.temperature,
+                        "max_tokens": self.task.rollout_args.max_tokens or 4096,
                     },
                     "use_openai_formatter": True,
                 }
