@@ -57,8 +57,8 @@ class AgentScopeReActWorkflow(Workflow):
             openai_client=self.model_client,
             system_prompt=template.system_prompt,
             generate_kwargs={
-                "temperature": self.rollout_args.get("temperature", 1.0),
-                "max_tokens": self.rollout_args.get("max_tokens", 4096),
+                "temperature": self.task.rollout_args.temperature,
+                "max_tokens": self.task.rollout_args.max_tokens or 4096,
             },
             response_structure=template.response_structure,
         )
