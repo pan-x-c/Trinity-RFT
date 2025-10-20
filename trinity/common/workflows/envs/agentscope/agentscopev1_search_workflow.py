@@ -17,6 +17,9 @@ class AgentScopeV1ReactSearchWorkflow(Workflow):
     This workflow serves as an example of how to use the agentscope framework within the trinity workflow.
     """
 
+    can_reset: bool = True
+    is_async: bool = True
+
     def __init__(
         self,
         *,
@@ -57,19 +60,6 @@ class AgentScopeV1ReactSearchWorkflow(Workflow):
         self.agent_model_formatter = OpenAIChatFormatter()
 
         self.reset(task)
-
-    @property
-    def resettable(self):
-        return True
-
-    @property
-    def asynchronous(self):
-        """Whether the workflow runs in async mode."""
-        return True
-
-    @property
-    def repeatable(self):
-        return False
 
     def reset(self, task: Task):
         self.workflow_args = task.workflow_args

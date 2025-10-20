@@ -16,6 +16,8 @@ from .templates import TEMPLATE_MAP
 
 @WORKFLOWS.register_module("as_react_workflow")
 class AgentScopeReActWorkflow(Workflow):
+    is_async: bool = True
+
     def __init__(
         self,
         *,
@@ -95,13 +97,3 @@ class AgentScopeReActWorkflow(Workflow):
             if isinstance(reward, dict):
                 exp.metrics.update(reward)
         return exps
-
-    @property
-    def asynchronous(self):
-        """AgentScope's ReAct agent only supports asynchronous calls, so we set this to True."""
-        return True
-
-    @property
-    def repeatable(self):
-        """This workflow is not repeatable."""
-        return False

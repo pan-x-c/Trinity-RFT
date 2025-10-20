@@ -19,6 +19,8 @@ class AgentScopeV0ReactMathWorkflow(Workflow):
     We use the AgentScope V0 version here. The code will be deprecated soon.
     """
 
+    can_reset: bool = True
+
     def __init__(
         self,
         *,
@@ -72,10 +74,6 @@ class AgentScopeV0ReactMathWorkflow(Workflow):
         )
         self.reset(task)
 
-    @property
-    def resettable(self):
-        return True
-
     def reset(self, task: Task):
         self.system_prompt = """
 You are an agent specialized in solving math problems with tools. Please solve the math problem given to you. You can write and execute Python code to perform calculation or verify your answer. You should return your final answer within \\boxed{{}}.
@@ -114,10 +112,6 @@ You are an agent specialized in solving math problems with tools. Please solve t
 
         # we use the boxed format to evaluate the answer
         self.reward_fn = MathBoxedRewardFn()
-
-    @property
-    def repeatable(self):
-        return False
 
     def run(self):
         # make sure that we have the correct import

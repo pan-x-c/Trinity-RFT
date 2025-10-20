@@ -27,6 +27,9 @@ class EmailSearchWorkflow(Workflow):
     Multi-turn Email Search workflow (ReAct-style tool use).
     """
 
+    can_reset: bool = True
+    is_async: bool = True
+
     def __init__(
         self,
         *,
@@ -44,18 +47,6 @@ class EmailSearchWorkflow(Workflow):
         )
 
         self.reset(task)
-
-    @property
-    def repeatable(self) -> bool:
-        return False
-
-    @property
-    def resettable(self):
-        return True
-
-    @property
-    def asynchronous(self):
-        return True
 
     def reset(self, task: Task):
         self.query = QueryModel.model_validate(task.raw_task)

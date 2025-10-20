@@ -51,6 +51,7 @@ class WorkflowRunner:
             for model in (auxiliary_models or [])
         ]
         self.auxiliary_model_clients = []
+        self.auxiliary_model_async_clients = []
         self.workflow_instance: Workflow = None
         self.runner_id = runner_id
 
@@ -62,7 +63,9 @@ class WorkflowRunner:
         )
         for model in self.auxiliary_models:
             api_client = model.get_openai_client()
+            async_api_client = model.get_openai_async_client()
             self.auxiliary_model_clients.append(api_client)
+            self.auxiliary_model_async_clients.append(async_api_client)
 
     def is_alive(self):
         return True

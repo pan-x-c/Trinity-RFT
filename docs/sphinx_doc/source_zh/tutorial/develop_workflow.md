@@ -200,21 +200,19 @@ __all__ = [
 ##### 避免重复初始化
 
 对于较为复杂的工作流，每次重新初始化会带来额外计算开销。
-此时，你可以实现 `resettable` 和 `reset` 方法以避免重复初始化。
+此时，你可以设置 `can_reset` 属性并实现 `reset` 方法以避免重复初始化。
 
-`resettable` 方法返回一个布尔值，指示工作流是否支持轻量化重置。
+`can_reset` 是一个类属性，表示工作流是否支持轻量化重置。
 
 `reset` 方法接受一个新的 `Task` 实例，并使用该实例更新工作流的状态。
 
 ```python
 @WORKFLOWS.register_module("example_workflow")
 class ExampleWorkflow(Workflow):
+    can_reset: bool = True
+
     # some code
     # ...
-
-    @property
-    def resettable(self):
-        return True
 
     def reset(self, task: Task):
         self.question = task.raw_task.get("question")
@@ -224,20 +222,17 @@ class ExampleWorkflow(Workflow):
 ##### 批量运行推理任务
 
 当前流行的很多 RL 算法需要多次运行同一个任务(例如 GRPO)。该场景下一些简单任务可以直接通过模型批量推理来获得一个问题的多个回复以提升效率。
-针对该情况，你可以实现 `repeatable` 属性以及 `set_repeat_times` 方法。
+针对该情况，你可以设置 `can_repeat` 属性并实现 `set_repeat_times` 方法。
 
-`repeatable` 属性返回一个布尔值，指示工作流是否支持在 `run` 方法内多次执行。
+`can_repeat` 是一个类属性，指示工作流是否支持在 `run` 方法内多次执行。
 
 `set_repeat_times` 方法接受两个参数：`repeat_times` 指定了在 `run` 方法内需要执行的次数，`run_id_base` 是一个整数，用于标识多次运行中第一次的运行 ID，之后各次的 ID 基于此递增（该参数用于多轮交互场景，单次模型调用即可完成的任务可以忽略该项）。
 
 ```python
 @WORKFLOWS.register_module("example_workflow")
 class ExampleWorkflow(Workflow):
+    can_repeat: bool = True
     # some code
-
-    @property
-    def repeatable(self) -> bool:
-        return True
 
     def set_repeat_times(self, repeat_times, run_id_base):
         self.repeat_times = repeat_times
@@ -277,6 +272,8 @@ class ExampleWorkflow(Workflow):
 ```python
 @WORKFLOWS.register_module("example_workflow")
 class ExampleWorkflow(Workflow):
+    can_reset: bool = True
+    can_repeat: bool = True
 
     def __init__(self, task: Task, model: ModelWrapper, auxiliary_models: List):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
@@ -317,17 +314,9 @@ class ExampleWorkflow(Workflow):
             )
         return experiences
 
-    @property
-    def resettable(self):
-        return True
-
     def reset(self, task: Task):
         self.question = task.raw_task.get("question")
         self.answer = task.raw_task.get("answer")
-
-    @property
-    def repeatable(self) -> bool:
-        return True
 
     def set_repeat_times(self, repeat_times, run_id_base):
         self.repeat_times = repeat_times
@@ -362,15 +351,13 @@ trinity run --config <your_yaml_file>
 
 #### async 支持
 
-本节样例主要针对同步模式，如果你的工作流需要使用异步方法（例如异步 API）,你可以实现 `asynchronous` 属性并将其设置为 `True`，然后实现 `run_async` 方法，在这种情况下不再需要实现 `run` 方法，其余方法和属性不受影响。
+本节样例主要针对同步模式，如果你的工作流需要使用异步方法（例如异步 API）,你可以将 `is_async` 属性设置为 `True`，然后实现 `run_async` 方法，在这种情况下不再需要实现 `run` 方法，其余方法和属性不受影响。
 
 ```python
 @WORKFLOWS.register_module("example_workflow_async")
 class ExampleWorkflowAsync(Workflow):
 
-    @property
-    def asynchronous(self):
-        return True
+    is_async: bool = True
 
     async def run_async(self) -> List[Experience]:
         # your async code here

@@ -40,19 +40,14 @@ class MockResponse:
 
 
 class DummyWorkflow(Workflow):
+    can_reset: bool = True
+    can_repeat: bool = True
+
     def __init__(self, model, task: Task, auxiliary_models=None):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
         self.obj = task.raw_task
         self.output_format = task.workflow_args["output_format"]
         self.repeat_times = task.rollout_args.n
-
-    @property
-    def resettable(self):
-        return True
-
-    @property
-    def repeatable(self):
-        return True
 
     def reset(self, task: Task):
         self.obj = task.raw_task
@@ -76,23 +71,15 @@ class DummyWorkflow(Workflow):
 
 
 class DummyAsyncWorkflow(Workflow):
+    can_reset: bool = True
+    can_repeat: bool = True
+    is_async: bool = True
+
     def __init__(self, model, task: Task, auxiliary_models=None):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
         self.obj = task.raw_task
         self.output_format = task.workflow_args["output_format"]
         self.repeat_times = task.rollout_args.n
-
-    @property
-    def resettable(self):
-        return True
-
-    @property
-    def repeatable(self):
-        return True
-
-    @property
-    def asynchronous(self):
-        return True
 
     def reset(self, task: Task):
         self.obj = task.raw_task
@@ -133,13 +120,11 @@ class DummyMultiTurnWorkflow(MultiTurnWorkflow):
 
 
 class DummyAsyncMultiTurnWorkflow(MultiTurnWorkflow):
+    is_async: bool = True
+
     def __init__(self, model, task: Task, auxiliary_models=None):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
         self.contents = task.raw_task["contents"]  # type: ignore
-
-    @property
-    def asynchronous(self):
-        return True
 
     async def run_async(self):
         memory = [{"role": "system", "content": "You are a helpful assistant."}]
