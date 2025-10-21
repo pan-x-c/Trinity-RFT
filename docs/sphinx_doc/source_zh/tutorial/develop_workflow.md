@@ -351,7 +351,7 @@ trinity run --config <your_yaml_file>
 
 #### async 支持
 
-本节样例主要针对同步模式，如果你的工作流需要使用异步方法（例如异步 API）,你可以将 `is_async` 属性设置为 `True`，然后实现 `run_async` 方法，在这种情况下不再需要实现 `run` 方法，其余方法和属性不受影响。
+本节样例主要针对同步模式，如果你的工作流需要使用异步方法（例如异步 API）,你可以将 `is_async` 属性设置为 `True`，然后实现 `run_async` 方法，在这种情况下不再需要实现 `run` 方法，并且初始化参数 `auxiliary_models` 也会自动变为 `List[openai.AsyncOpenAI]` 类型，其余方法和属性保持不变。
 
 ```python
 @WORKFLOWS.register_module("example_workflow_async")
@@ -445,7 +445,7 @@ explorer:
 
 请注意，每个辅助模型会独立占用 `tensor_parallel_size * engine_num` 个 GPU，请根据硬件资源合理配置。在启用辅助模型后，Trainer 可用的 GPU 数量为总 GPU 数量减去所有辅助模型及被训练的推理模型（`rollout_model`）所占用的 GPU 数量。
 
-配置文件中指定的辅助模型会自动激活 OpenAI API，并将对应的 `openai.OpenAI` 实例传递给 `Workflow` 初始化方法的 `auxiliary_models` 参数。例如：
+配置文件中指定的辅助模型会自动激活 OpenAI API，并将对应的 `openai.OpenAI` 或 `openai.AsyncOpenAI` 实例 (取决于 `is_async`) 传递给 `Workflow` 初始化方法的 `auxiliary_models` 参数。例如：
 
 ```python
 class MyWorkflow(Workflow):
