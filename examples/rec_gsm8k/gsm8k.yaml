@@ -54,9 +54,8 @@ buffer:
       storage_type: queue
 explorer:
   eval_interval: 20
-  runner_num: 64
+  runner_per_model: 16
   rollout_model:
-    engine_type: vllm_async
     engine_num: 4
     tensor_parallel_size: 1
     enable_prefix_caching: false

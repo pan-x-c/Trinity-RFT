@@ -46,7 +46,7 @@ buffer:
       storage_type: queue
       path: 'sqlite:///gsm8k.db'
 explorer:
-  runner_num: 32
+  runner_per_model: 8
   rollout_model:
     engine_num: 4
 synchronizer:
@@ -133,7 +133,7 @@ cluster:  # important
   gpu_per_node: 8
 explorer:
   name: 'explorer_new'  # important
-  runner_num: 64
+  runner_per_model: 8
   rollout_model:
     engine_num: 8
 buffer:

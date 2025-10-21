@@ -127,7 +127,7 @@ buffer:
       use_priority_queue: true
 explorer:
   max_repeat_times_per_runner: 1
-  runner_num: 32
+  runner_per_model: 16
   max_timeout: 3600
   rollout_model:
     enable_history: true

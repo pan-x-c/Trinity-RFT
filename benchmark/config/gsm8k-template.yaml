@@ -43,8 +43,6 @@ buffer:
     eval_tasksets: []
     default_workflow_type: math_workflow
     default_reward_fn_type: math_reward
-    system_prompt: null
-    reply_prefix: null
   trainer_input:
     experience_buffer:
       name: experience_buffer

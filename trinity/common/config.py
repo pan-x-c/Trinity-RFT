@@ -123,9 +123,6 @@ class StorageConfig:
     # For continuing training
     index: int = 0
 
-    # used for multi-modal data
-    mm_data_kwargs: dict = field(default_factory=dict)
-
     # used for StorageType.FILE
     split: str = "train"
     subset_name: Optional[str] = None
@@ -390,8 +387,6 @@ class ExplorerInput:
     default_workflow_type: Optional[str] = None
     default_eval_workflow_type: Optional[str] = None
     default_reward_fn_type: Optional[str] = None
-    system_prompt: Optional[str] = None
-    reply_prefix: Optional[str] = None
 
 
 @dataclass
@@ -404,10 +399,6 @@ class TrainerInput:
 
     # Some auxiliary buffers to facilitate training (e.g., data mixing)
     auxiliary_buffers: Dict[str, StorageConfig] = field(default_factory=dict)
-
-    # ! Deprecated, keep for backward compatibility, do not use it in new code
-    sft_warmup_dataset: Optional[StorageConfig] = None
-    sft_warmup_steps: Optional[int] = None
 
 
 @dataclass
@@ -615,14 +606,6 @@ class Config:
             OmegaConf.save(self, f)
 
     def _check_deprecated(self) -> None:
-        if self.buffer.trainer_input.sft_warmup_steps is not None:
-            logger.warning(
-                "`buffer.trainer_input.sft_warmup_steps` is deprecated, SFT warmup related settings are moved to `stages`."
-            )
-        if self.buffer.trainer_input.sft_warmup_dataset is not None:
-            logger.warning(
-                "`buffer.trainer_input.sft_warmup_dataset` is deprecated, SFT warmup related settings are moved to `stages`."
-            )
         if self.explorer.runner_num is not None:
             logger.warning(
                 "`explorer.runner_num` is deprecated, please use `explorer.runner_per_model` instead."
