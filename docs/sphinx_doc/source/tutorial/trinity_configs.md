@@ -231,6 +231,7 @@ Defines the dataset(s) used by the explorer for training and evaluation.
 buffer:
   explorer_input:
     default_workflow_type: 'math_workflow'
+    default_eval_workflow_type: 'math_workflow'
     default_reward_fn_type: 'countdown_reward'
     taskset:
       name: countdown_train
@@ -262,10 +263,11 @@ buffer:
     ...
 ```
 
-- `buffer.explorer_input.default_workflow_type`: Default workflow type for all task datasets under `explorer_input` if not specified at the dataset level.
-- `buffer.explorer_input.default_reward_fn_type`: Default reward function type for all task datasets under `explorer_input` if not specified at the dataset level.
 - `buffer.explorer_input.taskset`: Task dataset used for training exploration policies.
 - `buffer.explorer_input.eval_taskset`: List of task datasets used for evaluation.
+- `buffer.explorer_input.default_workflow_type`: Default workflow type for all task datasets under `explorer_input` if not specified at the dataset level.
+- `buffer.explorer_input.default_eval_workflow_type`: Default evaluation workflow type for all eval task datasets under `explorer_input` if not specified at the dataset level.
+- `buffer.explorer_input.default_reward_fn_type`: Default reward function type for all task datasets under `explorer_input` if not specified at the dataset level.
 
 The configuration for each task dataset is defined as follows:
 
