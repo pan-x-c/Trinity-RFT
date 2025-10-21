@@ -77,6 +77,7 @@ buffer:
         response_key: 'answer'
       rollout_args:
         temperature: 1.0
+      default_workflow_type: 'math_workflow'
     eval_tasksets:
     - name: gsm8k-eval
       storage_type: file
@@ -86,7 +87,7 @@ buffer:
       format:
         prompt_key: 'question'
         response_key: 'answer'
-    default_workflow_type: 'math_workflow'
+      default_workflow_type: 'math_workflow'
   trainer_input:
     experience_buffer:
       name: gsm8k_buffer

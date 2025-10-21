@@ -31,7 +31,7 @@ buffer:
       rollout_args:
         temperature: 1.0
       enable_progress_bar: false
-    default_workflow_type: 'rubric_judge_workflow'
+      default_workflow_type: 'rubric_judge_workflow'
   trainer_input:
     experience_buffer:
       name: experience_buffer

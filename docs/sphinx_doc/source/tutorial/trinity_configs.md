@@ -200,6 +200,7 @@ buffer:
   batch_size: 32
   train_batch_size: 256
   total_epochs: 100
+  total_steps: null
 
   explorer_input:
     taskset:
@@ -214,15 +215,13 @@ buffer:
         ...
       buffer_2:
         ...
-
-  default_workflow_type: 'math_workflow'
-  default_reward_fn_type: 'countdown_reward'
 ```
 
 - `batch_size`: Number of tasks used per training step. *Please do not multiply this value by the `algorithm.repeat_times` manually*.
 - `train_batch_size`: Number of experiences used per training step. Defaults to `batch_size` * `algorithm.repeat_times`.
 - `total_epochs`: Total number of training epochs.
 - `total_steps`: Optional. The total number of training steps. If specified, `total_epochs` will be ignored.
+- `default`
 
 ### Explorer Input
 
@@ -231,6 +230,8 @@ Defines the dataset(s) used by the explorer for training and evaluation.
 ```yaml
 buffer:
   explorer_input:
+    default_workflow_type: 'math_workflow'
+    default_reward_fn_type: 'countdown_reward'
     taskset:
       name: countdown_train
       storage_type: file
@@ -261,6 +262,8 @@ buffer:
     ...
 ```
 
+- `buffer.explorer_input.default_workflow_type`: Default workflow type for all task datasets under `explorer_input` if not specified at the dataset level.
+- `buffer.explorer_input.default_reward_fn_type`: Default reward function type for all task datasets under `explorer_input` if not specified at the dataset level.
 - `buffer.explorer_input.taskset`: Task dataset used for training exploration policies.
 - `buffer.explorer_input.eval_taskset`: List of task datasets used for evaluation.
 

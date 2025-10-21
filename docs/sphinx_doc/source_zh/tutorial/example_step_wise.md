@@ -119,7 +119,7 @@ buffer:
       workflow_args:
         max_env_steps: 30
       enable_progress_bar: false
-    default_workflow_type: 'step_wise_alfworld_workflow'
+      default_workflow_type: 'step_wise_alfworld_workflow'
   trainer_input:
     experience_buffer:
       name: alfworld_buffer

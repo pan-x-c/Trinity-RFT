@@ -25,8 +25,7 @@ buffer:
       rollout_args:
         temperature: 1.0
         logprobs: 0
-    eval_tasksets: []
-    default_workflow_type: 'toolcall_workflow'
+      default_workflow_type: 'toolcall_workflow'
   trainer_input:
     experience_buffer:
       name: toolace_buffer

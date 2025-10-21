@@ -27,8 +27,8 @@ buffer:
       rollout_args:
         temperature: 1.0
         logprobs: 0
-    default_workflow_type: 'math_workflow'
-    default_reward_fn_type: 'countdown_reward'
+      default_workflow_type: 'math_workflow'
+      default_reward_fn_type: 'countdown_reward'
   trainer_input:
     experience_buffer:
       name: countdown_buffer

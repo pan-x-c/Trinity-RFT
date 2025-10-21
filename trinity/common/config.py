@@ -143,7 +143,6 @@ class StorageConfig:
 
     # used for rollout tasks
     default_workflow_type: Optional[str] = None
-    default_eval_workflow_type: Optional[str] = None
     default_reward_fn_type: Optional[str] = None
     rollout_args: GenerationConfig = field(default_factory=GenerationConfig)
     workflow_args: dict = field(default_factory=dict)
@@ -689,17 +688,11 @@ class Config:
             experience_buffer.total_epochs = self.buffer.total_epochs
             experience_buffer.total_steps = self.buffer.total_steps
         else:
-            taskset.is_eval = False
             taskset.total_epochs = self.buffer.total_epochs
             taskset.total_steps = self.buffer.total_steps
 
         set_if_none(taskset, "default_workflow_type", explorer_input.default_workflow_type)
-        set_if_none(
-            taskset, "default_eval_workflow_type", explorer_input.default_eval_workflow_type
-        )
         set_if_none(taskset, "default_reward_fn_type", explorer_input.default_reward_fn_type)
-        set_if_none(taskset.format, "system_prompt", explorer_input.system_prompt)
-        set_if_none(taskset.format, "reply_prefix", explorer_input.reply_prefix)
         set_if_none(taskset, "ray_namespace", self.ray_namespace)
         set_if_none(taskset.rollout_args, "max_tokens", self.model.max_response_tokens)
 
@@ -712,13 +705,10 @@ class Config:
             if not dataset.name:
                 dataset.name = f"eval_taskset_{idx}"
             set_if_none(dataset, "repeat_times", 1)
+            # eval_workflow has higher priority than workflow in eval tasksets, so we set it first
+            set_if_none(dataset, "default_workflow_type", explorer_input.default_eval_workflow_type)
             set_if_none(dataset, "default_workflow_type", explorer_input.default_workflow_type)
-            set_if_none(
-                dataset, "default_eval_workflow_type", explorer_input.default_eval_workflow_type
-            )
             set_if_none(dataset, "default_reward_fn_type", explorer_input.default_reward_fn_type)
-            set_if_none(dataset.format, "system_prompt", explorer_input.system_prompt)
-            set_if_none(dataset.format, "reply_prefix", explorer_input.reply_prefix)
             set_if_none(dataset, "ray_namespace", self.ray_namespace)
             set_if_none(dataset.rollout_args, "max_tokens", self.model.max_response_tokens)
             remained_tasksets.append(dataset)

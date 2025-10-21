@@ -30,8 +30,8 @@ buffer:
         image_key: 'images'
       rollout_args:
         temperature: 1.0
-    default_workflow_type: 'simple_mm_workflow'
-    default_reward_fn_type: 'math_boxed_reward'
+      default_workflow_type: 'simple_mm_workflow'
+      default_reward_fn_type: 'math_boxed_reward'
   trainer_input:
     experience_buffer:
       name: experience_buffer

@@ -39,7 +39,7 @@ buffer:
         response_key: 'answer'
       rollout_args:
         temperature: 1.0
-    default_workflow_type: 'math_workflow'
+      default_workflow_type: 'math_workflow'
   trainer_input:
     experience_buffer:
       name: gsm8k_buffer
@@ -86,7 +86,7 @@ buffer:
         response_key: 'answer'
       rollout_args:
         temperature: 1.0
-    default_workflow_type: 'math_workflow'
+      default_workflow_type: 'math_workflow'
   trainer_input:
     experience_buffer:
       name: gsm8k_buffer
@@ -150,7 +150,7 @@ buffer:
         response_key: 'answer'
       rollout_args:
         temperature: 1.0
-    default_workflow_type: 'math_workflow'
+      default_workflow_type: 'math_workflow'
   trainer_input:
     experience_buffer:
       name: gsm8k_buffer
