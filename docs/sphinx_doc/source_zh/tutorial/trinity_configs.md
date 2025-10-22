@@ -260,7 +260,7 @@ buffer:
 ```
 
 - `buffer.explorer_input.taskset`: 用于训练探索策略的任务数据集。
-- `buffer.explorer_input.eval_taskset`: 用于评测的任务数据集列表。
+- `buffer.explorer_input.eval_tasksets`: 用于评测的任务数据集列表。
 - `buffer.explorer_input.default_workflow_type`: 若未在数据集级别指定，则为所有任务数据集设置默认的工作流类型。
 - `buffer.explorer_input.default_eval_workflow_type`: 若未在数据集级别指定，则为所有评测任务数据集设置默认的工作流类型。
 - `buffer.explorer_input.default_reward_fn_type`: 若未在数据集级别指定，则为所有任务数据集设置默认的奖励类型。

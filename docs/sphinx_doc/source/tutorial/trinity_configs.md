@@ -263,7 +263,7 @@ buffer:
 ```
 
 - `buffer.explorer_input.taskset`: Task dataset used for training exploration policies.
-- `buffer.explorer_input.eval_taskset`: List of task datasets used for evaluation.
+- `buffer.explorer_input.eval_tasksets`: List of task datasets used for evaluation.
 - `buffer.explorer_input.default_workflow_type`: Default workflow type for all task datasets under `explorer_input` if not specified at the dataset level.
 - `buffer.explorer_input.default_eval_workflow_type`: Default evaluation workflow type for all eval task datasets under `explorer_input` if not specified at the dataset level.
 - `buffer.explorer_input.default_reward_fn_type`: Default reward function type for all task datasets under `explorer_input` if not specified at the dataset level.
