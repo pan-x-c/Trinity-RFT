@@ -418,7 +418,7 @@ trainer:
   save_strategy: "unrestricted"
   grad_clip: 1.0
   use_dynamic_bsz: true
-  ppo_max_token_len_per_gpu: 16384
+  max_token_len_per_gpu: 16384
   ulysses_sequence_parallel_size: 1
   trainer_config: null
 ```
@@ -434,7 +434,7 @@ trainer:
   - `unrestricted`: No restrictions on saving operations; multiple nodes, processes, or threads are allowed to save the model simultaneously.
 - `grad_clip`: Gradient clipping for updates.
 - `use_dynamic_bsz`: Whether to use dynamic batch size.
-- `ppo_max_token_len_per_gpu`:  The maximum number of tokens to be processed in forward and backward when updating the policy. Effective when `use_dynamic_bsz=true`.
+- `max_token_len_per_gpu`:  The maximum number of tokens to be processed in forward and backward when updating the policy. Effective when `use_dynamic_bsz=true`.
 - `ulysses_sequence_parallel_size`: Sequence parallel size.
 - `trainer_config`: The trainer configuration provided inline.
 ---

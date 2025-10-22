@@ -414,7 +414,7 @@ trainer:
   save_strategy: "unrestricted"
   grad_clip: 1.0
   use_dynamic_bsz: true
-  ppo_max_token_len_per_gpu: 16384
+  max_token_len_per_gpu: 16384
   ulysses_sequence_parallel_size: 1
   trainer_config: null
 ```
@@ -430,7 +430,7 @@ trainer:
   - `unrestricted`：不限制保存操作，允许多个节点、进程或线程同时保存模型。
 - `grad_clip`: 梯度裁剪阈值。
 - `use_dynamic_bsz`: 是否使用动态批量大小。
-- `ppo_max_token_len_per_gpu`: 训练过程中，每个 GPU 最大 token 长度; 当 `use_dynamic_bsz=true` 时生效。
+- `max_token_len_per_gpu`: 训练过程中，每个 GPU 最大 token 长度; 当 `use_dynamic_bsz=true` 时生效。
 - `ulysses_sequence_parallel_size`: 序列并行的并行度，即用于分割单个序列的 GPU 数量。
 - `trainer_config`: 内联提供的 trainer 配置。
 
