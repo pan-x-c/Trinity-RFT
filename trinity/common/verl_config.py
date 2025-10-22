@@ -507,9 +507,7 @@ class veRLConfig:
                 "please set `model.max_model_len` to a smaller value."
             )
         if self.critic.forward_max_token_len_per_gpu is None:
-            self.critic.forward_max_token_len_per_gpu = (
-                self.critic.ppo_max_token_len_per_gpu
-            )
+            self.critic.forward_max_token_len_per_gpu = self.critic.ppo_max_token_len_per_gpu
 
         # LoRA related config
         if config.model.lora_configs is not None:

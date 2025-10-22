@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Test cases for Config modules."""
 import datetime
-import os
 import math
+import os
 import shutil
 import unittest
 
@@ -114,7 +114,6 @@ class TestConfig(unittest.TestCase):
             "simple_workflow",
         )
 
-
     def test_max_token_len_per_gpu_set_correctly(self):
         config = get_template_config()
         config.model.max_model_len = 8192
@@ -122,7 +121,9 @@ class TestConfig(unittest.TestCase):
         config.trainer.max_token_len_per_gpu = None
         config.check_and_update()
         self.assertIsNotNone(config.trainer.trainer_config)
-        expected_max_token_len = math.ceil((2 * config.model.max_model_len) / config.trainer.ulysses_sequence_parallel_size)
+        expected_max_token_len = math.ceil(
+            (2 * config.model.max_model_len) / config.trainer.ulysses_sequence_parallel_size
+        )
         self.assertEqual(
             config.trainer.trainer_config.actor_rollout_ref.actor.ppo_max_token_len_per_gpu,
             expected_max_token_len,
