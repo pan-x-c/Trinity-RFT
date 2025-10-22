@@ -221,7 +221,6 @@ buffer:
 - `train_batch_size`: Number of experiences used per training step. Defaults to `batch_size` * `algorithm.repeat_times`.
 - `total_epochs`: Total number of training epochs.
 - `total_steps`: Optional. The total number of training steps. If specified, `total_epochs` will be ignored.
-- `default`
 
 ### Explorer Input
 
