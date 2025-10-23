@@ -59,4 +59,4 @@ def get_buffer_writer(config: BufferStorageConfig) -> BufferWriter:
 
         return JSONWriter(storage_config)
     else:
-        raise ValueError(f"{storage_config} not supported.")
+        raise ValueError(f"{storage_config.storage_type} not supported.")
