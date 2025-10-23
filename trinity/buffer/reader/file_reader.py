@@ -154,6 +154,3 @@ class TaskFileReader(BaseFileReader):
             task = self.formatter.format(sample)
             tasks.append(task)
         return tasks
-
-    def __len__(self) -> int:
-        return len(self.dataset.dataset)

@@ -14,7 +14,6 @@ import ray
 from omegaconf import OmegaConf
 
 from trinity.common.constants import (
-    CHECKPOINT_JOB_DIR_ENV_VAR,
     EXPLORER_NAME,
     LOG_DIR_ENV_VAR,
     LOG_LEVEL_ENV_VAR,
@@ -1286,7 +1285,6 @@ class Config:
         """Get the environment variables from the config."""
         return {
             PLUGIN_DIRS_ENV_VAR: os.getenv(PLUGIN_DIRS_ENV_VAR, ""),
-            CHECKPOINT_JOB_DIR_ENV_VAR: self.checkpoint_job_dir,
             LOG_LEVEL_ENV_VAR: self.log.level,
             LOG_DIR_ENV_VAR: self.log.save_dir,
             LOG_NODE_IP_ENV_VAR: "1" if self.log.group_by_node else "0",

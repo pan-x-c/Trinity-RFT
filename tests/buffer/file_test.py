@@ -1,5 +1,4 @@
 import os
-import shutil
 import unittest
 
 import ray
@@ -114,7 +113,7 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
         os.makedirs(self.config.buffer.cache_dir, exist_ok=True)
         file_path = self.config.buffer.trainer_input.experience_buffer.path
         if os.path.exists(file_path):
-            shutil.rmtree(file_path)
+            os.remove(file_path)
 
     def tearDown(self):
         ray.shutdown()

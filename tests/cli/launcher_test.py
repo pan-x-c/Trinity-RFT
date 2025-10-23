@@ -21,7 +21,6 @@ from trinity.common.config import (
     TrainerInput,
 )
 from trinity.common.constants import (
-    CHECKPOINT_JOB_DIR_ENV_VAR,
     LOG_DIR_ENV_VAR,
     LOG_LEVEL_ENV_VAR,
     LOG_NODE_IP_ENV_VAR,
@@ -119,9 +118,6 @@ class TestLauncherMain(unittest.TestCase):
                 runtime_env={
                     "env_vars": {
                         launcher.PLUGIN_DIRS_ENV_VAR: "/path/to/plugins",
-                        CHECKPOINT_JOB_DIR_ENV_VAR: os.path.join(
-                            config.checkpoint_root_dir, config.project, config.name
-                        ),
                         LOG_DIR_ENV_VAR: config.log.save_dir,
                         LOG_LEVEL_ENV_VAR: config.log.level,
                         LOG_NODE_IP_ENV_VAR: "1",
@@ -216,9 +212,6 @@ class TestLauncherMain(unittest.TestCase):
                     runtime_env={
                         "env_vars": {
                             launcher.PLUGIN_DIRS_ENV_VAR: "/path/to/plugins",
-                            CHECKPOINT_JOB_DIR_ENV_VAR: os.path.join(
-                                config.checkpoint_root_dir, config.project, config.name
-                            ),
                             LOG_DIR_ENV_VAR: os.path.join(
                                 config.checkpoint_root_dir,
                                 config.project,
@@ -237,9 +230,6 @@ class TestLauncherMain(unittest.TestCase):
                     runtime_env={
                         "env_vars": {
                             launcher.PLUGIN_DIRS_ENV_VAR: "/path/to/plugins",
-                            CHECKPOINT_JOB_DIR_ENV_VAR: os.path.join(
-                                config.checkpoint_root_dir, config.project, config.name
-                            ),
                             LOG_DIR_ENV_VAR: os.path.join(
                                 config.checkpoint_root_dir,
                                 config.project,
