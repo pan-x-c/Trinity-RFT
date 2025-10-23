@@ -14,6 +14,7 @@ import ray
 from omegaconf import OmegaConf
 
 from trinity.common.constants import (
+    CHECKPOINT_JOB_DIR_ENV_VAR,
     EXPLORER_NAME,
     LOG_DIR_ENV_VAR,
     LOG_LEVEL_ENV_VAR,
@@ -113,8 +114,20 @@ class LoRAConfig:
 
 
 @dataclass
+class ReplayBufferConfig:
+    """Config for replay buffer used in StorageType.QUEUE with use_priority_queue=True."""
+
+    priority_fn: str = "linear_decay"
+    reuse_cooldown_time: Optional[float] = None
+
+    priority_fn_args: Dict = field(default_factory=lambda: {"decay": 2.0})
+
+
+@dataclass
 class StorageConfig:
-    """Storage config."""
+    """Storage config.
+    Used for both taskset and experience buffer.
+    """
 
     name: str = ""
     storage_type: StorageType = StorageType.FILE
@@ -167,8 +180,95 @@ class StorageConfig:
     # ! DO NOT SET, automatically set from buffer.total_steps
     total_steps: Optional[int] = None  # automatically set
 
+    # ! DO NOT SET, automatically set from buffer.batch_size / train_batch_size
+    batch_size: int = 0
+
     # ! DO NOT SET,  automatically set corresponding to train/eval
     is_eval: bool = False
+
+
+class TasksetConfig:
+    name: str = ""
+    storage_type: StorageType = StorageType.FILE
+    path: Optional[str] = None
+
+    default_workflow_type: Optional[str] = None
+    default_reward_fn_type: Optional[str] = None
+    rollout_args: GenerationConfig = field(default_factory=GenerationConfig)
+    workflow_args: dict = field(default_factory=dict)
+    reward_fn_args: dict = field(default_factory=dict)
+
+    # used for StorageType.FILE
+    split: str = "train"
+    subset_name: Optional[str] = None
+    format: FormatConfig = field(default_factory=FormatConfig)
+
+    # used for StorageType.SQL
+    max_retry_times: int = 3
+    max_retry_interval: int = 1
+
+    enable_progress_bar: bool = False
+
+    # ! DO NOT SET, automatically load from checkpoint
+    index: int = 0
+    # ! DO NOT SET, automatically set from algorithm.repeat_times
+    repeat_times: int = 1
+    # ! DO NOT SET, automatically set based on train/eval
+    is_eval: bool = False
+    # ! DO NOT SET, automatically set from buffer.batch_size
+    batch_size: int = 0
+
+    def to_storage_config(self) -> StorageConfig:
+        storage_config = StorageConfig(
+            name=self.name,
+            storage_type=self.storage_type,
+            path=self.path,
+            repeat_times=self.repeat_times,
+            index=self.index,
+            split=self.split,
+            subset_name=self.subset_name,
+            format=self.format,
+            max_retry_times=self.max_retry_times,
+            max_retry_interval=self.max_retry_interval,
+            default_workflow_type=self.default_workflow_type,
+            default_reward_fn_type=self.default_reward_fn_type,
+            rollout_args=self.rollout_args,
+            workflow_args=self.workflow_args,
+            reward_fn_args=self.reward_fn_args,
+            enable_progress_bar=self.enable_progress_bar,
+            is_eval=self.is_eval,
+            batch_size=self.batch_size,
+        )
+        return storage_config
+
+
+class ExperienceBufferConfig:
+    name: str = ""
+    storage_type: StorageType = StorageType.FILE
+
+    # used for StorageType.FILE
+    split: str = "train"
+    subset_name: Optional[str] = None
+    format: FormatConfig = field(default_factory=FormatConfig)
+
+    # used for StorageType.QUEUE
+    capacity: int = 10000
+    max_read_timeout: float = 1800
+    use_priority_queue: bool = False
+    reuse_cooldown_time: Optional[float] = None
+    replay_buffer_kwargs: dict = field(
+        default_factory=lambda: {"priority_fn": "linear_decay", "decay": 2.0}
+    )
+
+    # used for StorageType.SQL
+    max_retry_times: int = 3
+    max_retry_interval: int = 1
+
+    # ! DO NOT SET, automatically load from checkpoint
+    index: int = 0
+
+    # ! DO NOT SET, automatically set from buffer.batch_size
+    batch_size: int = 0
 
 
 @dataclass
@@ -1123,6 +1223,7 @@ class Config:
         """Get the environment variables from the config."""
         return {
             PLUGIN_DIRS_ENV_VAR: os.getenv(PLUGIN_DIRS_ENV_VAR, ""),
+            CHECKPOINT_JOB_DIR_ENV_VAR: self.checkpoint_job_dir,
             LOG_LEVEL_ENV_VAR: self.log.level,
             LOG_DIR_ENV_VAR: self.log.save_dir,
             LOG_NODE_IP_ENV_VAR: "1" if self.log.group_by_node else "0",

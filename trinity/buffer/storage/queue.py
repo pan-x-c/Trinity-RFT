@@ -11,7 +11,7 @@ import numpy as np
 import ray
 from sortedcontainers import SortedDict
 
-from trinity.common.config import BufferConfig, StorageConfig
+from trinity.common.config import StorageConfig
 from trinity.common.constants import StorageType
 from trinity.common.experience import Experience
 from trinity.utils.log import get_logger
@@ -93,19 +93,19 @@ class QueueBuffer(ABC):
         """Check if there is no more data to read."""
 
     @classmethod
-    def get_queue(cls, storage_config: StorageConfig, config: BufferConfig) -> "QueueBuffer":
+    def get_queue(cls, config: StorageConfig) -> "QueueBuffer":
         """Get a queue instance based on the storage configuration."""
         logger = get_logger(__name__)
-        if storage_config.use_priority_queue:
-            reuse_cooldown_time = storage_config.reuse_cooldown_time
-            replay_buffer_kwargs = storage_config.replay_buffer_kwargs
-            capacity = storage_config.capacity
+        if config.use_priority_queue:
+            reuse_cooldown_time = config.reuse_cooldown_time
+            replay_buffer_kwargs = config.replay_buffer_kwargs
+            capacity = config.capacity
             logger.info(
                 f"Using AsyncPriorityQueue with capacity {capacity}, reuse_cooldown_time {reuse_cooldown_time}."
             )
             return AsyncPriorityQueue(capacity, reuse_cooldown_time, **replay_buffer_kwargs)
         else:
-            return AsyncQueue(capacity=storage_config.capacity)
+            return AsyncQueue(capacity=config.capacity)
 
 
 class AsyncQueue(asyncio.Queue, QueueBuffer):
@@ -258,24 +258,24 @@ class AsyncPriorityQueue(QueueBuffer):
 class QueueStorage:
     """An wrapper of a async queue."""
 
-    def __init__(self, storage_config: StorageConfig, config: BufferConfig) -> None:
-        self.logger = get_logger(f"queue_{storage_config.name}", in_ray_actor=True)
+    def __init__(self, config: StorageConfig) -> None:
+        self.logger = get_logger(f"queue_{config.name}", in_ray_actor=True)
         self.config = config
-        self.capacity = storage_config.capacity
-        self.queue = QueueBuffer.get_queue(storage_config, config)
-        st_config = deepcopy(storage_config)
+        self.capacity = config.capacity
+        self.queue = QueueBuffer.get_queue(config)
+        st_config = deepcopy(config)
         st_config.wrap_in_ray = False
         if st_config.path:
             if is_database_url(st_config.path):
                 from trinity.buffer.writer.sql_writer import SQLWriter
 
                 st_config.storage_type = StorageType.SQL
-                self.writer = SQLWriter(st_config, self.config)
+                self.writer = SQLWriter(st_config)
             elif is_json_file(st_config.path):
                 from trinity.buffer.writer.file_writer import JSONWriter
 
                 st_config.storage_type = StorageType.FILE
-                self.writer = JSONWriter(st_config, self.config)
+                self.writer = JSONWriter(st_config)
             else:
                 self.logger.warning("Unknown supported storage path: %s", st_config.path)
                 self.writer = None
@@ -283,7 +283,7 @@ class QueueStorage:
             from trinity.buffer.writer.file_writer import JSONWriter
 
             st_config.storage_type = StorageType.FILE
-            self.writer = JSONWriter(st_config, self.config)
+            self.writer = JSONWriter(st_config)
         self.logger.warning(f"Save experiences in {st_config.path}.")
         self.ref_count = 0
         self.exp_pool = deque()  # A pool to store experiences
@@ -335,14 +335,14 @@ class QueueStorage:
         return [self.exp_pool.popleft() for _ in range(batch_size)]
 
     @classmethod
-    def get_wrapper(cls, storage_config: StorageConfig, config: BufferConfig):
+    def get_wrapper(cls, config: StorageConfig):
         """Get the queue actor."""
         return (
             ray.remote(cls)
             .options(
-                name=f"queue-{storage_config.name}",
-                namespace=storage_config.ray_namespace or ray.get_runtime_context().namespace,
+                name=f"queue-{config.name}",
+                namespace=config.ray_namespace or ray.get_runtime_context().namespace,
                 get_if_exists=True,
             )
-            .remote(storage_config, config)
+            .remote(config)
         )

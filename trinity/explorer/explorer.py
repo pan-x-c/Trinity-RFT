@@ -51,7 +51,7 @@ class Explorer:
         self.experience_pipeline = self._init_experience_pipeline()
         self.config.buffer.explorer_input.taskset.index = explorer_state.get("latest_task_index", 0)
         self.taskset = (
-            get_buffer_reader(self.config.buffer.explorer_input.taskset, self.config.buffer)
+            get_buffer_reader(self.config.buffer.explorer_input.taskset)
             if self.config.mode != "serve"
             else None
         )

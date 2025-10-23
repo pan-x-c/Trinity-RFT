@@ -6,7 +6,7 @@ import torch
 from tests.tools import RayUnittestBaseAysnc
 from trinity.buffer.reader.sql_reader import SQLReader
 from trinity.buffer.writer.sql_writer import SQLWriter
-from trinity.common.config import BufferConfig, StorageConfig
+from trinity.common.config import StorageConfig
 from trinity.common.constants import StorageType
 from trinity.common.experience import Experience
 
@@ -23,12 +23,10 @@ class TestSQLBuffer(RayUnittestBaseAysnc):
             schema_type="experience",
             path=f"sqlite:///{db_path}",
             storage_type=StorageType.SQL,
+            batch_size=read_batch_size,
         )
-        config = BufferConfig(
-            train_batch_size=read_batch_size,
-        )
-        sql_writer = SQLWriter(meta, config)
-        sql_reader = SQLReader(meta, config)
+        sql_writer = SQLWriter(meta)
+        sql_reader = SQLReader(meta)
         exps = [
             Experience(
                 tokens=torch.tensor([float(j) for j in range(i + 1)]),

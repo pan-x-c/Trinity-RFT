@@ -55,7 +55,6 @@ class MixSampleStrategy(SampleStrategy):
         expert_buffer_config.train_batch_size = expert_batch_size
         self.expert_exp_buffer = get_buffer_reader(
             buffer_config.trainer_input.auxiliary_buffers[self.sft_dataset_name],
-            expert_buffer_config,
         )
 
     async def sample(self, step: int) -> Tuple[Experiences, Dict, List]:

@@ -110,7 +110,8 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
         file_wrapper = ray.get_actor("json-test_buffer")
         self.assertIsNotNone(file_wrapper)
         file_path = default_storage_path(
-            self.config.buffer.trainer_input.experience_buffer, self.config.buffer
+            self.config.buffer.trainer_input.experience_buffer.name,
+            self.config.buffer.trainer_input.experience_buffer.storage_type,
         )
         with open(file_path, "r") as f:
             self.assertEqual(len(f.readlines()), 4)
@@ -130,11 +131,13 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
         os.makedirs(self.config.buffer.cache_dir, exist_ok=True)
         if os.path.exists(
             default_storage_path(
-                self.config.buffer.trainer_input.experience_buffer, self.config.buffer
+                self.config.buffer.trainer_input.experience_buffer.name,
+                self.config.buffer.trainer_input.experience_buffer.storage_type,
             )
         ):
             os.remove(
                 default_storage_path(
-                    self.config.buffer.trainer_input.experience_buffer, self.config.buffer
+                    self.config.buffer.trainer_input.experience_buffer.name,
+                    self.config.buffer.trainer_input.experience_buffer.storage_type,
                 )
             )
