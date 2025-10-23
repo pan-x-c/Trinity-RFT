@@ -115,11 +115,11 @@ class LoRAConfig:
 
 @dataclass
 class ReplayBufferConfig:
-    """Config for replay buffer used in StorageType.QUEUE with use_priority_queue=True."""
+    """Config for replay buffer used in StorageType.QUEUE."""
 
+    enable: bool = False
     priority_fn: str = "linear_decay"
     reuse_cooldown_time: Optional[float] = None
-
     priority_fn_args: Dict = field(default_factory=lambda: {"decay": 2.0})
 
 
@@ -145,11 +145,7 @@ class StorageConfig:
     # used for StorageType.QUEUE
     capacity: int = 10000
     max_read_timeout: float = 1800
-    use_priority_queue: bool = False
-    reuse_cooldown_time: Optional[float] = None
-    replay_buffer_kwargs: dict = field(
-        default_factory=lambda: {"priority_fn": "linear_decay", "decay": 2.0}
-    )
+    replay_buffer: Optional[ReplayBufferConfig] = field(default_factory=ReplayBufferConfig)
 
     # used for StorageType.SQL
     max_retry_times: int = 3
@@ -263,11 +259,7 @@ class ExperienceBufferConfig:
     # used for StorageType.QUEUE
     capacity: int = 10000
     max_read_timeout: float = 1800
-    use_priority_queue: bool = False
-    reuse_cooldown_time: Optional[float] = None
-    replay_buffer_kwargs: dict = field(
-        default_factory=lambda: {"priority_fn": "linear_decay", "decay": 2.0}
-    )
+    replay_buffer: Optional[ReplayBufferConfig] = field(default_factory=ReplayBufferConfig)
 
     # used for StorageType.SQL
     max_retry_times: int = 3
@@ -277,6 +269,7 @@ class ExperienceBufferConfig:
     split: str = "train"
     subset_name: Optional[str] = None
     format: FormatConfig = field(default_factory=FormatConfig)
+    enable_progress_bar: Optional[bool] = False
 
     # ! DO NOT SET, automatically set
     schema_type: Optional[str] = None
@@ -298,14 +291,13 @@ class ExperienceBufferConfig:
             path=self.path,
             capacity=self.capacity,
             max_read_timeout=self.max_read_timeout,
-            use_priority_queue=self.use_priority_queue,
-            reuse_cooldown_time=self.reuse_cooldown_time,
-            replay_buffer_kwargs=self.replay_buffer_kwargs,
+            replay_buffer=self.replay_buffer,
             max_retry_times=self.max_retry_times,
             max_retry_interval=self.max_retry_interval,
             split=self.split,
             subset_name=self.subset_name,
             format=self.format,
+            enable_progress_bar=self.enable_progress_bar,
             schema_type=self.schema_type,
             index=self.index,
             batch_size=self.batch_size,

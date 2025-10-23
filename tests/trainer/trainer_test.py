@@ -498,8 +498,8 @@ class TestFullyAsyncMode(unittest.TestCase):
         config.buffer.trainer_input.experience_buffer = ExperienceBufferConfig(
             name="exp_buffer",
             storage_type=StorageType.QUEUE,
-            use_priority_queue=self.use_priority_queue,
         )
+        config.buffer.trainer_input.experience_buffer.replay_buffer.enable = self.use_priority_queue
         config.synchronizer.sync_method = SyncMethod.CHECKPOINT
         config.synchronizer.sync_style = SyncStyle.DYNAMIC_BY_EXPLORER
         config.synchronizer.sync_interval = 8
