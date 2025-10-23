@@ -270,14 +270,12 @@ buffer:
 - `name`: 数据集名称。该名称将用作 Ray actor 的名称，因此必须唯一。
 - `storage_type`: 数据集的存储方式。选项：`file`、`queue`、`sql`。
   - `file`: 数据集存储在 `jsonl`/`parquet` 文件中。数据文件组织需符合 HuggingFace 标准。*建议大多数情况下使用此存储类型。*
-  - `queue`: 数据集存储在队列中。队列是一个简单的 FIFO 队列，用于存储任务数据集。*除非你明确了解其用途，否则不要为此类数据集使用此类型。*
   - `sql`: 数据集存储在 SQL 数据库中。*此类型尚不稳定，将在未来版本中优化。*
 - `path`: 任务数据集的路径。
   - 对于 `file` 类型，路径指向包含任务数据集文件的目录。
-  - 对于 `queue` 类型，路径为可选。可通过在此指定 sqlite 数据库路径来备份队列数据。
   - 对于 `sql` 类型，路径指向 sqlite 数据库文件。
-- `subset_name`: 任务数据集的子集名称。默认为 `None`。
-- `split`: 任务数据集的划分。默认为 `train`。
+- `subset_name`: 任务数据集的子集名称，对应 huggingface datasets `load_dataset` 函数中的 `name` 参数。默认为 `None`。
+- `split`: 任务数据集的划分。对应 huggingface datasets `load_dataset` 函数中的 `split` 参数。默认为 `train`。
 - `repeat_times`: 为一个任务生成的 rollout 数量。若未设置，则自动设为 `algorithm.repeat_times`（`taskset`）或 `1`（`eval_tasksets`）。
 - `rollout_args`: rollout 参数。
   - `temperature`: 采样温度。
@@ -321,7 +319,7 @@ buffer:
     - 对于 `queue` 类型，此字段可选。可在此指定 SQLite 数据库或 JSON 文件路径以备份队列数据。
     - 对于 `file` 类型，路径指向包含数据集文件的目录。
     - 对于 `sql` 类型，路径指向 SQLite 数据库文件。
-  - `format`: 定义数据集中 prompt 和 response 的键。
+  - `format`: 主要针对 SFT 和 DPO 算法的数据集，用于规范化提取的数据。
     - `prompt_type`: 指定数据集中 prompt 的类型。目前支持 `plaintext`、`messages`。
       - `plaintext`: prompt 为 string 格式。
       - `messages`: prompt 为消息列表。
