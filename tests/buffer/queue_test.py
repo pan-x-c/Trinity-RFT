@@ -10,7 +10,7 @@ from parameterized import parameterized
 from tests.tools import RayUnittestBaseAysnc
 from trinity.buffer.reader.queue_reader import QueueReader
 from trinity.buffer.writer.queue_writer import QueueWriter
-from trinity.common.config import BufferConfig, StorageConfig
+from trinity.common.config import ExperienceBufferConfig
 from trinity.common.constants import StorageType
 from trinity.common.experience import Experience
 
@@ -31,16 +31,18 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
         ]
     )
     async def test_queue_buffer(self, name, use_priority_queue):
-        meta = StorageConfig(
+        config = ExperienceBufferConfig(
             name=name,
             schema_type="experience",
             storage_type=StorageType.QUEUE,
             max_read_timeout=3,
             path=BUFFER_FILE_PATH,
             use_priority_queue=use_priority_queue,
+            batch_size=self.train_batch_size,
         )
-        writer = QueueWriter(meta, self.config)
-        reader = QueueReader(meta, self.config)
+        config = config.to_storage_config()
+        writer = QueueWriter(config)
+        reader = QueueReader(config)
         self.assertEqual(await writer.acquire(), 1)
         exps = [
             Experience(
@@ -94,8 +96,8 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
 
     async def test_priority_queue_capacity(self):
         # test priority queue capacity
-        self.config.train_batch_size = 4
-        meta = StorageConfig(
+        self.train_batch_size = 4
+        config = ExperienceBufferConfig(
             name="test_buffer_small",
             schema_type="experience",
             storage_type=StorageType.QUEUE,
@@ -104,9 +106,11 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
             path=BUFFER_FILE_PATH,
             use_priority_queue=True,
             replay_buffer_kwargs={"priority_fn": "linear_decay", "decay": 0.6},
+            batch_size=self.train_batch_size,
         )
-        writer = QueueWriter(meta, self.config)
-        reader = QueueReader(meta, self.config)
+        config = config.to_storage_config()
+        writer = QueueWriter(config)
+        reader = QueueReader(config)
 
         for i in range(12):
             writer.write(
@@ -149,16 +153,18 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
 
     async def test_queue_buffer_capacity(self):
         # test queue capacity
-        meta = StorageConfig(
+        config = ExperienceBufferConfig(
             name="test_buffer_small",
             schema_type="experience",
             storage_type=StorageType.QUEUE,
             max_read_timeout=3,
             capacity=4,
             path=BUFFER_FILE_PATH,
+            batch_size=self.train_batch_size,
         )
-        writer = QueueWriter(meta, self.config)
-        reader = QueueReader(meta, self.config)
+        config = config.to_storage_config()
+        writer = QueueWriter(config)
+        reader = QueueReader(config)
         writer.write([{"content": "hello"}])
         writer.write([{"content": "hi"}])
         writer.write([{"content": "hello"}])
@@ -178,7 +184,7 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
 
     async def test_priority_queue_buffer_reuse(self):
         # test experience replay
-        meta = StorageConfig(
+        config = ExperienceBufferConfig(
             name="test_buffer_small",
             schema_type="experience",
             storage_type=StorageType.QUEUE,
@@ -188,9 +194,11 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
             use_priority_queue=True,
             reuse_cooldown_time=0.5,
             replay_buffer_kwargs={"priority_fn": "linear_decay", "decay": 0.6},
+            batch_size=self.train_batch_size,
         )
-        writer = QueueWriter(meta, self.config)
-        reader = QueueReader(meta, self.config)
+        config = config.to_storage_config()
+        writer = QueueWriter(config)
+        reader = QueueReader(config)
         for i in range(4):
             writer.write(
                 [
@@ -302,7 +310,7 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
 
     async def test_priority_queue_reuse_count_control(self):
         # test experience replay with linear decay and use count control
-        meta = StorageConfig(
+        config = ExperienceBufferConfig(
             name="test_buffer_small",
             schema_type="experience",
             storage_type=StorageType.QUEUE,
@@ -317,9 +325,11 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
                 "use_count_limit": 2,
                 "sigma": 0.0,
             },
+            batch_size=self.train_batch_size,
         )
-        writer = QueueWriter(meta, self.config)
-        reader = QueueReader(meta, self.config)
+        config = config.to_storage_config()
+        writer = QueueWriter(config)
+        reader = QueueReader(config)
         for i in range(4):
             writer.write(
                 [
@@ -408,8 +418,5 @@ class TestQueueBuffer(RayUnittestBaseAysnc):
         self.put_batch_size = 2
         self.train_batch_size = 4
 
-        self.config = BufferConfig(
-            train_batch_size=self.train_batch_size,
-        )
         if os.path.exists(BUFFER_FILE_PATH):
             os.remove(BUFFER_FILE_PATH)

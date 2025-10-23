@@ -1,13 +1,21 @@
 # -*- coding: utf-8 -*-
 """The buffer module"""
+from typing import Union
+
 from trinity.buffer.buffer_reader import BufferReader
 from trinity.buffer.buffer_writer import BufferWriter
-from trinity.common.config import StorageConfig
+from trinity.common.config import ExperienceBufferConfig, StorageConfig, TasksetConfig
 from trinity.common.constants import StorageType
 
+BufferStorageConfig = Union[TasksetConfig, ExperienceBufferConfig, StorageConfig]
 
-def get_buffer_reader(storage_config: StorageConfig) -> BufferReader:
+
+def get_buffer_reader(config: BufferStorageConfig) -> BufferReader:
     """Get a buffer reader for the given dataset name."""
+    if not isinstance(config, StorageConfig):
+        storage_config: StorageConfig = config.to_storage_config()
+    else:
+        storage_config = config
     if storage_config.storage_type == StorageType.SQL:
         from trinity.buffer.reader.sql_reader import SQLReader
 
@@ -32,8 +40,12 @@ def get_buffer_reader(storage_config: StorageConfig) -> BufferReader:
         raise ValueError(f"{storage_config.storage_type} not supported.")
 
 
-def get_buffer_writer(storage_config: StorageConfig) -> BufferWriter:
+def get_buffer_writer(config: BufferStorageConfig) -> BufferWriter:
     """Get a buffer writer for the given dataset name."""
+    if not isinstance(config, StorageConfig):
+        storage_config: StorageConfig = config.to_storage_config()
+    else:
+        storage_config = config
     if storage_config.storage_type == StorageType.SQL:
         from trinity.buffer.writer.sql_writer import SQLWriter
 

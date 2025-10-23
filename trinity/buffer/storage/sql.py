@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from trinity.buffer.schema import init_engine
 from trinity.buffer.schema.formatter import FORMATTER, TaskFormatter
-from trinity.buffer.utils import default_storage_path, retry_session
+from trinity.buffer.utils import retry_session
 from trinity.common.config import StorageConfig
 from trinity.common.experience import Experience
 from trinity.common.rewards import REWARD_FUNCTIONS
@@ -33,9 +33,7 @@ class SQLStorage:
     def __init__(self, config: StorageConfig) -> None:
         self.logger = get_logger(f"sql_{config.name}", in_ray_actor=True)
         if not config.path:
-            config.path = default_storage_path(
-                storage_name=config.name, storage_type=config.storage_type
-            )
+            raise ValueError("`path` is required for SQL storage type.")
         self.engine, self.table_model_cls = init_engine(
             db_url=config.path,
             table_name=config.name,

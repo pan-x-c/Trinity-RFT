@@ -125,8 +125,8 @@ class ReplayBufferConfig:
 
 @dataclass
 class StorageConfig:
-    """Storage config.
-    Used for both taskset and experience buffer.
+    """Storage config for both taskset and experience buffer.
+    Not visible to users directly. Please use ExperienceBufferConfig or TasksetConfig instead.
     """
 
     name: str = ""
@@ -183,10 +183,14 @@ class StorageConfig:
     # ! DO NOT SET, automatically set from buffer.batch_size / train_batch_size
     batch_size: int = 0
 
+    # ! DO NOT SET, automatically set from model.model_path
+    tokenizer_path: Optional[str] = None
+
     # ! DO NOT SET,  automatically set corresponding to train/eval
     is_eval: bool = False
 
 
+@dataclass
 class TasksetConfig:
     name: str = ""
     storage_type: StorageType = StorageType.FILE
@@ -217,6 +221,10 @@ class TasksetConfig:
     is_eval: bool = False
     # ! DO NOT SET, automatically set from buffer.batch_size
     batch_size: int = 0
+    # ! DO NOT SET, automatically set from buffer.total_epochs
+    total_epochs: int = 1  # automatically set
+    # ! DO NOT SET, automatically set from buffer.total_steps
+    total_steps: Optional[int] = None  # automatically set
 
     def to_storage_config(self) -> StorageConfig:
         storage_config = StorageConfig(
@@ -224,7 +232,6 @@ class TasksetConfig:
             storage_type=self.storage_type,
             path=self.path,
             repeat_times=self.repeat_times,
-            index=self.index,
             split=self.split,
             subset_name=self.subset_name,
             format=self.format,
@@ -236,20 +243,22 @@ class TasksetConfig:
             workflow_args=self.workflow_args,
             reward_fn_args=self.reward_fn_args,
             enable_progress_bar=self.enable_progress_bar,
+            index=self.index,
             is_eval=self.is_eval,
             batch_size=self.batch_size,
+            total_epochs=self.total_epochs,
+            total_steps=self.total_steps,
         )
         return storage_config
 
 
+@dataclass
 class ExperienceBufferConfig:
+    """Storage Config for trainer input experience buffer."""
+
     name: str = ""
     storage_type: StorageType = StorageType.FILE
-
-    # used for StorageType.FILE
-    split: str = "train"
-    subset_name: Optional[str] = None
-    format: FormatConfig = field(default_factory=FormatConfig)
+    path: Optional[str] = None
 
     # used for StorageType.QUEUE
     capacity: int = 10000
@@ -264,11 +273,47 @@ class ExperienceBufferConfig:
     max_retry_times: int = 3
     max_retry_interval: int = 1
 
-    # ! DO NOT SET, automatically load from checkpoint
-    index: int = 0
+    # used for StorageType.FILE
+    split: str = "train"
+    subset_name: Optional[str] = None
+    format: FormatConfig = field(default_factory=FormatConfig)
 
+    # ! DO NOT SET, automatically set
+    schema_type: Optional[str] = None
+    # ! DO NOT SET
+    index: int = 0
     # ! DO NOT SET, automatically set from buffer.batch_size
     batch_size: int = 0
+    # ! DO NOT SET, automatically set from model.model_path
+    tokenizer_path: Optional[str] = None
+    # ! DO NOT SET, automatically set from buffer.total_epochs
+    total_epochs: int = 1  # automatically set
+    # ! DO NOT SET, automatically set from buffer.total_steps
+    total_steps: Optional[int] = None  # automatically set
+
+    def to_storage_config(self) -> StorageConfig:
+        storage_config = StorageConfig(
+            name=self.name,
+            storage_type=self.storage_type,
+            path=self.path,
+            capacity=self.capacity,
+            max_read_timeout=self.max_read_timeout,
+            use_priority_queue=self.use_priority_queue,
+            reuse_cooldown_time=self.reuse_cooldown_time,
+            replay_buffer_kwargs=self.replay_buffer_kwargs,
+            max_retry_times=self.max_retry_times,
+            max_retry_interval=self.max_retry_interval,
+            split=self.split,
+            subset_name=self.subset_name,
+            format=self.format,
+            schema_type=self.schema_type,
+            index=self.index,
+            batch_size=self.batch_size,
+            tokenizer_path=self.tokenizer_path,
+            total_epochs=self.total_epochs,
+            total_steps=self.total_steps,
+        )
+        return storage_config
 
 
 @dataclass
@@ -295,9 +340,9 @@ class ExperiencePipelineConfig:
 
     # A dictionary of input buffers, buffers are indexed by their names.
     # users only need to set extra buffers here
-    inputs: Dict[str, StorageConfig] = field(default_factory=dict)
+    inputs: Dict[str, ExperienceBufferConfig] = field(default_factory=dict)
     # The output buffer will automatically set to the trainer input buffer, so we do not need to set it here.
-    output: Optional[StorageConfig] = None
+    output: Optional[ExperienceBufferConfig] = None
 
 
 @Experimental
@@ -320,7 +365,7 @@ class TaskPipelineConfig:
     # e.g., /path/to/file.jsonl or /path/to/file.parquet, not a directory or huggingface path
     inputs: List[str] = field(default_factory=list)
     # Output task buffer, if not set, use `buffer.explorer_input.taskset`. In most cases, users do not need to set this field.
-    output: Optional[StorageConfig] = None
+    output: Optional[TasksetConfig] = None
 
     # The list of fields extracted from the input tasksets and processed into the output taskset
     target_fields: List[str] = field(default_factory=list)
@@ -481,8 +526,8 @@ class ClusterConfig:
 class ExplorerInput:
     """Config for explorer input."""
 
-    taskset: StorageConfig = field(default_factory=StorageConfig)
-    eval_tasksets: List[StorageConfig] = field(default_factory=list)
+    taskset: TasksetConfig = field(default_factory=TasksetConfig)
+    eval_tasksets: List[TasksetConfig] = field(default_factory=list)
     # The following args provide default values for the corresponding args in `taskset` and `eval_tasksets`
     default_workflow_type: Optional[str] = None
     default_eval_workflow_type: Optional[str] = None
@@ -495,10 +540,10 @@ class TrainerInput:
 
     # The main experience buffer to be used in trainer
     # Commonly, it is also the output buffer of the Explorer
-    experience_buffer: Optional[StorageConfig] = None
+    experience_buffer: Optional[ExperienceBufferConfig] = None
 
     # Some auxiliary buffers to facilitate training (e.g., data mixing)
-    auxiliary_buffers: Dict[str, StorageConfig] = field(default_factory=dict)
+    auxiliary_buffers: Dict[str, ExperienceBufferConfig] = field(default_factory=dict)
 
 
 @dataclass
@@ -763,11 +808,7 @@ class Config:
                     f"`eval_interval` is not a multiple of `sync_interval`; adjusted to the nearest integer={self.explorer.eval_interval}."
                 )
 
-    def _check_buffer(self) -> None:  # noqa: C901
-        # TODO: split this function into different buffer read/writer
-        # check explorer_input
-        trainer_input = self.buffer.trainer_input
-        experience_buffer = trainer_input.experience_buffer
+    def _check_explorer_input(self) -> None:
         explorer_input = self.buffer.explorer_input
         taskset = explorer_input.taskset
 
@@ -783,27 +824,18 @@ class Config:
                 "`buffer.explorer_input.taskset.repeat_times` is set to `algorithm.repeat_times`"
                 f" (={self.algorithm.repeat_times})."
             )
-        if self.mode == "train":
-            assert (
-                experience_buffer is not None
-            ), "`buffer.trainer_input.experience_buffer` is required when `mode` is `train`."
-            experience_buffer.total_epochs = self.buffer.total_epochs
-            experience_buffer.total_steps = self.buffer.total_steps
-        else:
-            taskset.total_epochs = self.buffer.total_epochs
-            taskset.total_steps = self.buffer.total_steps
 
+        taskset.batch_size = self.buffer.batch_size
         set_if_none(taskset, "default_workflow_type", explorer_input.default_workflow_type)
         set_if_none(taskset, "default_reward_fn_type", explorer_input.default_reward_fn_type)
         set_if_none(taskset, "ray_namespace", self.ray_namespace)
         set_if_none(taskset.rollout_args, "max_tokens", self.model.max_response_tokens)
 
-        remained_tasksets = []
         for idx, dataset in enumerate(explorer_input.eval_tasksets):
             if not dataset.path:
-                logger.warning(f"Eval dataset [{dataset}]'s path is not configured. Skip.")
-                continue
+                raise ValueError(f"Eval dataset [{dataset}]'s path is not configured.")
             dataset.is_eval = True
+            dataset.batch_size = self.buffer.batch_size
             if not dataset.name:
                 dataset.name = f"eval_taskset_{idx}"
             set_if_none(dataset, "repeat_times", 1)
@@ -813,12 +845,17 @@ class Config:
             set_if_none(dataset, "default_reward_fn_type", explorer_input.default_reward_fn_type)
             set_if_none(dataset, "ray_namespace", self.ray_namespace)
             set_if_none(dataset.rollout_args, "max_tokens", self.model.max_response_tokens)
-            remained_tasksets.append(dataset)
-        explorer_input.eval_tasksets = remained_tasksets
 
-        # check trainer_input.experience_buffer
+        if self.mode != "train":
+            taskset.total_epochs = self.buffer.total_epochs
+            taskset.total_steps = self.buffer.total_steps
+
+    def _check_trainer_input(self) -> None:
+        trainer_input = self.buffer.trainer_input
+        experience_buffer = trainer_input.experience_buffer
+
         if experience_buffer is None:
-            experience_buffer = trainer_input.experience_buffer = StorageConfig(
+            experience_buffer = trainer_input.experience_buffer = ExperienceBufferConfig(
                 name="experience_buffer",
                 storage_type=StorageType.QUEUE,
             )
@@ -831,27 +868,49 @@ class Config:
 
         from trinity.algorithm.algorithm import ALGORITHM_TYPE
 
-        experience_buffer.schema_type = ALGORITHM_TYPE.get(self.algorithm.algorithm_type).schema
-
-        set_if_none(experience_buffer, "ray_namespace", self.ray_namespace)
-        set_if_none(experience_buffer.format, "chat_template", self.model.custom_chat_template)
-
-        # create buffer.cache_dir at <checkpoint_root_dir>/<project>/<name>/buffer
-        self.buffer.cache_dir = os.path.abspath(os.path.join(self.checkpoint_job_dir, "buffer"))
-        try:
-            os.makedirs(self.buffer.cache_dir, exist_ok=True)
-        except Exception:
+        if not experience_buffer.path:
+            experience_buffer.path = os.path.join(
+                self.buffer.cache_dir, "trainer_experience_buffer"  # type: ignore[arg-type]
+            )
             logger.warning(
-                f"Failed to create buffer dir {self.buffer.cache_dir}, please check "
-                f"your checkpoint directory: {self.checkpoint_job_dir}"
+                f"Auto set `buffer.trainer_input.experience_buffer.path` to {experience_buffer.path}"
             )
 
+        experience_buffer.schema_type = ALGORITHM_TYPE.get(self.algorithm.algorithm_type).schema
+        experience_buffer.batch_size = self.buffer.train_batch_size
+        experience_buffer.tokenizer_path = self.model.model_path
+        set_if_none(experience_buffer, "ray_namespace", self.ray_namespace)
+        set_if_none(experience_buffer.format, "chat_template", self.model.custom_chat_template)
+        for aux_name, aux_buffer in trainer_input.auxiliary_buffers.items():
+            aux_buffer.batch_size = self.buffer.train_batch_size
+            aux_buffer.tokenizer_path = self.model.model_path
+            set_if_none(aux_buffer, "ray_namespace", self.ray_namespace)
+            if aux_buffer.path is None or aux_buffer.path == "":
+                raise ValueError(
+                    f"`buffer.trainer_input.auxiliary_buffers[{aux_name}].path` is required, "
+                    f"please set it to the path of the auxiliary buffer."
+                )
+
+        if self.mode == "train":
+            assert (
+                experience_buffer is not None
+            ), "`buffer.trainer_input.experience_buffer` is required when `mode` is `train`."
+            experience_buffer.total_epochs = self.buffer.total_epochs
+            experience_buffer.total_steps = self.buffer.total_steps
+
+    def _default_storage_path(self, storage_type: StorageType, name: str) -> str:
+        if storage_type == StorageType.SQL:
+            return "sqlite:///" + os.path.join(self.buffer.cache_dir, f"{name}.db")  # type: ignore[arg-type]
+        else:
+            return os.path.join(self.buffer.cache_dir, f"{name}.jsonl")  # type: ignore[arg-type]
+
+    def _check_data_processor(self) -> None:
         # check input/output buffers in pipelines
         experience_pipeline = self.data_processor.experience_pipeline
         if experience_pipeline is not None:
             if experience_pipeline.save_input and experience_pipeline.input_save_path is None:
                 experience_pipeline.input_save_path = os.path.join(
-                    self.buffer.cache_dir, "explorer_output.jsonl"
+                    self.buffer.cache_dir, "explorer_output.jsonl"  # type: ignore[arg-type]
                 )
                 logger.info(
                     f"Auto set `data_processor.experience_pipeline.input_save_path` to {experience_pipeline.input_save_path}"
@@ -860,18 +919,13 @@ class Config:
         task_pipeline = self.data_processor.task_pipeline
         if task_pipeline is not None:
             if task_pipeline.output is None:
-                if taskset.path is not None:
-                    task_pipeline.output = taskset
-                elif (
-                    experience_buffer.schema_type in {"dpo", "sft"}
-                    and experience_buffer.path is not None
-                ):
-                    task_pipeline.output = experience_buffer
+                if self.mode != "train":
+                    task_pipeline.output = self.buffer.explorer_input.taskset
+                elif self.mode == "train" and self.algorithm.algorithm_type in {"dpo", "sft"}:
+                    task_pipeline.output = self.buffer.trainer_input.experience_buffer
                 else:
                     raise ValueError(
-                        "`data_processor.task_pipeline.output` is required when both "
-                        "`buffer.explorer_input.taskset.path` and `buffer.trainer_input.experience_buffer.path` are "
-                        "None"
+                        "`data_processor.task_pipeline.output` is missing. Please set it to the desired output storage config."
                     )
             if task_pipeline.output.path and os.path.exists(task_pipeline.output.path):
                 raise ValueError(
@@ -879,6 +933,7 @@ class Config:
                     "Please choose a different output path to avoid overwriting."
                 )
 
+    def _check_buffer(self) -> None:  # noqa: C901
         # check train_batch_size
         if not self.buffer.train_batch_size:
             if self.mode == "train" or self.algorithm.algorithm_type in ["sft", "dpo"]:
@@ -890,6 +945,16 @@ class Config:
                 "`buffer.train_batch_size` is set to `buffer.batch_size` * `algorithm.repeat_times`"
             )
             self.buffer.train_batch_size = self.buffer.batch_size * self.algorithm.repeat_times
+
+        # create buffer.cache_dir at <checkpoint_root_dir>/<project>/<name>/buffer
+        self.buffer.cache_dir = os.path.abspath(os.path.join(self.checkpoint_job_dir, "buffer"))
+        try:
+            os.makedirs(self.buffer.cache_dir, exist_ok=True)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to create buffer dir {self.buffer.cache_dir}, please check "
+                f"your checkpoint directory: {self.checkpoint_job_dir}"
+            ) from e
 
         # set pad_token_id / tokenizer_path
         if self.buffer.pad_token_id is None:
@@ -908,7 +973,10 @@ class Config:
             except Exception:
                 logger.warning(f"Failed to get pad token id from model {self.model.model_path}")
                 self.buffer.pad_token_id = 0
-        self.buffer.tokenizer_path = self.model.model_path
+
+        self._check_explorer_input()
+        self._check_trainer_input()
+        self._check_data_processor()
 
     def _check_algorithm(self) -> None:
         from trinity.algorithm import (

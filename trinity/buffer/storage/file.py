@@ -5,7 +5,6 @@ from typing import List
 
 import ray
 
-from trinity.buffer.utils import default_storage_path
 from trinity.common.config import StorageConfig
 from trinity.common.experience import EID, Experience
 from trinity.common.workflows import Task
@@ -35,7 +34,7 @@ class FileStorage:
 
     def __init__(self, config: StorageConfig) -> None:
         if not config.path:
-            config.path = default_storage_path(config.name, config.storage_type)
+            raise ValueError("`path` is required for FILE storage type.")
         ext = os.path.splitext(config.path)[-1]
         if ext != ".jsonl" and ext != ".json":
             raise ValueError(f"File path must end with '.json' or '.jsonl', got {config.path}")

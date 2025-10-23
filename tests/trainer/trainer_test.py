@@ -27,9 +27,9 @@ from trinity.common.config import (
     AlgorithmConfig,
     BufferConfig,
     Config,
+    ExperienceBufferConfig,
     ExplorerInput,
     StageConfig,
-    StorageConfig,
     TrainerInput,
 )
 from trinity.common.constants import (
@@ -287,7 +287,7 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
                     batch_size=4,
                     explorer_input=ExplorerInput(taskset=get_unittest_dataset_config("gsm8k")),
                     trainer_input=TrainerInput(
-                        experience_buffer=StorageConfig(
+                        experience_buffer=ExperienceBufferConfig(
                             name="test_queue_storage",
                             max_read_timeout=20,
                             storage_type=StorageType.QUEUE,
@@ -495,7 +495,7 @@ class TestFullyAsyncMode(unittest.TestCase):
         config.cluster.node_num = 1
         config.model.model_path = get_model_path()
         config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
-        config.buffer.trainer_input.experience_buffer = StorageConfig(
+        config.buffer.trainer_input.experience_buffer = ExperienceBufferConfig(
             name="exp_buffer",
             storage_type=StorageType.QUEUE,
             use_priority_queue=self.use_priority_queue,
@@ -524,7 +524,7 @@ class TestFullyAsyncMode(unittest.TestCase):
         config.cluster.node_num = 1
         explorer1_config.explorer.rollout_model.engine_num = 1
         explorer1_config.explorer.rollout_model.tensor_parallel_size = 1
-        explorer1_config.buffer.trainer_input.experience_buffer = StorageConfig(
+        explorer1_config.buffer.trainer_input.experience_buffer = ExperienceBufferConfig(
             name="exp_buffer",
             storage_type=StorageType.QUEUE,
         )
