@@ -80,7 +80,7 @@ class MixSampleStrategy(SampleStrategy):
         usual_buffer_config = copy.deepcopy(buffer_config)
         usual_buffer_config.train_batch_size = tot_batch_size - expert_batch_size
         self.usual_exp_buffer = get_buffer_reader(
-            buffer_config.trainer_input.experience_buffer, usual_buffer_config  # type: ignore
+            buffer_config.trainer_input.experience_buffer
         )
 
         if buffer_config.trainer_input.auxiliary_buffers is None:
@@ -92,8 +92,7 @@ class MixSampleStrategy(SampleStrategy):
         expert_buffer_config = copy.deepcopy(buffer_config)
         expert_buffer_config.train_batch_size = expert_batch_size
         self.expert_exp_buffer = get_buffer_reader(
-            buffer_config.trainer_input.auxiliary_buffers[self.sft_dataset_name],
-            expert_buffer_config,
+            buffer_config.trainer_input.auxiliary_buffers[self.sft_dataset_name]
         )
 
     async def sample(self, step: int) -> Tuple[Experiences, Dict, List]:

@@ -29,9 +29,7 @@ class MixSampleStrategy(SampleStrategy):
         # experience buffer
         usual_buffer_config = copy.deepcopy(buffer_config)
         usual_buffer_config.train_batch_size = tot_batch_size - expert_batch_size
-        self.usual_exp_buffer = get_buffer_reader(
-            buffer_config.trainer_input.experience_buffer, usual_buffer_config  # type: ignore
-        )
+        self.usual_exp_buffer = get_buffer_reader(buffer_config.trainer_input.experience_buffer)  # type: ignore[arg-type]
 
         if buffer_config.trainer_input.auxiliary_buffers is None:
             raise ValueError(
