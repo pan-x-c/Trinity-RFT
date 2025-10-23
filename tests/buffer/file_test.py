@@ -102,6 +102,7 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.config = get_template_config()
+        self.config.mode = "explore"
         self.config.checkpoint_root_dir = get_checkpoint_path()
         dataset_config = get_unittest_dataset_config("countdown", "train")
         self.config.buffer.explorer_input.taskset = dataset_config

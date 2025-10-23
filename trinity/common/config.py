@@ -866,15 +866,18 @@ class Config:
             )
             experience_buffer.storage_type = StorageType.QUEUE
 
-        from trinity.algorithm.algorithm import ALGORITHM_TYPE
+        if not experience_buffer.name:
+            experience_buffer.name = "experience_buffer"
 
         if not experience_buffer.path:
-            experience_buffer.path = os.path.join(
-                self.buffer.cache_dir, "trainer_experience_buffer"  # type: ignore[arg-type]
+            experience_buffer.path = self._default_storage_path(
+                experience_buffer.storage_type, experience_buffer.name
             )
             logger.warning(
                 f"Auto set `buffer.trainer_input.experience_buffer.path` to {experience_buffer.path}"
             )
+
+        from trinity.algorithm.algorithm import ALGORITHM_TYPE
 
         experience_buffer.schema_type = ALGORITHM_TYPE.get(self.algorithm.algorithm_type).schema
         experience_buffer.batch_size = self.buffer.train_batch_size
