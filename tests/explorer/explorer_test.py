@@ -244,7 +244,6 @@ class ServeTest(RayUnittestBaseAysnc):
         self.config.buffer.trainer_input.experience_buffer.max_read_timeout = 5
         buffer_reader = get_buffer_reader(
             self.config.buffer.trainer_input.experience_buffer,
-            self.config.buffer,
         )
         exps = await buffer_reader.read_async(batch_size=10)
         for exp in exps:
