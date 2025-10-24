@@ -16,7 +16,7 @@ from trinity.common.constants import StorageType
 class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
     def test_file_reader(self):  # noqa: C901
         """Test file reader."""
-        reader = get_buffer_reader(self.config.buffer.explorer_input.taskset)
+        reader = get_buffer_reader(self.config.buffer.explorer_input.tasksets[0])
 
         tasks = []
         while True:

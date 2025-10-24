@@ -212,6 +212,7 @@ class TasksetConfig:
     rollout_args: GenerationConfig = field(default_factory=GenerationConfig)
     workflow_args: dict = field(default_factory=dict)
     reward_fn_args: dict = field(default_factory=dict)
+    task_selector: TaskSelectorConfig = field(default_factory=TaskSelectorConfig)
 
     # used for StorageType.FILE
     split: str = "train"
@@ -242,6 +243,7 @@ class TasksetConfig:
             name=self.name,
             storage_type=self.storage_type,
             path=self.path,
+            task_selector=self.task_selector,
             repeat_times=self.repeat_times,
             split=self.split,
             subset_name=self.subset_name,
@@ -533,7 +535,7 @@ class ClusterConfig:
 class ExplorerInput:
     """Config for explorer input."""
 
-    taskset: TasksetConfig = None
+    taskset: Optional[TasksetConfig] = None
     tasksets: List[TasksetConfig] = field(default_factory=list)
     eval_tasksets: List[TasksetConfig] = field(default_factory=list)
     # The following args provide default values for the corresponding args in `taskset` and `eval_tasksets`
@@ -817,6 +819,10 @@ class Config:
                 )
 
     def _check_explorer_input(self) -> None:
+        if self.mode == "train":
+            # no need to check explorer_input in train mode
+            return
+
         explorer_input = self.buffer.explorer_input
 
         if explorer_input.taskset:
@@ -824,9 +830,8 @@ class Config:
                 raise ValueError("Do not support setting `taskset` and `tasksets` simultaneously!")
             explorer_input.tasksets = [explorer_input.taskset]
             explorer_input.taskset = None
-        else:
-            if len(explorer_input.tasksets) == 0:
-                explorer_input.tasksets = [StorageConfig()]
+        elif len(explorer_input.tasksets) == 0:
+            raise ValueError("At least one taskset should be provided in explorer_input!")
         tasksets = explorer_input.tasksets
 
         for i, taskset in enumerate(tasksets):
