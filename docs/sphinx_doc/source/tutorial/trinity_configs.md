@@ -277,8 +277,8 @@ The configuration for each task dataset is defined as follows:
 - `path`: The path to the task dataset.
   - For `file` storage type, the path points to the directory that contains the task dataset files.
   - For `sql` storage type, the path points to the sqlite database file.
-- `subset_name`: The subset name of the task dataset, according to the `name` parameter in huggingface datasets `load_dataset` function. Default is `None`.
-- `split`: The split of the task dataset, according to the `split` parameter in huggingface datasets `load_dataset` function. Default is `train`.
+- `subset_name`: The subset name of the task dataset, corresponding to the `name` parameter in huggingface datasets `load_dataset` function. Default is `None`.
+- `split`: The split of the task dataset, corresponding to the `split` parameter in huggingface datasets `load_dataset` function. Default is `train`.
 - `repeat_times`: The number of rollouts generated for a task. If not set, it will be automatically set to `algorithm.repeat_times` for `taskset`, and `1` for `eval_tasksets`.
 - `rollout_args`: The parameters for rollout.
   - `temperature`: The temperature for sampling.
