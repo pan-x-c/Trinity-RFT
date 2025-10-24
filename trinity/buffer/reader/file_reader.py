@@ -105,7 +105,7 @@ class ExperienceFileReader(BaseFileReader):
         self.formatter = FORMATTER.get(config.schema_type)(
             tokenizer_path=config.tokenizer_path, format_config=config.format
         )
-        self.read_batch_size = config.train_batch_size
+        self.read_batch_size = config.batch_size
         self.dataset = _HFBatchReader(
             load_dataset(config.path, name=config.subset_name, split=config.split),
             name=config.name,
