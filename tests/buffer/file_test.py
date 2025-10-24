@@ -27,10 +27,10 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(tasks), 16)
 
         # test epoch and offset
-        self.config.buffer.explorer_input.taskset.total_epochs = 2
-        self.config.buffer.explorer_input.taskset.index = 4
+        self.config.buffer.explorer_input.tasksets[0].total_epochs = 2
+        self.config.buffer.explorer_input.tasksets[0].index = 4
         reader = get_buffer_reader(
-            self.config.buffer.explorer_input.taskset,
+            self.config.buffer.explorer_input.tasksets[0],
         )
         tasks = []
         while True:
@@ -41,9 +41,9 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(tasks), 16 * 2 - 4)
 
         # test total steps and offset
-        self.config.buffer.explorer_input.taskset.total_steps = 5
-        self.config.buffer.explorer_input.taskset.index = 8
-        reader = get_buffer_reader(self.config.buffer.explorer_input.taskset)
+        self.config.buffer.explorer_input.tasksets[0].total_steps = 5
+        self.config.buffer.explorer_input.tasksets[0].index = 8
+        reader = get_buffer_reader(self.config.buffer.explorer_input.tasksets[0])
         tasks = []
         while True:
             try:
@@ -53,10 +53,10 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(tasks), 20 - 8)
 
         # test offset > dataset_len with total_epoch
-        self.config.buffer.explorer_input.taskset.total_steps = None
-        self.config.buffer.explorer_input.taskset.total_epochs = 3
-        self.config.buffer.explorer_input.taskset.index = 20
-        reader = get_buffer_reader(self.config.buffer.explorer_input.taskset)
+        self.config.buffer.explorer_input.tasksets[0].total_steps = None
+        self.config.buffer.explorer_input.tasksets[0].total_epochs = 3
+        self.config.buffer.explorer_input.tasksets[0].index = 20
+        reader = get_buffer_reader(self.config.buffer.explorer_input.tasksets[0])
         tasks = []
         while True:
             try:
@@ -66,9 +66,9 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(tasks), 16 * 3 - 20)
 
         # test offset > dataset_len with total_steps
-        self.config.buffer.explorer_input.taskset.total_steps = 10
-        self.config.buffer.explorer_input.taskset.index = 24
-        reader = get_buffer_reader(self.config.buffer.explorer_input.taskset)
+        self.config.buffer.explorer_input.tasksets[0].total_steps = 10
+        self.config.buffer.explorer_input.tasksets[0].index = 24
+        reader = get_buffer_reader(self.config.buffer.explorer_input.tasksets[0])
         tasks = []
         while True:
             try:
