@@ -335,7 +335,7 @@ buffer:
     - `chat_template`: 以字符串形式指定 chat template。若未提供，则使用 `model.custom_chat_template`。
   - `max_read_timeout`: 读取新 experience 数据的最大等待时间（秒）。若超时，则直接返回不完整批次。仅当 `storage_type` 为 `queue` 时生效。默认为 1800 秒（30 分钟）。
   - `replay_buffer`: 仅当 `storage_type` 为 `queue` 时生效。用于配置 experience 重用的回放缓冲区。
-    - `enable`: 是否启用回放缓冲区。默认为 `false`。
+    - `enable`: 是否将 experience 放回缓冲区。默认为 `false`。
     - `reuse_cooldown_time`: experience 重用的冷却时间（秒）。若未指定，默认为 `None`，表示 experience 不可被重复使用。
     - `priority_fn`: experience 优先级函数，用于确定 experience 的重用顺序。目前支持 `linear_decay` 和 `linear_decay_use_count_control_randomization`。
     - `priority_fn_args`: 传递给优先级函数的参数字典，具体参数取决于所选的优先级函数。

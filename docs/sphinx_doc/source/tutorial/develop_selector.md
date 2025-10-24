@@ -1,5 +1,4 @@
-
-# Selector Development Guide
+# 🧪 Experimental: Task Selection & Scheduling System
 
 ```{note}
 This module is currently in **experimental status**. Interfaces may change in future versions.
