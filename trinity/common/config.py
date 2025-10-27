@@ -870,10 +870,6 @@ class Config:
             set_if_none(dataset, "ray_namespace", self.ray_namespace)
             set_if_none(dataset.rollout_args, "max_tokens", self.model.max_response_tokens)
 
-        if self.mode != "train":
-            taskset.total_epochs = self.buffer.total_epochs
-            taskset.total_steps = self.buffer.total_steps
-
     def _check_trainer_input(self) -> None:
         trainer_input = self.buffer.trainer_input
         experience_buffer = trainer_input.experience_buffer
