@@ -2,6 +2,7 @@
 """Base Model Class"""
 import asyncio
 import socket
+from functools import partial
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
@@ -276,7 +277,7 @@ class ModelWrapper:
         )
         if self.enable_history:
             # add a decorator to the openai client to record history
-            ori_create = self.openai_client.chat.completions.create
+            ori_create = partial(self.openai_client.chat.completions.create, logprobs=True)
 
             def record_chat_completions(*args, **kwargs):
                 response = ori_create(*args, **kwargs)
@@ -306,7 +307,7 @@ class ModelWrapper:
         )
         if self.enable_history:
             # add a decorator to the openai client to record history
-            ori_create = self.openai_async_client.chat.completions.create
+            ori_create = partial(self.openai_async_client.chat.completions.create, logprobs=True)
 
             async def record_chat_completions(*args, **kwargs):
                 response = await ori_create(*args, **kwargs)
