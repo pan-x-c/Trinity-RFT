@@ -49,7 +49,7 @@ class AgentScopeWorkflowAdapter(Workflow):
                 "temperature": self.task.rollout_args.temperature,
                 "max_tokens": self.task.rollout_args.max_tokens or 4096,
                 "top_logprobs": self.task.rollout_args.logprobs,
-            }
+            },
         )
 
     def construct_experiences(

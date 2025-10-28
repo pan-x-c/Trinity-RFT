@@ -2,8 +2,8 @@
 """Base Model Class"""
 import asyncio
 import socket
-from functools import partial
 from abc import ABC, abstractmethod
+from functools import partial
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
 import httpx
