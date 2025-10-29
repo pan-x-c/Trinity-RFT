@@ -493,7 +493,7 @@ class vLLMRolloutModel(InferenceModel):
         Returns:
             api_url (str): The URL of the OpenAI API server.
         """
-        if not self.run_api_server():
+        if not await self.run_api_server():
             return None
         return f"http://{self.api_server_host}:{self.api_server_port}"
 
