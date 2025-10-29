@@ -457,8 +457,11 @@ class vLLMRolloutModel(InferenceModel):
 
     async def run_api_server(self):
         """Run the OpenAI API server in a Ray actor."""
-        if not (self.api_server_host is None or self.api_server_port is None):
-            raise RuntimeError("API server is already running.")
+        if not self.config.enable_openai_api or not (
+            self.api_server_host is None or self.api_server_port is None
+        ):
+            return  # no need to run or already running
+
         from trinity.common.models.api.vllm_patch import run_api_server_in_ray_actor
 
         self.api_server_host, self.api_server_port = self.get_available_address()
