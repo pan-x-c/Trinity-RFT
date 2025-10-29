@@ -471,11 +471,11 @@ class InferenceModelConfig:
     enable_openai_api: bool = False
 
     # For tool calls in OpenAI API
-    enable_auto_tool_choice: bool = False
+    enable_auto_tool_choice: bool = True
 
-    tool_call_parser: Optional[str] = None
+    tool_call_parser: str = "hermes"
 
-    reasoning_parser: Optional[str] = None
+    reasoning_parser: str = "deepseek_r1"
 
     # ! DO NOT SET
     bundle_indices: str = ""
