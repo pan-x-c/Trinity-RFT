@@ -27,12 +27,13 @@ COPY . .
 
 # Install Trinity-RFT with Megatron
 RUN pip install --upgrade pip \
+    && pip install -e .[dev] \
+    && pip install flash_attn==2.8.1 --no-build-isolation \
     && pip install -e .[megatron] \
-    && pip install -e .[flash_attn] \
     && pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation \
         --config-settings "--build-option=--cpp_ext" \
         --config-settings "--build-option=--cuda_ext" \
-        --resume-retries 999 git+https://github.com/NVIDIA/apex.git
+        --resume-retries 20 git+https://github.com/NVIDIA/apex.git
 
 # Set Env variables
 
