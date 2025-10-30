@@ -91,6 +91,8 @@ class vLLMRolloutModel(InferenceModel):
             engine_args.enable_log_requests = False
         else:
             engine_args.disable_log_requests = True
+        if get_vllm_version() >= parse_version("0.11.0"):
+            engine_args.reasoning_parser = config.reasoning_parser
         self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
         self.processor = None
         self.tokenizer = None
