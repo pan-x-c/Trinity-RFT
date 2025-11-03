@@ -87,6 +87,10 @@ doc = [
     "sphinxcontrib-mermaid",
 ]
 
+mm = [
+    "qwen-vl-utils",
+]
+
 flash_attn = [
     "flash-attn==2.8.1"
 ]
