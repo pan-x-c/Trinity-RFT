@@ -48,6 +48,7 @@ class Explorer:
         explorer_state = self.state.load_explorer()
         self.explore_step_num = explorer_state.get("latest_iteration", 0)
         self.last_sync_step = self.explore_step_num if self.explore_step_num > 0 else -1
+        self.last_monitored_step = self.explore_step_num if self.explore_step_num > 0 else -1
         self.synchronizer = Synchronizer.get_actor(config)
         self.config = config
         self.models, self.auxiliary_models = create_inference_models(config)
@@ -323,8 +324,9 @@ class Explorer:
     async def save_checkpoint(self, sync_weight: bool = False) -> None:
         if self.scheduler:
             await self._finish_steps(
-                self.last_sync_step + 1, self.explore_step_num, self.model_version
+                self.last_monitored_step + 1, self.explore_step_num, self.model_version
             )
+            self.last_monitored_step = self.explore_step_num
 
         if sync_weight:
             # sync weights
@@ -383,7 +385,7 @@ class Explorer:
             if eval_step != step:
                 return
             self.pending_eval_tasks.popleft()
-            eval_results, _ = await self.scheduler.get_results(f"{step}/{eval_task_name}")
+            eval_results, _ = await self.scheduler.get_results(batch_id=f"{step}/{eval_task_name}")
             metric.update(
                 gather_metrics(
                     [status.metrics[0] for status in eval_results], f"{prefix}/{eval_task_name}"

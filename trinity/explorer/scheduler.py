@@ -228,7 +228,7 @@ class Scheduler:
 
     async def _restart_runner(self, runner_id: int):
         """Restart a runner."""
-        self.runners[runner_id].restart_runner()
+        await self.runners[runner_id].restart_runner()
 
         if runner_id in self.busy_runners:
             task = self.busy_runners.pop(runner_id)
@@ -414,12 +414,18 @@ class Scheduler:
             await asyncio.sleep(0.1)
 
         if time.time() - start_time > timeout:
-            self.logger.error(f"Timed out waiting for tasks to complete after {timeout} seconds")
+            self.logger.error(
+                f"Timed out waiting for tasks at batch {batch_id} to complete after {timeout} seconds"
+            )
             if clear_timeout_tasks:
                 self._clear_timeout_tasks(batch_id=batch_id)
+                runners_to_restart = []
                 for runner_id, task in list(self.busy_runners.items()):
                     if task.batch_id == batch_id:
-                        await self._restart_runner(runner_id)
+                        runners_to_restart.append(runner_id)
+                asyncio.gather(
+                    *[self._restart_runner(runner_id) for runner_id in runners_to_restart]
+                )
 
         statuses = []
         experiences = []
@@ -489,8 +495,8 @@ class Scheduler:
         if clear_timeout_tasks:
             for batch_id in self.pending_tasks.keys() | self.running_tasks.keys():
                 self._clear_timeout_tasks(batch_id)
-            busy_runner_ids = list(self.busy_runners.keys())
-            for runner_id in busy_runner_ids:
-                await self._restart_runner(runner_id)
+            asyncio.gather(
+                *[self._restart_runner(runner_id) for runner_id in self.busy_runners.keys()]
+            )
 
         raise TimeoutError(error_msg)
