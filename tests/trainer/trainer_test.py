@@ -1022,6 +1022,6 @@ class TestOverRollout(BaseTrainerCase):
         exp_save_path = self.config.buffer.trainer_input.experience_buffer.path
         with open(exp_save_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-            self.assertTrue(
+            self.assertEqual(
                 len(lines), 2 * 4 * 2
-            )  # step * repeat_times * batch_size * (1-over_rollout_rate)
+            )  # total_steps * repeat_times * batch_size * min_waited_tasks
