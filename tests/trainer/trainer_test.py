@@ -1008,7 +1008,7 @@ class TestOverRollout(BaseTrainerCase):
         both(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
         rollout_metrics = parser.metric_list("rollout")
-        self.assertTrue(len(rollout_metrics) == 0)
+        self.assertTrue(len(rollout_metrics) > 0)
         eval_metrics = parser.metric_list("eval")
         self.assertTrue(len(eval_metrics) == 0)
         self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 2)

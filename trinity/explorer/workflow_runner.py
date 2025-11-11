@@ -21,8 +21,8 @@ class Status:
     """Status of the task running result."""
 
     ok: bool
-    # A dictionary of metrics, each metric is a list of float values (collected over multiple runs)
     metrics: List[Dict[str, float]]
+    # A list of metric dictionaries, where each dictionary is from a single run.
     message: Optional[str] = None
 
 
@@ -160,7 +160,7 @@ class WorkflowRunner:
             assert exps is not None and len(exps) > 0, "An empty experience is generated"
             model_version = await self.model_wrapper.model_version_async
             # set eid for each experience
-            for _, exp in enumerate(exps):
+            for exp in exps:
                 exp.eid.batch = task.batch_id
                 # keep exp.eid.task if it has been set before (e.g., in workflow)
                 if exp.eid.task == "":  # "" is the default value

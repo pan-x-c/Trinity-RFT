@@ -32,16 +32,14 @@ class TaskWrapper:
 
 def calculate_task_level_metrics(metrics: List[Dict]) -> Dict[str, float]:
     """Calculate task level metrics from experiences."""
-    task_level_metrics: Dict[str, float] = {}
     if not metrics:
-        return task_level_metrics
-
-    metric_keys = metrics[0].keys()
-    for key in metric_keys:
-        values = [m[key] for m in metrics if key in m]
-        if values:
-            task_level_metrics[key] = sum(values) / len(values)
-    return task_level_metrics
+        return {}
+    aggregated_metrics: Dict[str, List[float]] = defaultdict(list)
+    for m in metrics:
+        for key, value in m.items():
+            if isinstance(value, (int, float)):
+                aggregated_metrics[key].append(value)
+    return {key: sum(values) / len(values) for key, values in aggregated_metrics.items() if values}
 
 
 class RunnerWrapper:
@@ -374,14 +372,10 @@ class Scheduler:
                 task_wrapper.sub_task_num = 1
                 self.pending_tasks[batch_id].appendleft((task_wrapper, task.repeat_times, 0))
                 continue
-            rest_repeat_times = task.repeat_times
-            run_id_base = 0
             sub_tasks = []
-            while rest_repeat_times > 0:
-                repeat_times = min(self.max_repeat_times, rest_repeat_times)
+            for run_id_base in range(0, task.repeat_times, self.max_repeat_times):
+                repeat_times = min(self.max_repeat_times, task.repeat_times - run_id_base)
                 sub_tasks.append((task_wrapper, repeat_times, run_id_base))
-                run_id_base += repeat_times
-                rest_repeat_times -= repeat_times
             task_wrapper.sub_task_num = len(sub_tasks)
             self.pending_tasks[batch_id].extendleft(sub_tasks)
 
