@@ -676,19 +676,20 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         unique_ids = [exp.eid.uid for exp in exp_list]
         self.assertEqual(len(unique_ids), len(set(unique_ids)))
 
-    @parameterized.expand([(2, ), (None,),])
+    @parameterized.expand(
+        [
+            (2,),
+            (None,),
+        ]
+    )
     async def test_metric_calculation_with_repeatable_workflow(self, max_repeat_times_per_runner):
         self.config.explorer.max_repeat_times_per_runner = max_repeat_times_per_runner
         self.config.check_and_update()
         scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
         tasks = []
-        tasks.extend(
-            generate_tasks(total_num=1, step_num=1, repeat_times=4, repeatable=True)
-        )
-        tasks.extend(
-            generate_tasks(total_num=1, step_num=4, repeat_times=8, repeatable=True)
-        )
+        tasks.extend(generate_tasks(total_num=1, step_num=1, repeat_times=4, repeatable=True))
+        tasks.extend(generate_tasks(total_num=1, step_num=4, repeat_times=8, repeatable=True))
         scheduler.schedule(tasks, batch_id=0)
         statuses, exps = await scheduler.get_results(batch_id=0)
         self.assertEqual(len(statuses), 2)
@@ -696,20 +697,23 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(statuses[0].metrics[0]["run_metrics"], 1.5)  # (0+1+2+3)/4
         self.assertAlmostEqual(statuses[1].metrics[0]["run_metrics"], 3.5)  # (0+1+2+3+4+5+6+7)/8
 
-    @parameterized.expand([(2, ), (None,),])
-    async def test_metric_calculation_with_non_repeatable_workflow(self, max_repeat_times_per_runner):
+    @parameterized.expand(
+        [
+            (2,),
+            (None,),
+        ]
+    )
+    async def test_metric_calculation_with_non_repeatable_workflow(
+        self, max_repeat_times_per_runner
+    ):
         self.config.explorer.max_repeat_times_per_runner = max_repeat_times_per_runner
         self.config.check_and_update()
         scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
         tasks = []
-        tasks.extend(
-            generate_tasks(total_num=1, step_num=3, repeat_times=4, repeatable=False)
-        )
+        tasks.extend(generate_tasks(total_num=1, step_num=3, repeat_times=4, repeatable=False))
         tasks[-1].workflow_args["metrics"] = [1.0, 2.0, 3.0]
-        tasks.extend(
-            generate_tasks(total_num=1, step_num=8, repeat_times=5, repeatable=False)
-        )
+        tasks.extend(generate_tasks(total_num=1, step_num=8, repeat_times=5, repeatable=False))
         tasks[-1].workflow_args["metrics"] = [2 * i for i in range(8)]
         scheduler.schedule(tasks, batch_id=0)
         statuses, exps = await scheduler.get_results(batch_id=0)

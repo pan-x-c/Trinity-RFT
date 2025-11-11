@@ -987,3 +987,41 @@ class TestTrainerLoRA(BaseTrainerCase):
 
     def tearDown(self):
         shutil.rmtree(self.config.checkpoint_job_dir)
+
+
+class TestOverRollout(BaseTrainerCase):
+    def test_trainer(self):
+        self.config.algorithm.repeat_times = 4
+        self.config.buffer.batch_size = 4
+        self.config.buffer.total_steps = 2
+        self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
+        self.config.name = f"explore-over-rollout-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        self.config.explorer.over_rollout_rate = 0.5  # set over rollout rate to 50%, which means only wait for 2 (4 * 50%) tasks in each steps
+        self.config.algorithm.algorithm_type = "grpo"
+        self.config.algorithm.advantage_fn = "grpo"
+        self.config.algorithm.advantage_fn_args = {
+            "epsilon": 1e-6,
+        }
+        self.config.synchronizer.sync_style = SyncStyle.DYNAMIC_BY_EXPLORER
+        self.config.synchronizer.sync_interval = 1
+        self.config.check_and_update()
+        both(self.config)
+        parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
+        rollout_metrics = parser.metric_list("rollout")
+        self.assertTrue(len(rollout_metrics) == 0)
+        eval_metrics = parser.metric_list("eval")
+        self.assertTrue(len(eval_metrics) == 0)
+        self.assertEqual(parser.metric_max_step(rollout_metrics[0]), 2)
+        self.assertTrue(parser.metric_exist("experience_pipeline/experience_count"))
+        experience_counts = parser.metric_values("experience_pipeline/experience_count")
+        self.assertTrue(len(experience_counts) == 2)
+        for count in experience_counts:
+            self.assertEqual(count, 2 * 4)  # only process 2 tasks in each step, repeat_times is 4
+        pg_loss = parser.metric_values("actor/pg_loss")
+        self.assertEqual(len(pg_loss), 1)  # trainer only has 1 step
+        exp_save_path = self.config.buffer.trainer_input.experience_buffer.path
+        with open(exp_save_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            self.assertTrue(
+                len(lines), 2 * 4 * 2
+            )  # step * repeat_times * batch_size * (1-over_rollout_rate)

@@ -629,6 +629,9 @@ class ExplorerConfig:
     service_status_check_interval: int = 60
     # keep at least 1 model in running status
     min_running_model_num: int = 1
+    # Experimental: set to a positive value to enable over rollout
+    # If set, explorer will only wait for (1 - over_rollout_rate) * batch_size of tasks at each step
+    over_rollout_rate: float = 0.0
 
 
 @dataclass
@@ -1197,6 +1200,16 @@ class Config:
                     raise ValueError("auxiliary model's model_path is required.")
                 for args in rollout_args + length_args:
                     set_if_none(aux_model, args, getattr(self.model, args))
+
+            if not (0.0 <= self.explorer.over_rollout_rate < 1.0):
+                raise ValueError("over_rollout_rate should be in [0.0, 1.0)")
+            if (
+                self.explorer.over_rollout_rate > 0.0
+                and self.synchronizer.sync_style == SyncStyle.FIXED
+            ):
+                raise ValueError(
+                    "over_rollout_rate is not compatible with fixed sync_style, please set sync_style to `dynamic_by_explorer` or `dynamic_by_trainer`."
+                )
 
             # for lora configs
             if self.model.lora_configs is not None:

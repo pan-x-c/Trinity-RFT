@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import time
 import traceback
@@ -62,10 +63,15 @@ class Explorer:
             role=self.config.explorer.name,
             config=config,
         )
-        self.batch_size = config.buffer.batch_size
-        self.update_interval = (
-            self.config.synchronizer.sync_interval * self.config.buffer.batch_size
-        )
+        if config.explorer.over_rollout_rate > 0.0:
+            self.min_wait_num = math.ceil(
+                config.buffer.batch_size * (1 - config.explorer.over_rollout_rate)
+            )
+            self.logger.info(
+                f"Over rollout is enabled. Explorer will only wait for {self.min_wait_num} tasks in each step."
+            )
+        else:
+            self.min_wait_num = None
         self.use_nccl_sync = self.config.synchronizer.sync_method == SyncMethod.NCCL
         self.pending_eval_tasks = deque()
 
@@ -357,12 +363,14 @@ class Explorer:
     async def _finish_explore_step(self, step: int, model_version: int) -> None:
         metric = {"rollout/model_version": model_version}
         with Timer(metric, "time/wait_explore_step"):
-            statuses, exps = await self.scheduler.get_results(batch_id=step)
+            statuses, exps = await self.scheduler.get_results(
+                batch_id=step, min_num=self.min_wait_num
+            )
         pipeline_metrics = await self.experience_pipeline.process.remote(exps)
         self.taskset.update(pipeline_metrics)
         metric.update(pipeline_metrics)
         if statuses:
-            metric.update(gather_metrics([status.metric for status in statuses], "rollout"))
+            metric.update(gather_metrics([status.metrics[0] for status in statuses], "rollout"))
             self.monitor.log(metric, step=step)
 
     async def _finish_eval_step(self, step: Optional[int] = None, prefix: str = "eval") -> None:
@@ -378,7 +386,7 @@ class Explorer:
             eval_results, _ = await self.scheduler.get_results(f"{step}/{eval_task_name}")
             metric.update(
                 gather_metrics(
-                    [status.metric for status in eval_results], f"{prefix}/{eval_task_name}"
+                    [status.metrics[0] for status in eval_results], f"{prefix}/{eval_task_name}"
                 )
             )
         if self.eval_start_time is not None:
