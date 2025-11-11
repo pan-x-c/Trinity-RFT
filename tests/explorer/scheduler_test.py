@@ -5,6 +5,7 @@ from typing import List, Optional
 
 import ray
 import torch
+from parameterized import parameterized
 
 from tests.tools import get_template_config
 from trinity.common.config import ExperienceBufferConfig
@@ -46,17 +47,23 @@ class DummyWorkflow(Workflow):
         elif self.error_type == "auxiliary_models":
             assert self.auxiliary_models is not None and len(self.auxiliary_models) == 2
 
-        return [
-            Experience(
-                tokens=torch.zeros(5),
-                prompt_length=2,
-                prompt_text=self.error_type or "success",
-                eid=EID(run=i + self.run_id_base, step=step),
-                info={"repeat_times": self.repeat_times},
-            )
-            for step in range(self.step_num)
-            for i in range(self.repeat_times)
-        ]
+        exps = []
+        for i in range(self.repeat_times):
+            run_level_metrics = {"run_metrics": float(i + self.run_id_base)}
+            run_level_exps = []
+            for step in range(self.step_num):
+                run_level_exps.append(
+                    Experience(
+                        tokens=torch.zeros(5),
+                        prompt_length=2,
+                        prompt_text=self.error_type or "success",
+                        eid=EID(run=i + self.run_id_base, step=step),
+                        info={"repeat_times": self.repeat_times},
+                    )
+                )
+            run_level_exps[-1].metrics = run_level_metrics
+            exps.extend(run_level_exps)
+        return exps
 
 
 @WORKFLOWS.register_module("dummy_nonrepeat_workflow")
@@ -67,22 +74,29 @@ class DummyNonRepeatWorkflow(Workflow):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
         self.reset_flag = False
         self.step_num = task.workflow_args.get("step_num", 1)
+        self.metrics = task.workflow_args.get("metrics", [0])
 
     def reset(self, task: Task):
         self.task = task
         self.reset_flag = True
+        self.step_num = task.workflow_args.get("step_num", 1)
+        self.metrics = task.workflow_args.get("metrics", [0])
 
     def run(self) -> List[Experience]:
-        return [
+        exps = [
             Experience(
                 eid=EID(run=self.run_id_base, step=step),
                 tokens=torch.zeros(5),
                 prompt_length=2,
                 prompt_text="success",
                 info={"reset_flag": self.reset_flag},
+                metrics={
+                    "run_metrics": self.metrics[step % len(self.metrics)],
+                },
             )
             for step in range(self.step_num)
         ]
+        return exps
 
 
 @WORKFLOWS.register_module("dummy_async_workflow")
@@ -99,16 +113,22 @@ class DummyAsyncWorkflow(Workflow):
         self.run_id_base = run_id_base
 
     async def run_async(self):
-        return [
-            Experience(
-                eid=EID(run=i + self.run_id_base, step=step),
-                tokens=torch.zeros(5),
-                prompt_length=2,
-                prompt_text="success",
-            )
-            for step in range(self.step_num)
-            for i in range(self.repeat_times)
-        ]
+        exps = []
+        for i in range(self.repeat_times):
+            run_level_metrics = {"run_metrics": float(i + self.run_id_base)}
+            run_level_exps = []
+            for step in range(self.step_num):
+                run_level_exps.append(
+                    Experience(
+                        eid=EID(run=i + self.run_id_base, step=step),
+                        tokens=torch.zeros(5),
+                        prompt_length=2,
+                        prompt_text="success",
+                    )
+                )
+            run_level_exps[-1].metrics = run_level_metrics
+            exps.extend(run_level_exps)
+        return exps
 
     def run(self):
         raise RuntimeError("This method should not be called")
@@ -490,7 +510,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         tasks = generate_tasks(4, repeat_times=8)  # ceil(8 / 2) == 4
         scheduler.schedule(tasks, batch_id=1)
         statuses, exps = await scheduler.get_results(batch_id=1)
-        self.assertEqual(len(statuses), 4 * 4)
+        self.assertEqual(len(statuses), 4)
         self.assertEqual(len(exps), 4 * 8)
         exp_list.extend(exps)
         _, exps = await scheduler.get_results(batch_id=1, min_num=1, timeout=1)
@@ -499,7 +519,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         tasks = generate_tasks(4, repeat_times=5)  # ceil(5 / 2) == 3
         scheduler.schedule(tasks, batch_id=2)
         statuses, exps = await scheduler.get_results(batch_id=2)
-        self.assertEqual(len(statuses), 4 * 3)
+        self.assertEqual(len(statuses), 4)
         self.assertEqual(len(exps), 4 * 5)
         exp_list.extend(exps)
         _, exps = await scheduler.get_results(batch_id=2, min_num=1, timeout=1)
@@ -508,7 +528,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         tasks = generate_tasks(3, repeat_times=1)  # ceil(1 / 2) == 1
         scheduler.schedule(tasks, batch_id=3)
         statuses, exps = await scheduler.get_results(batch_id=3)
-        self.assertEqual(len(statuses), 3 * 1)
+        self.assertEqual(len(statuses), 3)
         self.assertEqual(len(exps), 3 * 1)
         exp_list.extend(exps)
         _, exps = await scheduler.get_results(batch_id=3, min_num=1, timeout=1)
@@ -535,7 +555,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         for i in range(1, n_steps + 1):
             scheduler.schedule(tasks, batch_id=i)
             statuses, exps = await scheduler.get_results(batch_id=i)
-            self.assertEqual(len(statuses), 2 * 4)
+            self.assertEqual(len(statuses), 2)
             self.assertEqual(len(exps), 2 * 4)
 
         await scheduler.stop()
@@ -553,7 +573,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         for i in range(1, batch_num + 1):
             scheduler.schedule(tasks, batch_id=i)
             statuses, exps = await scheduler.get_results(batch_id=i)
-            self.assertEqual(len(statuses), task_num * repeat_times / 2)
+            self.assertEqual(len(statuses), task_num)
             self.assertEqual(len(exps), task_num * repeat_times)
             exp_list.extend(exps)
 
@@ -594,7 +614,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         for i in range(1, batch_num + 1):
             scheduler.schedule(tasks, batch_id=i)
             statuses, exps = await scheduler.get_results(batch_id=i)
-            self.assertEqual(len(statuses), task_num * repeat_times / 2)
+            self.assertEqual(len(statuses), task_num)
             self.assertEqual(len(exps), task_num * repeat_times * step_num)
             exp_list.extend(exps)
 
@@ -624,7 +644,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         for i in range(1, batch_num + 1):
             scheduler.schedule(tasks, batch_id=i)
             statuses, exps = await scheduler.get_results(batch_id=i)
-            self.assertEqual(len(statuses), task_num * repeat_times / 2)
+            self.assertEqual(len(statuses), task_num)
             self.assertEqual(len(exps), task_num * repeat_times * step_num)
             exp_list.extend(exps)
 
@@ -644,7 +664,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         for i in range(1, batch_num + 1):
             scheduler.schedule(tasks, batch_id=i)
             statuses, exps = await scheduler.get_results(batch_id=i)
-            self.assertEqual(len(statuses), task_num * repeat_times / 2)
+            self.assertEqual(len(statuses), task_num)
             self.assertEqual(len(exps), task_num * repeat_times * step_num)
             exp_list.extend(exps)
 
@@ -655,6 +675,48 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(set(run_ids)), batch_num * task_num * repeat_times)
         unique_ids = [exp.eid.uid for exp in exp_list]
         self.assertEqual(len(unique_ids), len(set(unique_ids)))
+
+    @parameterized.expand([(2, ), (None,),])
+    async def test_metric_calculation_with_repeatable_workflow(self, max_repeat_times_per_runner):
+        self.config.explorer.max_repeat_times_per_runner = max_repeat_times_per_runner
+        self.config.check_and_update()
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+        tasks = []
+        tasks.extend(
+            generate_tasks(total_num=1, step_num=1, repeat_times=4, repeatable=True)
+        )
+        tasks.extend(
+            generate_tasks(total_num=1, step_num=4, repeat_times=8, repeatable=True)
+        )
+        scheduler.schedule(tasks, batch_id=0)
+        statuses, exps = await scheduler.get_results(batch_id=0)
+        self.assertEqual(len(statuses), 2)
+        self.assertEqual(len(exps), 1 * 4 * 1 + 1 * 8 * 4)
+        self.assertAlmostEqual(statuses[0].metrics[0]["run_metrics"], 1.5)  # (0+1+2+3)/4
+        self.assertAlmostEqual(statuses[1].metrics[0]["run_metrics"], 3.5)  # (0+1+2+3+4+5+6+7)/8
+
+    @parameterized.expand([(2, ), (None,),])
+    async def test_metric_calculation_with_non_repeatable_workflow(self, max_repeat_times_per_runner):
+        self.config.explorer.max_repeat_times_per_runner = max_repeat_times_per_runner
+        self.config.check_and_update()
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+        tasks = []
+        tasks.extend(
+            generate_tasks(total_num=1, step_num=3, repeat_times=4, repeatable=False)
+        )
+        tasks[-1].workflow_args["metrics"] = [1.0, 2.0, 3.0]
+        tasks.extend(
+            generate_tasks(total_num=1, step_num=8, repeat_times=5, repeatable=False)
+        )
+        tasks[-1].workflow_args["metrics"] = [2 * i for i in range(8)]
+        scheduler.schedule(tasks, batch_id=0)
+        statuses, exps = await scheduler.get_results(batch_id=0)
+        self.assertEqual(len(statuses), 2)
+        self.assertEqual(len(exps), 1 * 4 * 3 + 1 * 5 * 8)
+        self.assertAlmostEqual(statuses[0].metrics[0]["run_metrics"], 2.0)  # (1+2+3)/3
+        self.assertAlmostEqual(statuses[1].metrics[0]["run_metrics"], 7.0)  # (0+2+4+6+8+10+12+14)/8
 
     def tearDown(self):
         try:
