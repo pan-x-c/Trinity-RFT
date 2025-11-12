@@ -9,7 +9,7 @@ from parameterized import parameterized
 
 from tests.tools import get_template_config
 from trinity.common.config import ExperienceBufferConfig
-from trinity.common.constants import StorageType
+from trinity.common.constants import StorageType, SyncStyle
 from trinity.common.experience import EID, Experience
 from trinity.common.models.model import InferenceModel
 from trinity.common.workflows import Task
@@ -721,6 +721,58 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(exps), 1 * 4 * 3 + 1 * 5 * 8)
         self.assertAlmostEqual(statuses[0].metrics[0]["run_metrics"], 2.0)  # (1+2+3)/3
         self.assertAlmostEqual(statuses[1].metrics[0]["run_metrics"], 7.0)  # (0+2+4+6+8+10+12+14)/8
+
+    async def test_over_rollout_min_wait(self):
+        self.config.explorer.over_rollout.over_rollout_rate = 0.5
+        self.config.explorer.over_rollout.wait_time_after_min_threshold = 3
+        self.config.explorer.max_repeat_times_per_runner = None
+        self.config.buffer.batch_size = 4
+        self.config.synchronizer.sync_style = SyncStyle.DYNAMIC_BY_EXPLORER
+        self.config.check_and_update()
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+        tasks = []
+        tasks.extend(generate_tasks(0, timeout_num=2, repeat_times=1, timeout_seconds=1))
+        tasks.extend(generate_tasks(0, timeout_num=1, repeat_times=1, timeout_seconds=3))
+        tasks.extend(generate_tasks(0, timeout_num=1, repeat_times=1, timeout_seconds=6))
+        scheduler.schedule(tasks, batch_id=0)
+        statuses, exps = await scheduler.get_results(batch_id=0, min_num=2)
+        self.assertEqual(len(statuses), 3)
+        self.assertEqual(len(exps), 3 * 1)
+
+    async def test_dynamic_timeout(self):
+        self.config.explorer.dynamic_timeout.enable = True
+        self.config.explorer.dynamic_timeout.dynamic_timeout_ratio = 3.0
+        self.config.buffer.batch_size = 4
+        self.config.explorer.max_timeout = 20
+        self.config.explorer.max_retry_times = 0  # no retry here
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+        tasks = []
+        # generate 4 tasks that will run 1 second
+        tasks.extend(generate_tasks(0, timeout_num=4, repeat_times=1, timeout_seconds=1))
+        scheduler.schedule(tasks, batch_id=0)  # first step will not use dynamic timeout
+        statuses, exps = await scheduler.get_results(batch_id=0)
+        self.assertEqual(len(statuses), 4)
+        # dynamic timeout will be set to 3.0 * 1.0 = 3.0 seconds for next step
+        tasks = []
+        tasks.extend(generate_tasks(0, timeout_num=4, repeat_times=1, timeout_seconds=4))
+        st = time.time()
+        scheduler.schedule(tasks, batch_id=1)
+        statuses, exps = await scheduler.get_results(batch_id=1)
+        et = time.time()
+        self.assertTrue(
+            et - st < 4
+        )  # should wait about 1 * 3.0 seconds, here we set 4 seconds timeout
+        self.assertEqual(len(exps), 0)
+        self.assertEqual(len(statuses), 4)
+        # tasks take 2 seconds, which is within the dynamic timeout 3.0 * 1.0 = 3.0 seconds
+        tasks = []
+        tasks.extend(generate_tasks(0, timeout_num=4, repeat_times=1, timeout_seconds=2))
+        scheduler.schedule(tasks, batch_id=2)
+        statuses, exps = await scheduler.get_results(batch_id=2)
+        self.assertEqual(len(statuses), 4)
+        self.assertEqual(len(exps), 4)
 
     def tearDown(self):
         try:
