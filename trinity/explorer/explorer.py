@@ -117,8 +117,10 @@ class Explorer:
         await asyncio.gather(*refs)
 
     async def _checkpoint_weights_update(self, step_num: Optional[int] = None) -> int:
+        self.logger.info(f"Start to update model weights from checkpoint at step {step_num}.")
         step_num = await self.synchronizer.set_model_state_dict_with_step_num.remote(step_num)
         await asyncio.gather(*[model.sync_model.remote(step_num) for model in self.models])
+        self.logger.info(f"Model weights updated to checkpoint at step {step_num}.")
         return step_num  # type: ignore
 
     async def _pull_latest_weights(self):
@@ -316,6 +318,8 @@ class Explorer:
             ]
         )
         for step_num in all_ckp_steps:
+            if step_num <= self.explore_step_num:
+                continue
             self.explore_step_num = await self._checkpoint_weights_update(step_num=step_num)
             await self.eval()
             await self._finish_eval_step(prefix="bench")
