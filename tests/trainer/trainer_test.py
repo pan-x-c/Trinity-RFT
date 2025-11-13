@@ -1018,7 +1018,7 @@ class TestOverRollout(BaseTrainerCase):
         self.assertTrue(len(experience_counts) == 2)
         for count in experience_counts:
             self.assertTrue(
-                count > 2 * 4
+                count >= 2 * 4
             )  # at least process 2 tasks in each step, repeat_times is 4
         pg_loss = parser.metric_values("actor/pg_loss")
         self.assertTrue(len(pg_loss) >= 1)  # trainer only has at least 1 step
