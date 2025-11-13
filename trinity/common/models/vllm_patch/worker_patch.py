@@ -23,6 +23,16 @@ def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):
         hidden_states: torch.Tensor,
         num_scheduled_tokens: dict[str, int],
     ) -> dict[str, Optional[LogprobsTensors]]:
+        """Patched version of _get_prompt_logprobs_dict.
+
+        This is a monkey-patched version of `_get_prompt_logprobs_dict` from
+        `vllm.v1.worker.gpu_model_runner.GPUModelRunner` (vLLM versions 0.10.0 to 0.11.0).
+
+        The original function does not apply temperature scaling to logits when
+        calculating prompt logprobs, which can lead to incorrect logprob values
+        when the temperature is not 1.0. This patch adds the missing
+        temperature scaling.
+        """
         num_prompt_logprobs_dict = self.input_batch.num_prompt_logprobs
         if not num_prompt_logprobs_dict:
             return {}
@@ -89,7 +99,7 @@ def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):
 
             # PATCH START
             temp = request.sampling_params.temperature
-            if temp is None or temp >= 1e-5:
+            if temp >= 1e-5:
                 logits.div_(temp)
             # PATCH END
 
