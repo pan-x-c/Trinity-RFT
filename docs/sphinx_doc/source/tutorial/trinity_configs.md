@@ -416,7 +416,7 @@ synchronizer:
 - `sync_offset`: Offset (in steps) of model weight synchronization between trainer and explorer. The explorer can run `sync_offset` steps before the trainer starts training.
 - `sync_timeout`: Timeout duration for synchronization.
 - `sync_style`: Style of synchronization. Options:
-  - `fixed`: The explorer and trainer synchronize weights at fixed intervals, with the explorer waiting for the trainer to complete each synchronization before proceeding.
+  - `fixed`: The explorer and trainer synchronize weights every `sync_interval` steps.
   - `dynamic_by_explorer`: The explorer notifies the trainer to synchronize weights after completing `sync_interval` steps, regardless of how many steps the trainer has completed at this point.
 
 ---
