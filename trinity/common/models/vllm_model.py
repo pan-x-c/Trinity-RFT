@@ -16,13 +16,13 @@ from vllm.sampling_params import RequestOutputKind
 
 from trinity.common.config import InferenceModelConfig
 from trinity.common.experience import Experience
-from trinity.common.models.api.vllm_patch import get_vllm_version
 from trinity.common.models.mm_utils import (
     build_multi_modal_inputs,
     convert_messages_to_mm_format,
 )
 from trinity.common.models.model import InferenceModel
 from trinity.common.models.utils import get_action_mask_method
+from trinity.common.models.vllm_patch.api_patch import get_vllm_version
 from trinity.utils.log import get_logger
 
 
@@ -481,7 +481,9 @@ class vLLMRolloutModel(InferenceModel):
             if self.api_server_host is not None and self.api_server_port is not None:
                 return True  # already running
 
-            from trinity.common.models.api.vllm_patch import run_api_server_in_ray_actor
+            from trinity.common.models.vllm_patch.api_patch import (
+                run_api_server_in_ray_actor,
+            )
 
             api_server_host, api_server_port = self.get_available_address()
             self.api_server = asyncio.create_task(
