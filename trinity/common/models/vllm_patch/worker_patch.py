@@ -1,3 +1,4 @@
+from types import MethodType
 from typing import Optional
 
 import torch
@@ -121,4 +122,4 @@ def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):
 
         return prompt_logprobs_dict
 
-    model_runner._get_prompt_logprobs_dict = _get_prompt_logprobs_dict
+    model_runner._get_prompt_logprobs_dict = MethodType(_get_prompt_logprobs_dict, model_runner)
