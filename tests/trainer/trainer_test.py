@@ -996,8 +996,8 @@ class TestOverRollout(BaseTrainerCase):
         self.config.buffer.total_steps = 2
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.name = f"explore-over-rollout-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        self.config.explorer.over_rollout.over_rollout_rate = 0.5  # set over rollout rate to 50%, which means only wait for 2 (4 * 50%) tasks in each steps
-        self.config.explorer.over_rollout.wait_time_after_min_threshold = 1
+        self.config.explorer.over_rollout.ratio = 0.5  # set over rollout rate to 50%, which means only wait for 2 (4 * 50%) tasks in each steps
+        self.config.explorer.over_rollout.wait_after_min = 1
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.advantage_fn = "grpo"
         self.config.algorithm.advantage_fn_args = {

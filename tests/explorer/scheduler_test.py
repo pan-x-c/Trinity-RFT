@@ -723,8 +723,8 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(statuses[1].metrics[0]["run_metrics"], 7.0)  # (0+2+4+6+8+10+12+14)/8
 
     async def test_over_rollout_min_wait(self):
-        self.config.explorer.over_rollout.over_rollout_rate = 0.5
-        self.config.explorer.over_rollout.wait_time_after_min_threshold = 3
+        self.config.explorer.over_rollout.ratio = 0.5
+        self.config.explorer.over_rollout.wait_after_min = 3
         self.config.explorer.max_repeat_times_per_runner = None
         self.config.buffer.batch_size = 4
         self.config.synchronizer.sync_style = SyncStyle.DYNAMIC_BY_EXPLORER
@@ -742,7 +742,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_dynamic_timeout(self):
         self.config.explorer.dynamic_timeout.enable = True
-        self.config.explorer.dynamic_timeout.dynamic_timeout_ratio = 3.0
+        self.config.explorer.dynamic_timeout.ratio = 3.0
         self.config.buffer.batch_size = 4
         self.config.explorer.max_timeout = 20
         self.config.explorer.max_retry_times = 0  # no retry here

@@ -64,9 +64,9 @@ class Explorer:
             role=self.config.explorer.name,
             config=config,
         )
-        if config.explorer.over_rollout.over_rollout_rate > 0.0:
+        if config.explorer.over_rollout.ratio > 0.0:
             self.min_wait_num = math.ceil(
-                config.buffer.batch_size * (1 - config.explorer.over_rollout.over_rollout_rate)
+                config.buffer.batch_size * (1 - config.explorer.over_rollout.ratio)
             )
             self.logger.info(
                 f"Over rollout is enabled. Explorer will only wait for {self.min_wait_num} tasks in each step."

@@ -397,7 +397,7 @@ class Scheduler:
         avg_time_per_task = self.total_running_time / self.total_completed_tasks
         return min(
             max_timeout,
-            avg_time_per_task * self.config.explorer.dynamic_timeout.dynamic_timeout_ratio,
+            avg_time_per_task * self.config.explorer.dynamic_timeout.ratio,
         )
 
     async def get_results(
@@ -434,7 +434,7 @@ class Scheduler:
                 min_threshold_reached_time = min_threshold_reached_time or time.time()
                 if (completed_count >= scheduled_num) or (
                     time.time() - min_threshold_reached_time
-                    >= self.config.explorer.over_rollout.wait_time_after_min_threshold
+                    >= self.config.explorer.over_rollout.wait_after_min
                 ):
                     break
             await asyncio.sleep(0.1)

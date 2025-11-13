@@ -142,8 +142,8 @@ class ReplayBufferConfig:
 class OverRolloutConfig:
     """Config for over-rollout in explorer."""
 
-    over_rollout_rate: float = 0.0  # explorer will only wait for (1 - over_rollout_rate) * batch_size of tasks at each step
-    wait_time_after_min_threshold: float = 30.0  # wait 30 s after reaching minimum task threshold
+    ratio: float = 0.0  # explorer will only wait for (1 - over_rollout.ratio) * batch_size of tasks at each step
+    wait_after_min: float = 30.0  # wait 30 s after reaching minimum task threshold
     # more settings will be added in the future
     # e.g., postpone tasks into the next step if not finished in time
 
@@ -153,7 +153,7 @@ class DynamicTimeoutConfig:
     """Config for dynamic timeout in explorer."""
 
     enable: bool = False
-    dynamic_timeout_ratio: float = 5.0  # the timeout for each step will be min(max_timeout, average_time_per_task * dynamic_timeout_ratio)
+    ratio: float = 3.0  # the timeout for each step will be min(max_timeout, average_time_per_task * dynamic_timeout.ratio)
 
 
 @dataclass
@@ -1219,12 +1219,12 @@ class Config:
                 for args in rollout_args + length_args:
                     set_if_none(aux_model, args, getattr(self.model, args))
 
-            if self.explorer.over_rollout.over_rollout_rate > 0.0:
-                if not (0.0 <= self.explorer.over_rollout.over_rollout_rate < 1.0):
-                    raise ValueError("over_rollout_rate should be in [0.0, 1.0)")
+            if self.explorer.over_rollout.ratio > 0.0:
+                if not (0.0 <= self.explorer.over_rollout.ratio < 1.0):
+                    raise ValueError("over_rollout_ratio should be in [0.0, 1.0)")
                 if self.synchronizer.sync_style == SyncStyle.FIXED:
                     raise ValueError(
-                        "over_rollout_rate is not compatible with fixed sync_style, please set "
+                        "over_rollout_ratio is not compatible with fixed sync_style, please set "
                         "`synchronizer.sync_style` to `dynamic_by_explorer` or `dynamic_by_trainer`."
                     )
 
