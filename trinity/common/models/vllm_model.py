@@ -100,6 +100,7 @@ class vLLMRolloutModel(InferenceModel):
             },
             disable_log_stats=True,
             enable_lora=config.enable_lora,
+            logprobs_mode="processed_logprobs",
             **config.lora_kwargs,
         )
         if get_vllm_version() > parse_version("0.10.0"):
