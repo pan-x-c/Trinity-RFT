@@ -26,7 +26,8 @@ def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):
         """Patched version of _get_prompt_logprobs_dict.
 
         This is a monkey-patched version of `_get_prompt_logprobs_dict` from
-        `vllm.v1.worker.gpu_model_runner.GPUModelRunner` (vLLM versions 0.10.0 to 0.11.0).
+        `vllm.v1.worker.gpu_model_runner.GPUModelRunner` (vLLM versions 
+        0.10.2 to 0.11.0).
 
         The original function does not apply temperature scaling to logits when
         calculating prompt logprobs, which can lead to incorrect logprob values
