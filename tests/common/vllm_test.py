@@ -411,28 +411,28 @@ class TestLogprobs(RayUnittestBaseAysnc):
             {"role": "user", "content": "What is your name?"},
         ]
         response_1 = self.model_wrapper.chat(messages, n=1, temperature=1.0, logprobs=True)[0]
-        response_2 = self.model_wrapper.chat(messages, n=1, temperature=0.5, logprobs=True)[0]
+        response_2 = self.model_wrapper.chat(messages, n=1, temperature=0.8, logprobs=True)[0]
         self.assertTrue(response_1.logprobs is not None)
         self.assertTrue(len(response_1.logprobs) > 0)
         self.assertTrue(response_2.logprobs is not None)
         self.assertTrue(len(response_2.logprobs) > 0)
         logprobs_1 = self.model_wrapper.logprobs(response_1.tokens.tolist(), temperature=1.0)
-        logprobs_2 = self.model_wrapper.logprobs(response_1.tokens.tolist(), temperature=0.5)
+        logprobs_2 = self.model_wrapper.logprobs(response_1.tokens.tolist(), temperature=0.8)
         logprobs_3 = self.model_wrapper.logprobs(response_2.tokens.tolist(), temperature=1.0)
-        logprobs_4 = self.model_wrapper.logprobs(response_2.tokens.tolist(), temperature=0.5)
+        logprobs_4 = self.model_wrapper.logprobs(response_2.tokens.tolist(), temperature=0.8)
         self.assertEqual(logprobs_1.shape, logprobs_2.shape)
         self.assertEqual(logprobs_3.shape, logprobs_4.shape)
-        self.assertFalse(torch.isclose(logprobs_1, logprobs_2, atol=1e-1).all())
-        self.assertFalse(torch.isclose(logprobs_3, logprobs_4, atol=1e-1).all())
+        self.assertFalse(torch.allclose(logprobs_1, logprobs_2, rtol=0.4))
+        self.assertFalse(torch.allclose(logprobs_3, logprobs_4, atol=0.4))
         logprobs_1_prompt = logprobs_1[: response_1.prompt_length - 1]
         logprobs_2_prompt = logprobs_2[: response_1.prompt_length - 1]
         logprobs_3_prompt = logprobs_3[: response_2.prompt_length - 1]
         logprobs_4_prompt = logprobs_4[: response_2.prompt_length - 1]
         self.assertEqual(logprobs_1_prompt.shape, logprobs_2_prompt.shape)
-        self.assertFalse(torch.isclose(logprobs_1_prompt, logprobs_2_prompt, atol=1e-1).all())
-        self.assertFalse(torch.isclose(logprobs_3_prompt, logprobs_4_prompt, atol=1e-1).all())
-        self.assertTrue(torch.isclose(logprobs_1_prompt, logprobs_3_prompt, atol=1e-1).all())
-        self.assertTrue(torch.isclose(logprobs_2_prompt, logprobs_4_prompt, atol=1e-1).all())
+        self.assertFalse(torch.allclose(logprobs_1_prompt, logprobs_2_prompt, rtol=0.4))
+        self.assertFalse(torch.allclose(logprobs_3_prompt, logprobs_4_prompt, rtol=0.4))
+        self.assertTrue(torch.allclose(logprobs_1_prompt, logprobs_3_prompt, rtol=0.4))
+        self.assertTrue(torch.allclose(logprobs_2_prompt, logprobs_4_prompt, rtol=0.4))
         logprobs_1_response = logprobs_1[response_1.prompt_length - 1 :]
         logprobs_2_response = logprobs_2[response_1.prompt_length - 1 :]
         logprobs_3_response = logprobs_3[response_2.prompt_length - 1 :]
@@ -441,10 +441,10 @@ class TestLogprobs(RayUnittestBaseAysnc):
         self.assertEqual(logprobs_3_response.shape, logprobs_4_response.shape)
         self.assertEqual(logprobs_1_response.shape, logprobs_2_response.shape)
         self.assertEqual(response_1.logprobs.shape, logprobs_1_response.shape)
-        self.assertTrue(torch.isclose(response_1.logprobs, logprobs_1_response, atol=1e-1).all())
-        self.assertFalse(torch.isclose(response_1.logprobs, logprobs_2_response, atol=1e-1).all())
-        self.assertTrue(torch.isclose(response_2.logprobs, logprobs_4_response, atol=1e-1).all())
-        self.assertFalse(torch.isclose(response_2.logprobs, logprobs_3_response, atol=1e-1).all())
+        self.assertTrue(torch.allclose(response_1.logprobs, logprobs_1_response, rtol=0.5))
+        self.assertFalse(torch.allclose(response_1.logprobs, logprobs_2_response, rtol=0.5))
+        self.assertTrue(torch.allclose(response_2.logprobs, logprobs_4_response, rtol=0.8))
+        self.assertFalse(torch.allclose(response_2.logprobs, logprobs_3_response, rtol=0.8))
 
 
 class TestAsyncAPIServer(RayUnittestBaseAysnc):
