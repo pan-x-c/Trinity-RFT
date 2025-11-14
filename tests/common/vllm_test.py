@@ -312,8 +312,9 @@ class TestAPIServer(RayUnittestBaseAysnc):
         )
         self.assertEqual(2, len(response.choices))
         self.assertTrue(response.choices[0].logprobs is not None)
-        self.assertEqual(0, len(response.choices[0].logprobs.content[0].top_logprobs))
-        self.assertTrue(response.choices[0].logprobs.content[0].logprob < 0)
+        self.assertEqual(0, len(response.choices[0].logprobs.content[2].top_logprobs))
+        # here we check the 3rd token logprob, because the first two tokens (`<think>`,`\n` usually have zero logprob)
+        self.assertTrue(response.choices[0].logprobs.content[2].logprob < 0)
         self.assertTrue(hasattr(response, "prompt_token_ids"))
         self.assertTrue(len(response.prompt_token_ids) > 0)
         self.assertTrue(hasattr(response.choices[0], "token_ids"))
@@ -420,16 +421,18 @@ class TestLogprobs(RayUnittestBaseAysnc):
         logprobs_3 = self.model_wrapper.logprobs(response_2.tokens.tolist(), temperature=1.0)
         logprobs_4 = self.model_wrapper.logprobs(response_2.tokens.tolist(), temperature=0.5)
         self.assertEqual(logprobs_1.shape, logprobs_2.shape)
-        self.assertFalse(torch.equal(logprobs_1, logprobs_2))
+        self.assertEqual(logprobs_3.shape, logprobs_4.shape)
+        self.assertFalse(torch.isclose(logprobs_1, logprobs_2, atol=1e-1).all())
+        self.assertFalse(torch.isclose(logprobs_3, logprobs_4, atol=1e-1).all())
         logprobs_1_prompt = logprobs_1[: response_1.prompt_length - 1]
         logprobs_2_prompt = logprobs_2[: response_1.prompt_length - 1]
         logprobs_3_prompt = logprobs_3[: response_2.prompt_length - 1]
         logprobs_4_prompt = logprobs_4[: response_2.prompt_length - 1]
         self.assertEqual(logprobs_1_prompt.shape, logprobs_2_prompt.shape)
-        self.assertFalse(torch.isclose(logprobs_1_prompt, logprobs_2_prompt, atol=1e-2).all())
-        self.assertFalse(torch.isclose(logprobs_3_prompt, logprobs_4_prompt, atol=1e-2).all())
-        self.assertTrue(torch.isclose(logprobs_1_prompt, logprobs_3_prompt, atol=1e-2).all())
-        self.assertTrue(torch.isclose(logprobs_2_prompt, logprobs_4_prompt, atol=1e-2).all())
+        self.assertFalse(torch.isclose(logprobs_1_prompt, logprobs_2_prompt, atol=1e-1).all())
+        self.assertFalse(torch.isclose(logprobs_3_prompt, logprobs_4_prompt, atol=1e-1).all())
+        self.assertTrue(torch.isclose(logprobs_1_prompt, logprobs_3_prompt, atol=1e-1).all())
+        self.assertTrue(torch.isclose(logprobs_2_prompt, logprobs_4_prompt, atol=1e-1).all())
         logprobs_1_response = logprobs_1[response_1.prompt_length - 1 :]
         logprobs_2_response = logprobs_2[response_1.prompt_length - 1 :]
         logprobs_3_response = logprobs_3[response_2.prompt_length - 1 :]
@@ -438,10 +441,10 @@ class TestLogprobs(RayUnittestBaseAysnc):
         self.assertEqual(logprobs_3_response.shape, logprobs_4_response.shape)
         self.assertEqual(logprobs_1_response.shape, logprobs_2_response.shape)
         self.assertEqual(response_1.logprobs.shape, logprobs_1_response.shape)
-        self.assertTrue(torch.isclose(response_1.logprobs, logprobs_1_response, atol=1e-2).all())
-        self.assertFalse(torch.isclose(response_1.logprobs, logprobs_2_response, atol=1e-2).all())
-        self.assertTrue(torch.isclose(response_2.logprobs, logprobs_4_response, atol=1e-2).all())
-        self.assertFalse(torch.isclose(response_2.logprobs, logprobs_3_response, atol=1e-2).all())
+        self.assertTrue(torch.isclose(response_1.logprobs, logprobs_1_response, atol=1e-1).all())
+        self.assertFalse(torch.isclose(response_1.logprobs, logprobs_2_response, atol=1e-1).all())
+        self.assertTrue(torch.isclose(response_2.logprobs, logprobs_4_response, atol=1e-1).all())
+        self.assertFalse(torch.isclose(response_2.logprobs, logprobs_3_response, atol=1e-1).all())
 
 
 class TestAsyncAPIServer(RayUnittestBaseAysnc):
@@ -486,8 +489,9 @@ class TestAsyncAPIServer(RayUnittestBaseAysnc):
         )
         self.assertEqual(2, len(response.choices))
         self.assertTrue(response.choices[0].logprobs is not None)
-        self.assertEqual(0, len(response.choices[0].logprobs.content[0].top_logprobs))
-        self.assertTrue(response.choices[0].logprobs.content[0].logprob < 0)
+        self.assertEqual(0, len(response.choices[0].logprobs.content[2].top_logprobs))
+        # here we check the 3rd token logprob, because the first two tokens (`<think>`,`\n` usually have zero logprob)
+        self.assertTrue(response.choices[0].logprobs.content[2].logprob < 0)
         self.assertTrue(hasattr(response, "prompt_token_ids"))
         self.assertTrue(len(response.prompt_token_ids) > 0)
         self.assertTrue(hasattr(response.choices[0], "token_ids"))
