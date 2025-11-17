@@ -183,6 +183,7 @@ class DataParallelPPOActor(DPActor):
                         loss_scale = torch.sum(response_mask).item() / (mini_batch_token_num + 1e-6)
 
                     loss = policy_loss * loss_scale
+                    micro_batch_metrics["actor/final_loss"] = loss.detach().item()
                     loss.backward()
 
                     append_to_dict(metrics, micro_batch_metrics)
