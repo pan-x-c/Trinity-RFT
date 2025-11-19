@@ -5,11 +5,13 @@ from typing import List, Optional
 import ray
 
 from trinity.buffer.buffer_reader import BufferReader
+from trinity.buffer.reader.reader import READER
 from trinity.buffer.storage.queue import QueueStorage
 from trinity.common.config import StorageConfig
 from trinity.common.constants import StorageType
 
 
+@READER.register_module("queue")
 class QueueReader(BufferReader):
     """Reader of the Queue buffer."""
 

@@ -6,6 +6,7 @@ import datasets
 from datasets import Dataset, load_dataset
 
 from trinity.buffer.buffer_reader import BufferReader
+from trinity.buffer.reader.reader import READER
 from trinity.buffer.schema.formatter import FORMATTER
 from trinity.common.config import StorageConfig
 
@@ -93,6 +94,28 @@ class BaseFileReader(BufferReader):
             return self.read(batch_size)
         except StopIteration as e:
             raise StopAsyncIteration from e
+
+
+@READER.register_module("file")
+class FileReader(BaseFileReader):
+    """Provide a unified interface for Experience and Task file readers."""
+
+    def __init__(self, config: StorageConfig):
+        if config.schema_type:
+            self.reader = ExperienceFileReader(config)
+        else:
+            self.reader = TaskFileReader(config)
+
+    def read(self, batch_size: Optional[int] = None) -> List:
+        return self.reader.read(batch_size)
+
+    def read_with_indices(self, indices: List[int]) -> List:
+        """Read tasks with indices."""
+        return self.reader.read_with_indices(indices)
+
+    async def read_with_indices_async(self, indices: List[int]) -> List:
+        """Read tasks with indices asynchronously."""
+        return await self.reader.read_with_indices_async(indices)
 
 
 class ExperienceFileReader(BaseFileReader):
