@@ -15,7 +15,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from trinity.buffer.buffer import get_buffer_reader
 from trinity.buffer.pipelines.experience_pipeline import ExperiencePipeline
-from trinity.buffer.task_scheduler import TasksetScheduler
+from trinity.buffer.task_scheduler import get_taskset_scheduler
 from trinity.common.config import Config
 from trinity.common.constants import (
     ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
@@ -52,7 +52,9 @@ class Explorer:
         self.models, self.auxiliary_models = create_inference_models(config)
         self.experience_pipeline = self._init_experience_pipeline()
         self.taskset = (
-            TasksetScheduler(explorer_state, config) if self.config.mode != "serve" else None
+            get_taskset_scheduler(explorer_state=explorer_state, config=config)
+            if self.config.mode in ["explore", "both"]
+            else None
         )
         self.scheduler = None
         self.monitor = MONITOR.get(self.config.monitor.monitor_type)(
