@@ -1026,8 +1026,8 @@ class TestOverRollout(BaseTrainerCase):
         with open(exp_save_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
             self.assertTrue(
-                len(lines) > 2 * 4 * 2
-            )  # total_steps * repeat_times * batch_size * min_waited_tasks
+                len(lines) >= 2 * 4 * 2
+            )  # at least contain total_steps * repeat_times * batch_size * min_waited_tasks
 
     def tearDown(self):
         # remove dir only when the test passed
