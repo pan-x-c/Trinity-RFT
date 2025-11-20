@@ -72,10 +72,10 @@ class SimpleTasksetScheduler(TasksetSchedulerBase):
         self.reader = get_buffer_reader(config.buffer.explorer_input.tasksets[0])
 
     async def read_async(self) -> List:
-        return self.tasksets.read_async
+        return await self.reader.read_async()
 
     def state_dict(self) -> List[Dict]:
-        return [{"current_index": 0}]
+        return [self.reader.state_dict()]
 
     def update(self, pipeline_metrics: Dict) -> None:
         # do nothing here

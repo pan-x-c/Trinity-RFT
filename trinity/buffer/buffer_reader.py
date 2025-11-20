@@ -19,7 +19,7 @@ class BufferReader(ABC):
         raise NotImplementedError
 
     def state_dict(self) -> Dict:
-        return {}
+        raise NotImplementedError
 
     def load_state_dict(self, state_dict: Dict) -> None:
-        pass
+        raise NotImplementedError

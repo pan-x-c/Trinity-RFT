@@ -17,7 +17,7 @@ def get_buffer_reader(config: BufferStorageConfig) -> BufferReader:
         storage_config: StorageConfig = config.to_storage_config()
     else:
         storage_config = config
-    reader_cls = READER.get(storage_config.storage_type.value)
+    reader_cls = READER.get(storage_config.storage_type)
     if reader_cls is None:
         raise ValueError(f"{storage_config.storage_type} not supported.")
     return reader_cls(storage_config)
@@ -29,15 +29,15 @@ def get_buffer_writer(config: BufferStorageConfig) -> BufferWriter:
         storage_config: StorageConfig = config.to_storage_config()
     else:
         storage_config = config
-    if storage_config.storage_type == StorageType.SQL:
+    if storage_config.storage_type == StorageType.SQL.value:
         from trinity.buffer.writer.sql_writer import SQLWriter
 
         return SQLWriter(storage_config)
-    elif storage_config.storage_type == StorageType.QUEUE:
+    elif storage_config.storage_type == StorageType.QUEUE.value:
         from trinity.buffer.writer.queue_writer import QueueWriter
 
         return QueueWriter(storage_config)
-    elif storage_config.storage_type == StorageType.FILE:
+    elif storage_config.storage_type == StorageType.FILE.value:
         from trinity.buffer.writer.file_writer import JSONWriter
 
         return JSONWriter(storage_config)

@@ -101,7 +101,7 @@ class FileReader(BaseFileReader):
     """Provide a unified interface for Experience and Task file readers."""
 
     def __init__(self, config: StorageConfig):
-        if config.schema_type:
+        if config.schema_type and config.schema_type != "task":
             self.reader = ExperienceFileReader(config)
         else:
             self.reader = TaskFileReader(config)
@@ -116,6 +116,12 @@ class FileReader(BaseFileReader):
     async def read_with_indices_async(self, indices: List[int]) -> List:
         """Read tasks with indices asynchronously."""
         return await self.reader.read_with_indices_async(indices)
+
+    def state_dict(self):
+        return self.reader.state_dict()
+
+    def load_state_dict(self, state_dict):
+        return self.reader.load_state_dict(state_dict)
 
 
 class ExperienceFileReader(BaseFileReader):
@@ -143,6 +149,12 @@ class ExperienceFileReader(BaseFileReader):
             experience = self.formatter.format(sample)
             exp_list.append(experience)
         return exp_list
+
+    def state_dict(self):
+        return {"current_index": self.dataset.current_offset}
+
+    def load_state_dict(self, state_dict):
+        self.dataset.current_offset = state_dict["current_index"]
 
 
 class TaskFileReader(BaseFileReader):
@@ -187,3 +199,9 @@ class TaskFileReader(BaseFileReader):
     async def read_with_indices_async(self, indices: List[int]) -> List:
         """Read tasks with indices asynchronously."""
         return self.read_with_indices(indices)
+
+    def state_dict(self):
+        return {"current_index": self.dataset.current_offset}
+
+    def load_state_dict(self, state_dict):
+        self.dataset.current_offset = state_dict["current_index"]

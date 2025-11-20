@@ -1,6 +1,6 @@
 """Reader of the SQL buffer."""
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import ray
 
@@ -16,7 +16,7 @@ class SQLReader(BufferReader):
     """Reader of the SQL buffer."""
 
     def __init__(self, config: StorageConfig) -> None:
-        assert config.storage_type == StorageType.SQL
+        assert config.storage_type == StorageType.SQL.value
         self.wrap_in_ray = config.wrap_in_ray
         self.storage = SQLStorage.get_wrapper(config)
 
@@ -34,3 +34,11 @@ class SQLReader(BufferReader):
                 raise StopAsyncIteration
         else:
             return self.storage.read(batch_size)
+
+    def state_dict(self) -> Dict:
+        # SQL Not supporting state dict yet
+        return {"current_index": 0}
+
+    def load_state_dict(self, state_dict):
+        # SQL Not supporting state dict yet
+        return None
