@@ -1,8 +1,8 @@
 import asyncio
 import time
 import unittest
-from typing import List, Optional
 from collections import defaultdict
+from typing import List, Optional
 
 import ray
 import torch
@@ -818,7 +818,6 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
 
 class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
-
     async def test_runner_state_collection(self):
         ray.init(ignore_reinit_error=True)
         config = get_template_config()
@@ -862,7 +861,9 @@ class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
                     runner_0_state_history[key].add(value)
             self.assertEqual(len(runner_0_state_history["repeat_cnt"]), 2)  # max_repeat_times is 2
             self.assertEqual(len(runner_0_state_history["model_version"]), 1)
-            self.assertEqual(len(runner_0_state_history["running_workflow_id"]), 2)  # split into 2 sub tasks
+            self.assertEqual(
+                len(runner_0_state_history["running_workflow_id"]), 2
+            )  # split into 2 sub tasks
             self.assertEqual(len(runner_0_state_history["begin_time"]), 2)
             self.assertEqual(len(runner_0_state_history["runner_id"]), 1)
 
