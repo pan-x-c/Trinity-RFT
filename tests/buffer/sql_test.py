@@ -75,8 +75,7 @@ class TestSQLBuffer(RayUnittestBaseAysnc):
         )
         sql_writer = SQLWriter(config.to_storage_config())
         tasks = [
-            {"task_id": i, "raw_task": {"question": f"question_{i}", "answer": f"answer_{i}"}}
-            for i in range(total_samples)
+            {"question": f"question_{i}", "answer": f"answer_{i}"} for i in range(total_samples)
         ]
         self.assertEqual(await sql_writer.acquire(), 1)
         sql_writer.write(tasks)
@@ -89,8 +88,8 @@ class TestSQLBuffer(RayUnittestBaseAysnc):
         except StopIteration:
             pass
         self.assertEqual(len(read_tasks), total_samples)
-        self.assertIn("question", read_tasks[0]["raw_task"])
-        self.assertIn("answer", read_tasks[0]["raw_task"])
+        self.assertIn("question", read_tasks[0].raw_task)
+        self.assertIn("answer", read_tasks[0].raw_task)
         db_wrapper = ray.get_actor("sql-test_task_buffer")
         self.assertIsNotNone(db_wrapper)
         self.assertEqual(await sql_writer.release(), 0)

@@ -86,9 +86,6 @@ class _HFBatchReader:
 
 
 class BaseFileReader(BufferReader):
-    def __len__(self):
-        return self.dataset.dataset_size
-
     async def read_async(self, batch_size: Optional[int] = None):
         try:
             return self.read(batch_size)
@@ -123,6 +120,9 @@ class FileReader(BaseFileReader):
     def load_state_dict(self, state_dict):
         return self.reader.load_state_dict(state_dict)
 
+    def __len__(self):
+        return self.reader.__len__()
+
 
 class ExperienceFileReader(BaseFileReader):
     """Reader for SFT / DPO file data."""
@@ -155,6 +155,9 @@ class ExperienceFileReader(BaseFileReader):
 
     def load_state_dict(self, state_dict):
         self.dataset.current_offset = state_dict["current_index"]
+
+    def __len__(self):
+        return self.dataset.dataset_size
 
 
 class TaskFileReader(BaseFileReader):
@@ -205,3 +208,6 @@ class TaskFileReader(BaseFileReader):
 
     def load_state_dict(self, state_dict):
         self.dataset.current_offset = state_dict["current_index"]
+
+    def __len__(self):
+        return self.dataset.dataset_size
