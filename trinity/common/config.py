@@ -670,6 +670,7 @@ class ExplorerConfig:
     # Experimental feature
     over_rollout: OverRolloutConfig = field(default_factory=OverRolloutConfig)
     dynamic_timeout: DynamicTimeoutConfig = field(default_factory=DynamicTimeoutConfig)
+    runner_state_report_interval: int = 0  # report runner state every N seconds, 0 means disable
 
 
 @dataclass
