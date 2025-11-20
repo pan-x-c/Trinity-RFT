@@ -81,7 +81,6 @@ class WorkflowRunner:
             "begin_time": 0,
             "terminate_time": 0,
         }
-        self.lock = asyncio.Lock()
 
     async def prepare(self) -> None:
         """Prepare the runner."""
@@ -170,8 +169,7 @@ class WorkflowRunner:
 
     async def get_runner_state(self) -> Dict:
         """Get the runner state."""
-        async with self.lock:
-            runner_state = self.runner_state.copy()
+        runner_state = self.runner_state.copy()
         runner_state.update(await self.model_wrapper.get_workflow_state())
         return runner_state
 

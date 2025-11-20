@@ -542,7 +542,6 @@ class TestWorkflowStateRecording(unittest.IsolatedAsyncioTestCase):
             for i in range(20):
                 await asyncio.sleep(0.2)
                 new_state = await model_wrapper.get_workflow_state()
-                print(new_state)
                 if new_state.get("step") != old_state.get("step"):
                     old_state = new_state
                     count += 1

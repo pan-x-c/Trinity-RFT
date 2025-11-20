@@ -189,7 +189,6 @@ class Scheduler:
         self.max_repeat_times = config.explorer.max_repeat_times_per_runner
         self.default_batch_size = config.buffer.batch_size
         self.running = False
-        self.runner_states = []
 
         self.runner_num = len(rollout_model) * config.explorer.runner_per_model
         self.runners: Dict[int, RunnerWrapper] = dict()
@@ -268,6 +267,7 @@ class Scheduler:
         self.logger.info("Runner state monitoring loop started.")
         while self.running:
             try:
+                await asyncio.sleep(interval)
                 await asyncio.gather(*[runner.update_state() for runner in self.runners.values()])
             except Exception:
                 self.logger.error(
