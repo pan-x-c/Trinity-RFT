@@ -148,6 +148,7 @@ def get_unittest_dataset_config(dataset_name: str = "countdown", split: str = "t
             name=dataset_name,
             path=os.path.join(os.path.dirname(__file__), "template", "data", "sft_with_tools"),
             split="train",
+            storage_type=StorageType.FILE.value,
             format=FormatConfig(
                 prompt_type=PromptType.MESSAGES,
                 messages_key="messages",
