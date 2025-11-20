@@ -268,6 +268,7 @@ class Scheduler:
         while self.running:
             try:
                 await asyncio.gather(*[runner.update_state() for runner in self.runners.values()])
+                self.print_all_state()
             except Exception:
                 self.logger.error(
                     f"Error in runner state monitoring loop:\n{traceback.format_exc()}"
@@ -598,3 +599,33 @@ class Scheduler:
             if runner_state:
                 result[runner.runner_id] = runner_state
         return result
+
+    def print_all_state(self) -> None:
+        """Print all runners' state in a clear, aligned table format."""
+        all_keys = set()
+        for runner in self.runners.values():
+            runner_state = runner.state
+            if runner_state:
+                all_keys.update(runner_state.keys())
+        all_keys = sorted(all_keys)
+        # Prepare header
+        header = ["runner_id"] + all_keys  # type: ignore [operator]
+        # Prepare rows
+        rows = []
+        for runner in self.runners.values():
+            runner_state = runner.state or {}
+            row = [str(runner.runner_id)]
+            for key in all_keys:
+                value = runner_state.get(key, "-")
+                row.append(str(value))
+            rows.append(row)
+        # Calculate column widths
+        col_widths = [max(len(str(x)) for x in col) for col in zip(header, *rows)]
+        # Print header
+        header_line = " | ".join(str(h).ljust(w) for h, w in zip(header, col_widths))
+        self.logger.info(header_line)
+        self.logger.info("-+-".join("-" * w for w in col_widths))
+        # Print each row
+        for row in rows:
+            line = " | ".join(str(cell).ljust(w) for cell, w in zip(row, col_widths))
+            self.logger.info(line)
