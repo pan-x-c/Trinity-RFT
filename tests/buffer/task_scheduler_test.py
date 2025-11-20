@@ -341,3 +341,18 @@ class TestTaskScheduler(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task_scheduler_state[0]["current_index"], 4)
         # no effect
         task_scheduler.update({"metric1": 0.5})
+
+        task_scheduler = get_taskset_scheduler(
+            {
+                "latest_iteration": 1,
+                "taskset_states": [
+                    {"current_index": 8},
+                ]
+            },
+            config
+        )
+        batch_tasks = await task_scheduler.read_async()
+        self.assertEqual(len(batch_tasks), 4)
+        task_scheduler_state = task_scheduler.state_dict()
+        self.assertEqual(len(task_scheduler_state), 1)
+        self.assertEqual(task_scheduler_state[0]["current_index"], 12)
