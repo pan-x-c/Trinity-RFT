@@ -347,9 +347,9 @@ class TestTaskScheduler(unittest.IsolatedAsyncioTestCase):
                 "latest_iteration": 1,
                 "taskset_states": [
                     {"current_index": 8},
-                ]
+                ],
             },
-            config
+            config,
         )
         batch_tasks = await task_scheduler.read_async()
         self.assertEqual(len(batch_tasks), 4)
