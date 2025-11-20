@@ -267,13 +267,12 @@ class Scheduler:
         self.logger.info("Runner state monitoring loop started.")
         while self.running:
             try:
-                await asyncio.sleep(interval)
                 await asyncio.gather(*[runner.update_state() for runner in self.runners.values()])
             except Exception:
                 self.logger.error(
                     f"Error in runner state monitoring loop:\n{traceback.format_exc()}"
                 )
-                await asyncio.sleep(0.1)
+            await asyncio.sleep(interval)
         self.logger.info("Runner state monitoring loop stopped.")
 
     async def _schedule_pending_tasks(self) -> None:
@@ -354,9 +353,9 @@ class Scheduler:
         self.running = True
         await asyncio.gather(*[self._create_runner(i) for i in range(self.runner_num)])
         self.scheduler_task = asyncio.create_task(self._scheduler_loop())
-        self.monitor_task = asyncio.create_task(self._monitor_runner_state_loop())
         ready_refs = [runner.runner.__ray_ready__.remote() for runner in self.runners.values()]
         await asyncio.gather(*ready_refs)
+        self.monitor_task = asyncio.create_task(self._monitor_runner_state_loop())
         self.logger.info(f"Starting Scheduler with {self.runner_num} runners")
 
     async def stop(self) -> None:

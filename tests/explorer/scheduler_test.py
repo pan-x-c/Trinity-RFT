@@ -822,7 +822,7 @@ class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
         ray.init(ignore_reinit_error=True)
         config = get_template_config()
         config.explorer.runner_per_model = 2
-        config.explorer.runner_state_report_interval = 1
+        config.explorer.runner_state_report_interval = 0.5
         config.explorer.max_repeat_times_per_runner = 2
         config.check_and_update()
         scheduler = Scheduler(config, [DummyModel.remote(), DummyModel.remote()])
@@ -842,6 +842,7 @@ class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
 
         async def monitor_routine():
             runner_0_state_history = defaultdict(set)
+            await asyncio.sleep(0.5)  # wait for first report
             for _ in range(16):
                 await asyncio.sleep(0.3)
                 states = scheduler.get_all_state()
