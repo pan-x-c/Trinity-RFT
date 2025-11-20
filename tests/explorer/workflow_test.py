@@ -602,6 +602,9 @@ class DummyModelWrapper:
     def get_openai_async_client(self):
         return openai.AsyncOpenAI(api_key="EMPTY")
 
+    async def clean_workflow_state(self):
+        return
+
     @property
     async def model_version_async(self):
         return 0
