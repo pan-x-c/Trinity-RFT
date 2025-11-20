@@ -13,7 +13,7 @@ from trinity.common.config import FormatConfig, TaskSelectorConfig, TasksetConfi
 from trinity.common.workflows.workflow import Task
 
 
-@READER.register_module("custom")
+@READER.register_module("custom_reader")
 class CustomReader(TaskFileReader):
     """A custom reader for testing."""
 
@@ -329,6 +329,7 @@ class TestTaskScheduler(unittest.IsolatedAsyncioTestCase):
         config.mode = "explore"
         config.buffer.batch_size = 4
         config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown", "train")
+        config.buffer.explorer_input.taskset.storage_type = "custom_reader"
         config.check_and_update()
 
         task_scheduler = get_taskset_scheduler({}, config)
