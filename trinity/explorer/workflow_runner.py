@@ -75,8 +75,7 @@ class WorkflowRunner:
         self.workflow_instance: Workflow = None
         self.runner_id = runner_id
         self.runner_state = {
-            "runner_id": self.runner_id,
-            "running_workflow_id": None,
+            "workflow_id": None,
             "model_version": None,
             "begin_time": 0,
             "terminate_time": 0,
@@ -133,9 +132,7 @@ class WorkflowRunner:
             self.workflow_instance.set_repeat_times(repeat_times, run_id_base)
             st = time.time()
             await self.model_wrapper.clean_workflow_state()
-            self.runner_state[
-                "running_workflow_id"
-            ] = f"{task.batch_id}/{task.task_id}/{run_id_base}"
+            self.runner_state["workflow_id"] = f"{task.batch_id}/{task.task_id}/{run_id_base}"
             self.runner_state["terminate_time"] = None
             self.runner_state["begin_time"] = st
             exps = await self._run_workflow(self.workflow_instance)
@@ -151,7 +148,7 @@ class WorkflowRunner:
             for i in range(repeat_times):
                 st = time.time()
                 await self.model_wrapper.clean_workflow_state()
-                self.runner_state["running_workflow_id"] = f"{task.batch_id}/{task.task_id}/{i}"
+                self.runner_state["workflow_id"] = f"{task.batch_id}/{task.task_id}/{i}"
                 self.runner_state["terminate_time"] = None
                 self.runner_state["begin_time"] = st
                 new_exps = await self._run_workflow(self.workflow_instance)

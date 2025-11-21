@@ -688,9 +688,8 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 new_state = await runner.get_runner_state()
                 for k, v in new_state.items():
                     state_history[k].add(v)
-            self.assertEqual(len(state_history["runner_id"]), 1)
             self.assertEqual(len(state_history["model_version"]), 1)
-            self.assertEqual(len(state_history["running_workflow_id"]), 3)
+            self.assertEqual(len(state_history["workflow_id"]), 3)
             self.assertEqual(len(state_history["begin_time"]), 3)
             self.assertEqual(len(state_history["step"]), 2)
             return count

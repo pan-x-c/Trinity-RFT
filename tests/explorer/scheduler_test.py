@@ -848,13 +848,12 @@ class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
                 states = scheduler.get_all_state()
                 self.assertEqual(len(states), 4)
                 for state in states.values():
-                    self.assertIn("runner_id", state)
-                    self.assertIn("running_workflow_id", state)
+                    self.assertIn("workflow_id", state)
                     self.assertIn("model_version", state)
                     self.assertIn("begin_time", state)
                     self.assertIn("terminate_time", state)
                     self.assertIn("repeat_cnt", state)
-                ids = scheduler.get_key_state("running_workflow_id")
+                ids = scheduler.get_key_state("workflow_id")
                 self.assertEqual(len(ids), 4)
                 self.assertEqual(len(set(ids.values())), 4)
                 runner_0_state = scheduler.get_runner_state(0)
@@ -863,10 +862,9 @@ class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(runner_0_state_history["repeat_cnt"]), 2)  # max_repeat_times is 2
             self.assertEqual(len(runner_0_state_history["model_version"]), 1)
             self.assertEqual(
-                len(runner_0_state_history["running_workflow_id"]), 2
+                len(runner_0_state_history["workflow_id"]), 2
             )  # split into 2 sub tasks
             self.assertEqual(len(runner_0_state_history["begin_time"]), 2)
-            self.assertEqual(len(runner_0_state_history["runner_id"]), 1)
 
         await asyncio.gather(
             monitor_routine(),
