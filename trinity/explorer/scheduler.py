@@ -312,8 +312,9 @@ class Scheduler:
             return
         else:
             status, exps, runner_id, run_time = async_task.result()
-            self.total_running_time += run_time
-            self.total_completed_tasks += 1
+            if not task.task.is_eval:  # only count running time for non-eval tasks
+                self.total_running_time += run_time
+                self.total_completed_tasks += 1
             task.results.append((status, exps))
             self.busy_runners.pop(runner_id)
             self.idle_runners.add(runner_id)
