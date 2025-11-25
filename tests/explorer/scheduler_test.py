@@ -788,7 +788,9 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         tasks.extend(generate_tasks(0, timeout_num=4, repeat_times=1, timeout_seconds=1))
         for task in tasks:
             task.is_eval = True
-        scheduler.schedule(tasks, batch_id="0/eval")  # eval tasks will not count into dynamic timeout
+        scheduler.schedule(
+            tasks, batch_id="0/eval"
+        )  # eval tasks will not count into dynamic timeout
         statuses, exps = await scheduler.get_results(batch_id="0/eval")
         self.assertEqual(len(statuses), 4)
         self.assertEqual(len(exps), 0)

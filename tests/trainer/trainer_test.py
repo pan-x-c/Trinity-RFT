@@ -1005,7 +1005,9 @@ class TestOverRollout(BaseTrainerCase):
         self.config.algorithm.repeat_times = 4
         self.config.buffer.batch_size = 4
         self.config.buffer.total_steps = 2
-        self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown", "train")
+        self.config.buffer.explorer_input.taskset = get_unittest_dataset_config(
+            "countdown", "train"
+        )
         self.config.buffer.explorer_input.eval_tasksets = [
             get_unittest_dataset_config("countdown", "test")
         ]
