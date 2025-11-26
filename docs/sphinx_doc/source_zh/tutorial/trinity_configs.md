@@ -433,7 +433,7 @@ synchronizer:
 ```yaml
 trainer:
   name: trainer
-  trainer_type: 'verl'
+  trainer_type: "verl"
   trainer_strategy: "fsdp"
   total_steps: 1000
   save_interval: 100
@@ -459,7 +459,7 @@ trainer:
   - `single_process`：整个系统中，仅允许一个进程执行保存，该进程内的多个线程可以并行处理保存任务，不同进程之间串行执行。
   - `single_node`：整个系统中，仅允许一个计算节点执行保存，该节点内的进程和线程可并行工作，不同节点的保存串行执行。
   - `unrestricted`：不限制保存操作，允许多个节点、进程或线程同时保存模型。
-- `save_hf_checkpoint`: 指定保存 HuggingFace 格式检查点的时机，默认为 "last"。可选值：
+- `save_hf_checkpoint`: 指定保存 HuggingFace 格式检查点的时机，默认为 "last"。注意在保存为 HuggingFace 格式会消耗额外的时间、存储空间和显存，可能影响训练性能或导致显存不足错误。可选值：
   - `last`: 仅训练产生的最后一个检查点保存为 HuggingFace 格式。
   - `always`: 所有检查点均保存为 HuggingFace 格式。
   - `never`: 不保存 HuggingFace 格式检查点。
