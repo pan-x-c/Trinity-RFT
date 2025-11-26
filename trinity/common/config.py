@@ -683,11 +683,17 @@ class ExplorerConfig:
 class TrainerConfig:
     name: str = TRAINER_NAME
     trainer_type: str = "verl"
+    trainer_strategy: str = "fsdp"
     save_interval: int = 0
     enable_preview: bool = True  # enable rollout preview in wandb
     total_steps: Optional[
         int
     ] = None  # total training steps, training stops when reaching this step, None means no limit
+
+    save_hf_checkpoint: str = "last"  # whether to save checkpoint in HuggingFace format
+    # "always": save all checkpoints in HF format
+    # "never": never save checkpoint in HF format
+    # "last": only save the last checkpoint in HF format
 
     # trainer configs
     grad_clip: float = 1.0
