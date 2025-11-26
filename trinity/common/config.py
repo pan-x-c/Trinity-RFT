@@ -1223,6 +1223,8 @@ class Config:
                     setattr(new_config, field_name, stage_value)
             if stage.stage_name:
                 new_config.name = f"{self.name}/{stage.stage_name}"
+            # set trainer.save_hf_checkpoint to "last" to make sure next stage can load from HF checkpoint
+            new_config.trainer.save_hf_checkpoint = "last"
             new_config.stages = []
             yield new_config
 
