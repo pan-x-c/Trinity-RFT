@@ -23,8 +23,8 @@ RUN chmod 1777 /tmp && apt update && apt install -y \
     && ln -sf /usr/bin/pip3 /usr/bin/pip
 
 # For Aliyun users: update pip mirror to aliyun to speed up pip install
-# RUN pip config set global.index-url http://mirrors.cloud.aliyuncs.com/pypi/simple/ \
-#    && pip config set install.trusted-host mirrors.cloud.aliyuncs.com
+# ENV PIP_INDEX_URL=http://mirrors.cloud.aliyuncs.com/pypi/simple/
+# ENV PIP_TRUSTED_HOST=mirrors.cloud.aliyuncs.com
 
 ENV VIRTUAL_ENV=/opt/venv
 
