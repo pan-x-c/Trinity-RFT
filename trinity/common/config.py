@@ -1406,6 +1406,11 @@ class Config:
                     self.trainer.max_token_len_per_gpu = math.ceil(
                         2 * self.model.max_model_len / self.trainer.ulysses_sequence_parallel_size  # type: ignore [operator]
                     )
+                if self.trainer.save_hf_checkpoint not in {"last", "always", "never"}:
+                    raise ValueError(
+                        f"Invalid trainer.save_hf_checkpoint: {self.trainer.save_hf_checkpoint}, "
+                        "must be one of 'last', 'always', or 'never'."
+                    )
             else:
                 raise ValueError(f"Invalid trainer type: {self.trainer_type}")
             self.trainer.trainer_config.synchronize_config(self)
