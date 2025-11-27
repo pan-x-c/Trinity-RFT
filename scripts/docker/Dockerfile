@@ -1,3 +1,4 @@
+# This Dockerfile sets up a Trinity-RFT environment with minimal support.
 # Build and run the docker image with the following command:
 #
 # cd <Trinity-RFT root dir>
