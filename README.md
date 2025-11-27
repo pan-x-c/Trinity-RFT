@@ -130,7 +130,7 @@ Trinity-RFT provides functionalities for users with different backgrounds and ob
 Before installing, make sure your system meets the following requirements:
 
 - **Python**: version 3.10 to 3.12 (inclusive)
-- **CUDA**: version >= 12.6
+- **CUDA**: version >= 12.8
 - **GPUs**: at least 2 GPUs
 
 
