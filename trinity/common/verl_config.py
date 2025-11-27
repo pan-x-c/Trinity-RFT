@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from omegaconf import OmegaConf
 
-from trinity.common.config import Config, SynchronizerConfig
+from trinity.common.config import Config, SynchronizerConfig, set_if_none
 from trinity.common.constants import EXPLORER_NAME
 from trinity.utils.log import get_logger
 
@@ -416,8 +416,7 @@ class veRLConfig:
         self.critic.ray_namespace = config.synchronizer.ray_namespace
 
         # Actor / Rollout Config
-        if self.actor_rollout_ref.actor.strategy is None:
-            self.actor_rollout_ref.actor.strategy = config.trainer.trainer_strategy
+        set_if_none(self.actor_rollout_ref.actor, "strategy", config.trainer.trainer_strategy)
         self.actor_rollout_ref.model.path = config.model.model_path
         self.actor_rollout_ref.model.custom_chat_template = config.model.custom_chat_template
         self.actor_rollout_ref.model.rope_scaling = config.model.rope_scaling
@@ -490,8 +489,7 @@ class veRLConfig:
             )
 
         # Critic config
-        if self.critic.strategy is None:
-            self.critic.strategy = config.trainer.trainer_strategy
+        set_if_none(self.critic, "strategy", config.trainer.trainer_strategy)
         self.critic.model.path = config.model.critic_model_path
         self.critic.model.tokenizer_path = config.model.critic_model_path
         self.critic.ppo_mini_batch_size = config.buffer.train_batch_size
