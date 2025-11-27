@@ -38,7 +38,7 @@ RUN pip install --upgrade pip \
         --resume-retries 20 git+https://github.com/NVIDIA/apex.git
 
 # Set Env variables
-j
+
 # WANDB
 # ENV WANDB_API_KEY=
 # ENV WANDB_BASE_URL=
