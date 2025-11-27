@@ -5,6 +5,12 @@ on:
   release:
     types: [published]
 
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'The git ref (branch or tag) to build the Docker image from.'
+        required: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -47,7 +53,7 @@ jobs:
         with:
           context: .
           push: true
-          file: scripts/docker/Dockerfile.uv
+          file: scripts/docker/Dockerfile
           shm-size: 64g
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
