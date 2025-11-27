@@ -42,6 +42,7 @@ RUN . /opt/venv/bin/activate && \
 RUN . /opt/venv/bin/activate && \
     uv pip install -e.[flash_attn] && \
     uv pip install -e .[megatron] && \
+    NVCC_APPEND_FLAGS="--threads 4" APEX_PARALLEL_BUILD=8 \
     uv pip install -v --no-build-isolation \
     --config-settings="--build-option=--cpp_ext" \
     --config-settings="--build-option=--cuda_ext" \
