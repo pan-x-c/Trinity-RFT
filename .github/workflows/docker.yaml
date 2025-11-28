@@ -71,4 +71,4 @@ jobs:
       - name: Cleanup workspace
         if: always()
         run: |
-          sudo rm -rf trinity-${{ github.run_id }} 2>/dev/null
+          rm -rf trinity-${{ github.run_id }} 2>/dev/null
