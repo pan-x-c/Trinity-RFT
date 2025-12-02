@@ -1,4 +1,3 @@
-import sys
 import traceback
 from typing import Any, Type
 
@@ -146,11 +145,6 @@ class Registry(object):
         """
         import importlib
 
-        try:
-            module = importlib.import_module(module_path)
-        except ImportError:
-            self.logger.error(f"system path: {sys.path}")
-            self.logger.error(f"Cannot import module {module_path}")
-            raise ImportError(f"Cannot import module {module_path}")
+        module = importlib.import_module(module_path)
         module_cls = getattr(module, class_name)
         return module_cls
