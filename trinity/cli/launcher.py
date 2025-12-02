@@ -248,12 +248,8 @@ def debug(
     load_plugins()
     config = load_config(config_path)
     config.check_and_update()
+    sys.path.insert(0, os.getcwd())
     config.ray_namespace = DEBUG_NAMESPACE
-    ray.init(
-        namespace=config.ray_namespace,
-        runtime_env={"env_vars": config.get_envs()},
-        ignore_reinit_error=True,
-    )
     from trinity.common.models import create_debug_inference_model
 
     if module == "inference_model":
