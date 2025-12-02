@@ -1,6 +1,5 @@
 import unittest
 
-from trinity.common.config import Config
 from trinity.common.workflows import WORKFLOWS, Workflow
 
 
