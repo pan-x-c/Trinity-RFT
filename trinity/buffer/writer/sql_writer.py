@@ -25,7 +25,7 @@ class SQLWriter(BufferWriter):
 
     async def write_async(self, data):
         if self.wrap_in_ray:
-            return await self.db_wrapper.write.remote(data)
+            await self.db_wrapper.write.remote(data)
         else:
             self.db_wrapper.write(data)
 
