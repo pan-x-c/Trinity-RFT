@@ -270,8 +270,6 @@ class DebugWorkflowRunner(WorkflowRunner):
         await self.sqlite_writer.write_async(exps)
         if status.ok:
             print(f"Task {task.task_id} completed successfully with metrics:\n{status.metrics}")
-            for exp in exps:
-                print(f"Generated experience:\n{exp}")
         else:
             self.logger.error(f"Task {task.task_id} failed with message: {status.message}")
         self.logger.info("Debugging completed.")
