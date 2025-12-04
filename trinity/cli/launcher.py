@@ -376,7 +376,7 @@ def main() -> None:
             args.config,
             args.module,
             args.output_dir,
-            args.disable_ovrwrite,
+            args.disable_overwrite,
             args.enable_profiling,
             args.port,
             args.plugin_dir,

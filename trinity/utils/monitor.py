@@ -213,7 +213,7 @@ class MlflowMonitor(Monitor):
     def log(self, data: dict, step: int, commit: bool = False) -> None:
         """Log metrics."""
         self.console_logger.info(f"Step {step}: {data}")
-        # Replace all '@' in keys with '_at_'， as MLflow does not support '@' in metric names
+        # Replace all '@' in keys with '_at_', as MLflow does not support '@' in metric names
         data = {k.replace("@", "_at_"): v for k, v in data.items()}
         mlflow.log_metrics(metrics=data, step=step)
 
