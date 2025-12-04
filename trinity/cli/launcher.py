@@ -239,7 +239,8 @@ def debug(
     config_path: str,
     module: str,
     output_dir: str = "debug_output",
-    enable_viztracer: bool = False,
+    disable_ovrwrite: bool = False,
+    enable_profiling: bool = False,
     port: int = 8502,
     plugin_dir: str = None,
 ):
@@ -264,7 +265,7 @@ def debug(
     elif module == "workflow":
         from trinity.explorer.workflow_runner import DebugWorkflowRunner
 
-        runner = DebugWorkflowRunner(config, output_dir, enable_viztracer)
+        runner = DebugWorkflowRunner(config, output_dir, enable_profiling, disable_ovrwrite)
         asyncio.run(runner.debug())
     elif module == "viewer":
         from streamlit.web import cli as stcli
@@ -344,6 +345,9 @@ def main() -> None:
         help="The output directory for debug files.",
     )
     debug_parser.add_argument(
+        "--disable-overwrite", action="store_true", help="Disable overwriting the output directory."
+    )
+    debug_parser.add_argument(
         "--enable-profiling",
         action="store_true",
         help="Whether to use viztracer for workflow profiling.",
@@ -372,6 +376,7 @@ def main() -> None:
             args.config,
             args.module,
             args.output_dir,
+            args.disable_ovrwrite,
             args.enable_profiling,
             args.port,
             args.plugin_dir,
