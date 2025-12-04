@@ -239,7 +239,7 @@ def debug(
     config_path: str,
     module: str,
     output_dir: str = "debug_output",
-    disable_ovrwrite: bool = False,
+    disable_overwrite: bool = False,
     enable_profiling: bool = False,
     port: int = 8502,
     plugin_dir: str = None,
@@ -265,7 +265,7 @@ def debug(
     elif module == "workflow":
         from trinity.explorer.workflow_runner import DebugWorkflowRunner
 
-        runner = DebugWorkflowRunner(config, output_dir, enable_profiling, disable_ovrwrite)
+        runner = DebugWorkflowRunner(config, output_dir, enable_profiling, disable_overwrite)
         asyncio.run(runner.debug())
     elif module == "viewer":
         from streamlit.web import cli as stcli

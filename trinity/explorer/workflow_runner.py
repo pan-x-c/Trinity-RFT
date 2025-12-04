@@ -223,14 +223,14 @@ class DebugWorkflowRunner(WorkflowRunner):
         config: Config,
         output_dir: str = "debug_output",
         enable_profiling: bool = False,
-        disable_ovrwrite: bool = False,
+        disable_overwrite: bool = False,
     ) -> None:
         model, auxiliary_models = get_debug_inference_model(config)
         super().__init__(config, model, auxiliary_models, 0)
         self.taskset = get_buffer_reader(config.buffer.explorer_input.tasksets[0])
         self.output_dir = output_dir
         self.enable_profiling = enable_profiling
-        if disable_ovrwrite:
+        if disable_overwrite:
             # if output dir is not empty, change to a new dir with datetime suffix
             if os.path.isdir(self.output_dir) and os.listdir(self.output_dir):
                 suffix = time.strftime("%Y%m%d%H%M%S", time.localtime())
