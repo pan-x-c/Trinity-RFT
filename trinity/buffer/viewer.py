@@ -55,12 +55,10 @@ def render_experience(exp: Experience, exp_index: int, tokenizer):
     logprobs = exp.logprobs
     action_mask = exp.action_mask
 
-    # Assume logprobs length matches response length
-    response_length = len(logprobs)
-    prompt_length = len(token_ids) - response_length
+    prompt_length = exp.prompt_length
 
-    prompt_token_ids = token_ids[:prompt_length]
-    response_token_ids = token_ids[prompt_length:]
+    prompt_token_ids = token_ids[:prompt_length]  # type: ignore [index]
+    response_token_ids = token_ids[prompt_length:]  # type: ignore [index]
 
     # Decode tokens
     prompt_text = (
@@ -228,7 +226,7 @@ def render_experience(exp: Experience, exp_index: int, tokenizer):
     """
 
     # Add each response token
-    for i, (token_text, logprob, mask) in enumerate(zip(response_tokens, logprobs, action_mask)):
+    for i, (token_text, logprob, mask) in enumerate(zip(response_tokens, logprobs, action_mask)):  # type: ignore [arg-type]
         bg_color = get_color_for_action_mask(mask)
 
         # Handle special character display
@@ -317,7 +315,11 @@ def main():
 
     # Page selection (sidebar)
     current_page = st.sidebar.number_input(
-        "Select page", min_value=1, max_value=max(1, total_pages), step=1, value=st.session_state.page
+        "Select page",
+        min_value=1,
+        max_value=max(1, total_pages),
+        step=1,
+        value=st.session_state.page,
     )
     if current_page != st.session_state.page:
         st.session_state.page = current_page
