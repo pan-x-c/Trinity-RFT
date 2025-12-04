@@ -38,7 +38,7 @@ class FrozenLakeAgent:
         )
         if self.current_step > 0 and self.last_action is not None:
             if self.last_observation == observation:
-                prompt = "\nYour last response is invalid. Your position didn't change at all. You may need to recheck your thinking process, action outputted, and the format of response."
+                prompt += "\nYour last response is invalid. Your position didn't change at all. You may need to recheck your thinking process, action outputted, and the format of response."
 
         if self.max_steps is not None and self.max_steps - self.current_step > 0:
             prompt += (
@@ -64,4 +64,5 @@ class FrozenLakeAgent:
         action = self.get_action(response)
         self.last_observation = current_observation
         self.last_action = action
+        self.current_step += 1
         return action

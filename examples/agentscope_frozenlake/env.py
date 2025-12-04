@@ -147,7 +147,7 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
         if mode in ["rgb_array", "ansi"]:
             prev_render_mode = self.render_mode
             self.render_mode = mode
-            obs = self.render()
+            obs = GymFrozenLakeEnv.render(self)
             self.render_mode = prev_render_mode
             return obs
         room_state = copy.deepcopy(self.desc)
