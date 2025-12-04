@@ -619,13 +619,13 @@ class APIWorkflow(Workflow):
         self.raise_except = task.raw_task.get("raise_except", False)
 
     async def run_async(self):
-        response = await self.client.chat.completions.create(
+        _ = await self.client.chat.completions.create(
             model=self.client.model_path,
             messages=[{"role": "user", "content": "Hello!"}],
         )
         if self.raise_except:
             raise RuntimeError("Intentional Exception for testing.")
-        exps = self.model.extract_experience_from_history(response)
+        exps = self.model.extract_experience_from_history()
         exps[0].reward = 0.5
         return exps
 
