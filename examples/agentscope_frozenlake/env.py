@@ -204,7 +204,7 @@ class FrozenLakeEnv(GymFrozenLakeEnv):
 
     def success(self):
         """
-        Check if the agent has reacched the goal (G) or hole (H)
+        Check if the agent has reached the goal (G).
         """
         player_pos = self._get_player_position()
         return self.desc[player_pos] in b"G"
