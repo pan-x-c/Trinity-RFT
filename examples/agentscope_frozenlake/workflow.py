@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
-from trinity.common.workflows.workflow import Workflow, Task
+from trinity.common.workflows.workflow import Task, Workflow
 
 
 class FrozenLakeWorkflow(Workflow):

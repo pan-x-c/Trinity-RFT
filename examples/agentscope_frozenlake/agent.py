@@ -1,4 +1,5 @@
 import re
+
 from agentscope.agent import ReActAgent
 from agentscope.formatter import OpenAIChatFormatter
 from agentscope.message import Msg
@@ -50,7 +51,6 @@ class FrozenLakeAgent:
         return prompt
 
     def get_action(self, msg: Msg) -> str:
-
         response: str = msg.content
         action = INVALID_ACTION
 
@@ -66,9 +66,7 @@ class FrozenLakeAgent:
 
     async def step(self, current_observation: str) -> str:
         prompt = self.get_prompt(current_observation)
-        response = await self.agent.reply(
-            Msg("user", prompt, role="user")
-        )
+        response = await self.agent.reply(Msg("user", prompt, role="user"))
         action = self.get_action(response)
         self.last_observation = current_observation
         self.last_action = action
