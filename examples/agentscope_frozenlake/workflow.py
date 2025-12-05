@@ -10,10 +10,9 @@ from typing import List, Optional
 
 from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
-from trinity.common.workflows.workflow import WORKFLOWS, Task, Workflow
+from trinity.common.workflows.workflow import Workflow, Task
 
 
-@WORKFLOWS.register_module("frozen_lake_agent")
 class FrozenLakeWorkflow(Workflow):
     """
     FrozenLake environment for multi-step workflows.

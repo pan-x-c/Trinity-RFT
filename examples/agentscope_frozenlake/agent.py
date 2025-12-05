@@ -1,3 +1,4 @@
+import re
 from agentscope.agent import ReActAgent
 from agentscope.formatter import OpenAIChatFormatter
 from agentscope.message import Msg
@@ -22,6 +23,7 @@ class FrozenLakeAgent:
             sys_prompt=SYSTEM_PROMPT,
             model=model,
             formatter=OpenAIChatFormatter(),
+            max_iters=2,
         )
         self.response_structure = FrozenLakeAction
         self.current_step = 0
@@ -38,7 +40,7 @@ class FrozenLakeAgent:
         )
         if self.current_step > 0 and self.last_action is not None:
             if self.last_observation == observation:
-                prompt += "\nYour last response is invalid. Your position didn't change at all. You may need to recheck your thinking process, action outputted, and the format of response."
+                prompt += "\nYour last response is invalid. Your position didn't change at all. You may need to recheck your thinking process, action outputted, and the format of response. Remember, you should only output the NEXT ACTION at each interation in the ``` ```. For example, if you want to move up, you should output ```Up```."
 
         if self.max_steps is not None and self.max_steps - self.current_step > 0:
             prompt += (
@@ -47,19 +49,25 @@ class FrozenLakeAgent:
 
         return prompt
 
-    def get_action(self, response: Msg) -> str:
-        if not response.metadata or "action" not in response.metadata:
-            return INVALID_ACTION
-        action = response.metadata["action"]
-        action = action.lower()
-        if action not in VALID_ACTIONS:
-            return INVALID_ACTION
+    def get_action(self, msg: Msg) -> str:
+
+        response: str = msg.content
+        action = INVALID_ACTION
+
+        matches = re.findall(r"```(.*?)```", response, re.DOTALL)
+
+        if matches:
+            last_match_content = matches[-1].strip()
+            action = last_match_content.lower()
+            if action not in VALID_ACTIONS:
+                action = INVALID_ACTION
+
         return action
 
     async def step(self, current_observation: str) -> str:
         prompt = self.get_prompt(current_observation)
         response = await self.agent.reply(
-            Msg("user", prompt, role="user"), structured_model=self.response_structure
+            Msg("user", prompt, role="user")
         )
         action = self.get_action(response)
         self.last_observation = current_observation

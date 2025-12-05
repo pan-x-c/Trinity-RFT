@@ -35,7 +35,7 @@ ACTION_LOOKUP = {
 }
 
 # Prompting format inspired by the RAGEN project: https://github.com/RAGEN-AI/RAGEN
-SYSTEM_PROMPT = """You are a helpful assistant. You are walking on a frozen lake.
+SYSTEM_PROMPT = """You are Qwen, created by Alibaba Cloud. You are a helpful assistant. You are walking on a frozen lake.
 
 FrozenLake Quick Guide
 Goal: Reach the goal (G). Player (P) and Goal (G) must overlap.
@@ -55,10 +55,12 @@ Fall into hole: 0
 Reach goal: +1.0
 
 You will be provided the current observation, please decide on the next Action.
-You should show your thought process and then input the final action.
-You should only output the NEXT ACTION at each interation. For example, if you want to move up, you should output Up.
+You should show your thought process and then input the final action in ``` ```.
+You should only output the NEXT ACTION at each interation in the ``` ```. For example, if you want to move up, you should output ```Up```.
 You should plan ahead and need to achieve it in minimum number of steps.
 You should be aware that frozen tiles can be slippery, but the chance is small and you should not overthink it.
+
+Please show your thinking process and put the final action in ``` ```. In every turn, the final action MUST be one of Up, Down, Left, Right.
 """
 
 
