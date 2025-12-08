@@ -554,9 +554,11 @@ class vLLMRolloutModel(InferenceModel):
             success (bool): Whether the API server is started successfully.
         """
         if not self.config.enable_openai_api:
+            self.logger.info("OpenAI API server is not enabled. Skipping...")
             return False  # Not enabled
 
         if self.api_server_host is not None and self.api_server_port is not None:
+            self.logger.info("OpenAI API server is already running. Skipping...")
             return True  # already running
 
         from trinity.common.models.vllm_patch.api_patch import (
@@ -588,6 +590,9 @@ class vLLMRolloutModel(InferenceModel):
         """
         if not self._prepared:
             raise RuntimeError("Model is not prepared. Please call `prepare()` first.")
+        if self.api_server_host is None or self.api_server_port is None:
+            # openai api is not enabled
+            return None
         return f"http://{self.api_server_host}:{self.api_server_port}"
 
     async def reset_prefix_cache(self) -> None:
