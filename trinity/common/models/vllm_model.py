@@ -114,7 +114,7 @@ class vLLMRolloutModel(InferenceModel):
             **config.lora_kwargs,
         )
         if get_vllm_version() > parse_version("0.10.0"):
-            engine_args.enable_log_requests = False
+            engine_args.enable_log_requests = True
         else:
             engine_args.disable_log_requests = True
         if get_vllm_version() >= parse_version("0.11.0"):
@@ -131,6 +131,7 @@ class vLLMRolloutModel(InferenceModel):
         self.api_server_host = None
         self.api_server_port = None
         self.api_server = None
+        self._prepared = False
         self.async_lock = asyncio.Lock()
 
     async def _initialize_tokenizer(self):
@@ -143,6 +144,17 @@ class vLLMRolloutModel(InferenceModel):
             self.config.model_path, trust_remote_code=True
         )
         self.tokenizer = self.processor.tokenizer
+
+    async def prepare(
+        self,
+    ) -> None:
+        """Prepare the model for inference."""
+        async with self.async_lock:
+            if self._prepared:
+                return
+            await self._collective_rpc("apply_patches")
+            await self.run_api_server()
+            self._prepared = True
 
     async def chat(
         self, messages: List[Dict], lora_request: LoRARequest = None, **kwargs
@@ -540,41 +552,40 @@ class vLLMRolloutModel(InferenceModel):
         Returns:
             success (bool): Whether the API server is started successfully.
         """
-        async with self.async_lock:
-            if not self.config.enable_openai_api:
-                return False  # Not enabled
+        if not self.config.enable_openai_api:
+            return False  # Not enabled
 
-            if self.api_server_host is not None and self.api_server_port is not None:
-                return True  # already running
+        if self.api_server_host is not None and self.api_server_port is not None:
+            return True  # already running
 
-            from trinity.common.models.vllm_patch.api_patch import (
-                run_api_server_in_ray_actor,
+        from trinity.common.models.vllm_patch.api_patch import (
+            run_api_server_in_ray_actor,
+        )
+
+        api_server_host, api_server_port = self.get_available_address()
+        self.api_server = asyncio.create_task(
+            run_api_server_in_ray_actor(
+                self.async_llm,
+                api_server_host,
+                api_server_port,
+                self.config.model_path,
+                self.config.enable_auto_tool_choice,
+                self.config.tool_call_parser,
+                self.config.reasoning_parser,
             )
+        )
+        self.api_server_host = api_server_host
+        self.api_server_port = api_server_port
+        return True
 
-            api_server_host, api_server_port = self.get_available_address()
-            self.api_server = asyncio.create_task(
-                run_api_server_in_ray_actor(
-                    self.async_llm,
-                    api_server_host,
-                    api_server_port,
-                    self.config.model_path,
-                    self.config.enable_auto_tool_choice,
-                    self.config.tool_call_parser,
-                    self.config.reasoning_parser,
-                )
-            )
-            self.api_server_host = api_server_host
-            self.api_server_port = api_server_port
-            return True
-
-    async def get_api_server_url(self) -> Optional[str]:
+    def get_api_server_url(self) -> Optional[str]:
         """Get the URL of the OpenAI API server.
 
         Returns:
             api_url (str): The URL of the OpenAI API server.
         """
-        if not await self.run_api_server():
-            return None
+        if not self._prepared:
+            raise RuntimeError("Model is not prepared. Please call `prepare()` first.")
         return f"http://{self.api_server_host}:{self.api_server_port}"
 
     async def reset_prefix_cache(self) -> None:

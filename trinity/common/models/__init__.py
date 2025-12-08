@@ -152,11 +152,13 @@ def create_debug_inference_model(config: Config) -> None:
         model.engine_num = 1
     rollout_models, auxiliary_models = create_inference_models(config)
     # make sure models are started
+    prepare_refs = []
     for m in rollout_models:
-        ray.get(m.run_api_server.remote())
+        prepare_refs.append(m.prepare.remote())
     for models in auxiliary_models:
         for m in models:
-            ray.get(m.run_api_server.remote())
+            prepare_refs.append(m.prepare.remote())
+    ray.get(prepare_refs)
     logger.info(
         "----------------------------------------------------\n"
         "Inference models started successfully for debugging.\n"
