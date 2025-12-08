@@ -13,7 +13,6 @@ from tests.tools import (
     get_model_path,
     get_template_config,
 )
-from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME
 from trinity.common.models import create_inference_models
 from trinity.common.models.model import ModelWrapper
 from trinity.common.models.utils import (
@@ -32,10 +31,10 @@ def print_debug(*args):
 async def prepare_engines(engines, auxiliary_engines):
     prepare_model_refs = []
     for engine in engines:
-        prepare_model_refs.append(engine.prepare_model.remote())
-    for aux_engines in auxiliary_engines.values():
-        for engine in aux_engines:
-            prepare_model_refs.append(engine.prepare_model.remote())
+        prepare_model_refs.append(engine.prepare.remote())
+    for engines in auxiliary_engines:
+        for engine in engines:
+            prepare_model_refs.append(engine.prepare.remote())
     await asyncio.gather(*prepare_model_refs)
 
 
@@ -505,20 +504,13 @@ class TestLogprobs(RayUnittestBaseAysnc):
     async def test_logprobs_api(self):
         await prepare_engines(self.engines, self.auxiliary_engines)
         await self.model_wrapper.prepare()
-        master_address, master_port = await self.engines[0].get_available_address.remote()
-        await self.engines[0].init_process_group.remote(
-            master_address,
-            master_port,
-            world_size=1,
-            rank_offset=0,
-            group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
-            explorer_name=self.config.explorer.name,
-            timeout=20,
-        )
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": USER_PROMPT},
         ]
+
+        # Test openai api logprobs with different temperature
+
         self.model_client = self.model_wrapper.get_openai_async_client()
         _ = await self.model_client.chat.completions.create(
             model=self.model_client.model_path,
@@ -572,24 +564,7 @@ class TestLogprobs(RayUnittestBaseAysnc):
         self.assertTrue(torch.allclose(response_2.logprobs, logprobs_4_response, rtol=0.8))
         self.assertFalse(torch.allclose(response_2.logprobs, logprobs_3_response, rtol=0.8))
 
-    async def test_logprobs(self):
-        # use init process group to apply patches
-        await prepare_engines(self.engines, self.auxiliary_engines)
-        await self.model_wrapper.prepare()
-        master_address, master_port = await self.engines[0].get_available_address.remote()
-        await self.engines[0].init_process_group.remote(
-            master_address,
-            master_port,
-            world_size=1,
-            rank_offset=0,
-            group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
-            explorer_name=self.config.explorer.name,
-            timeout=20,
-        )
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": USER_PROMPT},
-        ]
+        # test vllm engine logprobs with different temperature
         response_1 = self.model_wrapper.chat(
             messages, n=1, temperature=1.0, logprobs=True, max_tokens=15
         )[0]
@@ -629,6 +604,56 @@ class TestLogprobs(RayUnittestBaseAysnc):
         self.assertFalse(torch.allclose(response_1.logprobs, logprobs_2_response, rtol=0.5))
         self.assertTrue(torch.allclose(response_2.logprobs, logprobs_4_response, rtol=0.8))
         self.assertFalse(torch.allclose(response_2.logprobs, logprobs_3_response, rtol=0.8))
+
+        # test openai api and vllm engine logprobs consistency
+        await self.model_wrapper.clean_workflow_state()
+        _ = await self.model_client.chat.completions.create(
+            model=self.model_client.model_path,
+            messages=messages,
+            n=1,
+            temperature=1.0,
+            logprobs=0,
+            max_tokens=1,
+        )
+        response_openai_1 = self.model_wrapper.extract_experience_from_history()[0]
+        _ = await self.model_client.chat.completions.create(
+            model=self.model_client.model_path,
+            messages=messages,
+            n=1,
+            temperature=0.8,
+            logprobs=0,
+            max_tokens=1,
+        )
+        response_openai_2 = self.model_wrapper.extract_experience_from_history()[0]
+        response_vllm_1 = self.model_wrapper.chat(
+            messages,
+            n=1,
+            temperature=1.0,
+            logprobs=0,
+            max_tokens=1,
+        )[0]
+        response_vllm_2 = self.model_wrapper.chat(
+            messages,
+            n=1,
+            temperature=0.8,
+            logprobs=0,
+            max_tokens=1,
+        )[0]
+        self.assertEqual(len(response_openai_1.tokens), len(response_vllm_1.tokens))
+        self.assertTrue(
+            torch.allclose(
+                response_openai_1.logprobs,
+                response_vllm_1.logprobs,
+                rtol=0.1,
+            )
+        )
+        self.assertTrue(
+            torch.allclose(
+                response_openai_2.logprobs,
+                response_vllm_2.logprobs,
+                rtol=0.1,
+            )
+        )
 
 
 class TestAsyncAPIServer(RayUnittestBaseAysnc):

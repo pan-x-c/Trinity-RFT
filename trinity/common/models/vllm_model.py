@@ -106,6 +106,7 @@ class vLLMRolloutModel(InferenceModel):
                 "top_p": config.top_p,
                 "top_k": config.top_k,
                 "max_new_tokens": config.max_response_tokens,
+                "repetition_penalty": config.repetition_penalty,
             },
             disable_log_stats=True,
             enable_lora=config.enable_lora,
@@ -568,10 +569,11 @@ class vLLMRolloutModel(InferenceModel):
                 self.async_llm,
                 api_server_host,
                 api_server_port,
-                self.config.model_path,
+                self.config.model_path,  # type: ignore [arg-type]
                 self.config.enable_auto_tool_choice,
                 self.config.tool_call_parser,
                 self.config.reasoning_parser,
+                self.config.enable_log_requests,
             )
         )
         self.api_server_host = api_server_host
@@ -595,7 +597,7 @@ class vLLMRolloutModel(InferenceModel):
         return self.model_version
 
     def get_model_path(self) -> str:
-        return self.config.model_path
+        return self.config.model_path  # type: ignore [return-value]
 
     def get_lora_request(self, lora_path: Optional[str] = None) -> LoRARequest:
         assert self.config.lora_modules is not None

@@ -153,11 +153,8 @@ def create_debug_inference_model(config: Config) -> None:
     rollout_models, auxiliary_models = create_inference_models(config)
     # make sure models are started
     prepare_refs = []
-    for m in rollout_models:
-        prepare_refs.append(m.prepare.remote())
-    for models in auxiliary_models:
-        for m in models:
-            prepare_refs.append(m.prepare.remote())
+    prepare_refs = [m.prepare.remote() for m in rollout_models]
+    prepare_refs.extend(m.prepare.remote() for models in auxiliary_models for m in models)
     ray.get(prepare_refs)
     logger.info(
         "----------------------------------------------------\n"
