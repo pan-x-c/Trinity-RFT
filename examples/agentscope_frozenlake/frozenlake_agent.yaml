@@ -1,24 +1,30 @@
 project: "FrozenLake"
-name: "Qwen3-1.7B-agent"
+name: "Qwen2.5-3B-Instruct-agent"
 checkpoint_root_dir: ${oc.env:TRINITY_CHECKPOINT_ROOT_DIR,./checkpoints}
 algorithm:
   algorithm_type: multi_step_grpo
-  repeat_times: 8
+  repeat_times: 16
   kl_loss_fn: "low_var_kl"
+  kl_loss_fn_args:
+    kl_coef: 0
+  advantage_fn_args:
+    epsilon: 1e-6
+    std_threshold: 0.0001
+    enable_step_norm: true
   optimizer:
     lr: 1e-6
 model:
-  model_path: ${oc.env:TRINITY_MODEL_PATH,Qwen/Qwen3-1.7B}
-  max_response_tokens: 1024
+  model_path: ${oc.env:TRINITY_MODEL_PATH,Qwen/Qwen2.5-3B-Instruct}
+  max_response_tokens: 2048
   max_model_len: 25600
-  temperature: 0.7
+  temperature: 1.0
 cluster:
   node_num: 1
   gpu_per_node: 8
 buffer:
   total_epochs: 1
   batch_size: 32
-  train_batch_size: 2048
+  train_batch_size: 1024
   explorer_input:
     taskset:
       name: frozenlake
@@ -29,19 +35,17 @@ buffer:
         env_max_steps: 8
         agent_max_steps: 10
         is_slippery: false
-    eval_tasksets:
-      - name: frozenlake
-        storage_type: file
-        path: ${oc.env:TRINITY_TASKSET_PATH}
-        split: test
-        workflow_args:
-          env_max_steps: 8
-          agent_max_steps: 10
-          is_slippery: false
-        repeat_times: 4
-        rollout_args:
-          temperature: 0.1
     default_workflow_type: 'examples.agentscope_frozenlake.workflow.FrozenLakeWorkflow'
+  trainer_input:
+    experience_buffer:
+      name: frozenlake_experience_buffer
+      storage_type: queue
+      max_read_timeout: 7200
+      replay_buffer:
+        enable: true
+        priority_fn: linear_decay
+        priority_fn_args:
+          decay: 0.1
 explorer:
   eval_on_startup: true
   eval_interval: 20
@@ -52,10 +56,11 @@ explorer:
     enable_chunked_prefill: true
     enforce_eager: false
     enable_openai_api: true
+    enable_log_requests: true
     enable_history: true
     enable_auto_tool_choice: true
     tool_call_parser: hermes
-    reasoning_parser: deepseek_r1
+    # reasoning_parser: deepseek_r1  # if you use Qwen3 series, uncomment this line
     enable_thinking: true
     dtype: bfloat16
     seed: 42
