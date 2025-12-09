@@ -51,7 +51,7 @@ class FrozenLakeAgent:
         return prompt
 
     def get_action(self, msg: Msg) -> str:
-        response: str = msg.content
+        response: str = msg.content if isinstance(msg.content, str) else msg.content[0].get("text")
         action = INVALID_ACTION
 
         matches = re.findall(r"```(.*?)```", response, re.DOTALL)
