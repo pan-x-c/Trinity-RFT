@@ -16,7 +16,7 @@ cd examples/grpo_frozen_lake
 python get_frozen_lake_data.py --test_size 50 --map_max_size 10
 ```
 
-The training result is shown below, demonstrating the increase in reward over training steps:
+The training result is shown below, demonstrating the reward during training and evaluation phases:
 
 ![](../../docs/sphinx_doc/assets/agentscope_frozenlake_reward_train.png)
 ![](../../docs/sphinx_doc/assets/agentscope_frozenlake_reward_bench.png)
