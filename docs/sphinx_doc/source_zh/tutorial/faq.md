@@ -206,7 +206,7 @@ model.load_state_dict(load_fsdp_state_dict_from_verl_checkpoint(ckp_path))
 **A:** Trinity-RFT 以 veRL 作为 trainer 后端，并在其基础上扩展了更模块化和灵活的架构。主要区别包括：
 
 - **模块化算法**：Trinity-RFT 将 veRL `core_algos.py` 中的算法相关组件（如优势函数、损失函数）提取为独立模块，便于用户实现和注册新算法，无需修改核心代码。
-- **Explorer 与 Trainer 分离**：Trinity-RFT 用独立 Explorer 模块替代 veRL 的 rollout model，专门负责 agent 与环境交互，支持更灵活的 workflow 设计和 RFT 模式（如 one-step off-policy）。
+- **Explorer 与 Trainer 分离**：Trinity-RFT 用独立 Explorer 模块替代 veRL 的 rollout model，专门负责 agent 与环境交互，支持更灵活的 workflow 设计和 rollout-training 调度。
 - **全生命周期数据通路**：Trinity-RFT 在 Explorer 和 Trainer 之间增加 Buffer 模块，提供完整的数据存储、处理和采样通路，支持经验回放、优先采样等高级数据处理策略。
 
 我们还提供了 Trinity-RFT 与 veRL 及其衍生系统（如 [rLLM](https://github.com/rllm-org/rllm)）的基准对比，详见 [Benchmark](https://github.com/modelscope/Trinity-RFT/tree/main/benchmark)。
