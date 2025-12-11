@@ -1,6 +1,6 @@
 """Reader of the buffer."""
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 class BufferReader(ABC):
@@ -13,3 +13,18 @@ class BufferReader(ABC):
     @abstractmethod
     async def read_async(self, batch_size: Optional[int] = None) -> List:
         """Read from buffer asynchronously."""
+
+    def __len__(self) -> int:
+        """Get the number of samples in buffer."""
+        raise NotImplementedError
+
+    def state_dict(self) -> Dict:
+        """Return the state of the reader as a dict.
+        Returns:
+            A dict containing the reader state. At minimum, it should contain
+            the `current_index` field.
+        """
+        raise NotImplementedError
+
+    def load_state_dict(self, state_dict: Dict) -> None:
+        raise NotImplementedError

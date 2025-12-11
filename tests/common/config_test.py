@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """Test cases for Config modules."""
 import datetime
+import math
 import os
 import shutil
 import unittest
 
-from tests.tools import get_template_config
+from tests.tools import get_template_config, get_unittest_dataset_config
 from trinity.common.config import InferenceModelConfig, load_config
 
 CHECKPOINT_ROOT_DIR = os.path.join(os.path.dirname(__file__), "temp_checkpoint_dir")
@@ -31,7 +32,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.trainer.trainer_config.trainer.project_name, config.project)
         self.assertEqual(config.trainer.trainer_config.trainer.experiment_name, config.name)
         self.assertEqual(
-            config.buffer.explorer_input.taskset.repeat_times, config.algorithm.repeat_times
+            config.buffer.explorer_input.tasksets[0].repeat_times, config.algorithm.repeat_times
         )
         self.assertEqual(config.model.model_path, config.model.critic_model_path)
         self.assertEqual(config.model.model_path, config.explorer.rollout_model.model_path)
@@ -90,6 +91,95 @@ class TestConfig(unittest.TestCase):
         config._update_config_from_ray_cluster()
         self.assertEqual(config.cluster.node_num, 2)
         self.assertEqual(config.cluster.gpu_per_node, 2)
+
+    def test_default_workflow(self):
+        config = get_template_config()
+        config.buffer.explorer_input.default_workflow_type = "simple_workflow"
+        config.buffer.explorer_input.default_eval_workflow_type = "math_boxed_workflow"
+        config.buffer.explorer_input.eval_tasksets.append(get_unittest_dataset_config("gsm8k"))
+        st = get_unittest_dataset_config("countdown")
+        st.default_workflow_type = None
+        config.buffer.explorer_input.eval_tasksets.append(st)
+        config.check_and_update()
+        self.assertEqual(
+            config.buffer.explorer_input.eval_tasksets[0].default_workflow_type,
+            "math_workflow",
+        )
+        self.assertEqual(
+            config.buffer.explorer_input.eval_tasksets[1].default_workflow_type,
+            "math_boxed_workflow",
+        )
+        self.assertEqual(
+            config.buffer.explorer_input.tasksets[0].default_workflow_type,
+            "simple_workflow",
+        )
+
+    def test_max_token_len_per_gpu_set_correctly(self):
+        config = get_template_config()
+        config.model.max_model_len = 8192
+        config.trainer.ulysses_sequence_parallel_size = 2
+        config.trainer.max_token_len_per_gpu = None
+        config.check_and_update()
+        self.assertIsNotNone(config.trainer.trainer_config)
+        expected_max_token_len = math.ceil(
+            (2 * config.model.max_model_len) / config.trainer.ulysses_sequence_parallel_size
+        )
+        self.assertEqual(
+            config.trainer.trainer_config.actor_rollout_ref.actor.ppo_max_token_len_per_gpu,
+            expected_max_token_len,
+        )
+        self.assertEqual(
+            config.trainer.trainer_config.actor_rollout_ref.ref.log_prob_max_token_len_per_gpu,
+            expected_max_token_len,
+        )
+        self.assertEqual(
+            config.trainer.trainer_config.critic.ppo_max_token_len_per_gpu,
+            expected_max_token_len,
+        )
+
+    def test_optimizer_config_propagation(self):
+        config = get_template_config()
+        config.algorithm.optimizer.lr = 1e-4
+        config.algorithm.optimizer.weight_decay = 0.05
+        config.algorithm.optimizer.clip_grad = 2.0
+        config.algorithm.optimizer.lr_decay_steps = 1000
+        config.algorithm.optimizer.lr_decay_style = "cosine"
+        config.algorithm.optimizer.lr_warmup_init = 1e-7
+        config.algorithm.optimizer.min_lr = 1e-6
+        config.check_and_update()
+        self.assertEqual(config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr, 1e-4)
+        self.assertEqual(
+            config.trainer.trainer_config.actor_rollout_ref.actor.optim.weight_decay, 0.05
+        )
+        self.assertEqual(config.trainer.trainer_config.actor_rollout_ref.actor.optim.clip_grad, 2.0)
+        self.assertEqual(
+            config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr_decay_steps, 1000
+        )
+        self.assertEqual(
+            config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr_decay_style, "cosine"
+        )
+        self.assertEqual(
+            config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr_warmup_init, 1e-7
+        )
+        self.assertEqual(config.trainer.trainer_config.actor_rollout_ref.actor.optim.min_lr, 1e-6)
+        # critic optimizer should not be affected
+        self.assertEqual(config.trainer.trainer_config.critic.optim.lr, 1e-5)
+        self.assertEqual(config.trainer.trainer_config.critic.optim.weight_decay, 0.01)
+        self.assertEqual(config.trainer.trainer_config.critic.optim.lr_decay_style, "constant")
+        self.assertEqual(config.trainer.trainer_config.critic.optim.clip_grad, 1.0)
+
+    def test_chat_template_path(self):
+        config = get_template_config()
+        config.model.chat_template_path = "tests/template/custom_chat_template.j2"
+        config.check_and_update()
+        self.assertIsNotNone(config.model.custom_chat_template)
+        self.assertEqual(
+            config.model.custom_chat_template,
+            config.buffer.explorer_input.tasksets[0].format.chat_template,
+        )
+        self.assertEqual(
+            config.model.custom_chat_template, config.explorer.rollout_model.chat_template
+        )
 
     def tearDown(self):
         if os.path.exists(CHECKPOINT_ROOT_DIR):

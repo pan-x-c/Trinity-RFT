@@ -2,6 +2,7 @@
 """Test for the workflow module"""
 import asyncio
 import unittest
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 from unittest import mock
@@ -474,7 +475,7 @@ class WorkflowTest(unittest.TestCase):
         (DummyAsyncMultiTurnWorkflow,),
     ],
 )
-class MultiTurnWorkflowTest(unittest.TestCase):
+class MultiTurnWorkflowTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # configure the model
         self.config = get_template_config()
@@ -489,7 +490,8 @@ class MultiTurnWorkflowTest(unittest.TestCase):
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
 
-    def test_multi_turn_workflow(self):
+    async def test_multi_turn_workflow(self):
+        await asyncio.gather(*[engine.prepare.remote() for engine in self.engines])
         task = Task(
             workflow=self.workflow_cls,
             repeat_times=3,
@@ -499,13 +501,55 @@ class MultiTurnWorkflowTest(unittest.TestCase):
         workflow = task.to_workflow(self.model_wrapper)
         workflow.set_repeat_times(2, run_id_base=0)
         if workflow.asynchronous:
-            answer = asyncio.run(workflow.run_async())
+            answer = await workflow.run_async()
         else:
             answer = workflow.run()
         self.assertEqual(len(answer), 2)
 
     def tearDown(self):
         ray.shutdown(_exiting_interpreter=True)
+
+
+class StateRecordingWorkflow(Workflow):
+    is_async: bool = True
+
+    def __init__(self, *, task, model: ModelWrapper, auxiliary_models):
+        super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
+        self.wait_time = task.workflow_args.get("wait_time", 1)
+
+    async def run_async(self):
+        for i in range(self.wait_time):
+            await self.model.set_workflow_state({"step": i})
+            await asyncio.sleep(1)
+        return [Experience(tokens=Tensor([0, 1, 2]), prompt_length=1, reward=1.0)]
+
+
+class TestWorkflowStateRecording(unittest.IsolatedAsyncioTestCase):
+    async def test_workflow_state_recording(self):
+        model = MagicMock()
+        model_wrapper = ModelWrapper(model, engine_type="vllm")
+
+        task = Task(
+            workflow=StateRecordingWorkflow,
+            repeat_times=3,
+            raw_task={},
+            workflow_args={"wait_time": 3},
+        )
+        workflow = task.to_workflow(model_wrapper)
+
+        async def monitor_routine():
+            old_state = {}
+            count = 0
+            for i in range(20):
+                await asyncio.sleep(0.2)
+                new_state = await model_wrapper.get_workflow_state()
+                if new_state.get("step") != old_state.get("step"):
+                    old_state = new_state
+                    count += 1
+            self.assertEqual(count, 3)
+            return count
+
+        await asyncio.gather(*[monitor_routine(), workflow.run_async()])
 
 
 class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
@@ -559,9 +603,32 @@ class DummyModelWrapper:
     def get_openai_async_client(self):
         return openai.AsyncOpenAI(api_key="EMPTY")
 
+    async def clean_workflow_state(self):
+        return
+
     @property
     async def model_version_async(self):
         return 0
+
+
+class APIWorkflow(Workflow):
+    is_async: bool = True
+
+    def __init__(self, model: ModelWrapper, task: Task, auxiliary_models=None):
+        super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
+        self.client = model.get_openai_async_client()
+        self.raise_except = task.raw_task.get("raise_except", False)
+
+    async def run_async(self):
+        _ = await self.client.chat.completions.create(
+            model=self.client.model_path,
+            messages=[{"role": "user", "content": "Hello!"}],
+        )
+        if self.raise_except:
+            raise RuntimeError("Intentional Exception for testing.")
+        exps = self.model.extract_experience_from_history()
+        exps[0].reward = 0.5
+        return exps
 
 
 class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
@@ -604,3 +671,96 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(status.ok)
             self.assertIsInstance(exps, list)
             self.assertEqual(len(exps), 2)
+
+    async def test_workflow_runner_get_state(self):
+        config = get_template_config()
+
+        async def mock_get_api_server_url_remote():
+            return None
+
+        async def mock_get_model_version_remote():
+            return 1
+
+        model = MagicMock()
+        model.get_api_server_url.remote = MagicMock(side_effect=mock_get_api_server_url_remote)
+        model.get_model_version.remote = MagicMock(side_effect=mock_get_model_version_remote)
+
+        runner = WorkflowRunner(
+            config,
+            model=model,
+            auxiliary_models=[],
+            runner_id=1,
+        )
+        await runner.prepare()
+
+        task = Task(
+            workflow=StateRecordingWorkflow,
+            raw_task={},
+            workflow_args={"wait_time": 2},
+            batch_id=1,
+            task_id=2,
+        )
+
+        async def monitor_routine():
+            state_history = defaultdict(set)
+            count = 0
+            for i in range(20):
+                await asyncio.sleep(0.4)
+                new_state = await runner.get_runner_state()
+                for k, v in new_state.items():
+                    state_history[k].add(v)
+            self.assertEqual(len(state_history["model_version"]), 1)
+            self.assertEqual(len(state_history["workflow_id"]), 3)
+            self.assertEqual(len(state_history["begin_time"]), 3)
+            self.assertEqual(len(state_history["step"]), 2)
+            return count
+
+        await asyncio.gather(
+            *[monitor_routine(), runner.run_task(task, repeat_times=3, run_id_base=0)]
+        )
+
+    async def test_workflow_with_openai(self):
+        config = get_template_config()
+        config.mode = "explore"
+        config.model.model_path = get_model_path()
+        config.explorer.rollout_model.engine_num = 1
+        config.explorer.rollout_model.enable_openai_api = True
+        config.explorer.rollout_model.enable_history = True
+        config.check_and_update()
+        engines, auxiliary_engines = create_inference_models(config)
+        await asyncio.gather(*[engine.prepare.remote() for engine in engines])
+        runner = WorkflowRunner(
+            config,
+            model=engines[0],
+            auxiliary_models=[],
+            runner_id=0,
+        )
+        await runner.prepare()
+        tasks = [
+            Task(
+                workflow=APIWorkflow,
+                raw_task={"raise_except": True},
+                repeat_times=2,
+            ),
+            Task(
+                workflow=APIWorkflow,
+                raw_task={},
+                repeat_times=2,
+            ),
+        ]
+
+        status, exps = await runner.run_task(
+            tasks[0], repeat_times=2, run_id_base=0
+        )  # test exception handling
+        self.assertEqual(status.ok, False)
+        self.assertEqual(len(exps), 0)
+        exps = runner.model_wrapper.extract_experience_from_history(clear_history=False)
+        self.assertEqual(len(exps), 1)
+        status, exps = await runner.run_task(tasks[1], repeat_times=2, run_id_base=0)  # normal run
+        self.assertEqual(status.ok, True)
+        self.assertEqual(len(exps), 2)
+        exps = runner.model_wrapper.extract_experience_from_history(clear_history=False)
+        self.assertEqual(len(exps), 0)
+
+    def tearDown(self):
+        ray.shutdown(_exiting_interpreter=True)

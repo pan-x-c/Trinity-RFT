@@ -1,4 +1,4 @@
-import time
+import asyncio
 from collections import defaultdict
 from typing import List, Tuple
 
@@ -109,9 +109,7 @@ def create_inference_models(
                 config=config.explorer.rollout_model,
             )
         )
-    if config.explorer.rollout_model.enable_openai_api:
-        for engine in rollout_engines:
-            engine.run_api_server.remote()
+
     if config.explorer.rollout_model.enable_history:
         logger.info(
             "Model History recording is enabled. Please periodically extract "
@@ -141,18 +139,12 @@ def create_inference_models(
                 .remote(config=model_config)
             )
         auxiliary_engines.append(engines)
-    # all auxiliary engines run api server
-    for engines in auxiliary_engines:
-        for engine in engines:
-            engine.run_api_server.remote()
 
     return rollout_engines, auxiliary_engines
 
 
-def create_debug_inference_model(config: Config) -> None:
+async def create_debug_inference_model(config: Config) -> None:
     """Create inference models for debugging."""
-    import ray
-
     logger = get_logger(__name__)
     logger.info("Creating inference models for debugging...")
     # only create one engine for each model
@@ -161,11 +153,9 @@ def create_debug_inference_model(config: Config) -> None:
         model.engine_num = 1
     rollout_models, auxiliary_models = create_inference_models(config)
     # make sure models are started
-    for m in rollout_models:
-        ray.get(m.get_model_path.remote())
-    for models in auxiliary_models:
-        for m in models:
-            ray.get(m.get_model_path.remote())
+    prepare_refs = [m.prepare.remote() for m in rollout_models]
+    prepare_refs.extend(m.prepare.remote() for models in auxiliary_models for m in models)
+    await asyncio.gather(*prepare_refs)
     logger.info(
         "----------------------------------------------------\n"
         "Inference models started successfully for debugging.\n"
@@ -175,7 +165,7 @@ def create_debug_inference_model(config: Config) -> None:
 
     try:
         while True:
-            time.sleep(1)
+            await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("Exiting...")
 

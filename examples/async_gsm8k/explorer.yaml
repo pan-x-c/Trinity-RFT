@@ -8,7 +8,7 @@ algorithm:
 model:
   model_path: ${oc.env:TRINITY_MODEL_PATH,Qwen/Qwen2.5-1.5B-Instruct}
   max_response_tokens: 1024
-  max_model_len: 1280
+  max_model_len: 2048
 cluster:
   node_num: 1
   gpu_per_node: 4
@@ -19,7 +19,7 @@ buffer:
     taskset:
       name: gsm8k
       storage_type: file
-      path: 'openai/gsm8k'
+      path: ${oc.env:TRINITY_TASKSET_PATH,openai/gsm8k}
       subset_name: 'main'
       split: train
       format:
@@ -28,7 +28,7 @@ buffer:
       rollout_args:
         temperature: 1.0
         logprobs: 0
-    default_workflow_type: 'math_workflow'
+      default_workflow_type: 'math_workflow'
   trainer_input:
     experience_buffer:
       name: gsm8k_buffer

@@ -82,7 +82,7 @@ checkpoint_root_dir: ${oc.env:TRINITY_CHECKPOINT_ROOT_DIR,./checkpoints}   # TRI
   - `explore`: Only launches the explorer.
   - `bench`: Used for benchmarking.
 - `checkpoint_root_dir`: Root directory where all checkpoints and logs will be saved. Checkpoints for this experiment will be stored in `<checkpoint_root_dir>/<project>/<name>/`.
-- `continue_from_checkpoint`: If set to `true`, the experiment will continue from the latest checkpoint in the checkpoint path (if any); otherwise, it will rename the current experiment to `<name>_<timestamp>` and start a new experiment.
+- `continue_from_checkpoint`: If set to `true`, the experiment will continue from the latest checkpoint in the checkpoint path (if any); otherwise, it will rename the current experiment to `<name>_<timestamp>` and start a new experiment. Due to our decoupled design, during recovery from a checkpoint, we can only guarantee that the Trainer's model parameters and its optional auxiliary buffers (`auxiliary_buffers`) are restored to their latest checkpointed states, while the Explorer and Experience Buffer cannot be guaranteed to be restored to the same point in time.
 - `ray_namespace`: Namespace for the modules launched in the current experiment. If not specified, it will be set to `<project>/<name>`.
 
 ---
@@ -157,18 +157,24 @@ Defines the model paths and token limits.
 model:
   model_path: ${oc.env:MODEL_PATH}  # MODEL_PATH is an environment variable set in advance
   critic_model_path: ${model.model_path}  # use the value of model.model_path
+  custom_chat_template: None
+  chat_template_path: None
   max_model_len: 20480
   max_prompt_tokens: 4096
   max_response_tokens: 16384
   min_response_tokens: 1
+  enable_prompt_truncation: true
 ```
 
 - `model_path`: Path to the model being trained.
 - `critic_model_path`: Optional path to a separate critic model. If empty, defaults to `model_path`.
+- `custom_chat_template`: Optional custom chat template in string format. If not specified, the system will use the default chat template from tokenizer.
+- `chat_template_path`: Optional path to the chat template file in jinja2 type; overrides `custom_chat_template` if set. If not specified, the system will use the default chat template from tokenizer.
 - `max_model_len`: Maximum number of tokens in a sequence. It is recommended to set this value manually. If not specified, the system will attempt to set it to `max_prompt_tokens` + `max_response_tokens`. However, this requires both values to be already set; otherwise, an error will be raised.
 - `max_response_tokens`: Maximum number of tokens allowed in generated responses. Only for `chat` and `generate` methods in `InferenceModel`.
 - `max_prompt_tokens`: Maximum number of tokens allowed in prompts. Only for `chat` and `generate` methods in `InferenceModel`.
 - `min_response_tokens`: Minimum number of tokens allowed in generated responses. Only for `chat` and `generate` methods in `InferenceModel`. Default is `1`. It must be less than `max_response_tokens`.
+- `enable_prompt_truncation`: Whether to truncate the prompt. Default is `true`. If set to `true`, the prompt will be truncated to `max_prompt_tokens` tokens; if set to `false`, the prompt will not be truncated and there is a risk that the prompt length plus response length exceeds `max_model_len`. This function does not work with openai api mode.
 
 ```{tip}
 If you are using the openai API provided by Explorer, only `max_model_len` will take effect, and the value of `max_response_tokens`, `max_prompt_tokens`, and `min_response_tokens` will be ignored. When `max_tokens` is not independently specified, each API call will generate up to `max_model_len - prompt_length` tokens. Therefore, please ensure that the prompt length is less than `max_model_len` when using the API.
@@ -200,6 +206,7 @@ buffer:
   batch_size: 32
   train_batch_size: 256
   total_epochs: 100
+  total_steps: null
 
   explorer_input:
     taskset:
@@ -214,9 +221,6 @@ buffer:
         ...
       buffer_2:
         ...
-
-  default_workflow_type: 'math_workflow'
-  default_reward_fn_type: 'countdown_reward'
 ```
 
 - `batch_size`: Number of tasks used per training step. *Please do not multiply this value by the `algorithm.repeat_times` manually*.
@@ -231,6 +235,9 @@ Defines the dataset(s) used by the explorer for training and evaluation.
 ```yaml
 buffer:
   explorer_input:
+    default_workflow_type: 'math_workflow'
+    default_eval_workflow_type: 'math_workflow'
+    default_reward_fn_type: 'countdown_reward'
     taskset:
       name: countdown_train
       storage_type: file
@@ -262,21 +269,22 @@ buffer:
 ```
 
 - `buffer.explorer_input.taskset`: Task dataset used for training exploration policies.
-- `buffer.explorer_input.eval_taskset`: List of task datasets used for evaluation.
+- `buffer.explorer_input.eval_tasksets`: List of task datasets used for evaluation.
+- `buffer.explorer_input.default_workflow_type`: Default workflow type for all task datasets under `explorer_input` if not specified at the dataset level.
+- `buffer.explorer_input.default_eval_workflow_type`: Default evaluation workflow type for all eval task datasets under `explorer_input` if not specified at the dataset level.
+- `buffer.explorer_input.default_reward_fn_type`: Default reward function type for all task datasets under `explorer_input` if not specified at the dataset level.
 
 The configuration for each task dataset is defined as follows:
 
 - `name`: Name of the dataset. This name will be used as the Ray actor's name, so it must be unique.
 - `storage_type`: How the dataset is stored. Options: `file`, `queue`, `sql`.
   - `file`: The dataset is stored in `jsonl`/`parquet` files. The data file organization is required to meet the huggingface standard. *We recommand using this storage type for most cases.*
-  - `queue`: The dataset is stored in a queue. The queue is a simple FIFO queue that stores the task dataset. *Do not use this storage type for task dataset unless you know what you are doing.*
   - `sql`: The dataset is stored in a SQL database. *This type is unstable and will be optimized in the future versions.*
 - `path`: The path to the task dataset.
-  - For `file` storage type, the path points to the directory that contains the task dataset files.
-  - For `queue` storage type, the path is optional. You can back up the data in the queue by specifying a sqlite database path here.
+  - For `file` storage type, the path points to the directory that contains the task dataset files. It supports loading both local and remote data files in a compatible format with [`datasets.load_dataset()`](https://huggingface.co/docs/datasets/main/en/package_reference/loading_methods#datasets.load_dataset) function.
   - For `sql` storage type, the path points to the sqlite database file.
-- `subset_name`: The subset name of the task dataset. Default is `None`.
-- `split`: The split of the task dataset. Default is `train`.
+- `subset_name`: The subset name of the task dataset, corresponding to the `name` parameter in huggingface datasets `load_dataset` function. Default is `None`.
+- `split`: The split of the task dataset, corresponding to the `split` parameter in huggingface datasets `load_dataset` function. Default is `train`.
 - `repeat_times`: The number of rollouts generated for a task. If not set, it will be automatically set to `algorithm.repeat_times` for `taskset`, and `1` for `eval_tasksets`.
 - `rollout_args`: The parameters for rollout.
   - `temperature`: The temperature for sampling.
@@ -320,7 +328,7 @@ buffer:
     - For `queue` storage type, this field is optional. You can specify a SQLite database or JSON file path here to back up the queue data.
     - For `file` storage type, the path points to the directory containing the dataset files.
     - For `sql` storage type, the path points to the SQLite database file.
-  - `format`: Defines keys for prompts and responses in the dataset.
+  - `format`: Mainly for SFT and DPO algorithm datasets, used to format the extracted data.
     - `prompt_type`: Specifies the type of prompts in the dataset. We support `plaintext`, `messages` for now.
       - `plaintext`: The prompt is in string format.
       - `messages`: The prompt is organized as a message list.
@@ -335,8 +343,11 @@ buffer:
     - `enable_concatenated_multi_turn`: Enable concatenated multi-turn SFT data preprocess. Only for `messages` and only take effect with SFT algorithm.
     - `chat_template`: Specifies the chat template in string format. If not provided, use `model.custom_chat_template`.
   - `max_read_timeout`: The maximum waiting time (in seconds) to read new experience data. If exceeded, an incomplete batch will be returned directly. Only take effect when `storage_type` is `queue`. Default is 1800 seconds (30 minutes).
-  - `use_priority_queue`: Only take effect when `storage_type` is `queue`. If set to `True`, the queue will be a priority queue, which allows for prioritizing certain experiences over others. Default is `False`.
-  - `reuse_cooldown_time`: Only take effect when `storage_type` is `queue` and `use_priority_queue` is `True`. If set, it specifies the cooldown time (in seconds) for reusing experiences. If not specified, the default value is `None`, meaning experiences can not be reused.
+  - `replay_buffer`: Only take effect when `storage_type` is `queue`. Used to configure the replay buffer for experience reuse.
+    - `enable`: Whether to enable the replay buffer. Default is `false`.
+    - `reuse_cooldown_time`: Cooldown time (in seconds) for reusing experiences. If not specified, the default value is `None`, meaning experiences can not be reused.
+    - `priority_fn`: Experience priority function used to determine the order of experience reuse. Currently supports `linear_decay` and `linear_decay_use_count_control_randomization`.
+    - `priority_fn_args`: A dictionary of arguments passed to the priority function, specific parameters depend on the selected priority function.
 - `auxiliary_buffers`: Optional buffers used for trainer. It is a dictionary where each key is the buffer name and the value is the buffer configuration. Each buffer configuration is similar to the `experience_buffer`.
 
 ---
@@ -362,6 +373,13 @@ explorer:
     tensor_parallel_size: 1
   eval_interval: 100
   eval_on_startup: True
+  over_rollout:
+    ratio: 0.0
+    wait_after_min: 30.0
+  dynamic_timeout:
+    enable: false
+    ratio: 3.0
+  runner_state_report_interval: 0
 ```
 
 - `name`: Name of the explorer. This name will be used as the Ray actor's name, so it must be unique.
@@ -376,6 +394,13 @@ explorer:
 - `auxiliary_models`: Additional models used for custom workflows.
 - `eval_interval`: Interval (in steps) for evaluating the model.
 - `eval_on_startup`: Whether to evaluate the model on startup. More precisely, at step 0 with the original model, so it will not be triggered when restarting.
+- `over_rollout`: [Experimental] Configurations for over-rollout mechanism, which allows the explorer to proceed with fewer tasks than the full batch size. It effectively increases throughput in scenarios where some tasks take significantly longer to complete than others. Only applicable when dynamic synchronization (`synchronizer.sync_style` is not `fixed`) is used.
+  - `ratio`: Explorer will only wait for `(1 - ratio) * batch_size` of tasks at each step. Default is `0.0`, meaning waiting for all tasks.
+  - `wait_after_min`: After reaching the minimum task threshold, wait for this many seconds before proceeding. Default is `30.0` seconds.
+- `dynamic_timeout`: [Experimental] Configurations for dynamic timeout mechanism, which adjusts the timeout for each task based on the average time taken for successful tasks.
+  - `enable`: Whether to enable dynamic timeout. Default is `false`.
+  - `ratio`: The timeout for each task is dynamically set to `average_time_per_success_task * ratio`. Default is `3.0`.
+- `runner_state_report_interval`: Workflow runner report interval (in seconds). If set to a value greater than `0`, the workflow runner will periodically report its status to the main explorer process and print it in the command line for monitoring. Default is `0`, meaning this feature is disabled. If you want to use this feature, it is recommended to set it to `10` seconds or longer to minimize performance impact.
 
 ---
 
@@ -389,6 +414,7 @@ synchronizer:
   sync_interval: 10
   sync_offset: 0
   sync_timeout: 1200
+  sync_style: 'fixed'
 ```
 
 - `sync_method`: Method of synchronization. Options:
@@ -397,6 +423,9 @@ synchronizer:
 - `sync_interval`: Interval (in steps) of model weight synchronization between trainer and explorer.
 - `sync_offset`: Offset (in steps) of model weight synchronization between trainer and explorer. The explorer can run `sync_offset` steps before the trainer starts training.
 - `sync_timeout`: Timeout duration for synchronization.
+- `sync_style`: Style of synchronization. Options:
+  - `fixed`: The explorer and trainer synchronize weights every `sync_interval` steps.
+  - `dynamic_by_explorer`: The explorer notifies the trainer to synchronize weights after completing `sync_interval` steps, regardless of how many steps the trainer has completed at this point.
 
 ---
 
@@ -407,29 +436,39 @@ Specifies the backend and behavior of the trainer.
 ```yaml
 trainer:
   name: trainer
-  trainer_type: 'verl'
-  save_interval: 100
+  trainer_type: "verl"
+  trainer_strategy: "fsdp"
   total_steps: 1000
+  save_interval: 100
   save_strategy: "unrestricted"
+  save_hf_checkpoint: "last"
   grad_clip: 1.0
   use_dynamic_bsz: true
-  ppo_max_token_len_per_gpu: 16384
+  max_token_len_per_gpu: 16384
   ulysses_sequence_parallel_size: 1
   trainer_config: null
 ```
 
 - `name`: Name of the trainer. This name will be used as the Ray actor's name, so it must be unique.
 - `trainer_type`: Trainer backend implementation. Currently only supports `verl`.
-- `save_interval`: Frequency (in steps) at which to save model checkpoints.
+- `trainer_strategy`: Strategy for VeRL trainer. Default is `fsdp`. Options include:
+  - `fsdp`: Use PyTorch FSDP.
+  - `fsdp2`: Use PyTorch FSDP2.
+  - `megatron`: Use Megatron-LM.
 - `total_steps`: Total number of training steps.
+- `save_interval`: Frequency (in steps) at which to save model checkpoints.
 - `save_strategy`: The parallel strategy used when saving the model. Defaults to `unrestricted`. The available options are as follows:
   - `single_thread`: Only one thread across the entire system is allowed to save the model; saving tasks from different threads are executed sequentially.
   - `single_process`: Only one process across the entire system is allowed to perform saving; multiple threads within that process can handle saving tasks in parallel, while saving operations across different processes are executed sequentially.
   - `single_node`: Only one compute node across the entire system is allowed to perform saving; processes and threads within that node can work in parallel, while saving operations across different nodes are executed sequentially.
   - `unrestricted`: No restrictions on saving operations; multiple nodes, processes, or threads are allowed to save the model simultaneously.
+- `save_hf_checkpoint`: Whether to save the model in HuggingFace format. Default is `last`. Note that saving in HuggingFace format consumes additional time, storage space, and GPU memory, which may impact training performance or lead to out-of-memory errors. Options include:
+  - `last`: Save only the last checkpoint in HuggingFace format.
+  - `always`: Save all checkpoints in HuggingFace format.
+  - `never`: Do not save in HuggingFace format.
 - `grad_clip`: Gradient clipping for updates.
 - `use_dynamic_bsz`: Whether to use dynamic batch size.
-- `ppo_max_token_len_per_gpu`:  The maximum number of tokens to be processed in forward and backward when updating the policy. Effective when `use_dynamic_bsz=true`.
+- `max_token_len_per_gpu`:  The maximum number of tokens to be processed in forward and backward when updating the policy. Effective when `use_dynamic_bsz=true`.
 - `ulysses_sequence_parallel_size`: Sequence parallel size.
 - `trainer_config`: The trainer configuration provided inline.
 ---

@@ -8,15 +8,17 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 
 from trinity.common.config import (
     Config,
+    ExperienceBufferConfig,
     FormatConfig,
     LoRAConfig,
-    StorageConfig,
+    TasksetConfig,
     load_config,
 )
 from trinity.common.constants import (
     CHECKPOINT_ROOT_DIR_ENV_VAR,
     MODEL_PATH_ENV_VAR,
     PromptType,
+    StorageType,
 )
 
 API_MODEL_PATH_ENV_VAR = "TRINITY_API_MODEL_PATH"
@@ -74,12 +76,10 @@ def get_lora_config() -> LoRAConfig:
     return LoRAConfig(name="lora", lora_rank=16, lora_alpha=16)
 
 
-def get_unittest_dataset_config(
-    dataset_name: str = "countdown", split: str = "train"
-) -> StorageConfig:
+def get_unittest_dataset_config(dataset_name: str = "countdown", split: str = "train"):
     if dataset_name == "countdown" or dataset_name == "copy_countdown":
         # Countdown dataset with 17 samples
-        return StorageConfig(
+        return TasksetConfig(
             name=dataset_name,
             path=os.path.join(os.path.dirname(__file__), "template", "data", "countdown"),
             split=split,
@@ -93,7 +93,7 @@ def get_unittest_dataset_config(
         )
     elif dataset_name in {"eval_short", "eval_long"}:
         # Eval_short dataset with 2 samples, eval_long dataset with 8 samples
-        return StorageConfig(
+        return TasksetConfig(
             name=dataset_name,
             path=os.path.join(os.path.dirname(__file__), "template", "data", dataset_name),
             split="test",
@@ -106,7 +106,7 @@ def get_unittest_dataset_config(
         )
     elif dataset_name == "gsm8k":
         # GSM8K dataset with 16 samples
-        return StorageConfig(
+        return TasksetConfig(
             name=dataset_name,
             path=os.path.join(os.path.dirname(__file__), "template", "data", "gsm8k"),
             split="train",
@@ -117,12 +117,24 @@ def get_unittest_dataset_config(
             default_workflow_type="math_workflow",
             default_reward_fn_type="math_reward",
         )
+    elif dataset_name == "gsm8k_ruler":
+        return TasksetConfig(
+            name=dataset_name,
+            path=os.path.join(os.path.dirname(__file__), "template", "data", "gsm8k"),
+            split="train",
+            format=FormatConfig(
+                prompt_key="question",
+                response_key="answer",
+            ),
+            default_workflow_type="math_ruler_workflow",
+        )
     elif dataset_name == "sft_for_gsm8k":
         # SFT dataset with 8 samples
-        return StorageConfig(
+        return ExperienceBufferConfig(
             name=dataset_name,
             path=os.path.join(os.path.dirname(__file__), "template", "data", "sft_for_gsm8k"),
             split="train",
+            storage_type=StorageType.FILE.value,
             schema_type="sft",
             format=FormatConfig(
                 prompt_type=PromptType.PLAINTEXT,
@@ -132,10 +144,11 @@ def get_unittest_dataset_config(
         )
     elif dataset_name == "sft_with_tools":
         # SFT_with_tools dataset with 4 samples
-        return StorageConfig(
+        return ExperienceBufferConfig(
             name=dataset_name,
             path=os.path.join(os.path.dirname(__file__), "template", "data", "sft_with_tools"),
             split="train",
+            storage_type=StorageType.FILE.value,
             format=FormatConfig(
                 prompt_type=PromptType.MESSAGES,
                 messages_key="messages",
@@ -145,10 +158,12 @@ def get_unittest_dataset_config(
         )
     elif dataset_name == "dpo":
         # HumanLike DPO dataset with 17 samples
-        return StorageConfig(
+        return ExperienceBufferConfig(
             name=dataset_name,
             path=os.path.join(os.path.dirname(__file__), "template", "data", "human_like"),
             split="train",
+            storage_type=StorageType.FILE.value,
+            schema_type="dpo",
             format=FormatConfig(
                 prompt_type=PromptType.PLAINTEXT,
                 prompt_key="prompt",
@@ -158,7 +173,7 @@ def get_unittest_dataset_config(
         )
     elif dataset_name == "geometry":
         # Multi-modal geometry dataset with 8 samples
-        return StorageConfig(
+        return TasksetConfig(
             name=dataset_name,
             path=os.path.join(os.path.dirname(__file__), "template", "data", "geometry"),
             split="train",

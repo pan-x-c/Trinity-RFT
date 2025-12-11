@@ -25,16 +25,22 @@ from trinity.utils.registry import Registry
 MONITOR = Registry("monitor")
 
 
-def gather_metrics(metric_list: List[Dict], prefix: str) -> Dict:
-    df = pd.DataFrame(metric_list)
-    numeric_df = df.select_dtypes(include=[np.number])
-    stats_df = numeric_df.agg(["mean", "max", "min"])
-    metric = {}
-    for col in stats_df.columns:
-        metric[f"{prefix}/{col}/mean"] = stats_df.loc["mean", col].item()
-        metric[f"{prefix}/{col}/max"] = stats_df.loc["max", col].item()
-        metric[f"{prefix}/{col}/min"] = stats_df.loc["min", col].item()
-    return metric
+def gather_metrics(
+    metric_list: List[Dict], prefix: str, output_stats: List[str] = ["mean", "max", "min"]
+) -> Dict:
+    if not metric_list:
+        return {}
+    try:
+        df = pd.DataFrame(metric_list)
+        numeric_df = df.select_dtypes(include=[np.number])
+        stats_df = numeric_df.agg(output_stats)
+        metric = {}
+        for col in stats_df.columns:
+            for stats in output_stats:
+                metric[f"{prefix}/{col}/{stats}"] = stats_df.loc[stats, col].item()
+        return metric
+    except Exception as e:
+        raise ValueError(f"Failed to gather metrics: {e}") from e
 
 
 class Monitor(ABC):
@@ -189,6 +195,7 @@ class MlflowMonitor(Monitor):
             os.environ["MLFLOW_TRACKING_PASSWORD"] = password
         mlflow.set_tracking_uri(config.monitor.monitor_args.get("uri", "http://localhost:5000"))
         mlflow.set_experiment(project)
+        mlflow.enable_system_metrics_logging()
         mlflow.start_run(
             run_name=f"{name}_{role}",
             tags={
@@ -205,8 +212,10 @@ class MlflowMonitor(Monitor):
 
     def log(self, data: dict, step: int, commit: bool = False) -> None:
         """Log metrics."""
-        mlflow.log_metrics(metrics=data, step=step)
         self.console_logger.info(f"Step {step}: {data}")
+        # Replace all '@' in keys with '_at_', as MLflow does not support '@' in metric names
+        data = {k.replace("@", "_at_"): v for k, v in data.items()}
+        mlflow.log_metrics(metrics=data, step=step)
 
     def close(self) -> None:
         mlflow.end_run()

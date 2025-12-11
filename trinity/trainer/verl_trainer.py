@@ -194,9 +194,10 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         local_path = copy_local_path_from_hdfs(config.actor_rollout_ref.model.path)
 
         # instantiate tokenizer
-        tokenizer = hf_tokenizer(local_path)
+        trust_remote_code = config.data.get("trust_remote_code", False)
+        tokenizer = hf_tokenizer(local_path, trust_remote_code=trust_remote_code)
         # processor for multimodal LLM, could be None
-        processor = hf_processor(local_path, use_fast=True)
+        processor = hf_processor(local_path, trust_remote_code=trust_remote_code, use_fast=True)
 
         # define worker classes
         if config.actor_rollout_ref.actor.strategy in ["fsdp", "fsdp2"]:
@@ -412,7 +413,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         self.actor_rollout_wg.upload_state_dict(self.global_steps)
 
     def train_step(self, batch: Experiences) -> Dict:  # noqa C901
-        batch = to_data_proto(batch)
+        batch = to_data_proto(batch, self.logger)
         batch = self.post_process_batch(batch)
         metrics = {}
         self.global_steps += 1
@@ -450,8 +451,13 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
                     metrics.update(prefix_metrics(kl_metrics, prefix="critic"))
                     # compute advantages, executed on the driver process
                     batch, _ = self.advantage_fn(batch)
+            else:
+                # skip token_level_scores for sft/dpo
+                if "token_level_scores" in batch.batch.keys():
+                    assert "token_level_rewards" not in batch.batch.keys()
+                    batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
 
-                # update critic
+            # update critic
             if self.algorithm.use_critic:
                 with marked_timer("update_critic", timing_raw):
                     critic_output = self.critic_wg.update_critic(batch)
@@ -472,7 +478,8 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
 
         # collect metrics
         metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
-        metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
+        timing_metrics = compute_timing_metrics(batch=batch, timing_raw=timing_raw)
+        metrics.update({k.replace("timing_s/", "time/"): v for k, v in timing_metrics.items()})
         n_gpus = self.resource_pool_manager.get_n_gpus()
         metrics.update(
             compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus)

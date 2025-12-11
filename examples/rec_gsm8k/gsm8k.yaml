@@ -1,4 +1,3 @@
-# Configuration file for the REC GSM8k project.
 project: "Trinity-RFT-GSM8K"
 name: rec_gsm8k
 checkpoint_root_dir: ${oc.env:TRINITY_CHECKPOINT_ROOT_DIR,./checkpoints}
@@ -6,7 +5,7 @@ mode: both
 model:
   model_path: ${oc.env:TRINITY_MODEL_PATH,Qwen/Qwen2.5-3B-Instruct}
   max_response_tokens: 1024
-  max_model_len: 1280
+  max_model_len: 2048
 algorithm:
   algorithm_type: rec
   repeat_times: 8
@@ -15,7 +14,7 @@ algorithm:
   policy_loss_fn_args:
     epsilon_low: 0.2
     epsilon_high: 0.2
-    clip_mode: "none"
+    clip_mode: "one-side"
     weight: "none"
     temp: 1.0
     regularizer: "none"
@@ -32,7 +31,8 @@ buffer:
     taskset:
       name: gsm8k
       storage_type: file
-      path: ${oc.env:TRINITY_TASKSET_PATH}
+      path: ${oc.env:TRINITY_TASKSET_PATH,openai/gsm8k}
+      subset_name: main
       split: train
       format:
         prompt_key: question
@@ -42,7 +42,8 @@ buffer:
     eval_tasksets:
       - name: gsm8k-eval
         storage_type: file
-        path: ${oc.env:TRINITY_EVAL_TASKSET_PATH}
+        path: ${oc.env:TRINITY_TASKSET_PATH,openai/gsm8k}
+        subset_name: main
         split: test
         format:
           prompt_key: question
@@ -54,9 +55,8 @@ buffer:
       storage_type: queue
 explorer:
   eval_interval: 20
-  runner_num: 64
+  runner_per_model: 16
   rollout_model:
-    engine_type: vllm_async
     engine_num: 4
     tensor_parallel_size: 1
     enable_prefix_caching: false
@@ -73,5 +73,5 @@ trainer:
   save_interval: 100
   grad_clip: 1.0
   use_dynamic_bsz: true
-  ppo_max_token_len_per_gpu: 16384
+  max_token_len_per_gpu: 16384
   ulysses_sequence_parallel_size: 1

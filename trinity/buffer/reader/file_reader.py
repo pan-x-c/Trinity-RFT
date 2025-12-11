@@ -1,13 +1,14 @@
 """Filed based buffer reader."""
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import datasets
 from datasets import Dataset, load_dataset
 
 from trinity.buffer.buffer_reader import BufferReader
+from trinity.buffer.reader.reader import READER
 from trinity.buffer.schema.formatter import FORMATTER
-from trinity.common.config import BufferConfig, StorageConfig
+from trinity.common.config import StorageConfig
 
 
 class DummyProgressBar:
@@ -40,10 +41,6 @@ class _HFBatchReader:
         self.drop_last = drop_last
 
         self.current_offset = offset
-        self.iter = iter(self.dataset)
-
-        for _ in range(self.current_offset % self.dataset_size):
-            next(self.iter)
 
         # convert epochs/steps to sample number
         if total_steps:
@@ -63,30 +60,28 @@ class _HFBatchReader:
 
         self.progress_bar.update(self.current_offset)
 
-    def read_batch(self, batch_size: int) -> List:
-        if self.current_offset >= self.total_samples:
-            self.progress_bar.close()
-            raise StopIteration
-        batch = []
-
+    def read_batch(self, batch_size: int) -> Tuple[List, List]:
+        batch, indices = [], []
         while len(batch) < batch_size:
-            try:
-                item = next(self.iter)
-                batch.append(item)
-                self.current_offset += 1
-            except StopIteration:
-                if self.current_offset >= self.total_samples:
-                    # No more data to read
-                    if not self.drop_last and len(batch) > 0:
-                        # return last batch
-                        self.progress_bar.update(len(batch))
-                        return batch
-                    else:
-                        self.progress_bar.close()
-                        raise StopIteration
-                # Step to the next epoch
-                self.iter = iter(self.dataset)
-        self.progress_bar.update(batch_size)
+            if self.current_offset >= self.total_samples:
+                if not self.drop_last and len(batch) > 0:
+                    break
+                self.progress_bar.close()
+                raise StopIteration
+            index = self.current_offset % self.dataset_size
+            batch.append(self.dataset[index])
+            indices.append(index)
+            self.current_offset += 1
+
+        self.progress_bar.update(len(batch))
+        return batch, indices
+
+    def select_batch(self, indices: List[int]) -> List:
+        batch = []
+        for i in indices:
+            assert 0 <= i < self.dataset_size
+            batch.append(self.dataset[int(i)])
+        self.progress_bar.update(len(batch))  # update progress bar
         return batch
 
 
@@ -98,60 +93,121 @@ class BaseFileReader(BufferReader):
             raise StopAsyncIteration from e
 
 
+@READER.register_module("file")
+class FileReader(BaseFileReader):
+    """Provide a unified interface for Experience and Task file readers."""
+
+    def __init__(self, config: StorageConfig):
+        if config.schema_type and config.schema_type != "task":
+            self.reader = ExperienceFileReader(config)
+        else:
+            self.reader = TaskFileReader(config)
+
+    def read(self, batch_size: Optional[int] = None) -> List:
+        return self.reader.read(batch_size)
+
+    def read_with_indices(self, indices: List[int]) -> List:
+        """Read tasks with indices."""
+        return self.reader.read_with_indices(indices)
+
+    async def read_with_indices_async(self, indices: List[int]) -> List:
+        """Read tasks with indices asynchronously."""
+        return await self.reader.read_with_indices_async(indices)
+
+    def state_dict(self):
+        return self.reader.state_dict()
+
+    def load_state_dict(self, state_dict):
+        return self.reader.load_state_dict(state_dict)
+
+    def __len__(self):
+        return self.reader.__len__()
+
+
 class ExperienceFileReader(BaseFileReader):
     """Reader for SFT / DPO file data."""
 
-    def __init__(self, meta: StorageConfig, config: BufferConfig):
-        self.formatter = FORMATTER.get(meta.schema_type)(
-            tokenizer_path=config.tokenizer_path, format_config=meta.format
+    def __init__(self, config: StorageConfig):
+        self.formatter = FORMATTER.get(config.schema_type)(
+            tokenizer_path=config.tokenizer_path, format_config=config.format
         )
-        self.read_batch_size = config.train_batch_size
+        self.read_batch_size = config.batch_size
         self.dataset = _HFBatchReader(
-            load_dataset(meta.path, name=meta.subset_name, split=meta.split),
-            name=meta.name,
+            load_dataset(config.path, name=config.subset_name, split=config.split),
+            name=config.name,
             default_batch_size=self.read_batch_size,
-            total_epochs=meta.total_epochs,
+            total_epochs=config.total_epochs,
             drop_last=True,
-            total_steps=meta.total_steps,
-            enable_progress_bar=meta.enable_progress_bar,
+            total_steps=config.total_steps,
+            enable_progress_bar=config.enable_progress_bar,
         )
 
     def read(self, batch_size: Optional[int] = None) -> List:
-        samples = self.dataset.read_batch(batch_size or self.read_batch_size)
+        samples, _ = self.dataset.read_batch(batch_size or self.read_batch_size)
         exp_list = []
         for sample in samples:
             experience = self.formatter.format(sample)
             exp_list.append(experience)
         return exp_list
 
+    def state_dict(self):
+        return {"current_index": self.dataset.current_offset}
+
+    def load_state_dict(self, state_dict):
+        self.dataset.current_offset = state_dict["current_index"]
+
+    def __len__(self):
+        return self.dataset.dataset_size
+
 
 class TaskFileReader(BaseFileReader):
-    def __init__(self, meta: StorageConfig, config: BufferConfig):
-        self.meta = meta
-        self.name = meta.name
-        self.split = meta.split
-        subset_name = meta.subset_name
-        # disable datasets caching to avoid reuse old-version dataset
+    """A Reader for task file data."""
+
+    def __init__(self, config: StorageConfig):
+        self.config = config
+        self.name = config.name
         self.epoch = 0
         datasets.disable_caching()
         self.read_batch_size = config.batch_size
         self.dataset = _HFBatchReader(
-            load_dataset(meta.path, name=subset_name, split=self.split),
-            name=meta.name,
+            load_dataset(self.config.path, name=self.config.subset_name, split=self.config.split),
+            name=self.config.name,
             default_batch_size=self.read_batch_size,
-            total_epochs=self.meta.total_epochs if not self.meta.is_eval else 1,
-            offset=self.meta.index,
-            drop_last=not self.meta.is_eval,
-            total_steps=meta.total_steps,
-            enable_progress_bar=meta.enable_progress_bar,
+            total_epochs=self.config.total_epochs if not self.config.is_eval else 1,
+            offset=self.config.index,
+            drop_last=not self.config.is_eval,
+            total_steps=self.config.total_steps if not self.config.is_eval else None,
+            enable_progress_bar=self.config.enable_progress_bar,
         )
-        self.formatter = FORMATTER.get("task")(meta)
+        self.formatter = FORMATTER.get("task")(config)
+
+    def _get_tasks(self, samples: List, indices: List) -> List:
+        tasks = []
+        for sample, index in zip(samples, indices):
+            task = self.formatter.format(sample)
+            task.index["index"] = int(index)
+            tasks.append(task)
+        return tasks
 
     def read(self, batch_size: Optional[int] = None) -> List:
         batch_size = batch_size or self.read_batch_size
-        tasks = []
-        samples = self.dataset.read_batch(batch_size)
-        for sample in samples:
-            task = self.formatter.format(sample)
-            tasks.append(task)
-        return tasks
+        samples, indices = self.dataset.read_batch(batch_size)
+        return self._get_tasks(samples, indices)
+
+    def read_with_indices(self, indices: List[int]) -> List:
+        """Read tasks with indices."""
+        samples = self.dataset.select_batch(indices)
+        return self._get_tasks(samples, indices)
+
+    async def read_with_indices_async(self, indices: List[int]) -> List:
+        """Read tasks with indices asynchronously."""
+        return self.read_with_indices(indices)
+
+    def state_dict(self):
+        return {"current_index": self.dataset.current_offset}
+
+    def load_state_dict(self, state_dict):
+        self.dataset.current_offset = state_dict["current_index"]
+
+    def __len__(self):
+        return self.dataset.dataset_size

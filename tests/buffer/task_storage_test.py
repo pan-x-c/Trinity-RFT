@@ -18,12 +18,12 @@ db_path = os.path.join(os.path.dirname(__file__), "test.db")
 class TaskStorageTest(RayUnittestBase):
     @parameterized.expand(
         [
-            (StorageType.FILE, True, 2),
-            (StorageType.SQL, True, 2),
-            (StorageType.FILE, False, 0),
-            (StorageType.SQL, False, 0),
-            (StorageType.FILE, False, 2),
-            (StorageType.SQL, False, 2),
+            (StorageType.FILE.value, True, 2),
+            (StorageType.SQL.value, True, 2),
+            (StorageType.FILE.value, False, 0),
+            (StorageType.SQL.value, False, 0),
+            (StorageType.FILE.value, False, 2),
+            (StorageType.SQL.value, False, 2),
         ]
     )
     def test_read_task(self, storage_type, is_eval, offset):
@@ -33,19 +33,19 @@ class TaskStorageTest(RayUnittestBase):
         config.buffer.explorer_input.taskset = get_unittest_dataset_config(
             "countdown"
         )  # 17 samples
-        config.buffer.batch_size = batch_size
         config.buffer.explorer_input.taskset.storage_type = storage_type
         config.buffer.explorer_input.taskset.is_eval = is_eval
         config.buffer.explorer_input.taskset.index = offset
-        if storage_type == StorageType.SQL:
+        config.buffer.explorer_input.taskset.batch_size = batch_size
+        if storage_type == StorageType.SQL.value:
             dataset = datasets.load_dataset(
                 config.buffer.explorer_input.taskset.path, split="train"
             )
             config.buffer.explorer_input.taskset.path = f"sqlite:///{db_path}"
             SQLTaskStorage.load_from_dataset(
-                dataset, config.buffer.explorer_input.taskset, config.buffer
+                dataset, config.buffer.explorer_input.taskset.to_storage_config()
             )
-        reader = get_buffer_reader(config.buffer.explorer_input.taskset, config.buffer)
+        reader = get_buffer_reader(config.buffer.explorer_input.taskset)
         tasks = []
         try:
             while True:

@@ -5,7 +5,7 @@
 </div>
 
 
-<h2 align="center">Trinity-RFT: A General-Purpose and Unified Framework for Reinforcement Fine-Tuning of Large Language Models</h2>
+<h2 align="center">Trinity-RFT: A General-Purpose and Unified Framework for<br>Reinforcement Fine-Tuning of Large Language Models</h2>
 
 
 <div align="center">
@@ -19,70 +19,128 @@
 
 ## 💡 What is Trinity-RFT?
 
-Trinity-RFT is a flexible, general-purpose framework for reinforcement fine-tuning (RFT) of large language models (LLMs). It decouples the RFT process into three key components: **Explorer**, **Trainer**, and **Buffer**, and provides functionalities for users with different backgrounds and objectives:
+
+Trinity-RFT is a general-purpose, flexible and user-friendly framework for LLM reinforcement fine-tuning (RFT).
+It decouples RFT into three components that work in coordination:
+
+* **Explorer** generates experience data via agent-environment interaction;
+
+* **Trainer** updates model weights by minimizing losses on the data;
+
+* **Buffer** pipelines data processing throughout the RFT lifecycle.
 
 
-* 🤖 For agent application developers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_workflow.html)
-  - Train agent applications to improve their ability to complete tasks in specific environments.
-  - Examples: [Multi-Turn Interaction](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_multi_turn.html), [ReAct Agent](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_react.html)
+Trinity-RFT provides functionalities for users with different backgrounds and objectives:
 
-* 🧠 For RL algorithm researchers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_algorithm.html)
-  - Design and validate new reinforcement learning algorithms using compact, plug-and-play modules.
-  - Example: [Mixture of SFT and GRPO](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_mix_algo.html)
+* 🤖 **Agent application developers:** Train LLM-powered agents and improve their capabilities in specific domains [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_workflow.html)
 
-* 📊 For data engineers. [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_operator.html)
-  - Create task-specific datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios.
-  - Example: [Data Processing](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_data_functionalities.html)
+* 🧠 **Reinforcement learning researchers:** Design, implement and validate new RL algorithms using compact, plug-and-play modules that allow non-invasive customization [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_algorithm.html)
+
+* 📊 **Data engineers:** Create RFT datasets and build data pipelines for cleaning, augmentation, and human-in-the-loop scenarios [[tutorial]](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_operator.html)
+
+
+
+## 🚀 News
+
+* [2025-12] Trinity-RFT powers the medical and health business of "Taobao Shangou", enabling the AI agent to understand vague symptoms, proactively ask follow-up questions, and provide precise recommendations ([News](https://tech.china.com.cn/sx/20251201/411376.shtml)).
+* [2025-11] [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.3.3)] Trinity-RFT v0.3.3 released: bug fixes.
+* [2025-11] Introducing [Learn-to-Ask](https://github.com/modelscope/Trinity-RFT/tree/main/examples/learn_to_ask): a framework for training proactive dialogue agents from offline expert data  ([paper](https://arxiv.org/pdf/2510.25441)).
+* [2025-11] Introducing [BOTS](https://github.com/modelscope/Trinity-RFT/tree/main/examples/bots): online RL task selection for efficient LLM fine-tuning ([paper](https://arxiv.org/pdf/2510.26374)).
+* [2025-09] [Our paper](https://arxiv.org/pdf/2509.24203) reveals a novel off-policy interpretation for group-relative REINFORCE and its variants like GRPO and AsymRE ([implementation](https://github.com/modelscope/Trinity-RFT/tree/main/examples/rec_gsm8k)).
+* [2025-08] Introducing [CHORD](https://github.com/modelscope/Trinity-RFT/tree/main/examples/mix_chord): dynamic SFT + RL integration for advanced LLM fine-tuning ([paper](https://arxiv.org/pdf/2508.11408)).
+
+<details><summary> More... </summary>
+<ul>
+  <li> [2025-11] Trinity-RFT v0.3.2 released: bug fixes and advanced task selection & scheduling.</li>
+  <li> [2025-10] Trinity-RFT v0.3.1 released: multi-stage training support, improved agentic RL examples, LoRA support, debug mode and new RL algorithms.</li>
+  <li> [2025-09] Trinity-RFT v0.3.0 released: enhanced Buffer, FSDP2 & Megatron support, multi-modal models, and new RL algorithms/examples.</li>
+  <li> [2025-08] Trinity-RFT v0.2.1 released.</li>
+  <li> [2025-07] Trinity-RFT v0.2.0 released.</li>
+  <li> [2025-07] Technical report (arXiv v2) updated with new features, examples, and experiments: [link](https://arxiv.org/abs/2505.17826).</li>
+  <li> [2025-06] Trinity-RFT v0.1.1 released.</li>
+  <li> [2025-05] Trinity-RFT v0.1.0 released, plus [technical report](https://arxiv.org/abs/2505.17826).</li>
+  <li> [2025-04] Trinity-RFT open sourced.</li>
+</ul>
+</details>
+
+
+## 🔨 Tutorials and Guidelines
+
+
+| Category | Tutorial / Guideline      |
+| --- | ----|
+| *Run diverse RFT modes* | + [Quick start: GRPO on GSM8k](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_reasoning_basic.html)<br>+ [Off-policy RFT](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_reasoning_advanced.html)<br>+ [Fully asynchronous RFT](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_async_mode.html)<br>+ [Offline learning by DPO or SFT](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_dpo.html)     |
+| *Multi-step agentic RL* | + [Concatenated multi-turn workflow](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_multi_turn.html)<br>+ [General multi-step workflow](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_step_wise.html)<br>+ [ReAct workflow with an agent framework](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_react.html)  <br>+ [Example: train a web-search agent](https://github.com/modelscope/Trinity-RFT/tree/main/examples/agentscope_websearch) |
+| *Full-lifecycle data pipelines* | + [Rollout task mixing and selection](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_selector.html)<br>+ [Online task curriculum](https://github.com/modelscope/Trinity-RFT/tree/main/examples/bots) (📝 [paper](https://arxiv.org/pdf/2510.26374)) <br>+ [Research project: learn-to-ask](https://github.com/modelscope/Trinity-RFT/tree/main/examples/learn_to_ask) (📝 [paper](https://arxiv.org/pdf/2510.25441)) <br>+ [Experience replay with prioritization](https://github.com/modelscope/Trinity-RFT/tree/main/examples/ppo_countdown_exp_replay)<br>+ [Advanced data processing & human-in-the-loop](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_data_functionalities.html)  |
+| *Algorithm development* | + [RL algorithm development with Trinity-RFT](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_mix_algo.html) (📝 [paper](https://arxiv.org/pdf/2508.11408))<br>+ [Research project: group-relative REINFORCE](https://github.com/modelscope/Trinity-RFT/tree/main/examples/rec_gsm8k) (📝 [paper](https://arxiv.org/abs/2509.24203)) <br>+ Non-verifiable domains: [RULER](https://github.com/modelscope/Trinity-RFT/tree/main/examples/grpo_gsm8k_ruler), [trainable RULER](https://github.com/modelscope/Trinity-RFT/tree/main/examples/grpo_gsm8k_trainable_ruler), [rubric-as-reward](https://github.com/modelscope/Trinity-RFT/tree/main/examples/grpo_rubric_as_reward) |
+| *Going deeper into Trinity-RFT* | + [Full configurations](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_configs.html)<br>+ [Benchmark toolkit for quick verification and experimentation](./benchmark/README.md)<br>+ [GPU Resource and Training Configuration Guide](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_gpu_configs.html)<br>+ [Understand the coordination between explorer and trainer](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/synchronizer.html)<br>+ [How to align configuration with veRL](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/align_with_verl.html)    |
+
+
+> [!NOTE]
+> For more tutorials, please refer to the [Trinity-RFT documentation](https://modelscope.github.io/Trinity-RFT/).
+
 
 
 ## 🌟 Key Features
 
 * **Flexible RFT Modes:**
-  - Supports synchronous/asynchronous, on-policy/off-policy, and online/offline training. Rollout and training can run separately and scale independently across devices.
+  - Supports synchronous/asynchronous, on-policy/off-policy, and online/offline RL.
+  - Rollout and training can run separately and scale independently across devices.
+  - Boost sample and time efficiency by experience replay.
 
   <img src="https://img.alicdn.com/imgextra/i3/O1CN01E7NskS1FFoTI9jlaQ_!!6000000000458-2-tps-1458-682.png" alt="RFT modes supported by Trinity-RFT" width="600" />
 
-* **General Agentic-RL Support:**
-  - Supports both concatenated and general multi-turn agentic workflows. Able to directly train agent applications developed using agent frameworks like AgentScope.
+* **Agentic RL Support:**
+  - Supports both concatenated and general multi-step agentic workflows.
+  - Able to directly train agent applications developed using agent frameworks like [AgentScope](https://github.com/agentscope-ai/agentscope).
 
   <img src="https://img.alicdn.com/imgextra/i1/O1CN01z1i7kk1jlMEVa8ZHV_!!6000000004588-2-tps-1262-695.png" alt="Agentic workflows" width="600" />
 
-* **Full Lifecycle Data Pipelines:**
-  - Enables pipeline processing of rollout and experience data, supporting active management (prioritization, cleaning, augmentation) throughout the RFT lifecycle.
+* **Full-Lifecycle Data Pipelines:**
+  - Enables pipeline processing of rollout tasks and experience samples.
+  - Active data management (prioritization, cleaning, augmentation, etc.) throughout the RFT lifecycle.
+  - Native support for multi-task joint learning and online task curriculum construction.
 
-  <img src="https://img.alicdn.com/imgextra/i2/O1CN01BfeHp61sXSlGjH7zQ_!!6000000005776-2-tps-1734-473.png" alt="Data pipeline design" width="600" />
+  <img src="https://img.alicdn.com/imgextra/i2/O1CN01Gk9CRw28NsL09nbOj_!!6000000007921-2-tps-2530-660.png" alt="Data pipeline design" width="720" />
 
 * **User-Friendly Design:**
-  - Modular, decoupled architecture for easy adoption and development. Rich graphical user interfaces enable low-code usage.
+  - Plug-and-play modules and decoupled architecture, facilitating easy adoption and development.
+  - Rich graphical user interfaces enable low-code usage.
 
   <img src="https://img.alicdn.com/imgextra/i1/O1CN01Ti0o4320RywoAuyhN_!!6000000006847-2-tps-3840-2134.png" alt="System architecture" width="600" />
 
 
-## 🚀 News
 
-* [2025-10] ✨ [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.3.1)] Trinity-RFT v0.3.1 released: multi-stage training support, improved agentic RL examples, LoRA support, debug mode and new RL algorithms.
-* [2025-09] [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.3.0)] Trinity-RFT v0.3.0 released: enhanced Buffer, FSDP2 & Megatron support, multi-modal models, and new RL algorithms/examples.
-* [2025-08] Introducing [CHORD](https://github.com/modelscope/Trinity-RFT/tree/main/examples/mix_chord): dynamic SFT + RL integration for advanced LLM fine-tuning ([paper](https://arxiv.org/pdf/2508.11408)).
-* [2025-08] [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.2.1)] Trinity-RFT v0.2.1 released.
-* [2025-07] [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.2.0)] Trinity-RFT v0.2.0 released.
-* [2025-07] Technical report (arXiv v2) updated with new features, examples, and experiments: [link](https://arxiv.org/abs/2505.17826).
-* [2025-06] [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.1.1)] Trinity-RFT v0.1.1 released.
-* [2025-05] [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.1.0)] Trinity-RFT v0.1.0 released, plus [technical report](https://arxiv.org/abs/2505.17826).
-* [2025-04] Trinity-RFT open sourced.
+## 🔧 Supported Algorithms
+
+We list some algorithms supported by Trinity-RFT in the following table. For more details, the concrete configurations are shown in the [Algorithm module](https://github.com/modelscope/Trinity-RFT/blob/main/trinity/algorithm/algorithm.py). You can also set up new algorithms by customizing different components, see [tutorial](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/develop_algorithm.html).
+
+| Algorithm | Doc / Example | Source Code | Key Configurations |
+|:-----------|:-----------|:---------------|:-----------|
+| PPO [[Paper](https://arxiv.org/pdf/1707.06347)] | [[Doc](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_reasoning_basic.html)] [[Countdown Example](https://github.com/modelscope/Trinity-RFT/tree/main/examples/ppo_countdown)] | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/policy_loss_fn/ppo_policy_loss.py)] | `algorithm_type: ppo` |
+| GRPO [[Paper](https://arxiv.org/pdf/2402.03300)] | [[Doc](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_reasoning_basic.html)] [[GSM8K Example](https://github.com/modelscope/Trinity-RFT/tree/main/examples/grpo_gsm8k)]| [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/advantage_fn/grpo_advantage.py)] | `algorithm_type: grpo` |
+| CHORD 💡 [[Paper](https://arxiv.org/pdf/2508.11408)] | [[Doc](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_mix_algo.html)] [[ToolACE Example](https://github.com/modelscope/Trinity-RFT/blob/main/examples/mix_chord/mix_chord_toolace.yaml)] | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/policy_loss_fn/chord_policy_loss.py)] | `algorithm_type: mix_chord` |
+| REC Series 💡 [[Paper](https://arxiv.org/pdf/2509.24203)] | [[GSM8K Example](https://github.com/modelscope/Trinity-RFT/tree/main/examples/rec_gsm8k)] | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/policy_loss_fn/rec_policy_loss.py)] | `algorithm_type: rec` |
+| RLOO [[Paper](https://arxiv.org/pdf/2402.14740)] | - | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/advantage_fn/rloo_advantage.py)] | `algorithm_type: rloo` |
+| REINFORCE++ [[Paper](https://arxiv.org/pdf/2501.03262)] | - | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/advantage_fn/reinforce_advantage.py)] | `algorithm_type: reinforceplusplus` |
+| GSPO [[Paper](https://arxiv.org/pdf/2507.18071)] | - | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/policy_loss_fn/gspo_policy_loss.py)] | `algorithm_type: gspo` |
+| TOPR [[Paper](https://arxiv.org/pdf/2503.14286)] | [[GSM8K Example](https://github.com/modelscope/Trinity-RFT/tree/main/examples/topr_gsm8k)] | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/policy_loss_fn/topr_policy_loss.py)] | `algorithm_type: topr` |
+| sPPO [[Paper](https://arxiv.org/pdf/2108.05828)] | [[GSM8K Example](https://github.com/modelscope/Trinity-RFT/tree/main/examples/sppo_gsm8k)] | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/policy_loss_fn/sppo_loss_fn.py)] | `algorithm_type: sppo` |
+| AsymRE [[Paper](https://arxiv.org/pdf/2506.20520)] | [[GSM8K Example](https://github.com/modelscope/Trinity-RFT/tree/main/examples/asymre_gsm8k)] | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/advantage_fn/asymre_advantage.py)] | `algorithm_type: asymre` |
+| CISPO [[Paper](https://arxiv.org/pdf/2506.13585)] | - | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/policy_loss_fn/cispo_policy_loss.py)] | `algorithm_type: cispo` |
+| SAPO [[Paper](https://arxiv.org/pdf/2511.20347)] | - | [[Code](https://github.com/modelscope/Trinity-RFT/tree/main/trinity/algorithm/policy_loss_fn/sapo_policy_loss.py)] | `algorithm_type: sapo` |
+
 
 
 ---
 
-## Table of contents
-
+## Table of Contents
 
 - [Quick Start](#quick-start)
   - [Step 1: installation](#step-1-installation)
   - [Step 2: prepare dataset and model](#step-2-prepare-dataset-and-model)
   - [Step 3: configurations](#step-3-configurations)
   - [Step 4: run the RFT process](#step-4-run-the-rft-process)
-- [Further tutorials](#further-tutorials)
-- [Upcoming features](#upcoming-features)
 - [Contribution guide](#contribution-guide)
 - [Acknowledgements](#acknowledgements)
 - [Citation](#citation)
@@ -101,7 +159,7 @@ Trinity-RFT is a flexible, general-purpose framework for reinforcement fine-tuni
 Before installing, make sure your system meets the following requirements:
 
 - **Python**: version 3.10 to 3.12 (inclusive)
-- **CUDA**: version 12.4 to 12.8 (inclusive)
+- **CUDA**: version >= 12.8
 - **GPUs**: at least 2 GPUs
 
 
@@ -158,14 +216,14 @@ uv sync --extra dev --extra flash_attn
 If you just want to use the package without modifying the code:
 
 ```bash
-pip install trinity-rft==0.3.1
+pip install trinity-rft
 pip install flash-attn==2.8.1
 ```
 
 Or with `uv`:
 
 ```bash
-uv pip install trinity-rft==0.3.1
+uv pip install trinity-rft
 uv pip install flash-attn==2.8.1
 ```
 
@@ -276,7 +334,9 @@ ray start --head
 ray start --address=<master_address>
 ```
 
-(Optional) Log in to [wandb](https://docs.wandb.ai/quickstart/) for better monitoring:
+(Optional) You may use [Wandb](https://docs.wandb.ai/quickstart/) / [TensorBoard](https://www.tensorflow.org/tensorboard) / [MLFlow](https://mlflow.org) for better monitoring.
+Please refer to [this documentation](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_configs.html#monitor-configuration) for the corresponding configurations.
+For example, to log in to Wandb:
 
 ```shell
 export WANDB_API_KEY=<your_api_key>
@@ -298,54 +358,8 @@ trinity run --config examples/grpo_gsm8k/gsm8k.yaml
 For studio users, click "Run" in the web interface.
 
 
-## Further tutorials
 
-> [!NOTE]
-> For more tutorials, please refer to the [Trinity-RFT Documentation](https://modelscope.github.io/Trinity-RFT/).
-
-
-Tutorials for running different RFT modes:
-
-+ [Quick example: GRPO on GSM8k](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_reasoning_basic.html)
-+ [Off-policy RFT](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_reasoning_advanced.html)
-+ [Fully asynchronous RFT](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_async_mode.html)
-+ [Offline learning by DPO or SFT](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_dpo.html)
-
-
-Tutorials for adapting Trinity-RFT to multi-step agentic scenarios:
-
-+ [Concatenated multi-turn workflow](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_multi_turn.html)
-+ [General multi-step workflow](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_step_wise.html)
-+ [ReAct workflow with an agent framework](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_react.html)
-
-
-Tutorials for data-related functionalities:
-
-+ [Advanced data processing & human-in-the-loop](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_data_functionalities.html)
-
-
-Tutorials for RL algorithm development/research with Trinity-RFT:
-
-+ [RL algorithm development with Trinity-RFT](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/example_mix_algo.html)
-
-
-Guidelines for full configurations:
-
-+ See [this document](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/trinity_configs.html)
-
-
-Guidelines for developers and researchers:
-
-+ [Benchmark Toolkit for quick verification and experimentation](./benchmark/README.md)
-+ [Understand the coordination between explorer and trainer](https://modelscope.github.io/Trinity-RFT/en/main/tutorial/synchronizer.html)
-
-
-## Upcoming features
-
-A tentative roadmap: [#51](https://github.com/modelscope/Trinity-RFT/issues/51)
-
-
-## Contribution guide
+## Contribution Guide
 
 This project is currently under active development, and we welcome contributions from the community!
 
@@ -356,7 +370,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed contribution guidelines.
 
 This project is built upon many excellent open-source projects, including:
 
-+ [verl](https://github.com/volcengine/verl) and [PyTorch's FSDP](https://pytorch.org/docs/stable/fsdp.html) for LLM training;
++ [verl](https://github.com/volcengine/verl), [FSDP](https://pytorch.org/docs/stable/fsdp.html) and [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) for LLM training;
 + [vLLM](https://github.com/vllm-project/vllm) for LLM inference;
 + [Data-Juicer](https://github.com/modelscope/data-juicer?tab=readme-ov-file) for data processing pipelines;
 + [AgentScope](https://github.com/agentscope-ai/agentscope) for agentic workflow;

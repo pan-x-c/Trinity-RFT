@@ -21,6 +21,8 @@ algorithm:
   repeat_times: 8
 model:
   model_path: ${oc.env:TRINITY_MODEL_PATH,Qwen/Qwen2.5-1.5B-Instruct}
+  max_response_tokens: 1024
+  max_model_len: 2048
 cluster:
   node_num: 1
   gpu_per_node: 4
@@ -31,7 +33,7 @@ buffer:
     taskset:
       name: gsm8k
       storage_type: file
-      path: 'openai/gsm8k'
+      path: ${oc.env:TRINITY_TASKSET_PATH,openai/gsm8k}
       subset_name: 'main'
       split: train
       format:
@@ -39,14 +41,14 @@ buffer:
         response_key: 'answer'
       rollout_args:
         temperature: 1.0
-    default_workflow_type: 'math_workflow'
+      default_workflow_type: 'math_workflow'
   trainer_input:
     experience_buffer:
       name: gsm8k_buffer
       storage_type: queue
       path: 'sqlite:///gsm8k.db'
 explorer:
-  runner_num: 32
+  runner_per_model: 8
   rollout_model:
     engine_num: 4
 synchronizer:
@@ -69,6 +71,8 @@ algorithm:
     lr: 1e-6
 model:
   model_path: ${oc.env:TRINITY_MODEL_PATH,Qwen/Qwen2.5-1.5B-Instruct}
+  max_response_tokens: 1024
+  max_model_len: 2048
 cluster:
   node_num: 1
   gpu_per_node: 4
@@ -79,14 +83,14 @@ buffer:
     taskset:
       name: gsm8k
       storage_type: file
-      path: 'openai/gsm8k'
+      path: ${oc.env:TRINITY_TASKSET_PATH,openai/gsm8k}
       subset_name: 'main'
       format:
         prompt_key: 'question'
         response_key: 'answer'
       rollout_args:
         temperature: 1.0
-    default_workflow_type: 'math_workflow'
+      default_workflow_type: 'math_workflow'
   trainer_input:
     experience_buffer:
       name: gsm8k_buffer
@@ -98,7 +102,7 @@ synchronizer:
 trainer:
   grad_clip: 1.0
   use_dynamic_bsz: true
-  ppo_max_token_len_per_gpu: 16384
+  max_token_len_per_gpu: 16384
   ulysses_sequence_parallel_size: 1
 ```
 
@@ -128,12 +132,14 @@ algorithm:
   repeat_times: 8
 model:
   model_path: ${oc.env:TRINITY_MODEL_PATH,Qwen/Qwen2.5-1.5B-Instruct}
+  max_response_tokens: 1024
+  max_model_len: 2048
 cluster:  # important
   node_num: 1
   gpu_per_node: 8
 explorer:
   name: 'explorer_new'  # important
-  runner_num: 64
+  runner_per_model: 8
   rollout_model:
     engine_num: 8
 buffer:
@@ -143,14 +149,14 @@ buffer:
     taskset:  # important
       name: gsm8k
       storage_type: file
-      path: 'openai/gsm8k'
+      path: ${oc.env:TRINITY_TASKSET_PATH,openai/gsm8k}
       subset_name: 'main'
       format:
         prompt_key: 'question'
         response_key: 'answer'
       rollout_args:
         temperature: 1.0
-    default_workflow_type: 'math_workflow'
+      default_workflow_type: 'math_workflow'
   trainer_input:
     experience_buffer:
       name: gsm8k_buffer

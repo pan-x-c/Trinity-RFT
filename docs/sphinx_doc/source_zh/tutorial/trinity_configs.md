@@ -82,7 +82,7 @@ checkpoint_root_dir: ${oc.env:TRINITY_CHECKPOINT_ROOT_DIR,./checkpoints}   # TRI
   - `explore`: 仅启动 explorer。
   - `bench`: 用于 benchmark 测试。
 - `checkpoint_root_dir`: 所有检查点和日志的根目录。该实验的检查点将存储在 `<checkpoint_root_dir>/<project>/<name>/` 路径下。
-- `continue_from_checkpoint`: 若设置为 `true`，实验将从检查点路径中的最新检查点继续；否则，会将当前实验重命名为 `<name>_<timestamp>` 并启动新实验。
+- `continue_from_checkpoint`: 若设置为 `true`，实验将从检查点路径中的最新检查点继续；否则，会将当前实验重命名为 `<name>_<timestamp>` 并启动新实验。由于我们的分离式设计，从检查点恢复的时候，我们只能保证Trainer的模型参数以及其使用的可选缓冲区（`auxiliary_buffers`）可以恢复到最新检查点的状态，而Explorer和Experience Buffer不能保证恢复到同一时点。
 - `ray_namespace`: 当前实验中启动模块的命名空间。若未指定，则默认为 `<project>/<name>`。
 
 ---
@@ -157,18 +157,24 @@ monitor:
 model:
   model_path: ${oc.env:MODEL_PATH}  # MODEL_PATH 是预先设置的环境变量
   critic_model_path: ${model.model_path}  # 使用 model.model_path 的值
+  custom_chat_template: None
+  chat_template_path: None
   max_model_len: 20480
   max_prompt_tokens: 4096
   max_response_tokens: 16384
   min_response_tokens: 1
+  enable_prompt_truncation: true
 ```
 
 - `model_path`: 被训练模型的路径。
 - `critic_model_path`: 可选的独立 critic 模型路径。若为空，则默认为 `model_path`。
+- `custom_chat_template`: 可选的自定义 chat template 字符串格式。若未指定，系统会使用 tokenizer 的默认 chat template。
+- `chat_template_path`: 可选的 chat template 文件路径，类型通常为 jinja2；若设置，则覆盖 `custom_chat_template`。若未指定，系统会使用 tokenizer 的默认 chat template。
 - `max_model_len`: 表示模型所支持的单个序列最大 token 数。如未指定，系统会尝试将其设为 `max_prompt_tokens` + `max_response_tokens`。但前提是这两个值都必须已设置，否则将引发错误。
 - `max_prompt_tokens`: 输入 prompt 中允许的最大 token 数。仅对 `InferenceModel` 中的 `chat` 和 `generate` 方法生效。
 - `max_response_tokens`: 模型生成的回复中允许的最大 token 数。仅对 `InferenceModel` 中的 `chat` 和 `generate` 方法生效。
 - `min_response_tokens`: 模型生成的回复中允许的最小 token 数。仅对 `InferenceModel` 中的 `chat` 和 `generate` 方法生效。
+- `enable_prompt_truncation`: 是否截断 prompt。默认为 `true`。若设置为 `true`，则 prompt 将被截断为 `max_prompt_tokens` 个 token；若设置为 `false`，则 prompt 不会被截断，存在 prompt 和 response 长度之和超过 `max_model_len` 的风险。在 OpenAI API 模式下不生效。
 
 ```{tip}
 如果使用的是 Explorer 提供的 openai API，则只有 `max_model_len` 会生效，而 `max_response_tokens`、`max_prompt_tokens` 和 `min_response_tokens` 的值将被忽略，在没有独立指定 `max_tokens` 时，每次 API 调用将生成最多 `max_model_len - prompt_length` 个 token，因此在使用时请确保 prompt 长度小于 `max_model_len`。
@@ -214,9 +220,6 @@ buffer:
         ...
       buffer_2:
         ...
-
-  default_workflow_type: 'math_workflow'
-  default_reward_fn_type: 'countdown_reward'
 ```
 
 - `batch_size`: 每个训练步骤使用的任务数。*请勿手动将此值乘以 `algorithm.repeat_times`*。
@@ -224,13 +227,16 @@ buffer:
 - `total_epochs`: 总训练轮数。
 - `total_steps`: 总训练步数（可选）。若指定，则 `total_epochs` 不生效。
 
-### Explorer 输入
+### Explorer 输入配置
 
 定义 explorer 用于训练和评估的数据集。
 
 ```yaml
 buffer:
   explorer_input:
+    default_workflow_type: 'math_workflow'
+    default_eval_workflow_type: 'math_workflow'
+    default_reward_fn_type: 'countdown_reward'
     taskset:
       name: countdown_train
       storage_type: file
@@ -256,27 +262,26 @@ buffer:
         response_key: 'answer'
       rollout_args:
         temperature: 0.1
-      default_workflow_type: 'math_workflow'
-      default_reward_fn_type: 'countdown_reward'
     ...
 ```
 
 - `buffer.explorer_input.taskset`: 用于训练探索策略的任务数据集。
-- `buffer.explorer_input.eval_taskset`: 用于评估的任务数据集列表。
+- `buffer.explorer_input.eval_tasksets`: 用于评测的任务数据集列表。
+- `buffer.explorer_input.default_workflow_type`: 若未在数据集级别指定，则为所有任务数据集设置默认的工作流类型。
+- `buffer.explorer_input.default_eval_workflow_type`: 若未在数据集级别指定，则为所有评测任务数据集设置默认的工作流类型。
+- `buffer.explorer_input.default_reward_fn_type`: 若未在数据集级别指定，则为所有任务数据集设置默认的奖励类型。
 
 每个任务数据集的配置定义如下：
 
 - `name`: 数据集名称。该名称将用作 Ray actor 的名称，因此必须唯一。
 - `storage_type`: 数据集的存储方式。选项：`file`、`queue`、`sql`。
   - `file`: 数据集存储在 `jsonl`/`parquet` 文件中。数据文件组织需符合 HuggingFace 标准。*建议大多数情况下使用此存储类型。*
-  - `queue`: 数据集存储在队列中。队列是一个简单的 FIFO 队列，用于存储任务数据集。*除非你明确了解其用途，否则不要为此类数据集使用此类型。*
   - `sql`: 数据集存储在 SQL 数据库中。*此类型尚不稳定，将在未来版本中优化。*
 - `path`: 任务数据集的路径。
-  - 对于 `file` 类型，路径指向包含任务数据集文件的目录。
-  - 对于 `queue` 类型，路径为可选。可通过在此指定 sqlite 数据库路径来备份队列数据。
+  - 对于 `file` 类型，路径指向包含任务数据集文件的目录。它支持使用与 [`datasets.load_dataset()`](https://huggingface.co/docs/datasets/main/en/package_reference/loading_methods#datasets.load_dataset) 函数兼容的格式加载本地和远程数据文件。
   - 对于 `sql` 类型，路径指向 sqlite 数据库文件。
-- `subset_name`: 任务数据集的子集名称。默认为 `None`。
-- `split`: 任务数据集的划分。默认为 `train`。
+- `subset_name`: 任务数据集的子集名称，对应 huggingface datasets `load_dataset` 函数中的 `name` 参数。默认为 `None`。
+- `split`: 任务数据集的划分。对应 huggingface datasets `load_dataset` 函数中的 `split` 参数。默认为 `train`。
 - `repeat_times`: 为一个任务生成的 rollout 数量。若未设置，则自动设为 `algorithm.repeat_times`（`taskset`）或 `1`（`eval_tasksets`）。
 - `rollout_args`: rollout 参数。
   - `temperature`: 采样温度。
@@ -284,7 +289,7 @@ buffer:
 - `default_reward_fn_type`: 探索过程中使用的奖励函数。若未指定，则使用 `buffer.default_reward_fn_type`。
 - `workflow_args`: 用于补充数据集级别参数的字典。
 
-### Trainer 输入
+### Trainer 输入配置
 
 定义 trainer 使用的 experience buffer 和可选的辅助数据集。
 
@@ -320,7 +325,7 @@ buffer:
     - 对于 `queue` 类型，此字段可选。可在此指定 SQLite 数据库或 JSON 文件路径以备份队列数据。
     - 对于 `file` 类型，路径指向包含数据集文件的目录。
     - 对于 `sql` 类型，路径指向 SQLite 数据库文件。
-  - `format`: 定义数据集中 prompt 和 response 的键。
+  - `format`: 主要针对 SFT 和 DPO 算法的数据集，用于规范化提取的数据。
     - `prompt_type`: 指定数据集中 prompt 的类型。目前支持 `plaintext`、`messages`。
       - `plaintext`: prompt 为 string 格式。
       - `messages`: prompt 为消息列表。
@@ -335,8 +340,11 @@ buffer:
     - `enable_concatenated_multi_turn`: 启用拼接的多轮 SFT 数据预处理。仅适用于 `messages`，且仅在 SFT 算法中生效。
     - `chat_template`: 以字符串形式指定 chat template。若未提供，则使用 `model.custom_chat_template`。
   - `max_read_timeout`: 读取新 experience 数据的最大等待时间（秒）。若超时，则直接返回不完整批次。仅当 `storage_type` 为 `queue` 时生效。默认为 1800 秒（30 分钟）。
-  - `use_priority_queue`: 仅当 `storage_type` 为 `queue` 时生效。若设为 `True`，队列为优先级队列，允许优先处理某些 experience。默认为 `False`。
-  - `reuse_cooldown_time`: 仅当 `storage_type` 为 `queue` 且 `use_priority_queue` 为 `True` 时生效。若设置，指定 experience 重用的冷却时间（秒）。若未指定，默认为 `None`，表示 experience 不可被重复使用。
+  - `replay_buffer`: 仅当 `storage_type` 为 `queue` 时生效。用于配置 experience 重用的回放缓冲区。
+    - `enable`: 是否将 experience 放回缓冲区。默认为 `false`。
+    - `reuse_cooldown_time`: experience 重用的冷却时间（秒）。若未指定，默认为 `None`，表示 experience 不可被重复使用。
+    - `priority_fn`: experience 优先级函数，用于确定 experience 的重用顺序。目前支持 `linear_decay` 和 `linear_decay_use_count_control_randomization`。
+    - `priority_fn_args`: 传递给优先级函数的参数字典，具体参数取决于所选的优先级函数。
 - `auxiliary_buffers`: trainer 使用的可选缓冲区。为字典结构，每个键为 buffer 名称，值为 buffer 配置。每个 buffer 配置与 `experience_buffer` 类似。
 
 ---
@@ -362,20 +370,34 @@ explorer:
     tensor_parallel_size: 1
   eval_interval: 100
   eval_on_startup: True
+  over_rollout:
+    ratio: 0.0
+    wait_after_min: 30.0
+  dynamic_timeout:
+    enable: false
+    ratio: 3.0
+  runner_state_report_interval: 0
 ```
 
 - `name`: explorer 的名称。该名称将用作 Ray actor 的名称，因此必须唯一。
-- `runner_per_model`: 每个 rollout 模型的并行工作流执行器数量。
-- `max_timeout`: 工作流完成的最大时间（秒）。
-- `max_retry_times`: 工作流的最大重试次数。
-- `env_vars`: 为每个工作流执行器设置的环境变量。
+- `runner_per_model`: 每个推理引擎实例所服务的 WorkflowRunner 数量。
+- `max_timeout`: 等待 Workflow 完成的最大时间（秒）。
+- `max_retry_times`: Workflow 失败或超时情况下的最大重试次数。
+- `env_vars`: 为每个 WorkflowRunner 设置的环境变量。
 - `rollout_model.engine_type`: 推理引擎类型。支持 `vllm_async` 和 `vllm`，二者的含义相同，都使用了异步引擎。后续版本会只保留 `vllm`。
-- `rollout_model.engine_num`: 推理引擎数量。
-- `rollout_model.tensor_parallel_size`: 张量并行度。
-- `rollout_model.enable_history`: 是否启用模型调用历史记录。若设为 `True`，模型包装器会自动记录模型调用返回的 experience。请定期通过 `extract_experience_from_history` 提取历史，以避免内存溢出。默认为 `False`。
-- `auxiliary_models`: 用于自定义工作流的额外模型。
-- `eval_interval`: 模型评估的间隔（以步为单位）。
-- `eval_on_startup`: 是否在启动时评估模型。更准确地说，是在第 0 步使用原始模型评估，因此重启时不会触发。
+- `rollout_model.engine_num`: 推理引擎实例的数量。
+- `rollout_model.tensor_parallel_size`: 每个实例的张量并行度。
+- `rollout_model.enable_history`: 是否启用模型调用历史记录功能。若设为 `True`，模型会自动记录调用返回的 experience。请定期通过 `extract_experience_from_history` 提取历史，以避免内存溢出。默认为 `False`。
+- `auxiliary_models`: 用于自定义工作流的辅助模型。
+- `eval_interval`: 模型评估的间隔（以 step 为单位）。
+- `eval_on_startup`: 是否在启动时评估模型。更准确地说，是在第 0 步使用原始模型评估，因此中断训练后重启时不会触发该行为。
+- `over_rollout`: [实验性] 超量 rollout 机制的配置，允许 explorer 在每个步骤中使用少于完整批次大小的任务继续进行。这在某些任务显著耗时较长的场景中能有效地提高吞吐量。仅当使用动态同步（`synchronizer.sync_style` 不是 `fixed`）时适用。
+  - `ratio`: explorer 在每个步骤中仅等待 `(1 - ratio) * batch_size` 的任务。默认为 `0.0`，表示等待所有任务。
+  - `wait_after_min`: 达到最小任务阈值后，等待此秒数后再继续。
+- `dynamic_timeout`: [实验性] 动态超时机制的配置，根据成功任务的平均耗时调整每个任务的超时时间。
+  - `enable`: 是否启用动态超时。默认为 `false`。
+  - `ratio`: 每个任务的超时时间动态设置为 `average_time_per_success_task * ratio`。默认为 `3.0`。
+- `runner_state_report_interval`: WorkflowRunner 报告自身状态的时间间隔（秒）。若设为大于 0 的值，工作流执行器会定期将其状态报告给 explorer 主进程并打印在命令行中，以便监控其运行状态。默认为 `0`，表示不启用此功能。推荐如需使用此功能，将其设置为 `10` 秒或更长时间以减少对性能的影响。
 
 ---
 
@@ -389,6 +411,7 @@ synchronizer:
   sync_interval: 10
   sync_offset: 0
   sync_timeout: 1200
+  sync_style: 'fixed'
 ```
 
 - `sync_method`: 同步方法。选项：
@@ -397,6 +420,9 @@ synchronizer:
 - `sync_interval`: trainer 和 explorer 之间模型权重同步的间隔（步）。
 - `sync_offset`: trainer 和 explorer 之间模型权重同步的偏移量（步）。explorer 可在 trainer 开始训练前运行 `sync_offset` 步。
 - `sync_timeout`: 同步超时时间。
+- `sync_style`: 同步风格。选项：
+  - `fixed`: explorer 和 trainer 每隔 `sync_interval` 步同步一次权重。
+  - `dynamic_by_explorer`: explorer 在完成 `sync_interval` 步后通知 trainer 同步权重，而不管此时 trainer 已完成多少步。
 
 ---
 
@@ -407,19 +433,25 @@ synchronizer:
 ```yaml
 trainer:
   name: trainer
-  trainer_type: 'verl'
-  save_interval: 100
+  trainer_type: "verl"
+  trainer_strategy: "fsdp"
   total_steps: 1000
+  save_interval: 100
   save_strategy: "unrestricted"
+  save_hf_checkpoint: "last"
   grad_clip: 1.0
   use_dynamic_bsz: true
-  ppo_max_token_len_per_gpu: 16384
+  max_token_len_per_gpu: 16384
   ulysses_sequence_parallel_size: 1
   trainer_config: null
 ```
 
 - `name`: trainer 的名称。该名称将用作 Ray actor 的名称，因此必须唯一。
 - `trainer_type`: trainer 后端实现。目前仅支持 `verl`。
+- `trainer_strategy`: VeRL 的训练策略。默认值为 `fsdp`。可选值如下：
+  - `fsdp`: 使用 PyTorch FSDP。
+  - `fsdp2`: 使用 PyTorch FSDP2。
+  - `megatron`: 使用 Megatron-LM。
 - `save_interval`: 保存模型检查点的频率（步）。
 - `total_steps`: 总训练步数。
 - `save_strategy`: 模型保存时的并行策略。默认值为`unrestricted`。可选值如下：
@@ -427,9 +459,13 @@ trainer:
   - `single_process`：整个系统中，仅允许一个进程执行保存，该进程内的多个线程可以并行处理保存任务，不同进程之间串行执行。
   - `single_node`：整个系统中，仅允许一个计算节点执行保存，该节点内的进程和线程可并行工作，不同节点的保存串行执行。
   - `unrestricted`：不限制保存操作，允许多个节点、进程或线程同时保存模型。
+- `save_hf_checkpoint`: 指定保存 HuggingFace 格式检查点的时机，默认为 "last"。注意在保存为 HuggingFace 格式会消耗额外的时间、存储空间和显存，可能影响训练性能或导致显存不足错误。可选值：
+  - `last`: 仅训练产生的最后一个检查点保存为 HuggingFace 格式。
+  - `always`: 所有检查点均保存为 HuggingFace 格式。
+  - `never`: 不保存 HuggingFace 格式检查点。
 - `grad_clip`: 梯度裁剪阈值。
 - `use_dynamic_bsz`: 是否使用动态批量大小。
-- `ppo_max_token_len_per_gpu`: 训练过程中，每个 GPU 最大 token 长度; 当 `use_dynamic_bsz=true` 时生效。
+- `max_token_len_per_gpu`: 训练过程中，每个 GPU 最大 token 长度; 当 `use_dynamic_bsz=true` 时生效。
 - `ulysses_sequence_parallel_size`: 序列并行的并行度，即用于分割单个序列的 GPU 数量。
 - `trainer_config`: 内联提供的 trainer 配置。
 

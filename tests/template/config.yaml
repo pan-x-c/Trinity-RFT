@@ -20,8 +20,8 @@ model:
   max_response_tokens: 2048
   max_model_len: 4096
 cluster:  # 2 for explorer, 2 for trainer
-  node_num: 1
-  gpu_per_node: 4
+  node_num: ${oc.env:NODE_NUM,2}
+  gpu_per_node: ${oc.env:GPU_PER_NODE,2}
 buffer:
   total_epochs: 1
   batch_size: 4
@@ -32,9 +32,6 @@ buffer:
       path: 'placeholder'
       split: 'train'
       enable_progress_bar: false
-    default_workflow_type: ''
-    default_eval_workflow_type: ''
-    default_reward_fn_type: ''
 explorer:
   eval_interval: 100
   runner_per_model: 8
@@ -45,13 +42,13 @@ explorer:
     enforce_eager: true
     dtype: bfloat16
     seed: 42
-    use_v1: true
 trainer:
   trainer_type: verl
   save_interval: 100
+  save_hf_checkpoint: never
   grad_clip: 1.0
   use_dynamic_bsz: true
-  ppo_max_token_len_per_gpu: 16384
+  max_token_len_per_gpu: 16384
   ulysses_sequence_parallel_size: 1
   trainer_config:
     actor_rollout_ref:
@@ -64,8 +61,6 @@ trainer:
         lr: 1e-5
       model:
         use_remove_padding: false
-      ppo_max_token_len_per_gpu: 32768 # (${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}) * 2
-      forward_max_token_len_per_gpu: ${trainer.trainer_config.critic.ppo_max_token_len_per_gpu}
       cliprange_value: 0.5
       checkpoint:
         load_contents: ['model', 'optimizer', 'extra']

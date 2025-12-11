@@ -3,7 +3,8 @@
 import asyncio
 import socket
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional, Sequence, Tuple, Union
+from functools import partial
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import httpx
 import numpy as np
@@ -30,13 +31,22 @@ class InferenceModel(ABC):
         """Generate experiences from a list of history chat messages in async."""
         raise NotImplementedError
 
-    async def logprobs(self, tokens: List[int]) -> Tensor:
+    async def logprobs(self, token_ids: List[int], **kwargs) -> Tensor:
         """Generate logprobs for a list of tokens in async."""
         raise NotImplementedError
 
-    async def convert_messages_to_experience(self, messages: List[dict]) -> Experience:
+    async def convert_messages_to_experience(
+        self,
+        messages: List[dict],
+        tools: Optional[List[dict]] = None,
+        temperature: Optional[float] = None,
+    ) -> Experience:
         """Convert a list of messages into an experience in async."""
         raise NotImplementedError
+
+    async def prepare(self) -> None:
+        """Prepare the model before inference."""
+        pass
 
     @abstractmethod
     def get_model_version(self) -> int:
@@ -49,10 +59,6 @@ class InferenceModel(ABC):
             s.bind(("", 0))
             port = s.getsockname()[1]
         return address, port
-
-    def has_api_server(self) -> bool:
-        """Check if the model has an API server."""
-        return False
 
     def get_api_server_url(self) -> Optional[str]:
         """Get the API server URL if available."""
@@ -86,7 +92,7 @@ class ModelWrapper:
 
     def __init__(
         self,
-        model: Any,
+        model: InferenceModel,
         engine_type: str = "vllm",
         enable_lora: bool = False,
         enable_history: bool = False,
@@ -101,30 +107,30 @@ class ModelWrapper:
         self.enable_history = enable_history
         self.history = []
         self.status = RunningStatus.RUNNING
+        self.workflow_state: Dict = {}
         self.request_count = 0
+        self.state_lock = asyncio.Lock()
 
     async def prepare(self) -> None:
         """Prepare the model wrapper."""
-        if await self.model.has_api_server.remote():
-            self.api_address = await self.model.get_api_server_url.remote()
-            if self.api_address is None:
-                raise RuntimeError(
-                    "Failed to connect to the API server. Please set `enable_openai_api` to `True`."
-                )
-            max_retries = 30
-            interval = 2  # seconds
-            for i in range(max_retries):
-                try:
-                    async with httpx.AsyncClient() as client:
-                        response = await client.get(self.api_address + "/health", timeout=5)
-                        if response.status_code == 200:
-                            return
-                except Exception as e:
-                    self.logger.info(f"API server not ready (attempt {i + 1}/{max_retries}): {e}")
-                await asyncio.sleep(interval)
-            raise RuntimeError(
-                f"API server at {self.api_address} not ready after {max_retries} attempts."
-            )
+        self.api_address = await self.model.get_api_server_url.remote()
+        if self.api_address is None:
+            self.logger.info("API server is not enabled for inference model.")
+            return
+        max_retries = 30
+        interval = 2  # seconds
+        for i in range(max_retries):
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(self.api_address + "/health", timeout=5)
+                    if response.status_code == 200:
+                        return
+            except Exception as e:
+                self.logger.info(f"API server not ready (attempt {i + 1}/{max_retries}): {e}")
+            await asyncio.sleep(interval)
+        raise RuntimeError(
+            f"API server at {self.api_address} not ready after {max_retries} attempts."
+        )
 
     def _record_history(self, exps: Union[Experience, List[Experience]]) -> None:
         """Record experiences to history."""
@@ -210,21 +216,39 @@ class ModelWrapper:
     ) -> List[Experience]:
         return await self.model.chat_mm.remote(messages, images=images, videos=videos, **kwargs)
 
-    def logprobs(self, tokens: List[int]) -> Tensor:
+    def logprobs(self, tokens: List[int], temperature: Optional[float] = None) -> Tensor:
         """Calculate the logprobs of the given tokens."""
-        return ray.get(self.model.logprobs.remote(tokens))
+        return ray.get(self.model.logprobs.remote(tokens, temperature=temperature))
 
-    async def logprobs_async(self, tokens: List[int]) -> Tensor:
+    async def logprobs_async(
+        self, tokens: List[int], temperature: Optional[float] = None
+    ) -> Tensor:
         """Calculate the logprobs of the given tokens in async."""
-        return await self.model.logprobs.remote(tokens)
+        return await self.model.logprobs.remote(tokens, temperature=temperature)
 
-    def convert_messages_to_experience(self, messages: List[dict]) -> Experience:
+    def convert_messages_to_experience(
+        self,
+        messages: List[dict],
+        tools: Optional[List[dict]] = None,
+        temperature: Optional[float] = None,
+    ) -> Experience:
         """Convert a list of messages into an experience."""
-        return ray.get(self.model.convert_messages_to_experience.remote(messages))
+        return ray.get(
+            self.model.convert_messages_to_experience.remote(
+                messages, tools=tools, temperature=temperature
+            )
+        )
 
-    async def convert_messages_to_experience_async(self, messages: List[dict]) -> Experience:
+    async def convert_messages_to_experience_async(
+        self,
+        messages: List[dict],
+        tools: Optional[List[dict]] = None,
+        temperature: Optional[float] = None,
+    ) -> Experience:
         """Convert a list of messages into an experience in async."""
-        return await self.model.convert_messages_to_experience.remote(messages)
+        return await self.model.convert_messages_to_experience.remote(
+            messages, tools=tools, temperature=temperature
+        )
 
     @property
     def model_version(self) -> int:
@@ -258,6 +282,9 @@ class ModelWrapper:
         else:
             return None
 
+    async def get_message_token_len(self, messages: List[dict]) -> int:
+        return await self.model.get_message_token_len.remote(messages)
+
     def get_openai_client(self) -> openai.OpenAI:
         """Get the openai client.
 
@@ -276,7 +303,7 @@ class ModelWrapper:
         )
         if self.enable_history:
             # add a decorator to the openai client to record history
-            ori_create = self.openai_client.chat.completions.create
+            ori_create = partial(self.openai_client.chat.completions.create, logprobs=True)
 
             def record_chat_completions(*args, **kwargs):
                 response = ori_create(*args, **kwargs)
@@ -306,7 +333,7 @@ class ModelWrapper:
         )
         if self.enable_history:
             # add a decorator to the openai client to record history
-            ori_create = self.openai_async_client.chat.completions.create
+            ori_create = partial(self.openai_async_client.chat.completions.create, logprobs=True)
 
             async def record_chat_completions(*args, **kwargs):
                 response = await ori_create(*args, **kwargs)
@@ -342,6 +369,23 @@ class ModelWrapper:
         if clear_history:
             self.history.clear()
         return exps
+
+    # Workflow state management methods
+    async def set_workflow_state(self, state: Dict) -> None:
+        """Set the state of workflow using the model."""
+        async with self.state_lock:
+            self.workflow_state.update(state)
+
+    async def clean_workflow_state(self) -> None:
+        """Clean the state of workflow using the model."""
+        async with self.state_lock:
+            self.workflow_state = {}
+            self.history.clear()
+
+    async def get_workflow_state(self) -> Dict:
+        """Get the state of workflow using the model."""
+        async with self.state_lock:
+            return self.workflow_state.copy()
 
 
 def convert_api_output_to_experience(

@@ -16,13 +16,13 @@ from vllm.sampling_params import RequestOutputKind
 
 from trinity.common.config import InferenceModelConfig
 from trinity.common.experience import Experience
-from trinity.common.models.api.vllm_patch import get_vllm_version
 from trinity.common.models.mm_utils import (
     build_multi_modal_inputs,
     convert_messages_to_mm_format,
 )
 from trinity.common.models.model import InferenceModel
 from trinity.common.models.utils import get_action_mask_method
+from trinity.common.models.vllm_patch.api_patch import get_vllm_version
 from trinity.utils.log import get_logger
 
 
@@ -51,16 +51,29 @@ class vLLMRolloutModel(InferenceModel):
             os.environ["VLLM_RAY_PER_WORKER_GPUS"] = str(int(config.use_v1))
             os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
             os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
+        if get_vllm_version() >= parse_version("0.11.0"):
+            os.environ["VLLM_ALLREDUCE_USE_SYMM_MEM"] = "0"
+        if not config.enforce_eager:
+            # To avoid torch compile conflicts when multiple model are started simultaneously.
+            # remove this when the following PR is released:
+            # https://github.com/vllm-project/vllm/pull/27616
+            os.environ["VLLM_CACHE_ROOT"] = os.path.expanduser(
+                f"~/.cache/vllm/{config.bundle_indices}"
+            )
         self.default_sampling_params = vllm.SamplingParams(
             n=1,
-            temperature=0.0,
+            temperature=config.temperature,
             max_tokens=config.max_response_tokens,
             min_tokens=config.min_response_tokens,
-            truncate_prompt_tokens=config.max_prompt_tokens,
+            truncate_prompt_tokens=(
+                config.max_prompt_tokens if config.enable_prompt_truncation else None
+            ),
             skip_special_tokens=True,
             include_stop_str_in_output=False,
             output_kind=RequestOutputKind.FINAL_ONLY,
-            logprobs=0,
+            logprobs=config.logprobs,
+            top_p=config.top_p,
+            top_k=config.top_k,
             ignore_eos=config.ignore_eos,
         )
         self.enable_thinking = config.enable_thinking
@@ -68,6 +81,11 @@ class vLLMRolloutModel(InferenceModel):
         max_model_len = config.max_model_len
         self.enable_lora = config.enable_lora
         self.default_lora_path = config.lora_kwargs.pop("default_lora_path", None)
+        rope_kwargs = {
+            key: getattr(config, key)
+            for key in ["rope_scaling", "rope_theta"]
+            if getattr(config, key) is not None
+        }
         engine_args = vllm.AsyncEngineArgs(
             model=config.model_path,
             enforce_eager=config.enforce_eager,
@@ -83,14 +101,25 @@ class vLLMRolloutModel(InferenceModel):
             gpu_memory_utilization=config.gpu_memory_utilization,
             enable_chunked_prefill=config.enable_chunked_prefill,
             # max_num_batched_tokens=256, # you can further set this parameter to reduce the vllm peak memory usage
+            override_generation_config={  # TODO: find a way to unittest this
+                "temperature": config.temperature,
+                "top_p": config.top_p,
+                "top_k": config.top_k,
+                "max_new_tokens": config.max_response_tokens,
+                "repetition_penalty": config.repetition_penalty,
+            },
             disable_log_stats=True,
             enable_lora=config.enable_lora,
+            logprobs_mode="processed_logprobs",
+            **rope_kwargs,
             **config.lora_kwargs,
         )
         if get_vllm_version() > parse_version("0.10.0"):
-            engine_args.enable_log_requests = False
+            engine_args.enable_log_requests = config.enable_log_requests
         else:
-            engine_args.disable_log_requests = True
+            engine_args.disable_log_requests = not config.enable_log_requests
+        if get_vllm_version() >= parse_version("0.11.0"):
+            engine_args.reasoning_parser = config.reasoning_parser
         self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
         self.processor = None
         self.tokenizer = None
@@ -103,15 +132,12 @@ class vLLMRolloutModel(InferenceModel):
         self.api_server_host = None
         self.api_server_port = None
         self.api_server = None
+        self._prepared = False
+        self.async_lock = asyncio.Lock()
 
     async def _initialize_tokenizer(self):
         if self.tokenizer is None:
-            if self.enable_lora:
-                self.tokenizer = await self.async_llm.get_tokenizer(
-                    lora_request=self.get_lora_request()
-                )
-            else:
-                self.tokenizer = await self.async_llm.get_tokenizer()
+            self.tokenizer = await self.async_llm.get_tokenizer()
         self.tokenizer.truncation_side = "left"
 
     def _initialize_processor(self):
@@ -119,6 +145,17 @@ class vLLMRolloutModel(InferenceModel):
             self.config.model_path, trust_remote_code=True
         )
         self.tokenizer = self.processor.tokenizer
+
+    async def prepare(
+        self,
+    ) -> None:
+        """Prepare the model for inference."""
+        async with self.async_lock:
+            if self._prepared:
+                return
+            await self._collective_rpc("apply_patches")
+            await self.run_api_server()
+            self._prepared = True
 
     async def chat(
         self, messages: List[Dict], lora_request: LoRARequest = None, **kwargs
@@ -167,9 +204,36 @@ class vLLMRolloutModel(InferenceModel):
         """
         if self.tokenizer is None:
             await self._initialize_tokenizer()
+
+        # Tokenize once without truncation to check if truncation is needed
         token_ids = self.tokenizer(  # type: ignore
-            prompt, truncation=True, max_length=self.config.max_prompt_tokens, return_tensors="pt"
-        )["input_ids"][0].tolist()
+            prompt,
+            truncation=False,
+            return_tensors="pt",
+        )[
+            "input_ids"
+        ][0].tolist()
+
+        # Check if truncation is needed and apply it
+        if self.config.enable_prompt_truncation and self.config.max_prompt_tokens is not None:
+            if len(token_ids) > self.config.max_prompt_tokens:
+                self.logger.warning(
+                    f"Prompt was truncated to {self.config.max_prompt_tokens} tokens"
+                )
+                token_ids = token_ids[: self.config.max_prompt_tokens + 1]  # leave one for response
+                return [
+                    Experience(
+                        tokens=token_ids,
+                        logprobs=torch.zeros(1, dtype=torch.float32),
+                        prompt_length=len(token_ids) - 1,
+                        prompt_text=self.tokenizer.decode(token_ids[:-1]),
+                        response_text=self.tokenizer.decode(token_ids[-1]),
+                        truncate_status="prompt_truncated",
+                        reward=0.0,
+                    )
+                    for i in range(kwargs.get("n", 1))
+                ]
+
         output = await self._generate_internal(
             prompt={"prompt_token_ids": token_ids}, lora_request=lora_request, **kwargs
         )
@@ -294,8 +358,11 @@ class vLLMRolloutModel(InferenceModel):
         ]
         return experiences
 
-    async def logprobs(
-        self, token_ids: List[int], lora_request: LoRARequest = None
+    async def logprobs(  # type: ignore [override]
+        self,
+        token_ids: List[int],
+        lora_request: LoRARequest = None,
+        temperature: Optional[float] = None,
     ) -> torch.Tensor:
         """Calculate the logprobs of the given tokens in async. Please slice the result carefully
         to align with the actual response length.
@@ -303,16 +370,22 @@ class vLLMRolloutModel(InferenceModel):
         Args:
             token_ids (List[int]): The input token ids (seq_length). Please make sure the length of
                 it does not exceed `max_model_len - 1`.
+            lora_request (LoRARequest, optional): The LoRA request. Defaults to None.
+            temperature (float): The temperature for scaling logits.
 
         Returns:
             A tensor of logprobs (seq_length - 1).
         """
+        temperature = temperature if temperature is not None else self.config.temperature
+        if temperature is None:
+            temperature = 1.0
         output = await self._generate_internal(
             prompt={"prompt_token_ids": token_ids},
             lora_request=lora_request,
             n=1,
             max_tokens=1,
             prompt_logprobs=0,  # vLLM return `prompt_logprobs + 1` logrpobs for each token
+            temperature=temperature,
         )
         return torch.tensor(
             [list(logprob_dict.values())[0].logprob for logprob_dict in output.prompt_logprobs[1:]],
@@ -344,6 +417,7 @@ class vLLMRolloutModel(InferenceModel):
         self,
         messages: List[dict],
         tools: Optional[List[dict]] = None,
+        temperature: Optional[float] = None,
     ) -> Experience:
         """Convert a list of messages into an experience."""
         if self.tokenizer is None:
@@ -357,12 +431,30 @@ class vLLMRolloutModel(InferenceModel):
             chat_template=self.chat_template,
             enable_thinking=self.enable_thinking,
         )  # (seq_length, ), (seq_length, )
-        logprobs = await self.logprobs(token_ids=token_ids.tolist())  # (seq_length - 1,)
+
+        # Truncate tokens if they exceed the length limit
+        assert token_ids is not None
+        truncate_status = None
+        if self.config.max_model_len is not None and self.config.max_model_len > 0:
+            if len(token_ids) > self.config.max_model_len - 1:
+                truncate_status = "response_truncated"
+                self.logger.warning(
+                    f"Warning: {len(token_ids) = } exceeds the length limit {self.config.max_model_len-1 = }"
+                )
+                token_ids = token_ids[: self.config.max_model_len - 1]
+                action_mask = action_mask[: self.config.max_model_len - 1]
+
+        temperature = temperature if temperature is not None else self.config.temperature
+        logprobs = await self.logprobs(
+            token_ids=token_ids.tolist(), temperature=temperature
+        )  # (seq_length - 1,)
         return Experience(
             tokens=token_ids,
             logprobs=logprobs[prompt_length - 1 :],
             prompt_length=prompt_length,
             action_mask=action_mask[prompt_length:],  # Exclude the prompt tokens
+            messages=messages,
+            truncate_status=truncate_status,
         )
 
     async def shutdown(self):
@@ -455,27 +547,40 @@ class vLLMRolloutModel(InferenceModel):
             ),
         )
 
-    async def run_api_server(self):
-        """Run the OpenAI API server in a Ray actor."""
-        if not (self.api_server_host is None or self.api_server_port is None):
-            raise RuntimeError("API server is already running.")
-        from trinity.common.models.api.vllm_patch import run_api_server_in_ray_actor
+    async def run_api_server(self) -> bool:
+        """Run the OpenAI API server in a Ray actor.
 
-        self.api_server_host, self.api_server_port = self.get_available_address()
+        Returns:
+            success (bool): Whether the API server is started successfully.
+        """
+        if not self.config.enable_openai_api:
+            self.logger.info("OpenAI API server is not enabled. Skipping...")
+            return False  # Not enabled
+
+        if self.api_server_host is not None and self.api_server_port is not None:
+            self.logger.info("OpenAI API server is already running. Skipping...")
+            return True  # already running
+
+        from trinity.common.models.vllm_patch.api_patch import (
+            run_api_server_in_ray_actor,
+        )
+
+        api_server_host, api_server_port = self.get_available_address()
         self.api_server = asyncio.create_task(
             run_api_server_in_ray_actor(
                 self.async_llm,
-                self.api_server_host,
-                self.api_server_port,
-                self.config.model_path,
+                api_server_host,
+                api_server_port,
+                self.config.model_path,  # type: ignore [arg-type]
                 self.config.enable_auto_tool_choice,
                 self.config.tool_call_parser,
                 self.config.reasoning_parser,
+                self.config.enable_log_requests,
             )
         )
-
-    def has_api_server(self) -> bool:
-        return self.config.enable_openai_api
+        self.api_server_host = api_server_host
+        self.api_server_port = api_server_port
+        return True
 
     def get_api_server_url(self) -> Optional[str]:
         """Get the URL of the OpenAI API server.
@@ -483,7 +588,10 @@ class vLLMRolloutModel(InferenceModel):
         Returns:
             api_url (str): The URL of the OpenAI API server.
         """
-        if not self.has_api_server():
+        if not self._prepared:
+            raise RuntimeError("Model is not prepared. Please call `prepare()` first.")
+        if self.api_server_host is None or self.api_server_port is None:
+            # openai api is not enabled
             return None
         return f"http://{self.api_server_host}:{self.api_server_port}"
 
@@ -494,7 +602,7 @@ class vLLMRolloutModel(InferenceModel):
         return self.model_version
 
     def get_model_path(self) -> str:
-        return self.config.model_path
+        return self.config.model_path  # type: ignore [return-value]
 
     def get_lora_request(self, lora_path: Optional[str] = None) -> LoRARequest:
         assert self.config.lora_modules is not None
@@ -503,6 +611,23 @@ class vLLMRolloutModel(InferenceModel):
             self.config.lora_modules[0]["lora_path"] = lora_path  # for consistency
             lora_request.lora_path = lora_path
         return lora_request
+
+    async def get_message_token_len(self, messages) -> int:
+        if self.tokenizer is None:
+            await self._initialize_tokenizer()
+        if self.chat_template is None:
+            self.chat_template = self.tokenizer.get_chat_template()
+        prompt = self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            chat_template=self.chat_template,
+            enable_thinking=self.enable_thinking,
+        )
+        prompt_token = self.tokenizer(  # type: ignore
+            prompt, truncation=False, return_tensors="pt"
+        )["input_ids"][0].tolist()
+        return len(prompt_token)
 
     async def sleep(self, level: int = 1) -> None:
         await self.async_llm.sleep(level=level)

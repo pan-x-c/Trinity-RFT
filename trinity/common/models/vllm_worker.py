@@ -5,12 +5,18 @@ import torch
 import torch.distributed
 from verl.utils.vllm_utils import patch_vllm_moe_model_weight_loader
 
+from trinity.common.models.vllm_patch.worker_patch import patch_vllm_prompt_logprobs
 from trinity.manager.synchronizer import Synchronizer
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
 
 
 class WorkerExtension:
+    def apply_patches(self):
+        """Apply necessary patches to vLLM."""
+        patch_vllm_moe_model_weight_loader(self.model_runner.model)
+        patch_vllm_prompt_logprobs(self.model_runner)
+
     def init_process_group(
         self,
         master_address: str,
@@ -55,7 +61,6 @@ class WorkerExtension:
         self._namespace = namespace
         self.synchronizer = Synchronizer.get_actor(namespace=self._namespace)
         self._checkpoint_converter = None
-        patch_vllm_moe_model_weight_loader(self.model_runner.model)
 
     def update_weight(self):
         """Broadcast weight to all vllm workers from source rank 0 (actor model)"""

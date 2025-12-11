@@ -1,3 +1,5 @@
+import asyncio
+import os
 import unittest
 
 import torch
@@ -24,6 +26,16 @@ DEBUG = False
 def print_debug(*args):
     if DEBUG:
         print(*args)
+
+
+async def prepare_engines(engines, auxiliary_engines):
+    prepare_model_refs = []
+    for engine in engines:
+        prepare_model_refs.append(engine.prepare.remote())
+    for engines in auxiliary_engines:
+        for engine in engines:
+            prepare_model_refs.append(engine.prepare.remote())
+    await asyncio.gather(*prepare_model_refs)
 
 
 # Qwen2.5 chat template with {% generation %} mark
@@ -107,9 +119,9 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
         self.config = get_template_config()
         self.config.mode = "explore"
         self.config.model.model_path = get_model_path()
+        self.config.model.custom_chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.engine_num = self.engine_num
         self.config.explorer.rollout_model.tensor_parallel_size = self.tensor_parallel_size
-        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.algorithm.repeat_times = self.repeat_times
         self.config.explorer.rollout_model.enable_history = self.enable_history
         self.config.check_and_update()
@@ -124,6 +136,7 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
     async def test_generate(
         self,
     ):
+        await prepare_engines(self.engines, self.auxiliary_engines)
         await self.model_wrapper.prepare()
         self.assertEqual(self.model_wrapper.model_path, self.config.model.model_path)
         self.assertEqual(await self.model_wrapper.model_path_async, self.config.model.model_path)
@@ -221,6 +234,7 @@ class ModelWrapperTest(RayUnittestBaseAysnc):
     [
         (20, 19, None),
         (20, None, 1),
+        (20, 5, 15),
     ],
 )
 class TestModelLen(RayUnittestBaseAysnc):
@@ -231,26 +245,48 @@ class TestModelLen(RayUnittestBaseAysnc):
         self.config.model.max_model_len = self.max_model_len
         self.config.model.max_prompt_tokens = self.max_prompt_tokens
         self.config.model.max_response_tokens = self.max_response_tokens
+        self.config.model.enable_prompt_truncation = True
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.check_and_update()
 
         self.engines, self.auxiliary_engines = create_inference_models(self.config)
         self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.config.model.model_path)
 
     async def test_model_len(self):
+        await prepare_engines(self.engines, self.auxiliary_engines)
         await self.model_wrapper.prepare()
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "What's the weather like today?"},
         ]
+
+        def _check_experience(exp):
+            # check prompt content and length
+            encoded_prompt = self.tokenizer.encode(exp.prompt_text, add_special_tokens=False)
+            self.assertEqual(len(encoded_prompt), exp.prompt_length)
+            self.assertLessEqual(exp.prompt_length, self.config.model.max_prompt_tokens)
+            # check response content and length
+            encoded_response = self.tokenizer.encode(exp.response_text, add_special_tokens=False)
+            self.assertEqual(len(encoded_response), len(exp.tokens) - exp.prompt_length)
+            self.assertLessEqual(
+                len(exp.tokens) - exp.prompt_length, self.config.model.max_response_tokens
+            )
+            # check full sequence
+            self.assertLessEqual(len(exp.tokens), self.config.model.max_model_len)
+
+        # For vllm engine, max_prompt_tokens and max_response_tokens work
         response = self.model_wrapper.chat(messages)
         self.assertEqual(len(response), 1)
-        self.assertEqual(len(response[0].tokens), self.max_model_len)
+        if self.max_prompt_tokens == 5:
+            self.assertEqual(response[0].truncate_status, "prompt_truncated")
+        _check_experience(response[0])
+
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 1)
-        self.assertEqual(len(exps[0].tokens), self.max_model_len)
+        _check_experience(exps[0])
 
-        # max_prompt_tokens and max_response_tokens do not work with openai api
+        # For openai api, max_prompt_tokens and max_response_tokens do not work
         openai_client = self.model_wrapper.get_openai_client()
         model_id = openai_client.models.list().data[0].id
         with self.assertRaises(BadRequestError):
@@ -261,11 +297,62 @@ class TestModelLen(RayUnittestBaseAysnc):
 
         response = openai_client.chat.completions.create(model=model_id, messages=messages[1:], n=1)
         self.assertEqual(len(response.choices), 1)
-        print(response.choices[0].message.content)
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 1)
-        # only generate max_model_len - prompt_len tokens
-        self.assertEqual(len(exps[0].tokens), self.max_model_len)
+        # only generate max_response_tokens tokens
+        self.assertLessEqual(
+            len(exps[0].tokens) - response.usage.prompt_tokens,
+            self.config.model.max_response_tokens,
+        )
+
+
+class TestModelLenWithoutPromptTruncation(RayUnittestBaseAysnc):
+    def setUp(self):
+        self.config = get_template_config()
+        self.config.mode = "explore"
+        self.config.model.model_path = get_model_path()
+        self.config.model.max_model_len = 20
+        self.config.model.max_prompt_tokens = 1
+        self.config.model.max_response_tokens = None
+        self.config.model.enable_prompt_truncation = False
+        self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.check_and_update()
+
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
+        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+
+    async def test_model_len(self):
+        await prepare_engines(self.engines, self.auxiliary_engines)
+        await self.model_wrapper.prepare()
+        messages = [
+            {"role": "user", "content": "How are you?"},
+        ]
+
+        # For vllm engine, max_prompt_tokens and max_response_tokens work
+        response = self.model_wrapper.chat(messages)
+        self.assertEqual(len(response), 1)
+        self.assertLessEqual(
+            len(response[0].tokens) - response[0].prompt_length,
+            self.config.model.max_response_tokens,
+        )
+        exps = self.model_wrapper.extract_experience_from_history()
+        self.assertEqual(len(exps), 1)
+        self.assertLessEqual(
+            len(exps[0].tokens) - exps[0].prompt_length,
+            self.config.model.max_response_tokens,
+        )
+
+        # For openai api
+        openai_client = self.model_wrapper.get_openai_client()
+        model_id = openai_client.models.list().data[0].id
+        response = openai_client.chat.completions.create(model=model_id, messages=messages, n=1)
+        self.assertEqual(len(response.choices), 1)
+        exps = self.model_wrapper.extract_experience_from_history()
+        self.assertEqual(len(exps), 1)
+        self.assertLessEqual(
+            len(exps[0].tokens) - response.usage.prompt_tokens,
+            self.config.model.max_response_tokens,
+        )
 
 
 class TestAPIServer(RayUnittestBaseAysnc):
@@ -276,7 +363,6 @@ class TestAPIServer(RayUnittestBaseAysnc):
         self.config.explorer.rollout_model.engine_type = "vllm"
         self.config.explorer.rollout_model.engine_num = 1
         self.config.explorer.rollout_model.tensor_parallel_size = 1
-        self.config.explorer.rollout_model.use_v1 = True
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
 
@@ -288,6 +374,7 @@ class TestAPIServer(RayUnittestBaseAysnc):
         )
 
     async def test_api(self):
+        await prepare_engines(self.engines, self.auxiliary_engines)
         await self.model_wrapper.prepare()
         await self.model_wrapper_no_history.prepare()
         openai_client = self.model_wrapper.get_openai_client()
@@ -309,8 +396,9 @@ class TestAPIServer(RayUnittestBaseAysnc):
         )
         self.assertEqual(2, len(response.choices))
         self.assertTrue(response.choices[0].logprobs is not None)
-        self.assertEqual(0, len(response.choices[0].logprobs.content[0].top_logprobs))
-        self.assertTrue(response.choices[0].logprobs.content[0].logprob < 0)
+        self.assertEqual(0, len(response.choices[0].logprobs.content[2].top_logprobs))
+        # here we check the 3rd token logprob, because the first two tokens (`<think>`,`\n` usually have zero logprob)
+        self.assertTrue(response.choices[0].logprobs.content[2].logprob < 0)
         self.assertTrue(hasattr(response, "prompt_token_ids"))
         self.assertTrue(len(response.prompt_token_ids) > 0)
         self.assertTrue(hasattr(response.choices[0], "token_ids"))
@@ -327,7 +415,28 @@ class TestAPIServer(RayUnittestBaseAysnc):
         )
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 4)
+        for exp in exps:
+            self.assertTrue(len(exp.tokens) > 0)
+            self.assertTrue(len(exp.logprobs) > 0)
+            self.assertTrue(exp.prompt_length + len(exp.logprobs) == len(exp.tokens))
         self.assertEqual(len(self.model_wrapper.extract_experience_from_history()), 0)
+        response = openai_client.chat.completions.create(
+            model=model_id,
+            messages=messages,
+        )
+        exps = self.model_wrapper.extract_experience_from_history()
+        self.assertEqual(len(exps), 1)
+        self.assertTrue(len(exps[0].tokens) > 0)
+        self.assertTrue(len(exps[0].logprobs) > 0)
+        self.assertTrue(exps[0].prompt_length + len(exps[0].logprobs) == len(exps[0].tokens))
+        response = openai_client.chat.completions.create(
+            model=model_id,
+            messages=messages,
+            logprobs=False,
+        )
+        exps = self.model_wrapper.extract_experience_from_history()
+        self.assertEqual(len(exps), 1)
+        self.assertTrue(len(exps[0].logprobs) == 0)
         response = self.model_wrapper_no_history.get_openai_client().chat.completions.create(
             model=model_id, messages=messages, n=2
         )
@@ -339,6 +448,214 @@ class TestAPIServer(RayUnittestBaseAysnc):
         self.assertEqual(len(self.model_wrapper_no_history.history), 0)
 
 
+SYSTEM_PROMPT = """
+You are Qwen, created by Alibaba Cloud. You are a helpful assistant. You are walking on a frozen lake.
+
+FrozenLake Quick Guide
+Goal: Reach the goal (G). Player (P) and Goal (G) must overlap.
+
+Symbols:
+_ Frozen | O Hole | G Goal | P Player
+
+Rules:
+1. Avoid falling into holes (O).
+2. Frozen tiles are slippery, you may move perpendicular to your intended direction.
+
+Valid Action (separated by | ):
+Up | Down | Left | Right
+
+Rewards:
+Fall into hole: 0
+Reach goal: +1.0
+
+You will be provided the current observation, please decide on the next Action.
+You should show your thought process and then input the final action in ``` ```.
+You should only output the NEXT ACTION at each interation in the ``` ```. For example, if you want to move up, you should output ```Up```.
+You should plan ahead and need to achieve it in minimum number of steps.
+You should be aware that frozen tiles can be slippery, but the chance is small and you should not overthink it.
+
+Please show your thinking process and put the final action in ``` ```. In every turn, the final action MUST be one of Up, Down, Left, Right.
+"""
+
+USER_PROMPT = """Current Observation (0):
+ _ 	 G 	 _
+ _ 	 _ 	 _
+ P 	 O 	 O
+You have not achieved the goal, P has not reached G yet. Please give the next action.
+The maximum number of steps remaining is 10.
+"""
+
+
+class TestLogprobs(RayUnittestBaseAysnc):
+    def setUp(self):
+        self.config = get_template_config()
+        self.config.mode = "explore"
+        self.config.model.model_path = get_model_path()
+        self.config.explorer.rollout_model.engine_type = "vllm"
+        self.config.explorer.rollout_model.engine_num = 1
+        self.config.explorer.rollout_model.tensor_parallel_size = 1
+        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
+        self.config.explorer.rollout_model.enable_openai_api = True
+
+        self.config.check_and_update()
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
+        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+
+    async def test_logprobs_api(self):
+        await prepare_engines(self.engines, self.auxiliary_engines)
+        await self.model_wrapper.prepare()
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": USER_PROMPT},
+        ]
+
+        # Test openai api logprobs with different temperature
+
+        self.model_client = self.model_wrapper.get_openai_async_client()
+        _ = await self.model_client.chat.completions.create(
+            model=self.model_client.model_path,
+            messages=messages,
+            n=1,
+            temperature=1.0,
+            logprobs=True,
+            max_tokens=15,
+        )
+        response_1 = self.model_wrapper.extract_experience_from_history()[0]
+        _ = await self.model_client.chat.completions.create(
+            model=self.model_client.model_path,
+            messages=messages,
+            n=1,
+            temperature=0.8,
+            logprobs=True,
+            max_tokens=15,
+        )
+        response_2 = self.model_wrapper.extract_experience_from_history()[0]
+        self.assertTrue(response_1.logprobs is not None)
+        self.assertTrue(len(response_1.logprobs) > 0)
+        self.assertTrue(response_2.logprobs is not None)
+        self.assertTrue(len(response_2.logprobs) > 0)
+        logprobs_1 = self.model_wrapper.logprobs(response_1.tokens.tolist(), temperature=1.0)
+        logprobs_2 = self.model_wrapper.logprobs(response_1.tokens.tolist(), temperature=0.8)
+        logprobs_3 = self.model_wrapper.logprobs(response_2.tokens.tolist(), temperature=1.0)
+        logprobs_4 = self.model_wrapper.logprobs(response_2.tokens.tolist(), temperature=0.8)
+        self.assertEqual(logprobs_1.shape, logprobs_2.shape)
+        self.assertEqual(logprobs_3.shape, logprobs_4.shape)
+        self.assertFalse(torch.allclose(logprobs_1, logprobs_2, rtol=0.4))
+        self.assertFalse(torch.allclose(logprobs_3, logprobs_4, atol=0.4))
+        logprobs_1_prompt = logprobs_1[: response_1.prompt_length - 1]
+        logprobs_2_prompt = logprobs_2[: response_1.prompt_length - 1]
+        logprobs_3_prompt = logprobs_3[: response_2.prompt_length - 1]
+        logprobs_4_prompt = logprobs_4[: response_2.prompt_length - 1]
+        self.assertEqual(logprobs_1_prompt.shape, logprobs_2_prompt.shape)
+        self.assertFalse(torch.allclose(logprobs_1_prompt, logprobs_2_prompt, rtol=0.4))
+        self.assertFalse(torch.allclose(logprobs_3_prompt, logprobs_4_prompt, rtol=0.4))
+        self.assertTrue(torch.allclose(logprobs_1_prompt, logprobs_3_prompt, rtol=0.4))
+        self.assertTrue(torch.allclose(logprobs_2_prompt, logprobs_4_prompt, rtol=0.4))
+        logprobs_1_response = logprobs_1[response_1.prompt_length - 1 :]
+        logprobs_2_response = logprobs_2[response_1.prompt_length - 1 :]
+        logprobs_3_response = logprobs_3[response_2.prompt_length - 1 :]
+        logprobs_4_response = logprobs_4[response_2.prompt_length - 1 :]
+        self.assertEqual(logprobs_1_response.shape, logprobs_2_response.shape)
+        self.assertEqual(logprobs_3_response.shape, logprobs_4_response.shape)
+        self.assertEqual(logprobs_1_response.shape, logprobs_2_response.shape)
+        self.assertEqual(response_1.logprobs.shape, logprobs_1_response.shape)
+        self.assertTrue(torch.allclose(response_1.logprobs, logprobs_1_response, rtol=0.5))
+        self.assertFalse(torch.allclose(response_1.logprobs, logprobs_2_response, rtol=0.5))
+        self.assertTrue(torch.allclose(response_2.logprobs, logprobs_4_response, rtol=0.8))
+        self.assertFalse(torch.allclose(response_2.logprobs, logprobs_3_response, rtol=0.8))
+
+        # test vllm engine logprobs with different temperature
+        response_1 = self.model_wrapper.chat(
+            messages, n=1, temperature=1.0, logprobs=True, max_tokens=15
+        )[0]
+        response_2 = self.model_wrapper.chat(
+            messages, n=1, temperature=0.8, logprobs=True, max_tokens=15
+        )[0]
+        self.assertTrue(response_1.logprobs is not None)
+        self.assertTrue(len(response_1.logprobs) > 0)
+        self.assertTrue(response_2.logprobs is not None)
+        self.assertTrue(len(response_2.logprobs) > 0)
+        logprobs_1 = self.model_wrapper.logprobs(response_1.tokens.tolist(), temperature=1.0)
+        logprobs_2 = self.model_wrapper.logprobs(response_1.tokens.tolist(), temperature=0.8)
+        logprobs_3 = self.model_wrapper.logprobs(response_2.tokens.tolist(), temperature=1.0)
+        logprobs_4 = self.model_wrapper.logprobs(response_2.tokens.tolist(), temperature=0.8)
+        self.assertEqual(logprobs_1.shape, logprobs_2.shape)
+        self.assertEqual(logprobs_3.shape, logprobs_4.shape)
+        self.assertFalse(torch.allclose(logprobs_1, logprobs_2, rtol=0.4))
+        self.assertFalse(torch.allclose(logprobs_3, logprobs_4, atol=0.4))
+        logprobs_1_prompt = logprobs_1[: response_1.prompt_length - 1]
+        logprobs_2_prompt = logprobs_2[: response_1.prompt_length - 1]
+        logprobs_3_prompt = logprobs_3[: response_2.prompt_length - 1]
+        logprobs_4_prompt = logprobs_4[: response_2.prompt_length - 1]
+        self.assertEqual(logprobs_1_prompt.shape, logprobs_2_prompt.shape)
+        self.assertFalse(torch.allclose(logprobs_1_prompt, logprobs_2_prompt, rtol=0.4))
+        self.assertFalse(torch.allclose(logprobs_3_prompt, logprobs_4_prompt, rtol=0.4))
+        self.assertTrue(torch.allclose(logprobs_1_prompt, logprobs_3_prompt, rtol=0.4))
+        self.assertTrue(torch.allclose(logprobs_2_prompt, logprobs_4_prompt, rtol=0.4))
+        logprobs_1_response = logprobs_1[response_1.prompt_length - 1 :]
+        logprobs_2_response = logprobs_2[response_1.prompt_length - 1 :]
+        logprobs_3_response = logprobs_3[response_2.prompt_length - 1 :]
+        logprobs_4_response = logprobs_4[response_2.prompt_length - 1 :]
+        self.assertEqual(logprobs_1_response.shape, logprobs_2_response.shape)
+        self.assertEqual(logprobs_3_response.shape, logprobs_4_response.shape)
+        self.assertEqual(logprobs_1_response.shape, logprobs_2_response.shape)
+        self.assertEqual(response_1.logprobs.shape, logprobs_1_response.shape)
+        self.assertTrue(torch.allclose(response_1.logprobs, logprobs_1_response, rtol=0.5))
+        self.assertFalse(torch.allclose(response_1.logprobs, logprobs_2_response, rtol=0.5))
+        self.assertTrue(torch.allclose(response_2.logprobs, logprobs_4_response, rtol=0.8))
+        self.assertFalse(torch.allclose(response_2.logprobs, logprobs_3_response, rtol=0.8))
+
+        # test openai api and vllm engine logprobs consistency
+        await self.model_wrapper.clean_workflow_state()
+        _ = await self.model_client.chat.completions.create(
+            model=self.model_client.model_path,
+            messages=messages,
+            n=1,
+            temperature=1.0,
+            logprobs=0,
+            max_tokens=1,
+        )
+        response_openai_1 = self.model_wrapper.extract_experience_from_history()[0]
+        _ = await self.model_client.chat.completions.create(
+            model=self.model_client.model_path,
+            messages=messages,
+            n=1,
+            temperature=0.8,
+            logprobs=0,
+            max_tokens=1,
+        )
+        response_openai_2 = self.model_wrapper.extract_experience_from_history()[0]
+        response_vllm_1 = self.model_wrapper.chat(
+            messages,
+            n=1,
+            temperature=1.0,
+            logprobs=0,
+            max_tokens=1,
+        )[0]
+        response_vllm_2 = self.model_wrapper.chat(
+            messages,
+            n=1,
+            temperature=0.8,
+            logprobs=0,
+            max_tokens=1,
+        )[0]
+        self.assertEqual(len(response_openai_1.tokens), len(response_vllm_1.tokens))
+        self.assertTrue(
+            torch.allclose(
+                response_openai_1.logprobs,
+                response_vllm_1.logprobs,
+                rtol=0.1,
+            )
+        )
+        self.assertTrue(
+            torch.allclose(
+                response_openai_2.logprobs,
+                response_vllm_2.logprobs,
+                rtol=0.1,
+            )
+        )
+
+
 class TestAsyncAPIServer(RayUnittestBaseAysnc):
     def setUp(self):
         self.config = get_template_config()
@@ -347,7 +664,6 @@ class TestAsyncAPIServer(RayUnittestBaseAysnc):
         self.config.explorer.rollout_model.engine_type = "vllm"
         self.config.explorer.rollout_model.engine_num = 1
         self.config.explorer.rollout_model.tensor_parallel_size = 1
-        self.config.explorer.rollout_model.use_v1 = True
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
 
@@ -359,6 +675,7 @@ class TestAsyncAPIServer(RayUnittestBaseAysnc):
         )
 
     async def test_api_async(self):
+        await prepare_engines(self.engines, self.auxiliary_engines)
         await self.model_wrapper.prepare()
         await self.model_wrapper_no_history.prepare()
         openai_client = self.model_wrapper.get_openai_async_client()
@@ -382,8 +699,9 @@ class TestAsyncAPIServer(RayUnittestBaseAysnc):
         )
         self.assertEqual(2, len(response.choices))
         self.assertTrue(response.choices[0].logprobs is not None)
-        self.assertEqual(0, len(response.choices[0].logprobs.content[0].top_logprobs))
-        self.assertTrue(response.choices[0].logprobs.content[0].logprob < 0)
+        self.assertEqual(0, len(response.choices[0].logprobs.content[2].top_logprobs))
+        # here we check the 3rd token logprob, because the first two tokens (`<think>`,`\n` usually have zero logprob)
+        self.assertTrue(response.choices[0].logprobs.content[2].logprob < 0)
         self.assertTrue(hasattr(response, "prompt_token_ids"))
         self.assertTrue(len(response.prompt_token_ids) > 0)
         self.assertTrue(hasattr(response.choices[0], "token_ids"))
@@ -400,7 +718,28 @@ class TestAsyncAPIServer(RayUnittestBaseAysnc):
         )
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 4)
+        for exp in exps:
+            self.assertTrue(len(exp.tokens) > 0)
+            self.assertTrue(len(exp.logprobs) > 0)
+            self.assertTrue(exp.prompt_length + len(exp.logprobs) == len(exp.tokens))
         self.assertEqual(len(self.model_wrapper.extract_experience_from_history()), 0)
+        response = await openai_client.chat.completions.create(
+            model=model_id,
+            messages=messages,
+        )
+        exps = self.model_wrapper.extract_experience_from_history()
+        self.assertEqual(len(exps), 1)
+        self.assertTrue(len(exps[0].tokens) > 0)
+        self.assertTrue(len(exps[0].logprobs) > 0)
+        self.assertTrue(exps[0].prompt_length + len(exps[0].logprobs) == len(exps[0].tokens))
+        response = await openai_client.chat.completions.create(
+            model=model_id,
+            messages=messages,
+            logprobs=False,
+        )
+        exps = self.model_wrapper.extract_experience_from_history()
+        self.assertEqual(len(exps), 1)
+        self.assertTrue(len(exps[0].logprobs) == 0)
         response = (
             await self.model_wrapper_no_history.get_openai_async_client().chat.completions.create(
                 model=model_id, messages=messages, n=2
@@ -536,7 +875,6 @@ class TestAPIServerToolCall(RayUnittestBaseAysnc):
         self.config.explorer.rollout_model.engine_type = "vllm"
         self.config.explorer.rollout_model.engine_num = 1
         self.config.explorer.rollout_model.tensor_parallel_size = 1
-        self.config.explorer.rollout_model.use_v1 = True
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
         # added for toolcalls
@@ -559,6 +897,7 @@ class TestAPIServerToolCall(RayUnittestBaseAysnc):
         import json
         import time
 
+        await prepare_engines(self.engines, self.auxiliary_engines)
         await self.model_wrapper.prepare()
         await self.model_wrapper_no_history.prepare()
         tokenizer = AutoTokenizer.from_pretrained(get_api_model_path())
@@ -807,3 +1146,59 @@ class TestAPIServerToolCall(RayUnittestBaseAysnc):
         print_debug(
             "\n" + "=" * 28 + f" test_api_tool_calls PASSED in {total_time:.2f}s " + "=" * 28 + "\n"
         )
+
+
+class TestSuperLongGeneration(RayUnittestBaseAysnc):
+    def setUp(self):
+        self.config = get_template_config()
+        self.config.mode = "explore"
+        self.config.model.model_path = get_model_path()
+        self.config.model.max_model_len = 81920
+        self.config.model.max_prompt_tokens = 61440
+        self.config.model.max_response_tokens = 20480
+        self.config.model.rope_scaling = {
+            "rope_type": "yarn",
+            "factor": 2.0,
+            "original_max_position_embeddings": 40960,
+        }
+        self.config.explorer.rollout_model.engine_type = "vllm"
+        self.config.explorer.rollout_model.engine_num = 1
+        self.config.explorer.rollout_model.tensor_parallel_size = 1
+        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
+
+        self.config.check_and_update()
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
+        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+
+    async def test_generate(self):
+        base_dir = os.path.dirname(__file__)
+        target_dir = os.path.join(base_dir, "..", "..", "trinity", "trainer", "verl")
+        with open(os.path.join(target_dir, "fsdp_workers.py")) as f:
+            fsdp_code = f.read()
+        with open(os.path.join(target_dir, "megatron_workers.py")) as f:
+            megatron_code = f.read()
+        target_dir = os.path.join(base_dir, "..", "..", "trinity", "common")
+        with open(os.path.join(target_dir, "config.py")) as f:
+            config_code = f.read()
+        target_dir = os.path.join(base_dir, "..", "..", "trinity", "manager")
+        with open(os.path.join(target_dir, "config_manager.py")) as f:
+            config_manager_code = f.read()
+
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {
+                "role": "user",
+                "content": """# Please add comments and documentation for these following code, """
+                """make sure the code is well-structured and easy to read, """
+                """and the complete code must be shown, do not omit any parts.\n"""
+                f"""## fsdp_workers.py\n{fsdp_code}\n"""
+                f"""## megatron_workers.py\n{megatron_code}\n"""
+                f"""## config.py\n{config_code}\n"""
+                f"""## config_manager.py\n{config_manager_code}\n""",
+            },
+        ]
+        response = self.model_wrapper.chat(messages, n=1, temperature=0.7, logprobs=True)[0]
+        self.assertGreater(
+            response.prompt_length, 40960
+        )  # If not long enough, please add more files to prompt
+        self.assertGreater(response.logprobs.shape[0], 1000)
