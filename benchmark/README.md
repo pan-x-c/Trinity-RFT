@@ -118,18 +118,13 @@ See [full report](./reports/frozenlake.md) for details.
 
 ### 5. Alfworld
 
-To reproduce this experiment:
-
-```bash
-python bench.py alfworld --model_path /path/to/Qwen/Qwen2.5-3B
-```
+Please follow the instructions in [Alfworld report](./reports/alfworld.md) to run the benchmark.
 
 #### ALFWorld Results
 
 The chart below shows performance based on this [commit](https://github.com/modelscope/Trinity-RFT/tree/3861859cbd9c40de07429db2d9b19fd3d4d31703).
 ![View Results](../docs/sphinx_doc/assets/bench_alfworld_step.png)
 
-See [full report](./reports/alfworld.md) for details.
 
 *More benchmarks will be added soon!*
 
