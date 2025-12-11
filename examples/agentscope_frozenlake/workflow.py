@@ -91,9 +91,6 @@ class FrozenLakeWorkflow(Workflow):
         self.p = self.raw_task.get("p", 0.8)
         self.seed = self.raw_task.get("seed", 42)
 
-        # Agent-related state
-        self.step_count: int = 0
-
         from agentscope.model import OpenAIChatModel
 
         from examples.agentscope_frozenlake.agent import FrozenLakeAgent
