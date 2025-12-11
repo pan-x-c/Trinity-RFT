@@ -208,7 +208,7 @@ model.load_state_dict(load_fsdp_state_dict_from_verl_checkpoint(ckp_path))
 
 ---
 
-**Q:**: What's the difference between Trinity-RFT and veRL?
+**Q:** What's the difference between Trinity-RFT and veRL?
 
 **A:** Trinity-RFT uses veRL as the trainer backend, and extends it with a more modular and flexible architecture. The main differences include:
 

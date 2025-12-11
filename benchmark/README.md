@@ -109,7 +109,7 @@ To reproduce this experiment:
 python bench.py frozen_lake --model_path /path/to/Qwen/Qwen2.5-3B
 ```
 
-#### Forzen Lake Results
+#### Frozen Lake Results
 
 The chart below shows performance based on this [commit](https://github.com/modelscope/Trinity-RFT/tree/3861859cbd9c40de07429db2d9b19fd3d4d31703).
 ![View Results](../docs/sphinx_doc/assets/bench_frozenlake_step.png)
