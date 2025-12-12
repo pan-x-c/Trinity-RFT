@@ -84,11 +84,15 @@ class vLLMRolloutModel(InferenceModel):
         self.enable_lora = config.enable_lora
         self.default_lora_path = config.lora_kwargs.pop("default_lora_path", None)
         if self.vllm_version >= parse_version("0.12.0"):
-            rope_kwargs = defaultdict()
+            rope_params = defaultdict(dict)
             if config.rope_scaling is not None:
-                rope_kwargs["rope_parameters"] = config.rope_scaling
+                rope_params["rope_parameters"] = config.rope_scaling
             if config.rope_theta is not None:
-                rope_kwargs["rope_parameters"]["rope_theta"] = config.rope_theta
+                rope_params["rope_parameters"]["rope_theta"] = config.rope_theta
+            if len(rope_params) > 0:
+                rope_kwargs = {"hf_overrides": rope_params}
+            else:
+                rope_kwargs = {}
         else:
             rope_kwargs = {
                 key: getattr(config, key)
