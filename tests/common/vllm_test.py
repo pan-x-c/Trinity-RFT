@@ -560,10 +560,18 @@ class TestLogprobs(RayUnittestBaseAysnc):
         self.assertEqual(logprobs_3_response.shape, logprobs_4_response.shape)
         self.assertEqual(logprobs_1_response.shape, logprobs_2_response.shape)
         self.assertEqual(response_1.logprobs.shape, logprobs_1_response.shape)
-        self.assertTrue(torch.allclose(response_1.logprobs, logprobs_1_response, rtol=0.3, atol=1e-3))
-        self.assertFalse(torch.allclose(response_1.logprobs, logprobs_2_response, rtol=0.3, atol=1e-3))
-        self.assertTrue(torch.allclose(response_2.logprobs, logprobs_4_response, rtol=0.3, atol=1e-3))
-        self.assertFalse(torch.allclose(response_2.logprobs, logprobs_3_response, rtol=0.3, atol=1e-3))
+        self.assertTrue(
+            torch.allclose(response_1.logprobs, logprobs_1_response, rtol=0.3, atol=1e-3)
+        )
+        self.assertFalse(
+            torch.allclose(response_1.logprobs, logprobs_2_response, rtol=0.3, atol=1e-3)
+        )
+        self.assertTrue(
+            torch.allclose(response_2.logprobs, logprobs_4_response, rtol=0.3, atol=1e-3)
+        )
+        self.assertFalse(
+            torch.allclose(response_2.logprobs, logprobs_3_response, rtol=0.3, atol=1e-3)
+        )
 
         # test vllm engine logprobs with different temperature
         response_1 = self.model_wrapper.chat(
@@ -601,10 +609,18 @@ class TestLogprobs(RayUnittestBaseAysnc):
         self.assertEqual(logprobs_3_response.shape, logprobs_4_response.shape)
         self.assertEqual(logprobs_1_response.shape, logprobs_2_response.shape)
         self.assertEqual(response_1.logprobs.shape, logprobs_1_response.shape)
-        self.assertTrue(torch.allclose(response_1.logprobs, logprobs_1_response, rtol=0.3, atol=1e-3))
-        self.assertFalse(torch.allclose(response_1.logprobs, logprobs_2_response, rtol=0.3, atol=1e-3))
-        self.assertTrue(torch.allclose(response_2.logprobs, logprobs_4_response, rtol=0.3, atol=1e-3))
-        self.assertFalse(torch.allclose(response_2.logprobs, logprobs_3_response, rtol=0.3, atol=1e-3))
+        self.assertTrue(
+            torch.allclose(response_1.logprobs, logprobs_1_response, rtol=0.3, atol=1e-3)
+        )
+        self.assertFalse(
+            torch.allclose(response_1.logprobs, logprobs_2_response, rtol=0.3, atol=1e-3)
+        )
+        self.assertTrue(
+            torch.allclose(response_2.logprobs, logprobs_4_response, rtol=0.3, atol=1e-3)
+        )
+        self.assertFalse(
+            torch.allclose(response_2.logprobs, logprobs_3_response, rtol=0.3, atol=1e-3)
+        )
 
         # test openai api and vllm engine logprobs consistency
         await self.model_wrapper.clean_workflow_state()
