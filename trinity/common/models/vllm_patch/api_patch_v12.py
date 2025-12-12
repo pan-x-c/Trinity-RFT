@@ -1,4 +1,4 @@
-"""Patch for vllm OpenAI API server. Only for vllm versions >=0.8.5, <=0.11.0.
+"""Patch for vllm OpenAI API server. Only for vllm versions >0.11.0.
 
 1. Mocks the `add_signal_handler` method to do nothing.
 2. Adds `token_ids` and `prompt_token_ids` to the `ChatCompletionResponse`.
@@ -122,11 +122,6 @@ async def run_server_in_ray(args, engine_client, logger):
     listen_address, sock = setup_server_in_ray(args, logger)
     logger.info("vLLM API server listening on %s", listen_address)
     await run_server_worker_in_ray(listen_address, sock, args, engine_client, logger)
-
-
-def dummy_add_signal_handler(self, *args, **kwargs):
-    # DO NOTHING HERE
-    pass
 
 
 async def run_api_server_in_ray_actor_v12(

@@ -95,7 +95,7 @@ class ModelWrapper:
         engine_type: str = "vllm",
         enable_lora: bool = False,
         enable_history: bool = False,
-        enbale_thinking: Optional[bool] = None,
+        enable_thinking: Optional[bool] = None,
     ):
         """Initialize the ModelWrapper.
 
@@ -104,7 +104,7 @@ class ModelWrapper:
             engine_type (str): The type of the model engine. Default to "vllm".
             enable_lora (bool): Whether to enable LoRA. Default to False.
             enable_history (bool): Whether to enable history recording. Default to False.
-            enbale_thinking (Optional[bool]): Whether to enable thinking mode. Default to None. Only used for Qwen3 series models.
+            enable_thinking (Optional[bool]): Whether to enable thinking mode. Default to None. Only used for Qwen3 series models.
         """
         assert engine_type.startswith("vllm"), "Only vLLM model is supported for now."
         self.model = model
@@ -114,7 +114,7 @@ class ModelWrapper:
         self.logger = get_logger(__name__)
         self.enable_lora = enable_lora
         self.enable_history = enable_history
-        self.enable_thinking = enbale_thinking
+        self.enable_thinking = enable_thinking
         self.history = []
         self.status = RunningStatus.RUNNING
         self.workflow_state: Dict = {}
