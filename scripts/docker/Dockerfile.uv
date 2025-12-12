@@ -9,7 +9,7 @@
 # 1. This Dockerfile uses 'uv' to create a virtual environment for better package management. If you want a simpler setup without 'uv', please refer to `scripts/docker/Dockerfile`.
 # 2. Make sure to use `uv pip` to install packages within the virtual environment.
 
-FROM nvcr.io/nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
 
 WORKDIR /workspace
 
@@ -39,7 +39,7 @@ RUN . /opt/venv/bin/activate && \
 
 # Install flash_attn and Megatron
 RUN . /opt/venv/bin/activate && \
-    uv pip install flash_attn==2.8.1 --no-deps --no-cache-dir && \
+    uv pip install flash_attn==2.8.1 --no-cache-dir && \
     uv pip install -e .[megatron] && \
     NVCC_APPEND_FLAGS="--threads 4" APEX_PARALLEL_BUILD=8 \
     uv pip install -v --no-build-isolation \
