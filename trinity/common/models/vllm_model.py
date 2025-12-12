@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -82,11 +83,18 @@ class vLLMRolloutModel(InferenceModel):
         max_model_len = config.max_model_len
         self.enable_lora = config.enable_lora
         self.default_lora_path = config.lora_kwargs.pop("default_lora_path", None)
-        rope_kwargs = {
-            key: getattr(config, key)
-            for key in ["rope_scaling", "rope_theta"]
-            if getattr(config, key) is not None
-        }
+        if self.vllm_version >= parse_version("0.12.0"):
+            rope_kwargs = defaultdict()
+            if config.rope_scaling is not None:
+                rope_kwargs["rope_parameters"] = config.rope_scaling
+            if config.rope_theta is not None:
+                rope_kwargs["rope_parameters"]["rope_theta"] = config.rope_theta
+        else:
+            rope_kwargs = {
+                key: getattr(config, key)
+                for key in ["rope_scaling", "rope_theta"]
+                if getattr(config, key) is not None
+            }
         engine_args = vllm.AsyncEngineArgs(
             model=config.model_path,
             enforce_eager=config.enforce_eager,
