@@ -317,6 +317,7 @@ class ModelWrapper:
             ori_create = self.openai_client.chat.completions.create
 
             def record_chat_completions(*args, **kwargs):
+                kwargs.pop("logprobs", True)
                 extra_body = kwargs.get("extra_body", {})
                 if self.enable_thinking is not None:
                     if "chat_template_kwargs" not in extra_body:
@@ -361,7 +362,6 @@ class ModelWrapper:
                         extra_body["chat_template_kwargs"] = {}
                     extra_body["chat_template_kwargs"]["enable_thinking"] = self.enable_thinking
                 extra_body["return_token_ids"] = True
-                # self.logger.info("args: %s, kwargs: %s, extra_body: %s", args, kwargs, extra_body)
                 response = await ori_create(*args, extra_body=extra_body, logprobs=True, **kwargs)
                 self.history.extend(convert_api_output_to_experience(response))
                 return response
