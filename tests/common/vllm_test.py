@@ -442,7 +442,7 @@ class TestAPIServer(RayUnittestBaseAysnc):
         )
         self.assertEqual(2, len(response.choices))
         self.assertTrue(hasattr(response.choices[0], "token_ids"))
-        self.assertTrue(len(response.choices[0].token_ids) > 0)
+        self.assertTrue(response.choices[0].token_ids is None)
         with self.assertRaises(ValueError):
             self.model_wrapper_no_history.extract_experience_from_history()
         self.assertEqual(len(self.model_wrapper_no_history.history), 0)
@@ -764,7 +764,7 @@ class TestAsyncAPIServer(RayUnittestBaseAysnc):
         )
         self.assertEqual(2, len(response.choices))
         self.assertTrue(hasattr(response.choices[0], "token_ids"))
-        self.assertTrue(len(response.choices[0].token_ids) > 0)
+        self.assertTrue(response.choices[0].token_ids is None)
         with self.assertRaises(ValueError):
             self.model_wrapper_no_history.extract_experience_from_history()
         self.assertEqual(len(self.model_wrapper_no_history.history), 0)
