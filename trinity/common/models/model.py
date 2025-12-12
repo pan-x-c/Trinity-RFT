@@ -318,7 +318,7 @@ class ModelWrapper:
 
             def record_chat_completions(*args, **kwargs):
                 kwargs.pop("logprobs", True)
-                extra_body = kwargs.get("extra_body", {})
+                extra_body = kwargs.pop("extra_body", {})
                 if self.enable_thinking is not None:
                     if "chat_template_kwargs" not in extra_body:
                         extra_body["chat_template_kwargs"] = {}
@@ -356,7 +356,7 @@ class ModelWrapper:
 
             async def record_chat_completions(*args, **kwargs):
                 kwargs.pop("logprobs", True)
-                extra_body = kwargs.get("extra_body", {})
+                extra_body = kwargs.pop("extra_body", {})
                 if self.enable_thinking is not None:
                     if "chat_template_kwargs" not in extra_body:
                         extra_body["chat_template_kwargs"] = {}
