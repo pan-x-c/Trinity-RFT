@@ -3,7 +3,7 @@
 import asyncio
 import socket
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import httpx
 import numpy as np
@@ -12,7 +12,6 @@ import ray
 import torch
 from PIL import Image
 from torch import Tensor
-from vllm.lora.request import LoRARequest
 
 from trinity.common.constants import RunningStatus
 from trinity.common.experience import Experience
@@ -280,13 +279,13 @@ class ModelWrapper:
         """Get the model path."""
         return await self.model.get_model_path.remote()
 
-    def get_lora_request(self) -> Optional[LoRARequest]:
+    def get_lora_request(self) -> Any:
         if self.enable_lora:
             return ray.get(self.model.get_lora_request.remote())
         else:
             return None
 
-    async def get_lora_request_async(self) -> Optional[LoRARequest]:
+    async def get_lora_request_async(self) -> Any:
         if self.enable_lora:
             return await self.model.get_lora_request.remote()
         else:

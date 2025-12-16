@@ -50,6 +50,7 @@ class vLLMRolloutModel(InferenceModel):
             self.logger.info(f"Using vLLM v{int(config.use_v1)} engine")
             os.environ["VLLM_USE_V1"] = str(int(config.use_v1))
         if config.use_v1:
+            os.environ["VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE"] = "shm"
             os.environ["VLLM_RAY_PER_WORKER_GPUS"] = str(int(config.use_v1))
             os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
             os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
