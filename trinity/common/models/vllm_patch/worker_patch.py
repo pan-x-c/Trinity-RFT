@@ -12,11 +12,13 @@ from trinity.common.models.vllm_patch import get_vllm_version
 
 def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):  # noqa: C901
     """Patch vLLM model runner to support prompt logprobs extraction."""
-    if get_vllm_version() < parse_version("0.10.2"):
+    version = get_vllm_version()
+    if version < parse_version("0.10.2") or version > parse_version("0.12.0"):
         raise ValueError(
             f"Unsupported vllm version: {vllm.__version__}. "
-            "This patch requires vllm version >= 0.10.2, <= 0.11.0."
+            "This patch requires vllm version >= 0.10.2, <= 0.12.0."
         )
+    is_v0102 = version == parse_version("0.10.2")
 
     def _get_prompt_logprobs_dict_v11(
         self,
@@ -99,9 +101,12 @@ def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):  # noqa: C901
             req_idx = self.input_batch.req_id_to_index[req_id]
             offset = self.query_start_loc.np[req_idx].item()
             prompt_hidden_states = hidden_states[offset : offset + num_logits]
-            logits = self.model.compute_logits(prompt_hidden_states)
-
             # PATCH START
+            if is_v0102:
+                logits = self.model.compute_logits(prompt_hidden_states, None)
+            else:
+                logits = self.model.compute_logits(prompt_hidden_states)
+
             temp = request.sampling_params.temperature
             if temp >= 1e-5:
                 logits.div_(temp)
