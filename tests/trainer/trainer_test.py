@@ -959,7 +959,7 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         config.algorithm.repeat_times = 1
         config.buffer.trainer_input.experience_buffer = ExperienceBufferConfig(
             name="exp_buffer",
-            storage_type=StorageType.SQL.value(),
+            storage_type=StorageType.SQL.value,
             schema_type="experience",
         )
         config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
