@@ -484,7 +484,7 @@ class InferenceModelConfig:
     use_v1: bool = True
     enforce_eager: bool = False
     enable_prefix_caching: bool = False
-    enable_chunked_prefill: bool = False
+    enable_chunked_prefill: bool = True
     gpu_memory_utilization: float = 0.9
     dtype: str = "bfloat16"
     seed: int = 42
@@ -892,6 +892,8 @@ class Config:
                 )
 
     def _check_explorer_input(self) -> None:
+        from trinity.buffer.selector import SELECTORS
+
         if self.mode in {"train", "serve"}:
             # no need to check explorer_input in serve mode
             return
@@ -931,6 +933,13 @@ class Config:
             set_if_none(taskset.rollout_args, "logprobs", self.model.logprobs)
             set_if_none(taskset.rollout_args, "max_tokens", self.model.max_response_tokens)
             set_if_none(taskset.format, "chat_template", self.model.custom_chat_template)
+
+            # check if selector is supported
+            selector = SELECTORS.get(taskset.task_selector.selector_type)
+            if selector is None:
+                raise ValueError(
+                    f"Selector {taskset.task_selector.selector_type} is not supported."
+                )
 
         for idx, dataset in enumerate(explorer_input.eval_tasksets):
             if not dataset.path:
