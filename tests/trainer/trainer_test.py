@@ -1023,7 +1023,7 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
                 pass
             await asyncio.sleep(2)
 
-        reader = get_buffer_reader(serve_config.buffer.explorer_input.taskset, serve_config.buffer)
+        reader = get_buffer_reader(serve_config.buffer.explorer_input.taskset)
 
         for i in range(2):
             # generate data for 2 trainer steps

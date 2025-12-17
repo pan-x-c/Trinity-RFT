@@ -1,20 +1,34 @@
 import traceback
+from contextlib import asynccontextmanager
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-app = FastAPI()
+http_client: httpx.AsyncClient = None
 
 
-# Forward openAI requests to a model instance
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global http_client
+    http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(300.0, connect=10.0),
+        limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+    )
+    yield
+    await http_client.aclose()
 
 
+app = FastAPI(lifespan=lifespan)
+
+
+# Forward OpenAI requests to a model instance
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     # Currently, we do not support streaming chat completions
     body = await request.json()
+
     if "return_token_ids" not in body:
         body["return_token_ids"] = True
     url = await request.app.state.service.allocate_model()
@@ -27,9 +41,7 @@ async def chat_completions(request: Request):
             content=f"Error forwarding request to model at {url}: {traceback.format_exc()}",
         )
     resp_data = resp.json()
-    await request.app.state.service.record_experience(
-        resp_data, session_id=body.get("session_id", None)
-    )
+    await request.app.state.service.record_experience(resp_data)
     return JSONResponse(content=resp_data)
 
 
@@ -69,17 +81,19 @@ async def allocate(request: Request):
 async def feedback(request: Request):
     """Receive feedback for the current session."""
     body = await request.json()
-    session_id = body.get("session_id", None)
-    reward = body.get("reward", None)
-    if session_id is None or reward is None:
+    reward = body.get("reward")
+    msg_ids = body.get("msg_ids")
+    task_id = body.get("task_id")
+    run_id = body.get("run_id", 0)
+    if msg_ids is None or reward is None:
+        return JSONResponse(status_code=400, content={"error": "msg_ids and reward are required"})
+    if not isinstance(msg_ids, list) or not isinstance(reward, (int, float)):
         return JSONResponse(
-            status_code=400, content={"error": "session_id and reward are required"}
+            status_code=400, content={"error": "msg_ids must be a list and reward must be a number"}
         )
-    if not isinstance(session_id, int) or not isinstance(reward, (int, float)):
-        return JSONResponse(
-            status_code=400, content={"error": "session_id must be int and reward must be float"}
-        )
-    await request.app.state.service.record_feedback(session_id, reward)
+    await request.app.state.service.record_feedback(
+        reward=reward, msg_ids=msg_ids, task_id=task_id, run_id=run_id
+    )
     return JSONResponse(content={"status": "success"})
 
 

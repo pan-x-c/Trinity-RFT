@@ -494,12 +494,12 @@ class Explorer:
                 messages=[{"role": "user", "content": "Hello!"}]
             )
         """
-        from trinity.explorer.api.service import ExplorerService
+        from trinity.explorer.proxy.service import ExplorerService
 
         self.service = ExplorerService(
             self,
             listen_address=self.config.explorer.listen_address,
-            port=self.config.explorer.api_port,
+            port=self.config.explorer.proxy_port,
         )
         await self.service.serve()
         self.server_url = f"http://{ray.util.get_node_ip_address()}:{self.service.port}"

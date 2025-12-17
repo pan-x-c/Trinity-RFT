@@ -8,7 +8,6 @@ import shutil
 from datetime import datetime
 
 import httpx
-import openai
 import ray
 
 from tests.tools import (
@@ -26,6 +25,7 @@ from trinity.cli.launcher import explore, run_stage
 from trinity.common.config import ExperienceBufferConfig, InferenceModelConfig
 from trinity.common.constants import StorageType
 from trinity.explorer.explorer import Explorer
+from trinity.explorer.proxy.client import ProxyClient
 from trinity.manager.state_manager import StateManager
 
 
@@ -157,8 +157,9 @@ def run_serve(config):
     run_stage(config)
 
 
-def run_agent(base_url, model_path: str):
-    client = openai.Client(base_url=base_url, api_key="testkey")
+def run_agent(proxy_url, model_path: str):
+    proxy_client = ProxyClient(proxy_url=proxy_url)
+    openai_client = proxy_client.get_openai_client()
     contents = [
         "Hello, how are you?",
         "What is the capital of China?",
@@ -171,10 +172,11 @@ def run_agent(base_url, model_path: str):
         "What is the best way to learn programming?",
         "Describe the process of photosynthesis.",
     ]
-    response = client.chat.completions.create(
+    response = openai_client.chat.completions.create(
         model=model_path,
         messages=[{"role": "user", "content": random.choice(contents)}],
     )
+    proxy_client.feedback(reward=1.0, msg_ids=[response.id])
     return response.choices[0].message.content
 
 
@@ -190,7 +192,7 @@ class ServeTest(RayUnittestBaseAysnc):
         self.config.explorer.rollout_model.engine_num = 4
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.checkpoint_root_dir = get_checkpoint_path()
-        self.config.explorer.api_port = 8010
+        self.config.explorer.proxy_port = 8010
         self.config.explorer.service_status_check_interval = 30
         self.config.buffer.trainer_input.experience_buffer = ExperienceBufferConfig(
             name="experience_buffer",
@@ -236,7 +238,7 @@ class ServeTest(RayUnittestBaseAysnc):
         apps = []
         for i in range(task_num):
             app_process = multiprocessing.Process(
-                target=run_agent, args=(server_url + "/v1", self.config.model.model_path)
+                target=run_agent, args=(server_url, self.config.model.model_path)
             )
             apps.append(app_process)
             app_process.start()

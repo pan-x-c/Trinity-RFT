@@ -669,14 +669,17 @@ class ExplorerConfig:
     # for benchmark
     bench_on_latest_checkpoint: bool = False  # only benchmark the latest checkpoint
 
-    # for serve mode
-    api_port: int = 8010
+    # for serve mode proxy
+    proxy_port: int = 8010
     # listen on all interfaces by default
     listen_address: str = "0.0.0.0"
     # check the running status of the server every 60 seconds
     service_status_check_interval: int = 60
     # keep at least 1 model in running status
     min_running_model_num: int = 1
+    # db url for proxy history recorder, if not set, use proxy_history.db in buffer cache dir
+    db_url: Optional[str] = None
+
     # Experimental feature
     over_rollout: OverRolloutConfig = field(default_factory=OverRolloutConfig)
     dynamic_timeout: DynamicTimeoutConfig = field(default_factory=DynamicTimeoutConfig)
