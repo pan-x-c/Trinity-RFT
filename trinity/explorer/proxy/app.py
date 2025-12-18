@@ -42,7 +42,7 @@ async def chat_completions(request: Request):
         request_data["return_token_ids"] = True
     if "logprobs" not in request_data:
         request_data["logprobs"] = True
-    url = await request.app.state.service.allocate_model()
+    url, model_version = await request.app.state.service.allocate_model()
     try:
         async with httpx.AsyncClient(timeout=request.app.state.inference_timeout) as client:
             resp = await client.post(
@@ -54,7 +54,7 @@ async def chat_completions(request: Request):
             content=f"Error forwarding request to model at {url}: {traceback.format_exc()}",
         )
     resp_data = resp.json()
-    await request.app.state.service.record_experience(resp_data)
+    await request.app.state.service.record_experience(resp_data, model_version)
     return JSONResponse(content=resp_data)
 
 
