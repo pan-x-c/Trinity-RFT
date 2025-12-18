@@ -17,7 +17,7 @@ def get_dummy_experience(num: int) -> List[Experience]:
             prompt_length=2,
             info={
                 "model_version": 0,
-            }
+            },
         )
         for _ in range(num)
     ]

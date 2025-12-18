@@ -5,7 +5,6 @@ import multiprocessing
 import os
 import random
 import shutil
-import unittest
 from datetime import datetime
 
 import httpx
