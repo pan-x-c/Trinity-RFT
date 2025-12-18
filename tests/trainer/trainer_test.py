@@ -947,15 +947,18 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         checkpoint_path = get_checkpoint_path()
         shutil.rmtree(os.path.join(checkpoint_path, "unittest"), ignore_errors=True)
 
-    async def test_serve_with_trainer(self):
+    async def test_serve_with_trainer(self):  # noqa: C901
         config = get_template_config()
         config.project = "unittest"
         config.name = f"serve_with_trainer_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         config.checkpoint_root_dir = get_checkpoint_path()
         config.model.model_path = get_model_path()
         config.buffer.batch_size = 4
+        config.buffer.train_batch_size = 4
         config.algorithm.algorithm_type = "ppo"
         config.algorithm.repeat_times = 1
+        config.algorithm.sample_strategy = "staleness_control"
+        config.algorithm.sample_strategy_args = {"max_staleness": 1}
         config.cluster.gpu_per_node = 2
         config.cluster.node_num = 1
         config.buffer.trainer_input.experience_buffer = ExperienceBufferConfig(
@@ -964,10 +967,9 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
             schema_type="experience",
         )
         config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
-        config.buffer.train_batch_size = 4
-        config.buffer.total_steps = 6
-        config.trainer.save_interval = 2
-        config.synchronizer.sync_interval = 2
+        config.buffer.total_steps = 3
+        config.trainer.save_interval = 1
+        config.synchronizer.sync_interval = 1
         config.synchronizer.sync_method = SyncMethod.CHECKPOINT
         config.explorer.rollout_model.engine_num = 2
         config.explorer.rollout_model.enable_openai_api = True
@@ -981,7 +983,7 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         trainer_process = multiprocessing.Process(target=run_trainer, args=(trainer_config,))
         trainer_process.start()
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
         serve_config = deepcopy(config)
         serve_config.mode = "serve"
         serve_config.check_and_update()
@@ -1017,15 +1019,16 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         # wait for server setup
         for i in range(10):
             if proxy_client.alive():
+                print("Proxy server is alive.")
                 break
             await asyncio.sleep(2)
 
-        reader = get_buffer_reader(serve_config.buffer.explorer_input.taskset)
+        config.buffer.explorer_input.taskset.batch_size = 4
+        reader = get_buffer_reader(config.buffer.explorer_input.taskset)
 
         try:
             for i in range(3):
-                # generate data for 2 trainer steps
-                tasks = reader.read(batch_size=4)
+                tasks = reader.read()
                 await asyncio.gather(
                     *(run_math_workflow(server_url, task.raw_task) for task in tasks)
                 )
@@ -1034,18 +1037,41 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
                 end_time = time.time()
                 find_checkpoint = False
                 while time.time() - end_time < 100:
-                    checkpoint_step_dir, step_num = get_checkpoint_dir_with_step_num(
+                    _, step_num = get_checkpoint_dir_with_step_num(
                         checkpoint_root_path=serve_config.checkpoint_job_dir,
                         raise_error=False,
                     )
-                    if step_num >= 2 * (i + 1):  # checkpoint has been generated
+                    if step_num >= i + 1:  # checkpoint has been generated
                         find_checkpoint = True
-                        print(f"Found checkpoint at step {step_num}.")
                         break
                     await asyncio.sleep(1)
-                self.assertTrue(
-                    find_checkpoint, f"Checkpoint at step {2 * (i + 1)} not found in time."
+                self.assertTrue(find_checkpoint, f"Checkpoint at step {i + 1} not found in time.")
+                metrics = await proxy_client.get_metrics_async()
+                self.assertTrue(metrics["rollout/total_experience_count"] == 4 * (i + 1))
+                self.assertTrue(metrics["rollout/ready_experience_count"] == 4 * (i + 1))
+                self.assertTrue(metrics["rollout/model_0/total_request_count"] > 0)
+                self.assertTrue(metrics["rollout/model_1/total_request_count"] > 0)
+                if i > 1:
+                    self.assertTrue(metrics["rollout/model_0/model_version"] > 0)
+                    self.assertTrue(metrics["rollout/model_1/model_version"] > 0)
+            metrics = await proxy_client.get_metrics_async()
+            self.assertTrue(metrics["rollout/total_experience_count"] == 12)
+            self.assertTrue(metrics["rollout/ready_experience_count"] == 12)
+            self.assertTrue(
+                abs(
+                    metrics["rollout/model_0/total_request_count"]
+                    - metrics["rollout/model_1/total_request_count"]
                 )
+                < 4
+            )  # balanced requests
+            # at least updated to version 2
+            self.assertTrue(metrics["rollout/model_0/model_version"] >= 2)
+            self.assertTrue(metrics["rollout/model_1/model_version"] >= 2)
+            # check final checkpoint
+            _, step_num = get_checkpoint_dir_with_step_num(
+                checkpoint_root_path=serve_config.checkpoint_job_dir,
+                step_num=3,
+            )
         finally:
             serve_process.terminate()
             trainer_process.terminate()
