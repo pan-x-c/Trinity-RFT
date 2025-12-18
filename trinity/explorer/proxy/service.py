@@ -70,12 +70,10 @@ class ExplorerService:
                     > self.explorer.config.explorer.min_running_model_num
                     and self.model_version_map[idx] < self.latest_model_version
                 ):
-                    self.running_model_ids.remove(idx)
-                    self.models[idx].status = RunningStatus.REQUIRE_SYNC
                     self.logger.info(f"Model {idx} scheduled for synchronization.")
-                    future = asyncio.create_task(self._wait_for_sync_start(idx))
-                    self.sync_task_map[future] = idx
-                    future.add_done_callback(self._sync_model_weights)
+                    self.models[idx].status = RunningStatus.REQUIRE_SYNC
+                    self.running_model_ids.remove(idx)
+                    asyncio.create_task(self._wait_for_sync_start(idx))
             # wait half interval
             await asyncio.sleep(self.check_interval / 2)
         self.logger.info("Model weights synchronization loop stopped.")
@@ -88,32 +86,29 @@ class ExplorerService:
     async def _wait_for_sync_start(self, index: int) -> None:
         """Wait until the model is free to start synchronization."""
         start_time = time.time()
+        timeout_flag = True
         while time.time() - start_time < self.max_timeout:
             current_load = await self.models[index].get_current_load()
             if current_load == 0:
                 self.models[index].status = RunningStatus.WAITING_SYNC
                 self.logger.info(f"Model {index} begins synchronization.")
-                return
+                timeout_flag = False
+                break
             else:
-                await asyncio.sleep(2)
-        raise asyncio.TimeoutError(
-            f"Timeout waiting for model {index} to be free for synchronization. Current load: {current_load}"
-        )
-
-    async def _sync_model_weights(self, task: asyncio.Future) -> None:
-        """A callback to synchronize model weights after waiting."""
-        index = self.sync_task_map.pop(task)
+                self.logger.info(
+                    "Waiting for model %d to be free. Current load: %d", index, current_load
+                )
+                await asyncio.sleep(1)
+        if timeout_flag:
+            raise asyncio.TimeoutError(
+                f"Timeout waiting for model {index} to be free for synchronization. Current load: {current_load}"
+            )
         latest_version = self.latest_model_version  # capture the latest version
-        if task.cancelled():
-            self.logger.warning(f"Synchronization of model {index} was cancelled.")
-        elif task.exception():
-            self.logger.error(f"Error during synchronization of model {index}: {task.exception()}")
-        else:
-            await self.models[index].sync_model_weights(latest_version)
-            self.logger.info(f"Model {index} synchronized to version {latest_version}.")
+        await self.models[index].sync_model_weights(latest_version)
+        self.logger.info(f"Model {index} synchronized to version {latest_version}.")
         self.model_version_map[index] = await self.models[index].model_version_async
-        self.running_model_ids.append(index)
         self.models[index].status = RunningStatus.RUNNING
+        self.running_model_ids.append(index)
 
     async def allocate_model(self, increase_count: bool = True) -> Tuple[str, int]:
         """Allocate a model for handling a request.

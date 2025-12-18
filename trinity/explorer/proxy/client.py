@@ -12,6 +12,13 @@ class ProxyClient:
         self.feedback_url = f"{self.proxy_url}/feedback"
         self.task_id = uuid.uuid4().hex[:6]
 
+    def alive(self) -> bool:
+        try:
+            response = requests.get(f"{self.proxy_url}/health", timeout=2)
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
+
     def get_openai_client(self) -> openai.OpenAI:
         client = openai.OpenAI(
             base_url=self.openai_base_url,

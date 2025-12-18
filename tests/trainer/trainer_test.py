@@ -11,7 +11,6 @@ from copy import deepcopy
 from datetime import datetime
 from unittest import mock
 
-import httpx
 import ray
 from parameterized import parameterized_class
 
@@ -966,8 +965,8 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         )
         config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         config.buffer.train_batch_size = 4
-        config.trainer.total_steps = 4
-        config.trainer.save_interval = 4
+        config.buffer.total_steps = 6
+        config.trainer.save_interval = 2
         config.synchronizer.sync_interval = 2
         config.synchronizer.sync_method = SyncMethod.CHECKPOINT
         config.explorer.rollout_model.engine_num = 2
@@ -1014,34 +1013,44 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(3)
         if not server_url:
             raise RuntimeError("Explorer server URL not found.")
+        proxy_client = ProxyClient(server_url)
         # wait for server setup
         for i in range(10):
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(f"{server_url}/health")
-                    if response.status_code == 200:
-                        break
-            except Exception:
-                pass
+            if proxy_client.alive():
+                break
             await asyncio.sleep(2)
 
         reader = get_buffer_reader(serve_config.buffer.explorer_input.taskset)
 
-        proxy_client = ProxyClient(server_url)
-        for i in range(2):
-            # generate data for 2 trainer steps
-            tasks = reader.read(batch_size=8)
-            await asyncio.gather(*(run_math_workflow(server_url, task.raw_task) for task in tasks))
-            await proxy_client.commit_async()
-            # wait for synchronizer started
-            end_time = time.time()
-            while time.time() - end_time < config.explorer.service_status_check_interval:
-                await asyncio.sleep(1)
-
-        serve_process.terminate()
-        trainer_process.terminate()
-        serve_process.join()
-        trainer_process.join()
+        try:
+            for i in range(3):
+                # generate data for 2 trainer steps
+                tasks = reader.read(batch_size=4)
+                await asyncio.gather(
+                    *(run_math_workflow(server_url, task.raw_task) for task in tasks)
+                )
+                await proxy_client.commit_async()
+                # wait for synchronizer started
+                end_time = time.time()
+                find_checkpoint = False
+                while time.time() - end_time < 100:
+                    checkpoint_step_dir, step_num = get_checkpoint_dir_with_step_num(
+                        checkpoint_root_path=serve_config.checkpoint_job_dir,
+                        raise_error=False,
+                    )
+                    if step_num >= 2 * (i + 1):  # checkpoint has been generated
+                        find_checkpoint = True
+                        print(f"Found checkpoint at step {step_num}.")
+                        break
+                    await asyncio.sleep(1)
+                self.assertTrue(
+                    find_checkpoint, f"Checkpoint at step {2 * (i + 1)} not found in time."
+                )
+        finally:
+            serve_process.terminate()
+            trainer_process.terminate()
+            serve_process.join()
+            trainer_process.join()
 
 
 class TestMultiModalGRPO(BaseTrainerCase):
