@@ -176,7 +176,7 @@ def run_agent(proxy_url, model_path: str):
         model=model_path,
         messages=[{"role": "user", "content": random.choice(contents)}],
     )
-    proxy_client.feedback(reward=1.0, msg_ids=[response.id])
+    proxy_client.feedback(reward=2.0, msg_ids=[response.id])
     return response.choices[0].message.content
 
 
@@ -277,6 +277,9 @@ class ServeTest(RayUnittestBaseAysnc):
         exps = await buffer_reader.read_async(batch_size=10)
         for exp in exps:
             self.assertTrue(len(exp.tokens) > 0)
+            self.assertTrue(len(exp.logprobs) > 0)
+            self.assertTrue(exp.prompt_length > 0)
+            self.assertTrue(exp.reward == 2.0)
         self.assertEqual(len(exps), task_num)
 
     def tearDown(self):

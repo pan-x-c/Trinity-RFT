@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 http_client: httpx.AsyncClient = None
@@ -27,14 +27,27 @@ app = FastAPI(lifespan=lifespan)
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     # Currently, we do not support streaming chat completions
-    body = await request.json()
+    try:
+        request_data = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
 
-    if "return_token_ids" not in body:
-        body["return_token_ids"] = True
+    forward_headers = {
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() not in ["host", "content-length", "transfer-encoding"]
+    }
+
+    if "return_token_ids" not in request_data:
+        request_data["return_token_ids"] = True
+    if "logprobs" not in request_data:
+        request_data["logprobs"] = True
     url = await request.app.state.service.allocate_model()
     try:
         async with httpx.AsyncClient(timeout=request.app.state.inference_timeout) as client:
-            resp = await client.post(f"{url}/v1/chat/completions", json=body)
+            resp = await client.post(
+                f"{url}/v1/chat/completions", json=request_data, headers=forward_headers
+            )
     except Exception:
         return Response(
             status_code=500,

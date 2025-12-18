@@ -1,7 +1,7 @@
 import asyncio
 import time
 from collections import deque
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import torch
 
@@ -27,7 +27,8 @@ class ExplorerService:
         self.min_running_model_num = explorer.config.explorer.min_running_model_num
         self.check_interval = explorer.config.explorer.service_status_check_interval
         self.max_timeout = explorer.config.explorer.max_timeout
-        self.running_models: deque[int] = deque()  # indices of running models
+        self.running_model_ids: deque[int] = deque()  # indices of running models
+        self.model_version_map: Dict[int, int] = {}  # model index -> model version
         self.sync_task_map: Dict[asyncio.Future, int] = {}  # sync task -> model index
         self.latest_model_version = 0
         self.session_level_experience_queue: Dict[int, deque[Experience]] = {}
@@ -52,7 +53,7 @@ class ExplorerService:
         await asyncio.gather(*[model.prepare() for model in self.models])
 
         for i, _ in enumerate(self.models):
-            self.running_models.append(i)
+            self.running_model_ids.append(i)
 
         self.serve_task = asyncio.create_task(
             run_app(service=self, listen_address=self.listen_address, port=self.port)
@@ -62,12 +63,14 @@ class ExplorerService:
     async def model_weights_sync_loop(self) -> None:
         self.logger.info("Starting model weights synchronization loop.")
         while self.running:
-            for idx in list(self.running_models):
+            for idx in list(self.running_model_ids):
+                self.model_version_map[idx] = await self.models[idx].model_version_async
                 if (
-                    len(self.running_models) > self.explorer.config.explorer.min_running_model_num
-                    and self.models[idx].model_version < self.latest_model_version
+                    len(self.running_model_ids)
+                    > self.explorer.config.explorer.min_running_model_num
+                    and self.model_version_map[idx] < self.latest_model_version
                 ):
-                    self.running_models.remove(idx)
+                    self.running_model_ids.remove(idx)
                     self.models[idx].status = RunningStatus.REQUIRE_SYNC
                     self.logger.info(f"Model {idx} scheduled for synchronization.")
                     future = asyncio.create_task(self._wait_for_sync_start(idx))
@@ -83,6 +86,7 @@ class ExplorerService:
             self.logger.info(f"Updated latest model version to {version}.")
 
     async def _wait_for_sync_start(self, index: int) -> None:
+        """Wait until the model is free to start synchronization."""
         start_time = time.time()
         while time.time() - start_time < self.max_timeout:
             current_load = await self.models[index].get_current_load()
@@ -97,6 +101,7 @@ class ExplorerService:
         )
 
     async def _sync_model_weights(self, task: asyncio.Future) -> None:
+        """A callback to synchronize model weights after waiting."""
         index = self.sync_task_map.pop(task)
         latest_version = self.latest_model_version  # capture the latest version
         if task.cancelled():
@@ -106,19 +111,26 @@ class ExplorerService:
         else:
             await self.models[index].sync_model_weights(latest_version)
             self.logger.info(f"Model {index} synchronized to version {latest_version}.")
-        self.running_models.append(index)
+        self.model_version_map[index] = await self.models[index].model_version_async
+        self.running_model_ids.append(index)
         self.models[index].status = RunningStatus.RUNNING
 
-    async def allocate_model(self, increase_count: bool = True) -> str:
-        model = self.models[self.running_models[0]]
+    async def allocate_model(self, increase_count: bool = True) -> Tuple[str, int]:
+        """Allocate a model for handling a request.
+
+        Returns:
+            A tuple of (model_api_address, model_version).
+        """
+        model_id = self.running_model_ids[0]
+        model = self.models[model_id]
         if increase_count:
             model.request_count += 1
-        self.running_models.rotate(-1)
+        self.running_model_ids.rotate(-1)
         if model.api_address is None:
             raise ValueError(
                 "Model does not have a valid API address, please set `enable_openai_api` to `True`."
             )
-        return model.api_address
+        return model.api_address, self.model_version_map[model_id]
 
     def collect_metrics(self) -> Dict:
         metrics = {}
@@ -129,7 +141,7 @@ class ExplorerService:
         metrics["rollout/ready_experience_count"] = self.ready_experience_count
         return metrics
 
-    async def record_experience(self, response):
+    async def record_experience(self, response, model_version: int) -> None:
         experiences = []
         for choice in response["choices"]:
             exp = Experience(
@@ -150,6 +162,7 @@ class ExplorerService:
                 prompt_length=len(response["prompt_token_ids"]),
             )
             exp.eid.suffix = response["id"]
+            exp.info["model_version"] = model_version
             experiences.append(exp)
 
         self.total_experience_count += len(experiences)
