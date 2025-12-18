@@ -47,6 +47,7 @@ class ExperienceModel(Base):  # type: ignore
     run_id = Column(Integer, nullable=True, index=True)  # associated run id
     msg_id = Column(String(64), nullable=True, index=True)  # associated message id
     # serialized experience object
+    model_version = Column(Integer, nullable=True, index=True)
     experience_bytes = Column(LargeBinary, nullable=True)
     reward = Column(Float, nullable=True)
     consumed = Column(Integer, default=0, index=True)
@@ -58,6 +59,7 @@ class ExperienceModel(Base):  # type: ignore
         exp.eid.run = self.run_id
         exp.eid.suffix = self.msg_id
         exp.reward = self.reward
+        exp.info["model_version"] = self.model_version
         return exp
 
     @classmethod
@@ -69,6 +71,7 @@ class ExperienceModel(Base):  # type: ignore
             task_id=str(experience.eid.task),
             run_id=experience.eid.run,
             msg_id=str(experience.eid.suffix),
+            model_version=experience.info["model_version"],
         )
 
 
