@@ -25,7 +25,7 @@ from trinity.cli.launcher import explore, run_stage
 from trinity.common.config import ExperienceBufferConfig, InferenceModelConfig
 from trinity.common.constants import StorageType
 from trinity.explorer.explorer import Explorer
-from trinity.explorer.proxy.client import ProxyClient
+from trinity.explorer.proxy.client import TrinityClient
 from trinity.manager.state_manager import StateManager
 
 
@@ -158,7 +158,7 @@ def run_serve(config):
 
 
 def run_agent(proxy_url, model_path: str):
-    proxy_client = ProxyClient(proxy_url=proxy_url)
+    proxy_client = TrinityClient(proxy_url=proxy_url)
     openai_client = proxy_client.get_openai_client()
     contents = [
         "Hello, how are you?",
@@ -248,7 +248,7 @@ class ServeTest(RayUnittestBaseAysnc):
             self.assertFalse(app.is_alive())
 
         finish_step = None
-        proxy_client = ProxyClient(proxy_url=server_url)
+        proxy_client = TrinityClient(proxy_url=server_url)
         for i in range(20):
             metrics = await proxy_client.get_metrics_async()
             metrics_keys = list(metrics.keys())

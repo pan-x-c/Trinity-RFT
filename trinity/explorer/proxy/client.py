@@ -5,7 +5,7 @@ import openai
 import requests
 
 
-class ProxyClient:
+class TrinityClient:
     def __init__(self, proxy_url: str):
         self.proxy_url = proxy_url
         self.openai_base_url = f"{self.proxy_url}/v1"

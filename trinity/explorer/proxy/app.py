@@ -37,11 +37,11 @@ async def chat_completions(request: Request):
         for key, value in request.headers.items()
         if key.lower() not in ["host", "content-length", "transfer-encoding"]
     }
-
-    if "return_token_ids" not in request_data:
-        request_data["return_token_ids"] = True
-    if "logprobs" not in request_data:
-        request_data["logprobs"] = True
+    # for experience data recording, we need to return token ids and logprobs
+    request_data["return_token_ids"] = True
+    request_data["logprobs"] = True
+    # temperature must be set from config, ignore user's input
+    request_data["temperature"] = request.app.state.temperature
     url, model_version = await request.app.state.service.allocate_model()
     try:
         async with httpx.AsyncClient(timeout=request.app.state.inference_timeout) as client:
@@ -111,14 +111,14 @@ async def commit(request: Request):
     return JSONResponse(content={"status": "success"})
 
 
-async def serve_http(app: FastAPI, host: str, port: int = None):
+async def serve_http(app: FastAPI, host: str, port: int) -> None:
     config = uvicorn.Config(app, host=host, port=port)
     server = uvicorn.Server(config)
     await server.serve()
 
 
-async def run_app(service, listen_address: str, port: int = None) -> FastAPI:
+async def run_app(service, listen_address: str, port: int) -> None:
     app.state.service = service
+    app.state.temperature = service.explorer.config.model.temperature
     app.state.inference_timeout = service.explorer.config.synchronizer.sync_timeout
-    print(f"API server running on {listen_address}:{port}")
     await serve_http(app, listen_address, port)

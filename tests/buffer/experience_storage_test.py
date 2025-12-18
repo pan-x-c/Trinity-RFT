@@ -118,7 +118,7 @@ class ExperienceStorageTest(RayUnittestBaseAysnc):
             exps = reader.read()
             self.assertEqual(len(exps), self.train_batch_size)
             for exp in exps:
-                self.assertEqual(exp.eid.task, cnt)
+                self.assertEqual(exp.eid.task, str(cnt))
                 cnt -= 1
 
         # experience buffer support experience reuse
@@ -127,7 +127,7 @@ class ExperienceStorageTest(RayUnittestBaseAysnc):
             exps = reader.read()
             self.assertEqual(len(exps), self.train_batch_size)
             for exp in exps:
-                self.assertEqual(exp.eid.task, cnt)
+                self.assertEqual(exp.eid.task, str(cnt))
                 cnt -= 1
         self.assertEqual(await writer.release(), 0)
 

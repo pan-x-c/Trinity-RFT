@@ -507,7 +507,9 @@ class Explorer:
         await self.service.serve()
         self.server_url = f"http://{ray.util.get_node_ip_address()}:{self.service.port}"
         self.logger.info(
-            f"Explorer API Server is started on {self.server_url} and listening to {self.service.listen_address}."
+            "======================================================\n"
+            f"Starting Trinity Service on {self.server_url}\n"
+            "======================================================"
         )
         self.state.save_explorer_server_url(self.server_url)
         while True:

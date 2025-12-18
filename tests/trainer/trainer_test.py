@@ -16,6 +16,7 @@ from parameterized import parameterized_class
 
 from tests.tools import (
     RayUnittestBase,
+    RayUnittestBaseAysnc,
     TensorBoardParser,
     get_checkpoint_path,
     get_lora_config,
@@ -44,7 +45,7 @@ from trinity.common.constants import (
     SyncStyle,
 )
 from trinity.common.models.utils import get_checkpoint_dir_with_step_num
-from trinity.explorer.proxy.client import ProxyClient
+from trinity.explorer.proxy.client import TrinityClient
 from trinity.manager.state_manager import StateManager
 
 
@@ -911,7 +912,7 @@ class TestTrainerMIX(BaseTrainerCase):
 async def run_math_workflow(serve_url: str, task: dict):
     from trinity.common.rewards.math_reward import MathRewardFn
 
-    proxy_client = ProxyClient(serve_url)
+    proxy_client = TrinityClient(serve_url)
     openai_client = proxy_client.get_openai_async_client()
 
     query = task["question"]
@@ -940,7 +941,7 @@ async def run_math_workflow(serve_url: str, task: dict):
     await proxy_client.feedback_async(sum(reward.values()), [response.id])
 
 
-class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
+class TestServeWithTrainer(RayUnittestBaseAysnc):
     def setUp(self):
         if multiprocessing.get_start_method(allow_none=True) != "spawn":
             multiprocessing.set_start_method("spawn", force=True)
@@ -1015,7 +1016,7 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(3)
         if not server_url:
             raise RuntimeError("Explorer server URL not found.")
-        proxy_client = ProxyClient(server_url)
+        proxy_client = TrinityClient(server_url)
         # wait for server setup
         for i in range(10):
             if proxy_client.alive():
