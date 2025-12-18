@@ -84,12 +84,6 @@ async def metrics(request: Request):
     return JSONResponse(content=metrics)
 
 
-@app.get("/allocate")
-async def allocate(request: Request):
-    """Allocate a new session."""
-    return JSONResponse(content={"session_id": request.app.state.service.allocate_session()})
-
-
 @app.post("/feedback")
 async def feedback(request: Request):
     """Receive feedback for the current session."""

@@ -49,25 +49,27 @@ class HistoryRecorder:
             an empty list.
         """
         with retry_session(self.session) as db:
-            db.execute(
-                self.table_model_cls.__table__.update()
-                .where((self.table_model_cls.msg_id.in_(msg_ids)))
-                .values(
-                    reward=reward,
-                    run_id=run_id,
-                    task_id=task_id,
-                    consumed=self.table_model_cls.consumed + 1,
+            # Lock and retrieve records that have not been consumed yet.
+            records = (
+                db.query(self.table_model_cls)
+                .filter(
+                    self.table_model_cls.msg_id.in_(msg_ids),
+                    self.table_model_cls.consumed == 0,
                 )
+                .with_for_update()
+                .all()
             )
 
-        with retry_session(self.session) as db:
-            results = db.execute(
-                self.table_model_cls.__table__.select().where(
-                    (
-                        self.table_model_cls.msg_id.in_(msg_ids)
-                        & (self.table_model_cls.consumed == 1)
-                    )
-                )
-            ).all()
-            updated_experiences = [self.table_model_cls.to_experience(row) for row in results]
-        return updated_experiences
+            if not records:
+                return []
+
+            # Update records in memory
+            for record in records:
+                record.reward = reward
+                record.run_id = run_id
+                record.task_id = task_id
+                record.consumed += 1
+
+            # The session commit is handled by the `retry_session` context manager.
+            updated_experiences = [record.to_experience() for record in records]
+            return updated_experiences

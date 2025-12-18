@@ -73,7 +73,7 @@ class ExplorerService:
                     self.logger.info(f"Model {idx} scheduled for synchronization.")
                     self.models[idx].status = RunningStatus.REQUIRE_SYNC
                     self.running_model_ids.remove(idx)
-                    asyncio.create_task(self._wait_for_sync_start(idx))
+                    asyncio.create_task(self._sync_model_weights(idx))
             # wait half interval
             await asyncio.sleep(self.check_interval / 2)
         self.logger.info("Model weights synchronization loop stopped.")
@@ -83,10 +83,12 @@ class ExplorerService:
             self.latest_model_version = version
             self.logger.info(f"Updated latest model version to {version}.")
 
-    async def _wait_for_sync_start(self, index: int) -> None:
-        """Wait until the model is free to start synchronization."""
+    async def _sync_model_weights(self, index: int) -> None:
+        """Synchronize model weights for the given model index."""
+        # wait until the model is free
         start_time = time.time()
         timeout_flag = True
+        current_load = -1
         while time.time() - start_time < self.max_timeout:
             current_load = await self.models[index].get_current_load()
             if current_load == 0:
@@ -104,6 +106,7 @@ class ExplorerService:
                 f"Timeout waiting for model {index} to be free for synchronization. Current load: {current_load}"
             )
         latest_version = self.latest_model_version  # capture the latest version
+        # perform synchronization
         await self.models[index].sync_model_weights(latest_version)
         self.logger.info(f"Model {index} synchronized to version {latest_version}.")
         self.model_version_map[index] = await self.models[index].model_version_async
