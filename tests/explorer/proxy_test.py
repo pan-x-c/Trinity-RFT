@@ -15,6 +15,9 @@ def get_dummy_experience(num: int) -> List[Experience]:
             eid=EID(suffix=uuid.uuid4().hex[:6]),
             tokens=torch.zeros(5),
             prompt_length=2,
+            info={
+                "model_version": 0,
+            }
         )
         for _ in range(num)
     ]

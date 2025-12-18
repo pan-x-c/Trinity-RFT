@@ -203,7 +203,6 @@ class ServeTest(RayUnittestBaseAysnc):
         if multiprocessing.get_start_method(allow_none=True) != "spawn":
             multiprocessing.set_start_method("spawn", force=True)
 
-    @unittest.skip("Require improvement for agent mode")
     async def test_serve(self):  # noqa: C901
         serve_process = multiprocessing.Process(target=run_serve, args=(self.config,))
         serve_process.start()
