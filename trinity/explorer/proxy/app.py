@@ -62,7 +62,7 @@ async def chat_completions(request: Request):
 async def show_available_models(request: Request):
     if hasattr(request.app.state, "models"):
         return JSONResponse(content=request.app.state.models)
-    url = await request.app.state.service.allocate_model(increase_count=False)
+    url, _ = await request.app.state.service.allocate_model(increase_count=False)
     async with httpx.AsyncClient() as client:
         print(f"Fetching models from {url}/v1/models")
         resp = await client.get(f"{url}/v1/models")
@@ -107,6 +107,13 @@ async def feedback(request: Request):
     await request.app.state.service.record_feedback(
         reward=reward, msg_ids=msg_ids, task_id=task_id, run_id=run_id
     )
+    return JSONResponse(content={"status": "success"})
+
+
+@app.post("/commit")
+async def commit(request: Request):
+    """Commit the current experiences."""
+    await request.app.state.service.submit_experiences()
     return JSONResponse(content={"status": "success"})
 
 

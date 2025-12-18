@@ -248,22 +248,20 @@ class ServeTest(RayUnittestBaseAysnc):
             self.assertFalse(app.is_alive())
 
         finish_step = None
-
+        proxy_client = ProxyClient(proxy_url=server_url)
         for i in range(20):
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{server_url}/metrics")
-                self.assertEqual(response.status_code, 200)
-                metrics = response.json()
-                metrics_keys = list(metrics.keys())
-                self.assertIn("explore_step_num", metrics_keys)
-                self.assertIn("rollout/total_experience_count", metrics_keys)
-                self.assertIn("rollout/model_0/total_request_count", metrics_keys)
-                self.assertIn("rollout/model_3/model_version", metrics_keys)
-                if not finish_step and metrics["rollout/total_experience_count"] == task_num:
-                    finish_step = metrics["explore_step_num"]
-                if finish_step and metrics["explore_step_num"] >= finish_step + 1:
-                    # wait for one more step to ensure all data are written to buffer
-                    break
+            metrics = await proxy_client.get_metrics_async()
+            metrics_keys = list(metrics.keys())
+            self.assertIn("explore_step_num", metrics_keys)
+            self.assertIn("rollout/total_experience_count", metrics_keys)
+            self.assertIn("rollout/model_0/total_request_count", metrics_keys)
+            self.assertIn("rollout/model_3/model_version", metrics_keys)
+            if not finish_step and metrics["rollout/total_experience_count"] == task_num:
+                finish_step = metrics["explore_step_num"]
+                await proxy_client.commit_async()
+            if finish_step and metrics["explore_step_num"] >= finish_step + 1:
+                # wait for one more step to ensure all data are written to buffer
+                break
             await asyncio.sleep(3)
 
         serve_process.terminate()

@@ -45,7 +45,7 @@ from trinity.common.constants import (
     SyncStyle,
 )
 from trinity.common.models.utils import get_checkpoint_dir_with_step_num
-from trinity.explorer.explorer_client import ExplorerClient
+from trinity.explorer.proxy.client import ProxyClient
 from trinity.manager.state_manager import StateManager
 
 
@@ -912,8 +912,8 @@ class TestTrainerMIX(BaseTrainerCase):
 async def run_math_workflow(serve_url: str, task: dict):
     from trinity.common.rewards.math_reward import MathRewardFn
 
-    explorer_client = ExplorerClient(serve_url)
-    openai_client = explorer_client.get_openai_async_client()
+    proxy_client = ProxyClient(serve_url)
+    openai_client = proxy_client.get_openai_async_client()
 
     query = task["question"]
     truth = task["answer"]
@@ -938,7 +938,7 @@ async def run_math_workflow(serve_url: str, task: dict):
     )
     answer = response.choices[0].message.content
     reward = reward_fn(response=answer, truth=truth, prompt=query)
-    await explorer_client.feedback_async(sum(reward.values()))
+    await proxy_client.feedback_async(sum(reward.values()), [response.id])
 
 
 class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
@@ -957,6 +957,8 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         config.buffer.batch_size = 4
         config.algorithm.algorithm_type = "ppo"
         config.algorithm.repeat_times = 1
+        config.cluster.gpu_per_node = 2
+        config.cluster.node_num = 1
         config.buffer.trainer_input.experience_buffer = ExperienceBufferConfig(
             name="exp_buffer",
             storage_type=StorageType.SQL.value,
@@ -971,7 +973,7 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
         config.explorer.rollout_model.engine_num = 2
         config.explorer.rollout_model.enable_openai_api = True
         config.explorer.rollout_model.tensor_parallel_size = 1
-        config.explorer.service_status_check_interval = 10
+        config.explorer.service_status_check_interval = 5
 
         trainer_config = deepcopy(config)
         trainer_config.mode = "train"
@@ -1025,15 +1027,21 @@ class TestServeWithTrainer(unittest.IsolatedAsyncioTestCase):
 
         reader = get_buffer_reader(serve_config.buffer.explorer_input.taskset)
 
+        proxy_client = ProxyClient(server_url)
         for i in range(2):
             # generate data for 2 trainer steps
             tasks = reader.read(batch_size=8)
             await asyncio.gather(*(run_math_workflow(server_url, task.raw_task) for task in tasks))
-
+            await proxy_client.commit_async()
             # wait for synchronizer started
             end_time = time.time()
             while time.time() - end_time < config.explorer.service_status_check_interval:
                 await asyncio.sleep(1)
+
+        serve_process.terminate()
+        trainer_process.terminate()
+        serve_process.join()
+        trainer_process.join()
 
 
 class TestMultiModalGRPO(BaseTrainerCase):

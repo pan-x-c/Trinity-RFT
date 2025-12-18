@@ -32,7 +32,7 @@ class ExplorerService:
         self.sync_task_map: Dict[asyncio.Future, int] = {}  # sync task -> model index
         self.latest_model_version = 0
         self.session_level_experience_queue: Dict[int, deque[Experience]] = {}
-        self.queue_lock = asyncio.Lock()
+        self.commit_lock = asyncio.Lock()
         self.ready_experiences = deque()
         self.recorder = HistoryRecorder(
             db_url=explorer.config.explorer.db_url
@@ -168,10 +168,14 @@ class ExplorerService:
         self.total_experience_count += len(experiences)
         self.recorder.record_history(experiences)
 
-    async def get_all_experiences(self) -> List:
-        experiences = list(self.ready_experiences)
-        self.ready_experiences.clear()
-        return experiences
+    async def submit_experiences(self) -> None:
+        async with self.commit_lock:
+            experiences = list(self.ready_experiences)
+            self.ready_experiences.clear()
+            metrics = await self.explorer.experience_pipeline.process.remote(experiences)
+            metrics.update(self.collect_metrics())
+            self.explorer.explore_step_num += 1
+            self.explorer.monitor.log(metrics, self.explorer.explore_step_num)
 
     async def record_feedback(self, reward: float, msg_ids: List[str], task_id: str, run_id: int):
         exps = self.recorder.update_reward(

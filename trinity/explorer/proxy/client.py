@@ -39,3 +39,23 @@ class ProxyClient:
                 json={"reward": reward, "msg_ids": msg_ids, "task_id": self.task_id},
             )
             return response.json()
+
+    def commit(self) -> dict:
+        response = requests.post(f"{self.proxy_url}/commit")
+        return response.json()
+
+    async def commit_async(self) -> dict:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{self.proxy_url}/commit")
+            return response.json()
+
+    def get_metrics(self) -> dict:
+        response = requests.get(f"{self.proxy_url}/metrics")
+        return response.json()
+
+    async def get_metrics_async(self) -> dict:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{self.proxy_url}/metrics")
+            if response.status_code != 200:
+                raise ValueError(f"Failed to get metrics: {response.text}")
+            return response.json()

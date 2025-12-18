@@ -508,13 +508,7 @@ class Explorer:
         )
         self.state.save_explorer_server_url(self.server_url)
         while True:
-            self.explore_step_num += 1
             await asyncio.sleep(self.config.explorer.service_status_check_interval)
-            # process experiences generated in the last interval
-            exps = await self.service.get_all_experiences()
-            metrics = await self.experience_pipeline.process.remote(exps)
-            metrics.update(self.service.collect_metrics())
-            self.monitor.log(metrics, self.explore_step_num)
             # get the latest checkpoint
             _, step_num = get_latest_state_dict(
                 self.config.checkpoint_job_dir,
