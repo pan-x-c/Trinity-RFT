@@ -95,9 +95,7 @@ class ExperienceStorageTest(RayUnittestBaseAysnc):
             max_read_timeout=3,
             path=f"sqlite:///{DB_PATH}",
             batch_size=self.train_batch_size,
-            replay_buffer=ReplayBufferConfig(
-                enable=True
-            )
+            replay_buffer=ReplayBufferConfig(enable=True),
         )
         config = config.to_storage_config()
         writer = SQLWriter(config)
