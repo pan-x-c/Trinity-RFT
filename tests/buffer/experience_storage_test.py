@@ -10,7 +10,7 @@ from parameterized import parameterized
 from tests.tools import RayUnittestBaseAysnc
 from trinity.buffer.reader.sql_reader import SQLReader
 from trinity.buffer.writer.sql_writer import SQLWriter
-from trinity.common.config import ExperienceBufferConfig
+from trinity.common.config import ExperienceBufferConfig, ReplayBufferConfig
 from trinity.common.constants import StorageType
 from trinity.common.experience import EID, Experience
 
@@ -95,6 +95,9 @@ class ExperienceStorageTest(RayUnittestBaseAysnc):
             max_read_timeout=3,
             path=f"sqlite:///{DB_PATH}",
             batch_size=self.train_batch_size,
+            replay_buffer=ReplayBufferConfig(
+                enable=True
+            )
         )
         config = config.to_storage_config()
         writer = SQLWriter(config)
