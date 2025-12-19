@@ -1061,7 +1061,7 @@ class TestServeWithTrainer(RayUnittestBaseAysnc):
             self.assertEqual(
                 metrics["rollout/model_0/total_request_count"]
                 + metrics["rollout/model_1/total_request_count"],
-                metrics["rollout/total_experience_count"]
+                metrics["rollout/total_experience_count"],
             )
             # at least updated to version 2
             self.assertTrue(metrics["rollout/model_0/model_version"] >= 2)
