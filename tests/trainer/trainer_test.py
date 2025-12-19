@@ -1054,13 +1054,14 @@ class TestServeWithTrainer(RayUnittestBaseAysnc):
                     self.assertTrue(metrics["rollout/model_0/model_version"] > 0)
                     self.assertTrue(metrics["rollout/model_1/model_version"] > 0)
             metrics = await proxy_client.get_metrics_async()
-            self.assertTrue(metrics["rollout/total_experience_count"] == 12)
-            self.assertTrue(metrics["rollout/ready_experience_count"] == 12)
+            self.assertEqual(metrics["rollout/total_experience_count"], 12)
+            self.assertEqual(metrics["rollout/ready_experience_count"], 12)
             self.assertTrue(metrics["rollout/model_0/total_request_count"] > 0)
             self.assertTrue(metrics["rollout/model_1/total_request_count"] > 0)
-            self.assertTrue(
-                metrics["rollout/model_0/total_request_count"] + metrics["rollout/model_1/total_request_count"]
-                == metrics["rollout/total_request_count"]
+            self.assertEqual(
+                metrics["rollout/model_0/total_request_count"]
+                + metrics["rollout/model_1/total_request_count"],
+                metrics["rollout/total_experience_count"]
             )
             # at least updated to version 2
             self.assertTrue(metrics["rollout/model_0/model_version"] >= 2)
