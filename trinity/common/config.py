@@ -691,7 +691,7 @@ class ExplorerConfig:
 class TrainerConfig:
     name: str = TRAINER_NAME
     trainer_type: str = "verl"
-    trainer_strategy: str = "fsdp"
+    trainer_strategy: str = "fsdp"  # "fsdp", "fsdp2" or "megatron"
     save_interval: int = 0
     enable_preview: bool = True  # enable rollout preview in wandb
     total_steps: Optional[
@@ -1399,7 +1399,7 @@ class Config:
         # check buffer
         self._check_buffer()
         # check and update trainer
-        if self.mode in ["train", "both", "bench"]:
+        if self.mode in ["train", "both", "bench"] or self.trainer.trainer_strategy == "megatron":
             if self.trainer.trainer_type == "verl":
                 if self.trainer.trainer_config:
                     from trinity.common.verl_config import veRLConfig

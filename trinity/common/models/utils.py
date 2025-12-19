@@ -201,11 +201,11 @@ def load_state_dict(checkpoint_dir: str, config: TrainerConfig) -> Union[dict, T
         trainer_type (str): The trainer type. Only support "verl" for now.
     """
     if config.trainer_type == "verl":
-        actor_config = config.trainer_config.actor_rollout_ref.actor
-        strategy = actor_config.strategy
+        strategy = config.trainer_strategy
         if strategy in {"fsdp", "fsdp2"}:
             return load_fsdp_state_dict_from_verl_checkpoint(checkpoint_dir)
         elif strategy == "megatron":
+            actor_config = config.trainer_config.actor_rollout_ref.actor
             if (
                 actor_config.megatron.use_dist_checkpointing
                 or not actor_config.megatron.use_mbridge
