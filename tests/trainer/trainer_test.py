@@ -958,8 +958,6 @@ class TestServeWithTrainer(RayUnittestBaseAysnc):
         config.buffer.train_batch_size = 4
         config.algorithm.algorithm_type = "ppo"
         config.algorithm.repeat_times = 1
-        config.algorithm.sample_strategy = "staleness_control"
-        config.algorithm.sample_strategy_args = {"max_staleness": 1}
         config.cluster.gpu_per_node = 2
         config.cluster.node_num = 1
         config.buffer.trainer_input.experience_buffer = ExperienceBufferConfig(
