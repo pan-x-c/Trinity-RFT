@@ -522,6 +522,7 @@ class vLLMRolloutModel(InferenceModel):
             await self.async_llm.add_lora(self.get_lora_request(self.default_lora_path))
             self.model_version = model_version
             return model_version
+        await self.async_llm.reset_prefix_cache()
         await self._collective_rpc("update_weight")
         self.logger.info("Sync model weights to vLLM successfully.")
         self.model_version = model_version
