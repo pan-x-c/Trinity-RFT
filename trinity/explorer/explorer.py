@@ -25,7 +25,6 @@ from trinity.common.constants import (
     SyncStyle,
 )
 from trinity.common.models import create_inference_models
-from trinity.common.models.utils import get_latest_state_dict
 from trinity.explorer.scheduler import Scheduler
 from trinity.manager.state_manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
@@ -515,11 +514,8 @@ class Explorer:
         while True:
             await asyncio.sleep(self.config.explorer.service_status_check_interval)
             # get the latest checkpoint
-            _, step_num = get_latest_state_dict(
-                self.config.checkpoint_job_dir,
-                self.config.trainer.trainer_type,
-            )
-            self.service.set_latest_model_version(step_num)
+            model_version = await self.synchronizer.get_latest_model_version.remote()
+            self.service.set_latest_model_version(model_version)
 
     @classmethod
     def get_actor(cls, config: Config):
