@@ -95,10 +95,11 @@ class TestTrainerCountdown(BaseTrainerCase):
         eval_tasksets[1].repeat_times = 4
         self.config.trainer.save_interval = 4
         self.config.trainer.save_hf_checkpoint = "always"
+        if self.strategy == "megatron":
+            self.config.trainer.trainer_strategy = "megatron"
         self.config.check_and_update()
         _trainer_config = self.config.trainer.trainer_config
         if self.strategy == "megatron":
-            _trainer_config.actor_rollout_ref.actor.strategy = "megatron"
             _trainer_config.actor_rollout_ref.actor.megatron.tensor_model_parallel_size = 2
             _trainer_config.actor_rollout_ref.ref.megatron.tensor_model_parallel_size = 2
             _trainer_config.critic.strategy = "megatron"
@@ -551,10 +552,11 @@ class TestFullyAsyncMode(unittest.TestCase):
         trainer_config = deepcopy(config)
         trainer_config.mode = "train"
         trainer_config.buffer.train_batch_size = 4
+        if self.strategy == "megatron":
+            trainer_config.trainer.trainer_strategy = "megatron"
         trainer_config.check_and_update()
         if self.strategy == "megatron":
             _trainer_config = trainer_config.trainer.trainer_config
-            _trainer_config.actor_rollout_ref.actor.strategy = "megatron"
             _trainer_config.actor_rollout_ref.actor.megatron.tensor_model_parallel_size = 2
             _trainer_config.actor_rollout_ref.ref.megatron.tensor_model_parallel_size = 2
             _trainer_config.critic.strategy = "megatron"
