@@ -8,7 +8,7 @@ import asyncio
 import time
 import traceback
 from abc import ABC, abstractmethod
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import ray
@@ -216,11 +216,15 @@ class Trainer:
         return True
 
     @classmethod
-    def get_actor(cls, config: Config):
+    def get_actor(cls, config: Config, runtime_env: Optional[dict] = None):
         """Get a Ray actor for the trainer."""
         return (
             ray.remote(cls)
-            .options(name=config.trainer.name, namespace=ray.get_runtime_context().namespace)
+            .options(
+                name=config.trainer.name,
+                namespace=ray.get_runtime_context().namespace,
+                runtime_env=runtime_env,
+            )
             .remote(config)
         )
 

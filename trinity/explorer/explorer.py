@@ -494,13 +494,14 @@ class Explorer:
             self.service.set_latest_model_version(step_num)
 
     @classmethod
-    def get_actor(cls, config: Config):
+    def get_actor(cls, config: Config, runtime_env: Optional[dict] = None):
         """Get a Ray actor for the explorer."""
         return (
             ray.remote(cls)
             .options(
                 name=config.explorer.name,
                 namespace=ray.get_runtime_context().namespace,
+                runtime_env=runtime_env,
             )
             .remote(config)
         )
