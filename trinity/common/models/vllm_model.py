@@ -109,11 +109,11 @@ class vLLMRolloutModel(InferenceModel):
             distributed_executor_backend=("uni" if config.tensor_parallel_size == 1 else "ray"),
             max_model_len=max_model_len,
             enable_prefix_caching=config.enable_prefix_caching,
+            enable_chunked_prefill=config.enable_chunked_prefill,
             dtype=config.dtype,
             trust_remote_code=True,
             task="generate",
             gpu_memory_utilization=config.gpu_memory_utilization,
-            # max_num_batched_tokens=256, # you can further set this parameter to reduce the vllm peak memory usage
             override_generation_config={  # TODO: find a way to unittest this
                 "temperature": config.temperature,
                 "top_p": config.top_p,
