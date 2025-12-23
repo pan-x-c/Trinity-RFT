@@ -3,13 +3,14 @@
 import asyncio
 import os
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import ray
 import torch
 from packaging.version import parse as parse_version
 from PIL import Image
+from tinker import types
 from transformers import AutoProcessor
 
 from trinity.common.config import InferenceModelConfig
@@ -400,6 +401,69 @@ class vLLMRolloutModel(InferenceModel):
         return torch.tensor(
             [list(logprob_dict.values())[0].logprob for logprob_dict in output.prompt_logprobs[1:]],
             dtype=torch.float32,
+        )
+
+    async def sample(
+        self,
+        prompt: types.ModelInput,
+        num_samples: int,
+        sampling_params: types.SamplingParams,
+        include_prompt_logprobs: bool = False,
+        topk_prompt_logprobs: int = 0,
+        lora_request=None,
+    ) -> types.SampleResponse:
+        """Tinker compatible sampling interface."""
+        params = {
+            "max_tokens": sampling_params.max_tokens,
+            "seed": sampling_params.seed,
+            "stop": sampling_params.stop,
+            "top_k": sampling_params.top_k,
+            "top_p": sampling_params.top_p,
+            "temperature": sampling_params.temperature,
+            "n": num_samples,
+            "prompt_logprobs": (topk_prompt_logprobs if include_prompt_logprobs else None),
+            # in vLLM, 0 means only return the chosen token's logprob
+            "logprobs": 0,
+        }
+        req_output = await self._generate_internal(
+            prompt={"prompt_token_ids": prompt.to_ints()},
+            lora_request=lora_request,
+            **params,
+        )
+        sequences = []
+        topk_prompt_logprobs_list: List[Optional[List[Tuple[int, float]]]] = [None]
+        prompt_logprobs: List[Optional[float]] = [None]
+
+        # collect prompt logprobs
+        for logprob_dict in req_output.prompt_logprobs[1:]:
+            prompt_logprobs.append(list(logprob_dict.values())[0].logprob)
+            if topk_prompt_logprobs > 0:
+                # collect top-k prompt logprobs
+                # logprob_dict: {token_id: Logprob(logprob, rank, ...), ...}
+                logprob_items = list(logprob_dict.items())
+                # sort by Logprob.rank
+                logprob_items_sorted = sorted(logprob_items, key=lambda x: x[1].rank)
+                # pick topk
+                topk = logprob_items_sorted[:topk_prompt_logprobs]
+                # record as (token_id, logprob)
+                topk_prompt_logprobs_list.append(
+                    [(token_id, logprob.logprob) for token_id, logprob in topk]
+                )
+        # collect response sequences
+        for seq_output in req_output.outputs:
+            seq = types.SampledSequence(
+                stop_reason="length" if seq_output.stop_reason == "length" else "stop",
+                tokens=seq_output.token_ids,
+                logprobs=[
+                    list(logprob_dict.values())[0].logprob for logprob_dict in seq_output.logprobs
+                ],
+            )
+            sequences.append(seq)
+
+        return types.SampleResponse(
+            sequences=sequences,
+            prompt_logprobs=prompt_logprobs,
+            topk_prompt_logprobs=topk_prompt_logprobs_list,
         )
 
     async def _generate_internal(self, prompt: Any, lora_request=None, **kwargs) -> Any:

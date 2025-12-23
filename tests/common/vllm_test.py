@@ -1219,3 +1219,51 @@ class TestSuperLongGeneration(RayUnittestBaseAysnc):
             response.prompt_length, 40960
         )  # If not long enough, please add more files to prompt
         self.assertGreater(response.logprobs.shape[0], 1000)
+
+
+class TestTinkerAPI(RayUnittestBaseAysnc):
+    """Test the Tinker API integration with the vLLM engine."""
+
+    def setUp(self):
+        self.config = get_template_config()
+        self.config.mode = "explore"
+        self.config.model.model_path = get_model_path()
+        self.config.explorer.rollout_model.engine_type = "vllm"
+        self.config.explorer.rollout_model.engine_num = 1
+        self.config.explorer.rollout_model.tensor_parallel_size = 1
+        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
+        self.config.explorer.rollout_model.enable_openai_api = True
+
+        self.config.check_and_update()
+        self.engines, self.auxiliary_engines = create_inference_models(self.config)
+        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+
+    async def test_tinker_api(self):
+        from tinker import types
+        from transformers import AutoTokenizer
+
+        engine = self.engines[0]
+        tokenizer = AutoTokenizer.from_pretrained(self.config.model.model_path)
+        prompt = types.ModelInput.from_ints(
+            tokenizer.encode("How many r's are in the word strawberry?"),
+        )
+        num_samples = 2
+        topk_prompt_logprobs = 3
+        response = await engine.sample.remote(
+            prompt=prompt,
+            num_samples=num_samples,
+            sampling_params=types.SamplingParams(temperature=0.7, max_tokens=16),
+            include_prompt_logprobs=True,
+            topk_prompt_logprobs=topk_prompt_logprobs,
+        )
+        self.assertEqual(len(response.sequences), num_samples)
+        for sequence in response.sequences:
+            self.assertEqual(len(sequence.tokens), len(sequence.logprobs))
+            self.assertEqual(sequence.stop_reason, "stop")
+        self.assertEqual(len(response.prompt_logprobs), len(prompt.to_ints()))
+        self.assertIsNone(response.prompt_logprobs[0])
+        self.assertEqual(len(response.topk_prompt_logprobs), len(prompt.to_ints()))
+        self.assertIsNone(response.topk_prompt_logprobs[0])
+        for topk_logprobs in response.topk_prompt_logprobs[1:]:
+            self.assertIsNotNone(topk_logprobs)
+            self.assertEqual(len(topk_logprobs), topk_prompt_logprobs)
