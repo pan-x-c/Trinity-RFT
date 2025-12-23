@@ -414,17 +414,18 @@ class vLLMRolloutModel(InferenceModel):
     ) -> types.SampleResponse:
         """Tinker compatible sampling interface."""
         params = {
-            "max_tokens": sampling_params.max_tokens,
-            "seed": sampling_params.seed,
-            "stop": sampling_params.stop,
-            "top_k": sampling_params.top_k,
-            "top_p": sampling_params.top_p,
-            "temperature": sampling_params.temperature,
+            "max_tokens": sampling_params.max_tokens or self.config.max_response_tokens,
+            "seed": sampling_params.seed or self.config.seed,
+            "top_k": sampling_params.top_k or self.config.top_k,
+            "top_p": sampling_params.top_p or self.config.top_p,
+            "temperature": sampling_params.temperature or self.config.temperature,
             "n": num_samples,
             "prompt_logprobs": (topk_prompt_logprobs if include_prompt_logprobs else None),
             # in vLLM, 0 means only return the chosen token's logprob
             "logprobs": 0,
         }
+        if sampling_params.stop is not None:
+            params["stop"] = sampling_params.stop
         req_output = await self._generate_internal(
             prompt={"prompt_token_ids": prompt.to_ints()},
             lora_request=lora_request,
@@ -435,35 +436,39 @@ class vLLMRolloutModel(InferenceModel):
         prompt_logprobs: List[Optional[float]] = [None]
 
         # collect prompt logprobs
-        for logprob_dict in req_output.prompt_logprobs[1:]:
-            prompt_logprobs.append(list(logprob_dict.values())[0].logprob)
-            if topk_prompt_logprobs > 0:
-                # collect top-k prompt logprobs
-                # logprob_dict: {token_id: Logprob(logprob, rank, ...), ...}
-                logprob_items = list(logprob_dict.items())
-                # sort by Logprob.rank
-                logprob_items_sorted = sorted(logprob_items, key=lambda x: x[1].rank)
-                # pick topk
-                topk = logprob_items_sorted[:topk_prompt_logprobs]
-                # record as (token_id, logprob)
-                topk_prompt_logprobs_list.append(
-                    [(token_id, logprob.logprob) for token_id, logprob in topk]
-                )
+        if include_prompt_logprobs:
+            for logprob_dict in req_output.prompt_logprobs[1:]:
+                prompt_logprobs.append(list(logprob_dict.values())[0].logprob)
+                if topk_prompt_logprobs > 0:
+                    # collect top-k prompt logprobs
+                    # logprob_dict: {token_id: Logprob(logprob, rank, ...), ...}
+                    logprob_items = list(logprob_dict.items())
+                    # sort by Logprob.rank
+                    logprob_items_sorted = sorted(logprob_items, key=lambda x: x[1].rank)
+                    # pick topk
+                    topk = logprob_items_sorted[:topk_prompt_logprobs]
+                    # record as (token_id, logprob)
+                    topk_prompt_logprobs_list.append(
+                        [(token_id, logprob.logprob) for token_id, logprob in topk]
+                    )
         # collect response sequences
         for seq_output in req_output.outputs:
             seq = types.SampledSequence(
-                stop_reason="length" if seq_output.stop_reason == "length" else "stop",
+                stop_reason="length" if seq_output.finish_reason == "length" else "stop",
                 tokens=seq_output.token_ids,
                 logprobs=[
                     list(logprob_dict.values())[0].logprob for logprob_dict in seq_output.logprobs
                 ],
             )
             sequences.append(seq)
-
         return types.SampleResponse(
             sequences=sequences,
-            prompt_logprobs=prompt_logprobs,
-            topk_prompt_logprobs=topk_prompt_logprobs_list,
+            prompt_logprobs=prompt_logprobs if include_prompt_logprobs else None,
+            topk_prompt_logprobs=(
+                topk_prompt_logprobs_list
+                if include_prompt_logprobs and topk_prompt_logprobs > 0
+                else None
+            ),
         )
 
     async def _generate_internal(self, prompt: Any, lora_request=None, **kwargs) -> Any:
@@ -511,7 +516,7 @@ class vLLMRolloutModel(InferenceModel):
             if len(token_ids) > self.config.max_model_len - 1:
                 truncate_status = "response_truncated"
                 self.logger.warning(
-                    f"Warning: {len(token_ids) = } exceeds the length limit {self.config.max_model_len-1 = }"
+                    f"Warning: {len(token_ids)=} exceeds the length limit {self.config.max_model_len - 1=}"
                 )
                 token_ids = token_ids[: self.config.max_model_len - 1]
                 action_mask = action_mask[: self.config.max_model_len - 1]
