@@ -10,7 +10,6 @@ import ray
 import torch
 from packaging.version import parse as parse_version
 from PIL import Image
-from tinker import types
 from transformers import AutoProcessor
 
 from trinity.common.config import InferenceModelConfig
@@ -405,14 +404,27 @@ class vLLMRolloutModel(InferenceModel):
 
     async def sample(
         self,
-        prompt: types.ModelInput,
+        prompt: Any,
         num_samples: int,
-        sampling_params: types.SamplingParams,
+        sampling_params: Any,
         include_prompt_logprobs: bool = False,
         topk_prompt_logprobs: int = 0,
         lora_request: Optional[Any] = None,
-    ) -> types.SampleResponse:
-        """Tinker compatible sampling interface."""
+    ) -> Any:
+        """Tinker compatible sampling interface.
+
+        Args:
+            prompt (ModelInput): The input prompt.
+            num_samples (int): The number of samples to generate.
+            sampling_params (SamplingParams): The sampling parameters.
+            include_prompt_logprobs (bool): Whether to include prompt logprobs.
+            topk_prompt_logprobs (int): The top-k prompt logprobs to include.
+            lora_request (LoRARequest, optional): The LoRA request. Defaults to None.
+        Returns:
+            SampleResponse: The sample response.
+        """
+        from tinker.types import SampledSequence, SampleResponse
+
         params = {
             "max_tokens": sampling_params.max_tokens
             if sampling_params.max_tokens is not None
@@ -457,7 +469,7 @@ class vLLMRolloutModel(InferenceModel):
                     )
         # collect response sequences
         for seq_output in req_output.outputs:
-            seq = types.SampledSequence(
+            seq = SampledSequence(
                 stop_reason="length" if seq_output.finish_reason == "length" else "stop",
                 tokens=seq_output.token_ids,
                 logprobs=[
@@ -466,7 +478,7 @@ class vLLMRolloutModel(InferenceModel):
                 ],
             )
             sequences.append(seq)
-        return types.SampleResponse(
+        return SampleResponse(
             sequences=sequences,
             prompt_logprobs=prompt_logprobs if include_prompt_logprobs else None,
             topk_prompt_logprobs=(
