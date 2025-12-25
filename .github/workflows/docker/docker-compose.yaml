@@ -2,7 +2,7 @@ services:
   trinity-node-1:
     image: trinity-rft-unittest:20251225
     pull_policy: never
-    command: sh -c "pip install -e .[dev] && ray start --head --dashboard-host 0.0.0.0 --include-dashboard true --block"
+    command: bash -c "source /opt/venv/bin/activate && uv pip install -e .[dev] && ray start --head --dashboard-host 0.0.0.0 --include-dashboard true --block"
     environment:
       - HF_ENDPOINT=https://hf-mirror.com
       - RAY_ADDRESS=auto
@@ -31,7 +31,7 @@ services:
   trinity-node-2:
     image: trinity-rft-unittest:20251225
     pull_policy: never
-    command: sh -c "pip install -e .[dev] && ray start --address=trinity-node-1:6379 --block"
+    command: bash -c "source /opt/venv/bin/activate && uv pip install -e .[dev] && ray start --address=trinity-node-1:6379 --block"
     environment:
       - HF_ENDPOINT=https://hf-mirror.com
       - TRINITY_CHECKPOINT_ROOT_DIR=/mnt/checkpoints
