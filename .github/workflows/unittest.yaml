@@ -34,8 +34,8 @@ jobs:
         MAX_RETRIES=20
         RETRY_INTERVAL=5
         for i in $(seq 1 $MAX_RETRIES); do
-          if docker compose exec trinity-node-test-1 bash -c "source /opt/venv/bin/activate && ray status" \
-            && docker compose exec trinity-node-test-2 bash -c "source /opt/venv/bin/activate && ray status"; then
+          if docker compose exec trinity-node-1 bash -c "source /opt/venv/bin/activate && ray status" \
+            && docker compose exec trinity-node-2 bash -c "source /opt/venv/bin/activate && ray status"; then
             break
           fi
           echo "Waiting for ray cluster to be ready... ($i/$MAX_RETRIES)"
