@@ -13,6 +13,7 @@ services:
       - TRINITY_MODEL_PATH=/mnt/models/Qwen3-0.6B
       - TRINITY_API_MODEL_PATH=/mnt/models/Qwen3-1.7B
       - TRINITY_VLM_MODEL_PATH=/mnt/models/Qwen2.5-VL-3B
+      - VIRTUAL_ENV=/opt/venv
     working_dir: /workspace
     networks:
       - trinity-network
@@ -37,6 +38,7 @@ services:
       - TRINITY_CHECKPOINT_ROOT_DIR=/mnt/checkpoints
       - TRINITY_TASKSET_PATH=/mnt/data
       - TRINITY_MODEL_PATH=/mnt/models/Qwen3-1.7B
+      - VIRTUAL_ENV=/opt/venv
     working_dir: /workspace
     volumes:
       - trinity-volume:/mnt
