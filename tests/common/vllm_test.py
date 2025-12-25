@@ -1271,7 +1271,6 @@ class TestTinkerAPI(RayUnittestBaseAysnc):
         )
         self.assertEqual(len(response.sequences), num_samples)
         for sequence in response.sequences:
-            print("response length:", len(sequence.tokens))
             self.assertEqual(len(sequence.tokens), len(sequence.logprobs))
             self.assertEqual(sequence.stop_reason, "stop")
         self.assertIsNone(response.prompt_logprobs)

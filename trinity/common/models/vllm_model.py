@@ -410,15 +410,17 @@ class vLLMRolloutModel(InferenceModel):
         sampling_params: types.SamplingParams,
         include_prompt_logprobs: bool = False,
         topk_prompt_logprobs: int = 0,
-        lora_request=None,
+        lora_request: Optional[Any] = None,
     ) -> types.SampleResponse:
         """Tinker compatible sampling interface."""
         params = {
-            "max_tokens": sampling_params.max_tokens or self.config.max_response_tokens,
-            "seed": sampling_params.seed or self.config.seed,
-            "top_k": sampling_params.top_k or self.config.top_k,
-            "top_p": sampling_params.top_p or self.config.top_p,
-            "temperature": sampling_params.temperature or self.config.temperature,
+            "max_tokens": sampling_params.max_tokens
+            if sampling_params.max_tokens is not None
+            else self.config.max_response_tokens,
+            "seed": sampling_params.seed if sampling_params.seed is not None else self.config.seed,
+            "top_k": sampling_params.top_k,
+            "top_p": sampling_params.top_p,
+            "temperature": sampling_params.temperature,
             "n": num_samples,
             "prompt_logprobs": (topk_prompt_logprobs if include_prompt_logprobs else None),
             # in vLLM, 0 means only return the chosen token's logprob
@@ -432,13 +434,15 @@ class vLLMRolloutModel(InferenceModel):
             **params,
         )
         sequences = []
+        # vLLM's prompt_logprobs output does not include a value for the first token.
+        # Initialize with [None] to align with the prompt tokens.
         topk_prompt_logprobs_list: List[Optional[List[Tuple[int, float]]]] = [None]
         prompt_logprobs: List[Optional[float]] = [None]
 
         # collect prompt logprobs
         if include_prompt_logprobs:
             for logprob_dict in req_output.prompt_logprobs[1:]:
-                prompt_logprobs.append(list(logprob_dict.values())[0].logprob)
+                prompt_logprobs.append(next(iter(logprob_dict.values())).logprob)
                 if topk_prompt_logprobs > 0:
                     # collect top-k prompt logprobs
                     # logprob_dict: {token_id: Logprob(logprob, rank, ...), ...}
@@ -457,7 +461,8 @@ class vLLMRolloutModel(InferenceModel):
                 stop_reason="length" if seq_output.finish_reason == "length" else "stop",
                 tokens=seq_output.token_ids,
                 logprobs=[
-                    list(logprob_dict.values())[0].logprob for logprob_dict in seq_output.logprobs
+                    next(iter(logprob_dict.values())).logprob
+                    for logprob_dict in seq_output.logprobs
                 ],
             )
             sequences.append(seq)
