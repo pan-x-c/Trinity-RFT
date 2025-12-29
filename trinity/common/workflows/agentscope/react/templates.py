@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Dict, Optional, Type
 
-from agentscope.message import Msg
 from pydantic import BaseModel, Field
 
 from trinity.common.rewards import RewardFn
@@ -20,7 +19,7 @@ class GSM8KResponseStructure(BaseModel):
 class GSM8KRewardFn(MathBoxedRewardFn):
     def __call__(  # type: ignore [override]
         self,
-        response: Msg,
+        response: dict,
         truth: str,
         format_score_coef: float = 0.1,
         **kwargs,
@@ -30,10 +29,8 @@ class GSM8KRewardFn(MathBoxedRewardFn):
             truth = truth.split("####")[1].strip()
         else:
             truth = str(truth)
-        # parse the final answer from the response message
-        result = response.get_text_content()
         return super().__call__(
-            response=result,
+            response=response.get("result", ""),
             truth=truth,
             with_think=False,
             format_score_coef=format_score_coef,
