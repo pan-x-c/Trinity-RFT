@@ -120,7 +120,8 @@ class AgentScopeWorkflowAdapterV1(Workflow):
         )
         self.auxiliary_chat_models = [
             TrinityChatModel(
-                aux_model,
+                openai_async_client=aux_model,
+                # TODO: customize generate_kwargs for auxiliary models if needed
             )
             for aux_model in (self.auxiliary_models or [])
         ]
@@ -134,6 +135,7 @@ class AgentScopeWorkflowAdapterV1(Workflow):
 
         Args:
             reward (float): The reward value to assign to each experience.
+            metrics (Dict): A dictionary of metrics to be attached to the last experience.
 
         Returns:
             List: A list of Experience objects.
