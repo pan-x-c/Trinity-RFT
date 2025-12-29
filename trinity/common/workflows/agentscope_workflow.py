@@ -161,8 +161,11 @@ class AgentScopeWorkflowAdapterV1(Workflow):
         )  # type: ignore [arg-type]
         metrics.update(workflow_output.metrics or {})
         if self.judge_func is not None:
+            assert (
+                workflow_output.response is not None
+            ), "Workflow must provide response for judging."
             judge_output: JudgeOutput = await self.judge_func(
-                self.task.raw_task, workflow_output, self.auxiliary_chat_models
+                self.task.raw_task, workflow_output.response, self.auxiliary_chat_models
             )  # type: ignore [arg-type]
             reward = judge_output.reward
             metrics.update(judge_output.metrics or {})
