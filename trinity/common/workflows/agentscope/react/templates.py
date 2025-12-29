@@ -1,10 +1,8 @@
-import re
 from dataclasses import dataclass
 from typing import Dict, Optional, Type
 
-from pydantic import BaseModel, Field
-
 from agentscope.message import Msg
+from pydantic import BaseModel, Field
 
 from trinity.common.rewards import RewardFn
 from trinity.common.rewards.math_reward import MathBoxedRewardFn
@@ -34,13 +32,6 @@ class GSM8KRewardFn(MathBoxedRewardFn):
             truth = str(truth)
         # parse the final answer from the response message
         result = response.get_text_content()
-        if result is not None:
-            # find the final answer in boxed format
-            match = re.search(pattern=r"\\boxed\{([^}]*)\}", string=result)
-            if match:
-                result = match.group(1).strip()
-            else:
-                result = None
         return super().__call__(
             response=result,
             truth=truth,

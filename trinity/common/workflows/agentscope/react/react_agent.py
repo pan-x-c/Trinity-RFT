@@ -1,4 +1,4 @@
-from typing import Dict, Type
+from typing import Dict
 
 import openai
 from agentscope.agent import ReActAgent
@@ -6,7 +6,6 @@ from agentscope.formatter import OpenAIChatFormatter
 from agentscope.message import Msg
 from agentscope.model import OpenAIChatModel
 from agentscope.tool import Toolkit
-from pydantic import BaseModel
 
 
 class AgentScopeReActAgent:
@@ -55,6 +54,4 @@ class AgentScopeReActAgent:
         Returns:
             Dict: The structured response.
         """
-        return await self.agent.reply(
-            msg=Msg("user", query, role="user")
-        )
+        return await self.agent.reply(msg=Msg("user", query, role="user"))
