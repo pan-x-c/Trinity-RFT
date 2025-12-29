@@ -57,7 +57,6 @@ class AgentScopeReActWorkflow(Workflow):
                 "temperature": self.task.rollout_args.temperature,
                 "max_tokens": self.task.rollout_args.max_tokens or 4096,
             },
-            response_structure=template.response_structure,
         )
 
     async def run_async(self):

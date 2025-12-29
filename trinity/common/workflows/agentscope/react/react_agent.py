@@ -16,7 +16,6 @@ class AgentScopeReActAgent:
         model_name: str,
         system_prompt: str,
         generate_kwargs: dict,
-        response_structure: Type[BaseModel],
         max_iters: int = 10,
         toolkit: Toolkit | None = None,
     ):
@@ -43,11 +42,9 @@ class AgentScopeReActAgent:
             model=self.agent_model,
             formatter=OpenAIChatFormatter(),
             # we enable agentscope's meta tool to allow agent to call tools dynamically without pre-registration
-            enable_meta_tool=True,
             toolkit=toolkit,
             max_iters=max_iters,
         )
-        self.response_structure = response_structure
 
     async def reply(self, query: str) -> Dict:
         """Generate a response from the agent given a query.
@@ -58,8 +55,6 @@ class AgentScopeReActAgent:
         Returns:
             Dict: The structured response.
         """
-
-        response = await self.agent.reply(
-            Msg("user", query, role="user"), structured_model=self.response_structure
+        return await self.agent.reply(
+            msg=Msg("user", query, role="user")
         )
-        return response.metadata or {}
