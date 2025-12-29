@@ -144,7 +144,7 @@ class AgentScopeWorkflowAdapterV1(Workflow):
         for exp in exps:
             exp.reward = reward
         # only attach metrics to the last experience
-        if len(metrics) > 0:
+        if len(exps) > 0:
             exps[-1].metrics = metrics
         return exps
 
