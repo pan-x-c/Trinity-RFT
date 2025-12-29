@@ -153,7 +153,7 @@ class AgentScopeWorkflowAdapterV1(Workflow):
         try:
             from agentscope.tuner import JudgeOutput, WorkflowOutput
         except ImportError:
-            self.logger.error(
+            raise ImportError(
                 "Fail to import agentscope tuner related types. Please ensure agentscope>=1.0.11 is installed."
             )
 
