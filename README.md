@@ -42,8 +42,7 @@ Trinity-RFT provides functionalities for users with different backgrounds and ob
 
 ## 🚀 News
 
-* [2025-12] [[Release Notes]](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.4.0) Trinity-RFT v0.4.0 released: added Tinker backend for CPU-only training, add more benchmarks.
-* [2025-12] Trinity-RFT has supported [tinker](https://thinkingmachines.ai/tinker/) training backend, which enables model training on devices **without GPUs**.
+* [2025-12] [[Release Notes]](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.4.0) Trinity-RFT v0.4.0 released: added [Tinker](https://thinkingmachines.ai/tinker/) backend for users **without GPUs**, add more benchmarks, enhance online RL and more.
 * [2025-12] Trinity-RFT powers the medical and health business of "Taobao Shangou", enabling the AI agent to understand vague symptoms, proactively ask follow-up questions, and provide precise recommendations ([News](https://tech.china.com.cn/sx/20251201/411376.shtml)).
 * [2025-11] [[Release Notes](https://github.com/modelscope/Trinity-RFT/releases/tag/v0.3.3)] Trinity-RFT v0.3.3 released: bug fixes.
 * [2025-11] Introducing [Learn-to-Ask](https://github.com/modelscope/Trinity-RFT/tree/main/examples/learn_to_ask): a framework for training proactive dialogue agents from offline expert data  ([paper](https://arxiv.org/pdf/2510.25441)).
