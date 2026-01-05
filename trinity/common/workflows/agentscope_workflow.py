@@ -11,7 +11,7 @@ from trinity.utils.annotations import Deprecated
 class AgentScopeWorkflowAdapter(Workflow):
     """Adapter to wrap a agentscope trainable workflow function into a Trinity Workflow.
     Only for agentscope versions between 1.0.7 and 1.0.11.
-    For agentscope >= 1.0.11, please use AgentScopeWorkflowAdapterV1.
+    For agentscope >= 1.0.12, please use AgentScopeWorkflowAdapterV1.
     """
 
     is_async: bool = True
@@ -82,7 +82,7 @@ class AgentScopeWorkflowAdapter(Workflow):
 
 class AgentScopeWorkflowAdapterV1(Workflow):
     """A more general adapter to wrap agentscope trainable workflow and judge functions into a Trinity Workflow.
-    For
+    Only for agentscope versions >= 1.0.12.
     """
 
     is_async: bool = True
