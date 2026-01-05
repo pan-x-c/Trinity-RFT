@@ -144,6 +144,10 @@ class ModelWrapper:
             "top_p": self.config.top_p,
             "max_tokens": self.config.max_response_tokens,
         }
+        if self.config.enable_thinking is not None:
+            self._generate_kwargs["chat_template_kwargs"] = {
+                "enable_thinking": self.config.enable_thinking
+            }
         self.api_address = await self.model.get_api_server_url.remote()
         if self.api_address is None:
             self.logger.info("API server is not enabled for inference model.")
@@ -321,7 +325,7 @@ class ModelWrapper:
     async def get_message_token_len(self, messages: List[dict]) -> int:
         return await self.model.get_message_token_len.remote(messages)
 
-    def get_openai_client(self, enable_logprobs: bool = True) -> openai.OpenAI:
+    def get_openai_client(self) -> openai.OpenAI:
         """Get the openai client.
 
         Returns:
@@ -343,7 +347,7 @@ class ModelWrapper:
             ori_create = self.openai_client.chat.completions.create
 
             def record_chat_completions(*args, **kwargs):
-                logprobs = kwargs.pop("logprobs", enable_logprobs)
+                logprobs = kwargs.pop("logprobs", True)
                 extra_body = kwargs.pop("extra_body", {})
                 if self.enable_thinking is not None:
                     if "chat_template_kwargs" not in extra_body:
@@ -358,7 +362,7 @@ class ModelWrapper:
         setattr(self.openai_client, "model_path", self.openai_client.models.list().data[0].id)
         return self.openai_client
 
-    def get_openai_async_client(self, enable_logprobs: bool = True) -> openai.AsyncOpenAI:
+    def get_openai_async_client(self) -> openai.AsyncOpenAI:
         """Get the async openai client.
 
         Returns:
@@ -381,7 +385,7 @@ class ModelWrapper:
             ori_create = self.openai_async_client.chat.completions.create
 
             async def record_chat_completions(*args, **kwargs):
-                logprobs = kwargs.pop("logprobs", enable_logprobs)
+                logprobs = kwargs.pop("logprobs", True)
                 extra_body = kwargs.pop("extra_body", {})
                 if self.enable_thinking is not None:
                     if "chat_template_kwargs" not in extra_body:

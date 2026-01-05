@@ -551,7 +551,7 @@ class TestWorkflowStateRecording(unittest.IsolatedAsyncioTestCase):
 
 
 class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
-    async def test_adapter(self):
+    async def test_adapter_v0(self):
         try:
             from agentscope.model import TrinityChatModel
         except ImportError:
@@ -585,6 +585,57 @@ class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result[0].prompt_length, 1)
         self.assertEqual(result[1].reward, 0.1)
         self.assertEqual(result[1].prompt_length, 2)
+
+    async def test_adapter_v1(self):
+        try:
+            from agentscope.model import ChatModelBase
+            from agentscope.tuner import JudgeOutput, WorkflowOutput
+        except ImportError:
+            self.skipTest("agentscope >= 1.0.12 is not installed")
+
+        async def as_workflow_func(task, model) -> WorkflowOutput:
+            self.assertIsInstance(task, dict)
+            self.assertIsInstance(model, ChatModelBase)
+            return WorkflowOutput(
+                reward=task["reward"],
+                metrics={"workflow_metric_1": 0.0},
+            )
+
+        async def as_judge_func(task, workflow_output) -> JudgeOutput:
+            self.assertIsInstance(task, dict)
+            self.assertIsInstance(workflow_output, WorkflowOutput)
+            return JudgeOutput(
+                reward=workflow_output.reward,
+                metrics={"judge_metric_1": 1.0},
+            )
+
+        model = MagicMock()
+        openai_client = MagicMock()
+        openai_client.model_path = "Qwen/Qwen3-8B"
+        model.get_openai_async_client.return_value = openai_client
+        model.extract_experience_from_history.return_value = [
+            Experience(tokens=Tensor([0, 1, 2]), prompt_length=1, logprobs=Tensor([0.1, 0.2])),
+        ]
+
+        as_adapter_cls = WORKFLOWS.get("agentscope_workflow_adapter_v1")
+        as_adapter = as_adapter_cls(
+            task=Task(
+                raw_task={"reward": 0.2},
+                workflow_args={
+                    "workflow_func": as_workflow_func,
+                    "judge_func": as_judge_func,
+                },
+            ),
+            model=model,
+        )
+        result = await as_adapter.run_async()
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].reward, 0.2)
+        self.assertEqual(result[0].prompt_length, 1)
+        metrics = result[-1].metrics
+        self.assertEqual(len(metrics), 2)
+        self.assertEqual(metrics["workflow_metric_1"], 0.0)
+        self.assertEqual(metrics["judge_metric_1"], 1.0)
 
 
 class DummyModelWrapper:

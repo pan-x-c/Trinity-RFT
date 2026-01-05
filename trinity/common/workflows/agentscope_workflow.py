@@ -189,20 +189,17 @@ class AgentScopeWorkflowAdapterV1(Workflow):
             )
         metrics.update(workflow_output.metrics or {})
         if self.judge_func is not None:
-            assert (
-                workflow_output.response is not None
-            ), "Workflow must provide response for judging."
             judge_sig = inspect.signature(self.judge_func)
             if "auxiliary_models" in judge_sig.parameters:
                 judge_output = await self.judge_func(
                     self.task.raw_task,
-                    workflow_output.response,
+                    workflow_output,
                     self.auxiliary_chat_models,
                 )
             else:
                 judge_output = await self.judge_func(
                     self.task.raw_task,
-                    workflow_output.response,
+                    workflow_output,
                 )
             if not isinstance(judge_output, JudgeOutput):
                 raise ValueError(
