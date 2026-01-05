@@ -120,6 +120,7 @@ class AgentScopeWorkflowAdapterV1(Workflow):
         self.chat_model: OpenAIChatModel = OpenAIChatModel(
             api_key="EMPTY",
             model_name=self._openai_client.model_path,
+            stream=False,
             generate_kwargs={
                 "temperature": self.task.rollout_args.temperature,
                 "top_p": self.task.rollout_args.top_p,
@@ -137,6 +138,7 @@ class AgentScopeWorkflowAdapterV1(Workflow):
                     api_key="EMPTY",
                     model_name=aux_model_client.model_path,
                     generate_kwargs=aux_model_wrapper.generate_kwargs,
+                    stream=False,
                 )
                 aux_chat_model.client = aux_model_client
                 assert (
@@ -179,10 +181,15 @@ class AgentScopeWorkflowAdapterV1(Workflow):
         workflow_sig = inspect.signature(self.workflow_func)
         if "auxiliary_models" in workflow_sig.parameters:
             workflow_output = await self.workflow_func(
-                self.task.raw_task, self.chat_model, self.auxiliary_chat_models
+                task=self.task.raw_task,
+                model=self.chat_model,
+                auxiliary_models=self.auxiliary_chat_models,
             )
         else:
-            workflow_output = await self.workflow_func(self.task.raw_task, self.chat_model)
+            workflow_output = await self.workflow_func(
+                task=self.task.raw_task,
+                model=self.chat_model,
+            )
         if not isinstance(workflow_output, WorkflowOutput):
             raise ValueError(
                 "The 'workflow_func' must return a WorkflowOutput object.",
@@ -192,14 +199,14 @@ class AgentScopeWorkflowAdapterV1(Workflow):
             judge_sig = inspect.signature(self.judge_func)
             if "auxiliary_models" in judge_sig.parameters:
                 judge_output = await self.judge_func(
-                    self.task.raw_task,
-                    workflow_output,
-                    self.auxiliary_chat_models,
+                    task=self.task.raw_task,
+                    response=workflow_output.response,
+                    auxiliary_models=self.auxiliary_chat_models,
                 )
             else:
                 judge_output = await self.judge_func(
-                    self.task.raw_task,
-                    workflow_output,
+                    task=self.task.raw_task,
+                    response=workflow_output.response,
                 )
             if not isinstance(judge_output, JudgeOutput):
                 raise ValueError(

@@ -598,14 +598,15 @@ class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(model, ChatModelBase)
             return WorkflowOutput(
                 reward=task["reward"],
+                response=task["reward"],
                 metrics={"workflow_metric_1": 0.0},
             )
 
-        async def as_judge_func(task, workflow_output) -> JudgeOutput:
+        async def as_judge_func(task, response) -> JudgeOutput:
             self.assertIsInstance(task, dict)
-            self.assertIsInstance(workflow_output, WorkflowOutput)
+            self.assertIsInstance(response, float)
             return JudgeOutput(
-                reward=workflow_output.reward,
+                reward=response,
                 metrics={"judge_metric_1": 1.0},
             )
 

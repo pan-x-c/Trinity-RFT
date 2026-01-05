@@ -6,7 +6,6 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
-import ray
 import torch
 from packaging.version import parse as parse_version
 from PIL import Image
@@ -41,7 +40,6 @@ class vLLMRolloutModel(InferenceModel):
         from vllm.sampling_params import RequestOutputKind
 
         self.vllm_version = get_vllm_version()
-        self.config = config
         self.use_v1 = config.use_v1
         if config.tensor_parallel_size != 1:
             os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
@@ -80,6 +78,7 @@ class vLLMRolloutModel(InferenceModel):
             ignore_eos=config.ignore_eos,
         )
         self.enable_thinking = config.enable_thinking
+        self.ray_namespace = config.ray_namespace
         self.request_id = 0
         max_model_len = config.max_model_len
         self.enable_lora = config.enable_lora
@@ -638,7 +637,7 @@ class vLLMRolloutModel(InferenceModel):
                 timeout,
                 state_dict_meta,
                 explorer_name,
-                ray.get_runtime_context().namespace,
+                self.ray_namespace,
             ),
         )
 

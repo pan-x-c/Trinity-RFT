@@ -145,8 +145,8 @@ class ModelWrapper:
             "max_tokens": self.config.max_response_tokens,
         }
         if self.config.enable_thinking is not None:
-            self._generate_kwargs["chat_template_kwargs"] = {
-                "enable_thinking": self.config.enable_thinking
+            self._generate_kwargs["extra_body"] = {
+                "chat_template_kwargs": {"enable_thinking": self.config.enable_thinking}
             }
         self.api_address = await self.model.get_api_server_url.remote()
         if self.api_address is None:
