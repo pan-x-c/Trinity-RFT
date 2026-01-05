@@ -15,6 +15,7 @@ from torch import Tensor
 
 from tests.common.vllm_test import CHAT_TEMPLATE
 from tests.tools import get_model_path, get_template_config, get_unittest_dataset_config
+from trinity.common.config import InferenceModelConfig
 from trinity.common.experience import EID, Experience
 from trinity.common.models import create_inference_models
 from trinity.common.models.model import ModelWrapper
@@ -730,9 +731,13 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
         async def mock_get_model_version_remote():
             return 1
 
+        async def mock_get_model_config_remote():
+            return InferenceModelConfig(model_path="dummy_model")
+
         model = MagicMock()
         model.get_api_server_url.remote = MagicMock(side_effect=mock_get_api_server_url_remote)
         model.get_model_version.remote = MagicMock(side_effect=mock_get_model_version_remote)
+        model.get_model_config.remote = MagicMock(side_effect=mock_get_model_config_remote)
 
         runner = WorkflowRunner(
             config,

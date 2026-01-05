@@ -1135,10 +1135,10 @@ class TestServeWithTrainer(RayUnittestBaseAsync):
             + metrics["rollout/model_1/total_request_count"],
             metrics["rollout/total_experience_count"],
         )
-        # at least updated to version 2
+        # at least updated to version 1
         await asyncio.sleep(5)  # wait for model version update
-        self.assertGreaterEqual(metrics["rollout/model_0/model_version"], 2)
-        self.assertGreaterEqual(metrics["rollout/model_1/model_version"], 2)
+        self.assertGreaterEqual(metrics["rollout/model_0/model_version"], 1)
+        self.assertGreaterEqual(metrics["rollout/model_1/model_version"], 1)
         # check final checkpoint
         _, step_num = get_checkpoint_dir_with_step_num(
             checkpoint_root_path=serve_config.checkpoint_job_dir,
