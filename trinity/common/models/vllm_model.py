@@ -21,7 +21,6 @@ from trinity.common.models.mm_utils import (
 from trinity.common.models.model import InferenceModel
 from trinity.common.models.utils import get_action_mask_method
 from trinity.common.models.vllm_patch import get_vllm_version
-from trinity.utils.log import get_logger
 
 
 # V0 engine is deprecated since vLLM v0.10.2, related code will be removed in the future.
@@ -36,10 +35,11 @@ class vLLMRolloutModel(InferenceModel):
         self,
         config: InferenceModelConfig,
     ) -> None:
+        super().__init__(config)
+
         import vllm
         from vllm.sampling_params import RequestOutputKind
 
-        self.logger = get_logger(__name__)
         self.vllm_version = get_vllm_version()
         self.config = config
         self.use_v1 = config.use_v1
@@ -714,12 +714,6 @@ class vLLMRolloutModel(InferenceModel):
 
     def get_model_version(self) -> int:
         return self.model_version
-
-    def get_model_path(self) -> str:
-        return self.config.model_path  # type: ignore [return-value]
-
-    def get_model_name(self) -> Optional[str]:
-        return self.config.name  # type: ignore [return-value]
 
     def get_lora_request(self, lora_path: Optional[str] = None) -> Any:
         from vllm.lora.request import LoRARequest
