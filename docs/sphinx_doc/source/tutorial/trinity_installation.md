@@ -120,7 +120,7 @@ docker run -it \
   --rm \
   -v $PWD:/workspace \
   -v <path_to_your_data_and_checkpoints>:/data \
-  trinity-rft:latest
+  ghcr.io/modelscope/trinity-rft:latest
 ```
 
 ```{note}

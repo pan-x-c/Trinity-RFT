@@ -198,10 +198,10 @@ docker run -it \
   --rm \
   -v $PWD:/workspace \
   -v <path_to_your_data_and_checkpoints>:/data \
-  trinity-rft:latest
+  ghcr.io/modelscope/trinity-rft:latest
 ```
 
-> 该镜像已经通过 `uv` 安装了 Trinity-RFT 以及所有 GPU 相关依赖。请通过 `source /opt/venv/bin/activate` 激活环境，必要时可使用 `uv pip install` 添加额外的包。
+> 该镜像已经通过 `uv` 安装了 Trinity-RFT 以及所有 GPU 相关依赖，且会自动激活虚拟环境（也可通过 `source /opt/venv/bin/activate` 手动激活）。必要时可使用 `uv pip install` 添加额外的包。
 
 #### 使用 Conda
 
@@ -332,8 +332,6 @@ trinity studio --port 8080
 
 
 </details>
-
-
 
 
 ### 第四步：运行 RFT 流程

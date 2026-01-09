@@ -102,12 +102,12 @@ docker run -it \
   --rm \
   -v $PWD:/workspace \
   -v <path_to_your_data_and_checkpoints>:/data \
-  trinity-rft:latest
+  ghcr.io/modelscope/trinity-rft:latest
 ```
 
 ```{note}
-该 Docker 镜像使用 `uv` 来管理 Python 依赖，您需要在进入容器后使用 `source /opt/venv/bin/activate` 激活虚拟环境。
-该镜像已经包含了 vllm, flash-attn 以及 Megatron-LM，如果需要使用其他依赖，不要忘记在激活环境后使用 `uv pip install` 来安装它们。
+该 Docker 镜像使用 `uv` 来管理 Python 依赖，进入容器后虚拟环境会自动激活（也可通过 `source /opt/venv/bin/activate` 手动激活）。
+该镜像已经包含了 vllm, flash-attn 以及 Megatron-LM，如果需要使用其他依赖，可直接使用 `uv pip install` 来安装它们。
 ```
 
 ### 自行构建 Docker 镜像
