@@ -126,9 +126,6 @@ class Synchronizer:
             await asyncio.sleep(1)
 
     async def _remove_previous_state_dict(self, previous_model_version: int) -> None:
-        self.logger.info(
-            f"Synchronizer is removing previous checkpoint for sync at step {previous_model_version}."
-        )
         previous_state_dict_dir = os.path.join(
             self.config.checkpoint_job_dir, f"global_step_{previous_model_version}"
         )
