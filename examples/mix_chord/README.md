@@ -70,34 +70,7 @@ ckp_path = os.path.join(checkpoint_root_dir, project, name, "global_step_100", "
 state_dict = load_fsdp_state_dict_from_verl_checkpoint(ckp_path)
 model.load_state_dict(state_dict)
 output_dir = os.path.join(ckp_path, "huggingface")
-
-def save_to_huggingface_checkpoint(state_dict: dict, output_dir: str):
-    """Convert state dict to Hugging Face format and save it.
-
-    Args:
-        state_dict: The state dict loaded from the Verl checkpoint.
-        output_dir: The directory to save the Hugging Face checkpoint.
-    """
-    import os
-    import torch
-    from transformers import PreTrainedModel
-
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Convert state dict keys to Hugging Face format if needed
-    hf_state_dict = {}
-    for key, value in state_dict.items():
-        # Add any key mapping logic here if needed
-        # Example:
-        # if key.startswith("model."):
-        #     new_key = key.replace("model.", "")
-        #     hf_state_dict[new_key] = value
-        # else:
-        #     hf_state_dict[key] = value
-        hf_state_dict[key] = value
-    torch.save(hf_state_dict, os.path.join(output_dir, "pytorch_model.bin"))
-
-save_to_huggingface_checkpoint(state_dict, output_dir)
+model.save_pretrained(output_dir)
 ```
 
 ## Evaluate the Trained Model on BFCL
