@@ -135,7 +135,7 @@ class Synchronizer:
                 self.logger.info(
                     f"Removing previous checkpoint for sync at step {previous_model_version}."
                 )
-                shutil.rmtree(previous_state_dict_dir)
+                shutil.rmtree(previous_state_dict_dir, ignore_errors=True)
 
     async def _find_tinker_latest_state_dict(self) -> None:
         default_local_dir = self.config.checkpoint_job_dir

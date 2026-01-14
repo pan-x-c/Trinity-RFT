@@ -749,7 +749,7 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         if multiprocessing.get_start_method(allow_none=True) != "spawn":
             multiprocessing.set_start_method("spawn", force=True)
         self.config = get_template_config()
-        self.config.buffer.total_epochs = 1
+        self.config.buffer.total_steps = 6
         self.config.buffer.batch_size = 4
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm_async"
@@ -762,9 +762,10 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         self.config.synchronizer.sync_method = SyncMethod.CHECKPOINT
         self.config.explorer.eval_interval = 4
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
-        self.config.trainer.save_interval = 4
+        self.config.trainer.save_interval = 2
         self.config.trainer.save_hf_checkpoint = "last"
         self.config.trainer.trainer_strategy = self.strategy
+        self.config.trainer.max_checkpoints_to_keep = 2
         self.config.check_and_update()
         self.process_list = []
 
@@ -775,8 +776,6 @@ class TestTrainerCheckpointSave(unittest.TestCase):
             _trainer_config.actor_rollout_ref.actor.megatron.tensor_model_parallel_size = 2
             _trainer_config.actor_rollout_ref.ref.megatron.tensor_model_parallel_size = 2
             _trainer_config.critic.megatron.tensor_model_parallel_size = 2
-        _trainer_config.trainer.max_actor_ckpt_to_keep = 2
-        _trainer_config.trainer.max_critic_ckpt_to_keep = 2
 
         stop_event = multiprocessing.Event()
         trainer_process = multiprocessing.Process(target=run_both, args=(self.config, stop_event))
@@ -887,10 +886,27 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         if not stop_event.is_set():
             self.fail("Training process failed to stop.")
         # check only full checkpoint dirs are kept
-        for sync_step in [0, 1, 2, 3]:
+        for sync_step in [1, 3, 5]:
             state_dict_dir = os.path.join(default_local_dir, f"global_step_{sync_step}")
-            self.assertFalse(os.path.exists(state_dict_dir))
-        self.assertTrue(os.path.exists(os.path.join(default_local_dir, "global_step_4")))
+            self.assertFalse(
+                os.path.exists(state_dict_dir),
+                f"Found unexpected state dict dir at step {sync_step}",
+            )
+        for checkpoint_step in [4, 6]:
+            checkpoint_dir = os.path.join(default_local_dir, f"global_step_{checkpoint_step}")
+            self.assertTrue(
+                os.path.exists(checkpoint_dir),
+                f"Missing expected checkpoint dir at step {checkpoint_step}",
+            )
+            actor_checkpoint_dir = os.path.join(checkpoint_dir, "actor")
+            self.assertTrue(os.path.exists(actor_checkpoint_dir))
+        # check step 2 should have no checkpoint
+        checkpoint_dir = os.path.join(default_local_dir, "global_step_2")
+        self.assertTrue(os.path.exists(checkpoint_dir))
+        actor_checkpoint_dir = os.path.join(checkpoint_dir, "actor")
+        self.assertFalse(os.path.exists(actor_checkpoint_dir))
+        critic_checkpoint_dir = os.path.join(checkpoint_dir, "critic")
+        self.assertFalse(os.path.exists(critic_checkpoint_dir))
         trainer_process.join(timeout=10)
         self.assertIn("model.safetensors", huggingface_dir_files)
 

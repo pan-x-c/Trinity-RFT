@@ -498,6 +498,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         # make sure this flag is created before notifying the synchronizer
         # to avoid the synchronizer recognizing it as a state_dict-only checkpoint
         # TODO: use a better way to indicate full checkpoint
+        os.makedirs(local_global_step_folder, exist_ok=True)
         flag_path = os.path.join(local_global_step_folder, ".full_checkpoint")
         with open(flag_path, "w") as f:
             f.write("")
