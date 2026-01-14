@@ -344,6 +344,10 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
 
         # sft warmup stage
         sft_config = stage_configs[0]
+        self.assertEqual(
+            sft_config.synchronizer.sync_interval,
+            sft_config.trainer.save_interval,
+        )
         parser = TensorBoardParser(os.path.join(sft_config.monitor.cache_dir, "tensorboard"))
         rollout_metrics = parser.metric_list("rollout")
         self.assertEqual(len(rollout_metrics), 0)
