@@ -374,11 +374,15 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         self.assertEqual(parser.metric_min_step(response_metrics[0]), 1)
         self.assertEqual(parser.metric_max_step(response_metrics[0]), 4)
         # test save checkpoint when sft finish
+        for i in range(3):
+            self.assertFalse(
+                os.path.exists(os.path.join(sft_config.checkpoint_job_dir, f"global_step_{i}"))
+            )
         self.assertEqual(
             get_checkpoint_dir_with_step_num(
-                checkpoint_root_path=sft_config.checkpoint_job_dir, trainer_type="verl", step_num=2
+                checkpoint_root_path=sft_config.checkpoint_job_dir, trainer_type="verl", step_num=3
             )[1],
-            2,
+            3,
         )
         # test save checkpoint at last step
         checkpoint_dir, step_num = get_checkpoint_dir_with_step_num(
