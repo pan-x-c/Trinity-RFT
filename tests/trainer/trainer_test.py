@@ -768,7 +768,7 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         self.config.check_and_update()
         self.process_list = []
 
-    def test_trainer(self):
+    def test_trainer(self):  # noqa: C901
         """Test the checkpoint saving."""
         _trainer_config = self.config.trainer.trainer_config
         if self.strategy == "megatron":
@@ -839,6 +839,10 @@ class TestTrainerCheckpointSave(unittest.TestCase):
                 # print(f"State dict check at {state_dict_iteration} iteration passed.")  # for debug
 
             if checkpoint_iteration > 0:
+                flag_file = os.path.join(
+                    default_local_dir, f"global_step_{checkpoint_iteration}", ".full_checkpoint"
+                )
+                self.assertTrue(os.path.exists(flag_file))
                 for sub_dir_name in ["critic", "actor"]:
                     iteration_dir = os.path.join(
                         default_local_dir, f"global_step_{checkpoint_iteration}", sub_dir_name
@@ -882,6 +886,11 @@ class TestTrainerCheckpointSave(unittest.TestCase):
                 # print(f"Checkpoint check at {checkpoint_iteration} iteration passed.")  # for debug
         if not stop_event.is_set():
             self.fail("Training process failed to stop.")
+        # check only full checkpoint dirs are kept
+        for sync_step in [0, 1, 2, 3]:
+            state_dict_dir = os.path.join(default_local_dir, f"global_step_{sync_step}")
+            self.assertFalse(os.path.exists(state_dict_dir))
+        self.assertTrue(os.path.exists(os.path.join(default_local_dir, "global_step_4")))
         trainer_process.join(timeout=10)
         self.assertIn("model.safetensors", huggingface_dir_files)
 
