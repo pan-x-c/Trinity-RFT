@@ -88,7 +88,7 @@ tinker = [
 ]
 
 doc = [
-    "sphinx",
+    "sphinx < 0.9.0",
     "sphinx-autobuild",
     "sphinx-book-theme",
     "myst-parser",
