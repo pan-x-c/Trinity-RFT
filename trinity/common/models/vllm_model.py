@@ -430,7 +430,6 @@ class vLLMRolloutModel(InferenceModel):
             lora_ids (List[int]): The list of LoRA adapter IDs.
         """
         lora_ids = await self.async_llm.list_loras()
-        print("Get lora ids from vLLM:", lora_ids)
         return list(lora_ids)
 
     async def sample(
