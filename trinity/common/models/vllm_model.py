@@ -111,7 +111,6 @@ class vLLMRolloutModel(BaseInferenceModel):
             enable_chunked_prefill=config.enable_chunked_prefill,
             dtype=config.dtype,
             trust_remote_code=True,
-            task="generate",
             gpu_memory_utilization=config.gpu_memory_utilization,
             override_generation_config={  # TODO: find a way to unittest this
                 "temperature": config.temperature,
@@ -579,41 +578,15 @@ class vLLMRolloutModel(BaseInferenceModel):
             return True  # already running
 
         api_server_host, api_server_port = self.get_available_address()
-        if self.vllm_version <= parse_version("0.11.0"):
-            from trinity.common.models.vllm_patch.api_patch import (
-                run_api_server_in_ray_actor,
-            )
+        from trinity.common.models.vllm_patch import get_api_server
 
-            self.api_server = asyncio.create_task(
-                run_api_server_in_ray_actor(
-                    self.async_llm,
-                    api_server_host,
-                    api_server_port,
-                    self.config.model_path,  # type: ignore [arg-type]
-                    self.config.enable_auto_tool_choice,
-                    self.config.tool_call_parser,
-                    self.config.reasoning_parser,
-                    self.config.enable_log_requests,
-                )
-            )
-        else:
-            from trinity.common.models.vllm_patch.api_patch_v12 import (
-                run_api_server_in_ray_actor_v12,
-            )
-
-            self.api_server = asyncio.create_task(
-                run_api_server_in_ray_actor_v12(
-                    self.async_llm,
-                    api_server_host,
-                    api_server_port,
-                    self.config.model_path,  # type: ignore [arg-type]
-                    logger=self.logger,
-                    enable_auto_tool_choice=self.config.enable_auto_tool_choice,
-                    tool_call_parser=self.config.tool_call_parser,
-                    reasoning_parser=self.config.reasoning_parser,
-                    enable_log_requests=self.config.enable_log_requests,
-                )
-            )
+        self.api_server = get_api_server(
+            self.async_llm,
+            host=api_server_host,
+            port=api_server_port,
+            config=self.config,
+            logger=self.logger,
+        )
         self.api_server_host = api_server_host
         self.api_server_port = api_server_port
         return True
