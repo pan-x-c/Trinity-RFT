@@ -131,7 +131,8 @@ class vLLMRolloutModel(BaseInferenceModel):
             engine_args.disable_log_requests = not config.enable_log_requests
         if self.vllm_version >= parse_version("0.11.0"):
             engine_args.reasoning_parser = config.reasoning_parser
-
+        if self.vllm_version >= parse_version("0.13.0"):
+            engine_args.async_scheduling = False
         self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
         self.processor = None
         self.state_dict_meta = None

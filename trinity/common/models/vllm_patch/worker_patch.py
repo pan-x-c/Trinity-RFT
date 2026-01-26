@@ -13,10 +13,10 @@ from trinity.common.models.vllm_patch import get_vllm_version
 def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):  # noqa: C901
     """Patch vLLM model runner to support prompt logprobs extraction."""
     version = get_vllm_version()
-    if version < parse_version("0.10.2") or version > parse_version("0.14.0"):
+    if version < parse_version("0.10.2") or version > parse_version("0.14.1"):
         raise ValueError(
             f"Unsupported vllm version: {vllm.__version__}. "
-            "This patch requires vllm version >= 0.10.2, <= 0.14.0."
+            "This patch requires vllm version >= 0.10.2, <= 0.14.1."
         )
     is_v0102 = version == parse_version("0.10.2")
 
@@ -150,7 +150,7 @@ def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):  # noqa: C901
 
         This is a monkey-patched version of `_get_prompt_logprobs_dict` from
         `vllm.v1.worker.gpu_model_runner.GPUModelRunner` (vLLM versions
-        0.12.0 to 0.14.0).
+        0.12.0 to 0.14.1).
 
         The original function does not apply temperature scaling to logits when
         calculating prompt logprobs, which can lead to incorrect logprob values
@@ -192,6 +192,7 @@ def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):  # noqa: C901
                 logprobs_tensors = LogprobsTensors.empty_cpu(
                     num_prompt_tokens - 1, num_prompt_logprobs + 1
                 )
+                logprobs_tensors.logprob_token_ids.fill_(0)
                 in_progress_dict[req_id] = logprobs_tensors
 
             # Determine number of logits to retrieve.

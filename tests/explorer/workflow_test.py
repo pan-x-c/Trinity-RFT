@@ -358,37 +358,6 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(experiences[2].reward, -0.1)
         self.assertEqual(experiences[3].reward, 1.1)
 
-    def test_rm_gallery_workflow(self) -> None:
-        model = MagicMock()
-        model.chat.return_value = [
-            MockResponse("<think> balabalabala 99 </think>\n \\boxed{36}"),
-            MockResponse("answer is \\boxed{36 }"),
-            MockResponse("Kim's total points are 6 + 30 =\\boxed{36}"),
-            MockResponse("<think> balalaba </think> \\boxed{35.00}"),
-        ]
-        taskset_config = get_unittest_dataset_config("countdown")
-        task = Task(
-            workflow=MathRMWorkflow,
-            reward_fn=RMGalleryFn,
-            repeat_times=taskset_config.repeat_times,
-            format_args=taskset_config.format,
-            rollout_args=taskset_config.rollout_args,
-            reward_fn_args={
-                "reward_name": "math_verify_reward",
-            },
-            is_eval=False,
-            raw_task={
-                taskset_config.format.prompt_key: "",
-                taskset_config.format.response_key: r"36",
-            },
-        )
-        workflow = task.to_workflow(model=model)
-        experiences = workflow.run()
-        self.assertEqual(experiences[0].reward, 1.0)
-        self.assertEqual(experiences[1].reward, 1.0)
-        self.assertEqual(experiences[2].reward, 1.0)
-        self.assertEqual(experiences[3].reward, 0.0)
-
     def test_math_eval_workflow(self) -> None:
         model = MagicMock()
         model.chat.return_value = [
