@@ -192,7 +192,6 @@ def patch_vllm_prompt_logprobs(model_runner: GPUModelRunner):  # noqa: C901
                 logprobs_tensors = LogprobsTensors.empty_cpu(
                     num_prompt_tokens - 1, num_prompt_logprobs + 1
                 )
-                logprobs_tensors.logprob_token_ids.fill_(0)
                 in_progress_dict[req_id] = logprobs_tensors
 
             # Determine number of logits to retrieve.

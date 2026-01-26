@@ -19,11 +19,9 @@ from trinity.common.config import InferenceModelConfig
 from trinity.common.experience import EID, Experience
 from trinity.common.models import create_inference_models
 from trinity.common.models.model import ModelWrapper
-from trinity.common.rewards.reward_fn import RMGalleryFn
 from trinity.common.workflows import WORKFLOWS, Workflow
 from trinity.common.workflows.customized_math_workflows import MathBoxedWorkflow
 from trinity.common.workflows.eval_workflow import MathEvalWorkflow
-from trinity.common.workflows.math_rm_workflow import MathRMWorkflow
 from trinity.common.workflows.workflow import MathWorkflow, MultiTurnWorkflow, Task
 from trinity.explorer.workflow_runner import WorkflowRunner
 

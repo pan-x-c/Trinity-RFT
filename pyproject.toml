@@ -51,6 +51,9 @@ trinity = "trinity.cli.launcher:main"
 [project.optional-dependencies]
 vllm = [
     "vllm>=0.10.2,<=0.14.1,!=0.12.0",
+    # v0.12.0 has a huge performance regression so we exclude it
+    # v0.10.2 is the most stable version, recommend to use this version
+    # if you face issues with later versions
 ]
 data = [
     "py-data-juicer>=1.4.3"

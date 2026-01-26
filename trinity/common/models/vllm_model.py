@@ -93,12 +93,14 @@ class vLLMRolloutModel(BaseInferenceModel):
                 rope_kwargs = {"hf_overrides": rope_params}
             else:
                 rope_kwargs = {}
+            self.logprobs_no_prefix_cache = True
         else:
             rope_kwargs = {
                 key: getattr(config, key)
                 for key in ["rope_scaling", "rope_theta"]
                 if getattr(config, key) is not None
             }
+            self.logprobs_no_prefix_cache = False
         engine_args = vllm.AsyncEngineArgs(
             model=config.model_path,
             enforce_eager=config.enforce_eager,
@@ -326,13 +328,19 @@ class vLLMRolloutModel(BaseInferenceModel):
         temperature = temperature if temperature is not None else self.config.temperature
         if temperature is None:
             temperature = 1.0
+        kwargs = {
+            "n": 1,
+            "max_tokens": 1,
+            "prompt_logprobs": 0,  # vLLM return `prompt_logprobs + 1` logrpobs for each token
+            "temperature": temperature,
+        }
+        # avoid using prefix cache when calculating logprobs, only for vLLM >= 0.12.0
+        if self.logprobs_no_prefix_cache:
+            kwargs["skip_reading_prefix_cache"] = True
         output = await self._generate_internal(
             prompt={"prompt_token_ids": token_ids},
             lora_request=lora_request,
-            n=1,
-            max_tokens=1,
-            prompt_logprobs=0,  # vLLM return `prompt_logprobs + 1` logrpobs for each token
-            temperature=temperature,
+            **kwargs,
         )
         return torch.tensor(
             [list(logprob_dict.values())[0].logprob for logprob_dict in output.prompt_logprobs[1:]],
@@ -404,6 +412,8 @@ class vLLMRolloutModel(BaseInferenceModel):
             # in vLLM, 0 means only return the chosen token's logprob
             "logprobs": 0,
         }
+        if include_prompt_logprobs and self.logprobs_no_prefix_cache:
+            params["skip_reading_prefix_cache"] = True
         if sampling_params.stop is not None:
             params["stop"] = sampling_params.stop
         req_output = await self._generate_internal(
