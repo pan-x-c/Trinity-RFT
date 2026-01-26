@@ -10,7 +10,7 @@
 # 2. The uv virtual environment is created at `/opt/venv`, use `source /opt/venv/bin/activate` to activate it.
 # 3. Make sure to use `uv pip` to install packages within the virtual environment.
 
-FROM nvcr.io/nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
 
 WORKDIR /workspace
 
