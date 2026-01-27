@@ -2,7 +2,7 @@ import asyncio
 import time
 import unittest
 from collections import defaultdict
-from typing import List, Optional
+from typing import Dict, List, Optional, Sequence
 
 import ray
 import torch
@@ -169,6 +169,27 @@ class DummyWorkflowWithState(Workflow):
         return exps
 
 
+@WORKFLOWS.register_module("dummy_concurrent_workflow")
+class DummyConcurrentWorkflow(Workflow):
+    can_repeat: bool = False
+    is_async: bool = True
+
+    def __init__(self, *, task, model, auxiliary_models):
+        super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
+
+    async def run_async(self) -> List[Experience]:
+        await asyncio.sleep(1)
+
+        return [
+            Experience(
+                eid=EID(run=self.run_id_base, step=0),
+                tokens=torch.zeros(5),
+                prompt_length=2,
+                prompt_text="success",
+            )
+        ]
+
+
 @ray.remote
 class DummyModel(InferenceModel):
     def __init__(self):
@@ -199,6 +220,26 @@ class DummyModel(InferenceModel):
 
     def get_api_server_url(self) -> Optional[str]:
         return None
+
+    async def chat(self, messages: List[Dict], lora_request=None, **kwargs) -> Sequence[Experience]:
+        prompt_length = sum(len(msg["content"]) for msg in messages)
+        return [
+            Experience(
+                tokens=torch.zeros(prompt_length + 10),
+                prompt_length=prompt_length,
+                logprobs=torch.zeros(10),
+            )
+        ]
+
+    async def generate(self, prompt: str, lora_request=None, **kwargs) -> Sequence[Experience]:
+        prompt_length = len(prompt)
+        return [
+            Experience(
+                tokens=torch.zeros(prompt_length + 5),
+                prompt_length=prompt_length,
+                logprobs=torch.zeros(5),
+            )
+        ]
 
 
 @ray.remote
@@ -889,3 +930,33 @@ class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
             monitor_routine(),
             scheduler.get_results(batch_id=0),
         )
+
+
+class TestRunnerConcurrent(unittest.IsolatedAsyncioTestCase):
+    async def test_runner_concurrent_execution(self):
+        ray.init(ignore_reinit_error=True)
+        config = get_template_config()
+        config.explorer.runner_per_model = 2
+        config.explorer.max_repeat_times_per_runner = None
+        config.check_and_update()
+        scheduler = Scheduler(config, [DummyModel.remote(), DummyModel.remote()])
+        # 4 runner in side the scheduler
+        await scheduler.start()
+
+        num_tasks = 8
+        tasks = [
+            Task(
+                workflow=DummyWorkflowWithState,  # type: ignore[type-abstract]
+                workflow_args={"step_num": 2},
+                repeat_times=4,
+                raw_task={},
+            )
+            for _ in range(num_tasks)
+        ]
+        scheduler.schedule(tasks, batch_id=0)
+
+        statuses, exps = await scheduler.get_results(batch_id=0)
+        self.assertEqual(len(statuses), num_tasks)
+        self.assertEqual(len(exps), num_tasks * 4 * 2)
+
+        await scheduler.stop()
