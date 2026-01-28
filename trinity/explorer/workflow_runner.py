@@ -222,11 +222,9 @@ class WorkflowRunner:
         repeat_times: int,
         run_id_base: int,
     ) -> Tuple[List[Experience], List[Dict]]:
-        loop = asyncio.get_event_loop()
-
-        def run_single(i: int) -> Tuple[List[Experience], Dict]:
+        async def run_single(i: int) -> Tuple[List[Experience], Dict]:
             st = time.time()
-            asyncio.run(self.model_wrapper.clean_workflow_state())
+            await self.model_wrapper.clean_workflow_state()
             workflow = task.to_workflow(
                 self.model_wrapper.clone_with_isolated_history()
                 if self.config.explorer.rollout_model.enable_history
@@ -236,7 +234,7 @@ class WorkflowRunner:
             self.runner_state["workflow_id"] = f"{task.batch_id}/{task.task_id}/{i}"
             self.runner_state["terminate_time"] = None
             self.runner_state["begin_time"] = st
-            new_exps = asyncio.run(self._run_workflow(workflow))
+            new_exps = await self._run_workflow(workflow)
             et = time.time()
             self.runner_state["terminate_time"] = et
             run_metric = calculate_run_level_metrics(new_exps)
@@ -245,11 +243,13 @@ class WorkflowRunner:
                 exp.eid.run = run_id_base + i
             return new_exps, run_metric
 
-        from concurrent.futures import ThreadPoolExecutor
-
-        with ThreadPoolExecutor(max_workers=repeat_times) as executor:
-            futures = [loop.run_in_executor(executor, run_single, i) for i in range(repeat_times)]
-            results = await asyncio.gather(*futures)
+        # Use asyncio.to_thread to run async tasks in threads
+        results = await asyncio.gather(
+            *(
+                asyncio.to_thread(lambda idx=i: asyncio.run(run_single(idx)))  # type: ignore[misc]
+                for i in range(repeat_times)
+            )
+        )
 
         exps = []
         run_metrics = []

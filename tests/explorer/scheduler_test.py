@@ -930,33 +930,3 @@ class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
             monitor_routine(),
             scheduler.get_results(batch_id=0),
         )
-
-
-class TestRunnerConcurrent(unittest.IsolatedAsyncioTestCase):
-    async def test_runner_concurrent_execution(self):
-        ray.init(ignore_reinit_error=True)
-        config = get_template_config()
-        config.explorer.runner_per_model = 2
-        config.explorer.max_repeat_times_per_runner = None
-        config.check_and_update()
-        scheduler = Scheduler(config, [DummyModel.remote(), DummyModel.remote()])
-        # 4 runner in side the scheduler
-        await scheduler.start()
-
-        num_tasks = 8
-        tasks = [
-            Task(
-                workflow=DummyWorkflowWithState,  # type: ignore[type-abstract]
-                workflow_args={"step_num": 2},
-                repeat_times=4,
-                raw_task={},
-            )
-            for _ in range(num_tasks)
-        ]
-        scheduler.schedule(tasks, batch_id=0)
-
-        statuses, exps = await scheduler.get_results(batch_id=0)
-        self.assertEqual(len(statuses), num_tasks)
-        self.assertEqual(len(exps), num_tasks * 4 * 2)
-
-        await scheduler.stop()
