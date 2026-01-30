@@ -10,9 +10,9 @@ import time
 import unittest
 from copy import deepcopy
 from datetime import datetime
+from logging import Logger
 from typing import Dict
 from unittest import mock
-from logging import Logger
 
 import ray
 from parameterized import parameterized_class
@@ -1548,7 +1548,7 @@ class AgentScopeTunerTest(unittest.IsolatedAsyncioTestCase):
             task: Dict,
             model: ChatModelBase,
             auxiliary_models: Dict[str, ChatModelBase],
-            logger: Logger
+            logger: Logger,
         ) -> WorkflowOutput:
             assert isinstance(model, ChatModelBase)
             assert "judge_model" in auxiliary_models
