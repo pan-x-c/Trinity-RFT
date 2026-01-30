@@ -842,7 +842,7 @@ class StageConfig:
 class Config:
     """Global Configuration"""
 
-    mode: str = "both"  # `explore`, `train`, `both` or `bench`
+    mode: str = "both"  # `explore`, `train`, `both`, `bench`, `serve` or `colocate`
     project: str = "Trinity-RFT"
     group: str = ""
     name: str = "rft"

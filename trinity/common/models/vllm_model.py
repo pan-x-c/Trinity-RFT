@@ -653,3 +653,13 @@ class vLLMRolloutModel(BaseInferenceModel):
 
     async def wake_up(self) -> None:
         await self.async_llm.wake_up()
+
+    def __del__(self):
+        """Ensure the vLLM engine is shutdown properly."""
+        try:
+            if self.use_v1:
+                self.async_llm.engine_core.shutdown()
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to shutdown vLLM engine, you may need to clear resources manually: {e}"
+            )

@@ -89,7 +89,7 @@ class GlobalConfigValidator(ConfigValidator):
             ValueError: If an invalid mode is specified.
         """
         # check mode
-        if config.mode not in ["explore", "train", "both", "bench", "serve"]:
+        if config.mode not in ["explore", "train", "both", "bench", "serve", "colocate"]:
             raise ValueError(f"Invalid mode: {config.mode}")
 
         # prepare for the checkpoint directory
@@ -234,6 +234,32 @@ class RayClusterConfigValidator(ConfigValidator):
                     f"Total GPU number ({cluster.total_gpu_num}) is less than "
                     f"the number of GPUs required for rollout ({cluster.explorer_gpu_num})."
                 )
+        elif config.mode == "colocate":
+            self.logger.warning("`colocate` is only for single GPU scenario.")
+            if cluster.total_gpu_num != 1:
+                raise ValueError(
+                    f"Colocate mode requires exactly 1 GPU, but got {cluster.total_gpu_num} GPUs. Please use `both` mode instead."
+                )
+            if config.explorer.rollout_model.engine_num != 1:
+                raise ValueError(
+                    "In colocate mode, `explorer.rollout_model.engine_num` must be set to 1."
+                )
+            if config.explorer.rollout_model.tensor_parallel_size != 1:
+                raise ValueError(
+                    "In colocate mode, `explorer.rollout_model.tensor_parallel_size` must be set to 1."
+                )
+            if len(config.explorer.auxiliary_models) > 0:
+                raise ValueError(
+                    "In colocate mode, auxiliary models are not supported."
+                )
+            if config.trainer.ulysses_sequence_parallel_size > 1:
+                raise ValueError(
+                    "In colocate mode, `trainer.ulysses_sequence_parallel_size` must be set to 1."
+                )
+            cluster.explorer_gpu_num = 1
+            cluster.trainer_gpu_num = 1
+            cluster.trainer_node_num = 1
+            cluster.trainer_gpu_num_per_node =1
         else:
             if cluster.explorer_gpu_num >= cluster.total_gpu_num:
                 raise ValueError(
@@ -566,7 +592,12 @@ class ExplorerConfigValidator(ConfigValidator):
         set_if_none(
             config.explorer.rollout_model, "chat_template", config.model.custom_chat_template
         )
-
+        if config.mode == "colocate" and config.explorer.rollout_model.gpu_memory_utilization > 0.25:
+            config.explorer.rollout_model.gpu_memory_utilization = 0.25
+            self.logger.warning(
+                "In `colocate` mode, `explorer.rollout_model.gpu_memory_utilization` is set to 0.25."
+            )
+        
         # auxiliary models
         for aux_model in config.explorer.auxiliary_models:
             if not aux_model.model_path:
@@ -688,6 +719,12 @@ class SynchronizerConfigValidator(ConfigValidator):
                 self.logger.warning(
                     "LoRA is not supported with NCCL synchronization, "
                     "set `synchronizer.sync_method` to `checkpoint`."
+                )
+            if config.mode == "colocate":
+                config.synchronizer.sync_method = SyncMethod.MEMORY
+                self.logger.warning(
+                    "Colocate mode can't use NCCL synchronization. "
+                    "Set `synchronizer.sync_method` to `memory` instead."
                 )
 
 
