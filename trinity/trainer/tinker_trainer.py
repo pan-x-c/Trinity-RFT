@@ -75,7 +75,8 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
         self.min_lr_ratio = algorithm_config.optimizer.min_lr_ratio
         assert 0.0 <= self.min_lr_ratio <= 1.0
         self.logger.info(
-            f"Total steps: {self.total_steps}, num_warmup_steps: {self.num_warmup_steps}"
+            f"Total steps: {self.total_steps if self.total_steps != sys.maxsize else 'unlimited'},"
+            f" num_warmup_steps: {self.num_warmup_steps}"
         )
 
         if self.lr_scheduler_type not in {"constant", "cosine"}:

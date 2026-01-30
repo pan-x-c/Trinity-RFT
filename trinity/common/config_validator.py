@@ -151,6 +151,10 @@ class RayClusterConfigValidator(ConfigValidator):
             config.ray_namespace = f"{config.project}/{config.name}"
 
         if config.model.tinker.enable:
+            config.cluster.trainer_gpu_num = 1
+            config.cluster.trainer_gpu_num_per_node = 1
+            config.cluster.trainer_node_num = 1
+            config.cluster.explorer_gpu_num = 1
             return
 
         # check cluster infomation
