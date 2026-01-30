@@ -123,7 +123,7 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
         )
 
     async def prepare(self):
-        self.service_client = tinker.ServiceClient()
+        self.service_client = tinker.ServiceClient(base_url=self.config.model.tinker.base_url)
 
         name_prefix_list = [self.config.project, self.config.group, self.config.name]
         self.tinker_checkpoint_name_prefix = "-".join(

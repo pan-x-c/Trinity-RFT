@@ -437,6 +437,7 @@ class TinkerConfig:
     train_mlp: bool = True
     train_attn: bool = True
     train_unembed: bool = True
+    base_url: Optional[str] = None
 
 
 @dataclass
@@ -558,6 +559,9 @@ class InferenceModelConfig:
     # ! DO NOT SET, rope config
     rope_scaling: Optional[dict] = None
     rope_theta: Optional[float] = None
+
+    # ! DO NOT SET, tinker config
+    tinker_base_url: Optional[str] = None
 
 
 @dataclass

@@ -145,7 +145,7 @@ class TinkerModel(BaseInferenceModel):
 
     async def prepare(self) -> None:
         """Prepare the model before inference."""
-        self.service_client = tinker.ServiceClient()
+        self.service_client = tinker.ServiceClient(base_url=self.config.tinker_base_url)
         self.model = await self.service_client.create_sampling_client_async(
             base_model=self.config.model_path,
         )
