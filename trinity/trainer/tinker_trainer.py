@@ -124,8 +124,8 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
         )
 
     async def prepare(self):
-        self.service_client = tinker.ServiceClient(base_url=self.config.model.tinker.base_url)
-
+        self.service_client = tinker.ServiceClient()
+        self.checkpoint_manager = self.service_client.create_rest_client()
         name_prefix_list = [self.config.project, self.config.group, self.config.name]
         self.tinker_checkpoint_name_prefix = "-".join(
             [prefix for prefix in name_prefix_list if prefix]
@@ -166,6 +166,7 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
             self.latest_remote_checkpoint_step = 0
             self.latest_remote_checkpoint_path = None
             self._train_step_num = 0
+        self.model_info = await self.actor_client.get_info_async()
 
         if os.path.exists(self.local_latest_state_dict_iteration):
             with open(self.local_latest_state_dict_iteration, "r") as f:
@@ -366,10 +367,15 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
         """Only save the model state dict for Synchronizer."""
         if self.train_step_num == self.latest_remote_sampler_step:
             return
+        self.stale_remote_sampler_step = self.latest_remote_sampler_step
         self.latest_remote_sampler_step = self.train_step_num
         checkpoint_name = f"{self.tinker_checkpoint_name_prefix}-sampler-{self.train_step_num}"
         self.latest_remote_sampler_path = (
             self.actor_client.save_weights_for_sampler(checkpoint_name).result().path
+        )
+        self.checkpoint_manager.delete_checkpoint(
+            self.model_info.model_id,
+            f"{self.tinker_checkpoint_name_prefix}-sampler-{self.stale_remote_sampler_step}",
         )
         local_path = os.path.join(
             self.default_local_dir,

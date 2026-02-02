@@ -417,13 +417,11 @@ class ModelConfigValidator(ConfigValidator):
                 "it is recommended to set `entropy_coef` to 0."
             )
 
-        config.explorer.rollout_model.tinker_base_url = config.model.tinker.base_url
         if config.explorer.rollout_model.engine_type != "tinker":
             config.explorer.rollout_model.engine_type = "tinker"
             self.logger.warning("Rollout model engine type is set to `tinker`.")
 
         for aux_model_config in config.explorer.auxiliary_models:
-            aux_model_config.tinker_base_url = config.model.tinker.base_url
             if aux_model_config.engine_type != "tinker":
                 aux_model_config.engine_type = "tinker"
                 self.logger.warning("Auxiliary model engine type is set to `tinker`.")
