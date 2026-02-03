@@ -799,9 +799,9 @@ class BufferConfigValidator(ConfigValidator):
                 config.buffer.batch_size * config.algorithm.repeat_times
             )
         if (
-            config.mode in {"train", "both"}
+            not config.model.tinker.enable
+            and config.mode in {"train", "both"}
             and config.buffer.train_batch_size % config.cluster.trainer_gpu_num != 0
-            and config.model.tinker.enable is False
         ):
             raise ValueError(
                 f"batch_size ({config.buffer.train_batch_size}) must be "

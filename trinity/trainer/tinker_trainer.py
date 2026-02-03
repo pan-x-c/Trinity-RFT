@@ -320,15 +320,16 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
 
         return metrics
 
-    def save_checkpoint(self, block_until_saved: bool = False, save_as_hf: bool = False) -> None:
+    async def save_checkpoint(
+        self, block_until_saved: bool = False, save_as_hf: bool = False
+    ) -> None:
         """Save the checkpoint."""
         if self.train_step_num == self.latest_remote_checkpoint_step:
             return
         self.latest_remote_checkpoint_step = self.train_step_num
         checkpoint_name = f"{self.tinker_checkpoint_name_prefix}-state-{self.train_step_num}"
-        self.latest_remote_checkpoint_path = (
-            self.actor_client.save_state(checkpoint_name).result().path
-        )
+        save_state_future = await self.actor_client.save_state_async(checkpoint_name)
+        self.latest_remote_checkpoint_path = (await save_state_future).path
         local_path = os.path.join(
             self.default_local_dir,
             f"global_step_{self.train_step_num}",
@@ -372,9 +373,10 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
         current_checkpoint_name = (
             f"{self.tinker_checkpoint_name_prefix}-sampler-{self.train_step_num}"
         )
-        self.latest_remote_sampler_path = (
-            self.actor_client.save_weights_for_sampler(current_checkpoint_name).result().path
+        save_weights_future = await self.actor_client.save_weights_for_sampler_async(
+            current_checkpoint_name
         )
+        self.latest_remote_sampler_path = (await save_weights_future).path
         if self.stale_remote_sampler_step is not None:
             stale_checkpoint_name = (
                 f"{self.tinker_checkpoint_name_prefix}-sampler-{self.stale_remote_sampler_step}"
