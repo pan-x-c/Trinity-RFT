@@ -151,10 +151,6 @@ class RayClusterConfigValidator(ConfigValidator):
             config.ray_namespace = f"{config.project}/{config.name}"
 
         if config.model.tinker.enable:
-            config.cluster.trainer_gpu_num = 1
-            config.cluster.trainer_gpu_num_per_node = 1
-            config.cluster.trainer_node_num = 1
-            config.cluster.explorer_gpu_num = 1
             return
 
         # check cluster infomation
@@ -805,6 +801,7 @@ class BufferConfigValidator(ConfigValidator):
         if (
             config.mode in {"train", "both"}
             and config.buffer.train_batch_size % config.cluster.trainer_gpu_num != 0
+            and config.model.tinker.enable is False
         ):
             raise ValueError(
                 f"batch_size ({config.buffer.train_batch_size}) must be "
