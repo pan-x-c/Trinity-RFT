@@ -176,9 +176,9 @@ class Trainer:
                 else:
                     self.engine.sync_weight()
             elif self.config.synchronizer.sync_method == SyncMethod.CHECKPOINT:
-                self.engine.save_state_dict()
+                await self.engine.save_state_dict()
             elif self.config.synchronizer.sync_method == SyncMethod.MEMORY:
-                self.engine.upload_state_dict()
+                await self.engine.upload_state_dict()
             self.last_sync_step = self.train_step_num
             self.last_sync_time = time.time()
             await self.synchronizer.set_trainer_status.remote(RunningStatus.RUNNING)
@@ -258,11 +258,11 @@ class TrainEngineWrapper(ABC):
         """Sync the model weight."""
 
     @abstractmethod
-    def upload_state_dict(self) -> None:
+    async def upload_state_dict(self) -> None:
         """Upload the state dict to Synchronizer."""
 
     @abstractmethod
-    def save_state_dict(self) -> None:
+    async def save_state_dict(self) -> None:
         """Only save the model state dict for Synchronizer."""
 
 

@@ -432,7 +432,7 @@ class DataProcessorConfig:
 @dataclass
 class TinkerConfig:
     enable: bool = False
-    rank: int = 32  # lora rank
+    rank: int = 16  # lora rank
     seed: Optional[int] = None
     train_mlp: bool = True
     train_attn: bool = True
