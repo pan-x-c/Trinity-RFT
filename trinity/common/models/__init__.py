@@ -118,7 +118,6 @@ def create_explorer_models(
         config=config.explorer.rollout_model,
         allocator=allocator,
         actor_name=f"{config.explorer.name}_rollout_model",
-        namespace=namespace,
     )
 
     if config.explorer.rollout_model.enable_history:
@@ -136,7 +135,6 @@ def create_explorer_models(
             config=model_config,
             allocator=allocator,
             actor_name=f"{config.explorer.name}_auxiliary_model_{i}",
-            namespace=namespace,
         )
         auxiliary_engines.append(engines)
 
@@ -147,7 +145,6 @@ def create_vllm_inference_models(
     config: InferenceModelConfig,
     allocator: _BundleAllocator,
     actor_name: str,
-    namespace: str,
 ) -> List:
     from trinity.common.models.vllm_model import vLLMRolloutModel
 
@@ -161,7 +158,7 @@ def create_vllm_inference_models(
                 name=f"{actor_name}_{i}",
                 num_cpus=0,
                 num_gpus=0 if config.tensor_parallel_size > 1 else 1,
-                namespace=namespace,
+                namespace=config.ray_namespace,
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=allocator.pg,
                     placement_group_capture_child_tasks=True,
