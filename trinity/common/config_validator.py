@@ -200,6 +200,16 @@ class RayClusterConfigValidator(ConfigValidator):
             config.cluster.gpu_per_node = gpu_per_node
             self.logger.info(f"Auto-detected and set gpu_per_node: {config.cluster.gpu_per_node}")
 
+        if (
+            config.cluster.gpu_per_node == 1
+            and config.cluster.node_num == 1
+            and config.mode != "colocate"
+        ):
+            config.mode = "colocate"
+            self.logger.warning(
+                "Detected single-node single-GPU Ray cluster, setting mode to `colocate`."
+            )
+
         if not was_initialized:
             ray.shutdown()
 
