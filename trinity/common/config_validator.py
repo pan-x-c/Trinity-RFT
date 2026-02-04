@@ -595,6 +595,8 @@ class ExplorerConfigValidator(ConfigValidator):
             and config.explorer.rollout_model.gpu_memory_utilization > 0.25
         ):
             config.explorer.rollout_model.gpu_memory_utilization = 0.25
+            # hardcode to use GPU 0 in colocate mode
+            config.explorer.rollout_model.cuda_visible_devices = "0"
             self.logger.warning(
                 "In `colocate` mode, `explorer.rollout_model.gpu_memory_utilization` is set to 0.25."
             )
