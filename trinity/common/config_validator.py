@@ -249,9 +249,7 @@ class RayClusterConfigValidator(ConfigValidator):
                     "In colocate mode, `explorer.rollout_model.tensor_parallel_size` must be set to 1."
                 )
             if len(config.explorer.auxiliary_models) > 0:
-                raise ValueError(
-                    "In colocate mode, auxiliary models are not supported."
-                )
+                raise ValueError("In colocate mode, auxiliary models are not supported.")
             if config.trainer.ulysses_sequence_parallel_size > 1:
                 raise ValueError(
                     "In colocate mode, `trainer.ulysses_sequence_parallel_size` must be set to 1."
@@ -259,7 +257,7 @@ class RayClusterConfigValidator(ConfigValidator):
             cluster.explorer_gpu_num = 1
             cluster.trainer_gpu_num = 1
             cluster.trainer_node_num = 1
-            cluster.trainer_gpu_num_per_node =1
+            cluster.trainer_gpu_num_per_node = 1
         else:
             if cluster.explorer_gpu_num >= cluster.total_gpu_num:
                 raise ValueError(
@@ -592,12 +590,15 @@ class ExplorerConfigValidator(ConfigValidator):
         set_if_none(
             config.explorer.rollout_model, "chat_template", config.model.custom_chat_template
         )
-        if config.mode == "colocate" and config.explorer.rollout_model.gpu_memory_utilization > 0.25:
+        if (
+            config.mode == "colocate"
+            and config.explorer.rollout_model.gpu_memory_utilization > 0.25
+        ):
             config.explorer.rollout_model.gpu_memory_utilization = 0.25
             self.logger.warning(
                 "In `colocate` mode, `explorer.rollout_model.gpu_memory_utilization` is set to 0.25."
             )
-        
+
         # auxiliary models
         for aux_model in config.explorer.auxiliary_models:
             if not aux_model.model_path:
