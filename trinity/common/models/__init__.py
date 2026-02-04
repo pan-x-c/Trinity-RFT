@@ -95,6 +95,21 @@ def create_explorer_models(
     else:
         raise ValueError(f"Unknown engine type: {config.explorer.rollout_model.engine_type}")
 
+    if config.mode == "colocate":
+        rollout_engine = (
+            ray.remote(vLLMRolloutModel)
+            .options(
+                name=f"{config.explorer.name}_rollout_model_0",
+                num_cpus=0,
+                num_gpus=0,
+                namespace=config.ray_namespace,
+            )
+            .remote(
+                config=config.explorer.rollout_model,
+            )
+        )
+        return [rollout_engine], []
+
     num_gpus = (
         config.explorer.rollout_model.engine_num
         * config.explorer.rollout_model.tensor_parallel_size
@@ -108,12 +123,7 @@ def create_explorer_models(
 
     allocator = _BundleAllocator(num_gpus=num_gpus)
 
-    namespace = config.ray_namespace
-    config.explorer.rollout_model.ray_namespace = namespace
     # create rollout models
-    # in 'serve' mode, we always enable openai api for rollout model
-    if config.mode == "serve":
-        config.explorer.rollout_model.enable_openai_api = True
     rollout_engines = create_vllm_inference_models(
         config=config.explorer.rollout_model,
         allocator=allocator,
@@ -125,12 +135,10 @@ def create_explorer_models(
             "Model History recording is enabled. Please periodically extract "
             "history via `extract_experience_from_history` to avoid out-of-memory issues."
         )
+
     # create auxiliary models
     auxiliary_engines = []
     for i, model_config in enumerate(config.explorer.auxiliary_models):
-        model_config.ray_namespace = namespace
-        model_config.enable_history = False
-        model_config.enable_openai_api = True
         engines = create_vllm_inference_models(
             config=model_config,
             allocator=allocator,

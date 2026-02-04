@@ -141,6 +141,7 @@ MODE_MAP = {
     "both": both,
     "bench": bench,
     "serve": serve,
+    "colocate": both,
 }
 
 

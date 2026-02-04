@@ -590,6 +590,7 @@ class ExplorerConfigValidator(ConfigValidator):
         set_if_none(
             config.explorer.rollout_model, "chat_template", config.model.custom_chat_template
         )
+        config.explorer.rollout_model.ray_namespace = config.ray_namespace
         if (
             config.mode == "colocate"
             and config.explorer.rollout_model.gpu_memory_utilization > 0.25
@@ -600,11 +601,16 @@ class ExplorerConfigValidator(ConfigValidator):
             self.logger.warning(
                 "In `colocate` mode, `explorer.rollout_model.gpu_memory_utilization` is set to 0.25."
             )
-
+        if config.mode == "serve":
+            # in 'serve' mode, we always enable openai api for rollout model
+            config.explorer.rollout_model.enable_openai_api = True
         # auxiliary models
         for aux_model in config.explorer.auxiliary_models:
             if not aux_model.model_path:
                 raise ValueError("auxiliary model's model_path is required.")
+            aux_model.ray_namespace = config.ray_namespace
+            aux_model.enable_history = False
+            aux_model.enable_openai_api = True
             for args in model_args:
                 set_if_none(aux_model, args, getattr(config.model, args))
 
@@ -984,7 +990,10 @@ class BufferConfigValidator(ConfigValidator):
             self.logger.info(
                 f"Auto set `buffer.trainer_input.experience_buffer` to {experience_buffer}"
             )
-        elif experience_buffer.storage_type == StorageType.FILE.value and config.mode == "both":
+        elif experience_buffer.storage_type == StorageType.FILE.value and config.mode in {
+            "both",
+            "colocate",
+        }:
             self.logger.warning(
                 "`FILE` storage is not supported to use as experience_buffer "
                 "in `both` mode, use `QUEUE` instead."
@@ -1057,7 +1066,12 @@ class BufferConfigValidator(ConfigValidator):
         """
         # check input/output buffers in pipelines
         experience_pipeline = config.data_processor.experience_pipeline
-        if experience_pipeline is not None and config.mode in {"explore", "both", "serve"}:
+        if experience_pipeline is not None and config.mode in {
+            "explore",
+            "both",
+            "serve",
+            "colocate",
+        }:
             if experience_pipeline.save_input and experience_pipeline.input_save_path is None:
                 experience_pipeline.input_save_path = self._default_storage_path(
                     config, StorageType.SQL.value, "explorer_output"
@@ -1073,7 +1087,7 @@ class BufferConfigValidator(ConfigValidator):
                         operator.args["service_config"] = config.service.data_juicer
 
         task_pipeline = config.data_processor.task_pipeline
-        if task_pipeline is not None and config.mode in {"explore", "train", "both"}:
+        if task_pipeline is not None and config.mode in {"explore", "train", "both", "colocate"}:
             if task_pipeline.output is None:
                 if config.mode != "train":
                     if len(config.buffer.explorer_input.tasksets) > 0:
@@ -1119,7 +1133,7 @@ class TrainerConfigValidator(ConfigValidator):
                        or save checkpoint strategy is invalid.
         """
         if (
-            config.mode not in ["train", "both", "bench"]
+            config.mode not in ["train", "both", "bench", "colocate"]
             and config.trainer.trainer_strategy != "megatron"
         ):
             return
