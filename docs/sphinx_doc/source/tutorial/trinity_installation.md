@@ -11,7 +11,7 @@ Make sure your system meets these requirements:
 
 - **Python**: 3.10 – 3.12
 - **CUDA**: 12.8 or higher
-- **GPUs**: At least one NVIDIA GPU with compute capability 8.0 or higher (e.g., RTX 30 series, A100, H100)
+- **GPUs**: At least one NVIDIA GPU with [compute capability](https://developer.nvidia.com/cuda/gpus) 8.0 or higher (e.g., RTX 30 series, A100, H100)
 
 ### If you don’t have GPUs or prefer not to use them
 
