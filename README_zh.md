@@ -171,7 +171,7 @@ Trinity-RFT 面向不同背景和目标的用户提供相应功能：
 
 - **Python**：版本 3.10 至 3.12（含）
 - **CUDA**：版本 >= 12.8
-- **GPU**：至少 2 块 GPU
+- **GPU**： 至少一块 compute capability 为 8.0 或更高的 NVIDIA GPU（例如 RTX 30 系列、A100、H100）
 
 ## 源码安装（推荐）
 

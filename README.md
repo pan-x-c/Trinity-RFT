@@ -165,7 +165,7 @@ Before installing, make sure your system meets the following requirements:
 
 - Python: version 3.10 to 3.12 (inclusive)
 - CUDA: version >= 12.8
-- GPUs: at least 2 GPUs
+- GPUs: At least one NVIDIA GPU with compute capability 8.0 or higher (e.g., RTX 30 series, A100, H100)
 
 **Recommended for first-time users:**
 
