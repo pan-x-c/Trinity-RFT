@@ -522,7 +522,7 @@ When debugging is complete, you can terminate the inference model by pressing `C
 
 #### Runtime Monitoring
 
-The debug mode above provides the ability to quickly test and validate workflow implementations. However, during actual training, you may want to monitor the workflow's runtime behavior in real-time to ensure it operates as expected. To facilitate this, Trinity-RFT offers monitoring capabilities based on the loggger system. The base `Workflow` class includes a built-in `logger` that you can use to log important runtime information.
+The debug mode above provides the ability to quickly test and validate workflow implementations. However, during actual training, you may want to monitor the workflow's runtime behavior in real-time to ensure it operates as expected. To facilitate this, Trinity-RFT offers monitoring capabilities based on the logger system. The base `Workflow` class includes a built-in `logger` that you can use to log important runtime information.
 
 ```python
 class Workflow(ABC):
