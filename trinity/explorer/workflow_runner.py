@@ -56,7 +56,8 @@ class WorkflowRunner:
         auxiliary_models: Optional[List[InferenceModel]] = None,
         runner_id: Optional[int] = None,
     ) -> None:
-        self.logger = get_logger(f"{config.explorer.name}_runner_{runner_id}", in_ray_actor=True)
+        self.name = f"{config.explorer.name}_{runner_id}"
+        self.logger = get_logger(self.name, in_ray_actor=True)
         self.config = config
         self.model = model
         self.model_wrapper = ModelWrapper(
@@ -95,6 +96,11 @@ class WorkflowRunner:
                 f"Unknown concurrent_mode {self.concurrent_mode}, defaulting to sequential."
             )
             self.concurrent_run_fn = self._sequential_run
+        self.logger.info(
+            f"WorkflowRunner [{self.name}]({self.concurrent_mode}) initialized:\n"
+            f"  > rollout model: {self.config.explorer.rollout_model.model_path}"
+            f"  > auxiliary models: {[aux_model_config.model_path for aux_model_config in self.config.explorer.auxiliary_models]}"
+        )
 
     async def prepare(self) -> None:
         """Prepare the runner."""
@@ -102,6 +108,7 @@ class WorkflowRunner:
             self.model_wrapper.prepare(),
             *(aux_model.prepare() for aux_model in self.auxiliary_model_wrappers),
         )
+        self.logger.info(f"WorkflowRunner [{self.name}] is prepared and ready to run tasks.")
 
     def is_alive(self):
         return True
@@ -134,6 +141,9 @@ class WorkflowRunner:
         self, task: Task, repeat_times: int, run_id_base: int
     ) -> Tuple[List[Experience], List[Dict]]:
         """Init workflow from the task and run it."""
+        self.logger.debug(
+            f"Start running task {task.raw_task} with repeat_times={repeat_times} and run_id_base={run_id_base}."
+        )
 
         if task.workflow.can_repeat:
             workflow_instance = self._create_workflow_instance(task)

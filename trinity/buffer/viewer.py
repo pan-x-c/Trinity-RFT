@@ -1,6 +1,7 @@
 import argparse
 from typing import List
 
+from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 from sqlalchemy.orm import sessionmaker
@@ -36,6 +37,38 @@ class SQLExperienceViewer:
         with self.session() as session:
             count = session.query(self.table_model_cls).count()
         return count
+
+    @staticmethod
+    def run_viewer(model_path: str, db_url: str, table_name: str, port: int):
+        """Start the Streamlit viewer.
+
+        Args:
+            model_path (str): Path to the tokenizer/model directory.
+            db_url (str): Database URL for the experience database.
+            table_name (str): Name of the experience table in the database.
+            port (int): Port number to run the Streamlit app on.
+        """
+        import sys
+        from streamlit.web import cli
+
+        viewer_path = Path(__file__)
+        sys.argv = [
+            "streamlit",
+            "run",
+            str(viewer_path.resolve()),
+            "--server.port",
+            str(port),
+            "--server.fileWatcherType",
+            "none",
+            "--",
+            "--db-url",
+            db_url,
+            "--table",
+            table_name,
+            "--tokenizer",
+            model_path,
+        ]
+        sys.exit(cli.main())
 
 
 st.set_page_config(page_title="Trinity-RFT Experience Visualizer", layout="wide")

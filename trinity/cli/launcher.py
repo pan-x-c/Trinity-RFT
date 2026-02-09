@@ -273,34 +273,21 @@ def debug(
         runner = DebugWorkflowRunner(config, output_dir, enable_profiling, disable_overwrite)
         asyncio.run(runner.debug())
     elif module == "viewer":
-        from streamlit.web import cli as stcli
+        from trinity.buffer.viewer import SQLExperienceViewer
 
-        current_dir = Path(__file__).resolve().parent.parent
-        viewer_path = os.path.join(current_dir, "buffer", "viewer.py")
         output_dir_abs = os.path.abspath(output_dir)
         if output_dir_abs.endswith("/"):
             output_dir_abs = output_dir_abs[:-1]
-        print(f"sqlite:///{output_dir_abs}/experiences.db")
-        sys.argv = [
-            "streamlit",
-            "run",
-            viewer_path,
-            "--server.port",
-            str(port),
-            "--server.fileWatcherType",
-            "none",
-            "--",
-            "--db-url",
-            f"sqlite:///{output_dir_abs}/experiences.db",
-            "--table",
-            "debug_buffer",
-            "--tokenizer",
-            config.model.model_path,
-        ]
-        sys.exit(stcli.main())
+        
+        SQLExperienceViewer.run_viewer(
+            model_path=config.model.model_path,
+            db_url=f"sqlite:///{os.path.join(output_dir_abs, 'debug_buffer.db')}",
+            table_name="debug_buffer",
+            port=port,
+        )
     else:
         raise ValueError(
-            f"Only support 'inference_model' and 'workflow' for debugging, got {module}"
+            f"Only support 'inference_model', 'workflow', and 'viewer' for debugging, got {module}"
         )
 
 
