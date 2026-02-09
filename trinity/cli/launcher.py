@@ -278,7 +278,7 @@ def debug(
         output_dir_abs = os.path.abspath(output_dir)
         if output_dir_abs.endswith("/"):
             output_dir_abs = output_dir_abs[:-1]
-        
+
         SQLExperienceViewer.run_viewer(
             model_path=config.model.model_path,
             db_url=f"sqlite:///{os.path.join(output_dir_abs, 'debug_buffer.db')}",

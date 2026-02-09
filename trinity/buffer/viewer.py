@@ -1,7 +1,7 @@
 import argparse
+from pathlib import Path
 from typing import List
 
-from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 from sqlalchemy.orm import sessionmaker
@@ -49,6 +49,7 @@ class SQLExperienceViewer:
             port (int): Port number to run the Streamlit app on.
         """
         import sys
+
         from streamlit.web import cli
 
         viewer_path = Path(__file__)
