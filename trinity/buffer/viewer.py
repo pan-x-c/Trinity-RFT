@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 from typing import List
 
@@ -48,7 +49,6 @@ class SQLExperienceViewer:
             table_name (str): Name of the experience table in the database.
             port (int): Port number to run the Streamlit app on.
         """
-        import sys
 
         from streamlit.web import cli
 
