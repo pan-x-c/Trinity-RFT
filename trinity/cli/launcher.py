@@ -10,13 +10,10 @@ import ray
 import typer
 from typing_extensions import Annotated
 
-from trinity.buffer.pipelines.task_pipeline import check_and_run_task_pipeline
 from trinity.common.config import Config, load_config
 from trinity.common.constants import DEBUG_NAMESPACE, PLUGIN_DIRS_ENV_VAR
-from trinity.explorer.explorer import Explorer
 from trinity.manager.checkpoint_converter import Converter
 from trinity.manager.state_manager import StateManager
-from trinity.trainer.trainer import Trainer
 from trinity.utils.dlc_utils import is_running, setup_ray_cluster, stop_ray_cluster
 from trinity.utils.log import get_logger
 from trinity.utils.plugin_loader import load_plugins
@@ -28,6 +25,8 @@ app = typer.Typer(help="Trinity CLI - Launch and manage Trinity-RFT processes.")
 
 def bench(config: Config) -> None:
     """Evaluate model."""
+    from trinity.explorer.explorer import Explorer
+
     config.explorer.name = "benchmark"
     try:
         explorer = Explorer.get_actor(config)
@@ -41,6 +40,8 @@ def bench(config: Config) -> None:
 
 def explore(config: Config) -> None:
     """Run explorer."""
+    from trinity.explorer.explorer import Explorer
+
     try:
         explorer = Explorer.get_actor(config)
         ray.get(explorer.prepare.remote())
@@ -53,6 +54,8 @@ def explore(config: Config) -> None:
 
 def train(config: Config) -> None:
     """Run trainer."""
+    from trinity.trainer.trainer import Trainer
+
     try:
         trainer = Trainer.get_actor(config)
         ray.get(trainer.prepare.remote())
@@ -65,6 +68,8 @@ def train(config: Config) -> None:
 
 def serve(config: Config) -> None:
     """Run explorer in server mode."""
+    from trinity.explorer.explorer import Explorer
+
     try:
         explorer = Explorer.get_actor(config)
         ray.get(explorer.prepare.remote())
@@ -85,6 +90,9 @@ def both(config: Config) -> None:
     the latest step. The specific number of experiences may vary for different
     algorithms and tasks.
     """
+    from trinity.explorer.explorer import Explorer
+    from trinity.trainer.trainer import Trainer
+
     try:
         explorer = Explorer.get_actor(config)
         trainer = Trainer.get_actor(config)
@@ -156,6 +164,8 @@ def run_stage(config: Config) -> None:
     )
     pprint(config)
     try:
+        from trinity.buffer.pipelines.task_pipeline import check_and_run_task_pipeline
+
         check_and_run_task_pipeline(config)
         MODE_MAP[config.mode](config)
     finally:
