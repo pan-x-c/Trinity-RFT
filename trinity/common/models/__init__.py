@@ -224,8 +224,8 @@ def get_debug_explorer_model(config: Config) -> Tuple[InferenceModel, List[Infer
             )
             auxiliary_models.append(model)
     except ValueError:
-        raise ValueError(
+        raise RuntimeError(
             "Debug explorer models not found. Please start the models first by running "
             "`trinity debug --module inference_model --config config_path` in another process."
-        )
+        ) from None
     return rollout_model, auxiliary_models

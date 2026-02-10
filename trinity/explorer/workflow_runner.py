@@ -335,7 +335,7 @@ class DebugWorkflowRunner(WorkflowRunner):
             if os.path.isdir(output_dir) and os.listdir(output_dir):
                 suffix = time.strftime("%Y%m%d%H%M%S", time.localtime())
                 output_dir = f"{output_dir}_{suffix}"
-        os.environ[LOG_DIR_ENV_VAR] = os.path.join(output_dir, "logs")
+        os.environ[LOG_DIR_ENV_VAR] = os.path.join(output_dir, "log")
         os.environ[LOG_LEVEL_ENV_VAR] = "DEBUG"
         super().__init__(config, model, auxiliary_models, 0)
         self.taskset = get_buffer_reader(config.buffer.explorer_input.tasksets[0])

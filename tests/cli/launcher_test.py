@@ -301,11 +301,11 @@ class TestLauncherMain(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(output_dir, "experiences.db")))
             origin_db_size = os.path.getsize(os.path.join(output_dir, "experiences.db"))
             self.assertTrue(
-                os.path.exists(os.path.join(output_dir, "logs", "explorer_runner_0.log"))
+                os.path.exists(os.path.join(output_dir, "log", "explorer_runner_0.log"))
             )
             # assert not empty log file
             origin_log_size = os.path.getsize(
-                os.path.join(output_dir, "logs", "explorer_runner_0.log")
+                os.path.join(output_dir, "log", "explorer_runner_0.log")
             )
             self.assertTrue(origin_log_size > 0)
 
@@ -335,9 +335,7 @@ class TestLauncherMain(unittest.TestCase):
                 0,
                 msg=f"Expected no new output directory, but found: {target_output_dir}",
             )
-            new_log_size = os.path.getsize(
-                os.path.join(output_dir, "logs", "explorer_runner_0.log")
-            )
+            new_log_size = os.path.getsize(os.path.join(output_dir, "log", "explorer_runner_0.log"))
             self.assertTrue(new_log_size > origin_log_size)
             new_db_size = os.path.getsize(os.path.join(output_dir, "experiences.db"))
             self.assertTrue(new_db_size > origin_db_size)
@@ -387,7 +385,7 @@ class TestLauncherMain(unittest.TestCase):
                     os.path.join(
                         self.config.checkpoint_job_dir,
                         target_output_dir[0],
-                        "logs",
+                        "log",
                         "explorer_runner_0.log",
                     )
                 ),
