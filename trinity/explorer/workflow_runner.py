@@ -57,7 +57,7 @@ class WorkflowRunner:
         auxiliary_models: Optional[List[InferenceModel]] = None,
         runner_id: Optional[int] = None,
     ) -> None:
-        self.name = f"{config.explorer.name}_{runner_id}"
+        self.name = f"{config.explorer.name}_runner_{runner_id}"
         self.logger = get_logger(self.name, in_ray_actor=True)
         self.config = config
         self.model = model
@@ -99,7 +99,7 @@ class WorkflowRunner:
             self.concurrent_run_fn = self._sequential_run
         self.logger.info(
             f"WorkflowRunner [{self.name}]({self.concurrent_mode}) initialized:\n"
-            f"  > rollout model: {self.config.explorer.rollout_model.model_path}"
+            f"  > rollout model: {self.config.explorer.rollout_model.model_path}\n"
             f"  > auxiliary models: {[aux_model_config.model_path for aux_model_config in self.config.explorer.auxiliary_models]}"
         )
 
