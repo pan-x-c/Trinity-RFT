@@ -264,8 +264,6 @@ class TestLauncherMain(unittest.TestCase):
 
     @mock.patch("trinity.cli.launcher.load_config")
     def test_debug_mode(self, mock_load):
-        import trinity.utils.log as log_utils
-
         process = multiprocessing.Process(target=debug_inference_model_process)
         try:
             process.start()
@@ -302,9 +300,13 @@ class TestLauncherMain(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(output_dir, "profiling.html")))
             self.assertTrue(os.path.exists(os.path.join(output_dir, "experiences.db")))
             origin_db_size = os.path.getsize(os.path.join(output_dir, "experiences.db"))
-            self.assertTrue(os.path.exists(os.path.join(output_dir, "logs", "explorer_runner_0.log")))
+            self.assertTrue(
+                os.path.exists(os.path.join(output_dir, "logs", "explorer_runner_0.log"))
+            )
             # assert not empty log file
-            origin_log_size = os.path.getsize(os.path.join(output_dir, "logs", "explorer_runner_0.log"))
+            origin_log_size = os.path.getsize(
+                os.path.join(output_dir, "logs", "explorer_runner_0.log")
+            )
             self.assertTrue(origin_log_size > 0)
 
             # add a dummy file to test overwrite behavior
@@ -328,8 +330,14 @@ class TestLauncherMain(unittest.TestCase):
 
             dirs = os.listdir(self.config.checkpoint_job_dir)
             target_output_dir = [d for d in dirs if d.startswith("debug_output_")]
-            self.assertEqual(len(target_output_dir), 0, msg=f"Expected no new output directory, but found: {target_output_dir}")
-            new_log_size = os.path.getsize(os.path.join(output_dir, "logs", "explorer_runner_0.log"))
+            self.assertEqual(
+                len(target_output_dir),
+                0,
+                msg=f"Expected no new output directory, but found: {target_output_dir}",
+            )
+            new_log_size = os.path.getsize(
+                os.path.join(output_dir, "logs", "explorer_runner_0.log")
+            )
             self.assertTrue(new_log_size > origin_log_size)
             new_db_size = os.path.getsize(os.path.join(output_dir, "experiences.db"))
             self.assertTrue(new_db_size > origin_db_size)
@@ -377,10 +385,12 @@ class TestLauncherMain(unittest.TestCase):
             self.assertTrue(
                 os.path.exists(
                     os.path.join(
-                        self.config.checkpoint_job_dir, target_output_dir[0], "logs", "explorer_runner_0.log"
+                        self.config.checkpoint_job_dir,
+                        target_output_dir[0],
+                        "logs",
+                        "explorer_runner_0.log",
                     )
                 ),
-                
             )
         finally:
             process.join(timeout=10)

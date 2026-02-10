@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 
 from trinity.buffer import get_buffer_reader, get_buffer_writer
 from trinity.common.config import Config, StorageConfig
-from trinity.common.constants import LOG_LEVEL_ENV_VAR, LOG_DIR_ENV_VAR
+from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 from trinity.common.experience import Experience
 from trinity.common.models import get_debug_explorer_model
 from trinity.common.models.model import InferenceModel, ModelWrapper
