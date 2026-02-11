@@ -371,8 +371,19 @@ def convert(
 def log(
     log_dir: Annotated[
         str,
-        typer.Option("--log-dir", "-d", help="Path to the log directory."),
-    ],
+        typer.Option(
+            "--log-dir",
+            "-d",
+            help="Path to the log directory. If provided, it will be used directly and ignore --config.",
+        ),
+    ] = "",
+    config: Annotated[
+        str,
+        typer.Option(
+            "--config",
+            help="Path to the config file. If provided, it will automatically locate the log directory based on the config.",
+        ),
+    ] = "",
     keyword: Annotated[
         Optional[str],
         typer.Option("--keyword", "-k", help="The keyword to filter log files."),
@@ -385,15 +396,34 @@ def log(
         int,
         typer.Option("--last-n-lines", "-n", help="Number of last lines to display when starting."),
     ] = 0,
+    search_pattern: Annotated[
+        Optional[str],
+        typer.Option(
+            "--search-pattern",
+            "-p",
+            help="The pattern to search in log files. Only search for history logs and display all lines containing the pattern.",
+        ),
+    ] = None,
     no_color: Annotated[
         bool,
         typer.Option("--no-color", help="Disable colored output."),
     ] = False,
 ) -> None:
     """Monitor log files in real-time."""
+    from trinity.manager.log_manager import LogManager
+
+    if not config and not log_dir:
+        raise typer.BadParameter("Either --config or --log-dir must be provided.")
+    if not log_dir:
+        cfg = load_config(config)
+        checkpoint_job_dir = cfg.get_checkpoint_job_dir()
+        # we do not use check_and_update here because user may use this command
+        # in another environment
+        log_dir = os.path.join(checkpoint_job_dir, "log")
+        if not os.path.exists(log_dir):
+            raise FileNotFoundError(f"Log directory not found: {log_dir}")
     if not os.path.exists(log_dir):
         raise FileNotFoundError(f"Log directory not found: {log_dir}")
-    from trinity.manager.log_manager import LogManager
 
     log_manager = LogManager(
         log_dir,
@@ -401,6 +431,7 @@ def log(
         min_level=level,
         color_output=not no_color,
         last_n_lines=last_n_lines,
+        search_pattern=search_pattern,
     )
     log_manager.monitor()
 

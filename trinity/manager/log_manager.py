@@ -1,5 +1,4 @@
-"""logger manager
-"""
+"""logger manager"""
 
 import os
 import re
@@ -22,13 +21,13 @@ class Colors:
 
 
 LOG_LEVELS = {
-    "DEBUG": {"priority": 0, "color": Colors.GRAY},
-    "INFO": {"priority": 1, "color": Colors.GREEN},
-    "WARNING": {"priority": 2, "color": Colors.YELLOW},
-    "WARN": {"priority": 2, "color": Colors.YELLOW},
-    "ERROR": {"priority": 3, "color": Colors.RED},
-    "CRITICAL": {"priority": 4, "color": Colors.MAGENTA},
-    "FATAL": {"priority": 4, "color": Colors.MAGENTA},
+    "DEBUG": 0,
+    "INFO": 1,
+    "WARNING": 2,
+    "WARN": 2,
+    "ERROR": 3,
+    "CRITICAL": 4,
+    "FATAL": 4,
 }
 
 
@@ -36,12 +35,18 @@ class LogFileTracker:
     """Single log file tracker"""
 
     def __init__(
-        self, filepath: str, min_level: int = 0, color_output: bool = True, last_n_lines: int = 0
+        self,
+        filepath: str,
+        min_level: int = 0,
+        color_output: bool = True,
+        last_n_lines: int = 0,
+        search_pattern: str | None = None,
     ):
         self.filepath = filepath
         self.min_level = min_level
         self.color_output = color_output
         self.last_n_lines = last_n_lines
+        self.search_pattern = search_pattern
         self.file = None
         self.file_size = 0
         self.inode = None
@@ -50,6 +55,23 @@ class LogFileTracker:
         """Open file and optionally read last N lines"""
         try:
             self.file = open(self.filepath, "r", encoding="utf-8", errors="ignore")
+            if self.search_pattern:
+                print(
+                    f"{Colors.CYAN}[INFO] Searching for pattern '{self.search_pattern}' in {self.filepath}{Colors.RESET}"
+                )
+                self.file.seek(0)
+                lines = self.file.readlines()
+                match_indices = [i for i, line in enumerate(lines) if self.search_pattern in line]
+                for idx in match_indices:
+                    start = max(0, idx - 5)
+                    end = min(len(lines), idx + 6)
+                    print(f"{Colors.MAGENTA}[{self.filepath}:{idx + 1}]{Colors.RESET}")
+                    for i in range(start, end):
+                        prefix = f"{Colors.MAGENTA}>> {Colors.RESET}" if i == idx else "   "
+                        print(prefix + self.format_output(lines[i].rstrip("\n")))
+                print(
+                    f"{Colors.CYAN}[INFO] Finished searching in {self.filepath}, now monitoring for new lines...{Colors.RESET}"
+                )
             stat = os.stat(self.filepath)
             self.inode = stat.st_ino
             if self.last_n_lines > 0:
@@ -70,7 +92,7 @@ class LogFileTracker:
                 all_data = "".join(blocks)
                 last_lines = all_data.splitlines()[-self.last_n_lines :]
                 for line in last_lines:
-                    print(self.format_output(line, *self.parse_log_level(line)[::2]))
+                    print(self.format_output(line))
                 self.file.seek(0, 2)
             else:
                 self.file.seek(0, 2)
@@ -116,23 +138,21 @@ class LogFileTracker:
 
         return lines
 
-    def parse_log_level(self, line: str) -> tuple:
+    def parse_log_level(self, line: str) -> int:
         """Parse log level"""
-        for level, info in LOG_LEVELS.items():
-            # Common log level patterns
-            pattern = rf"\b{level}\b"
-            if re.search(pattern, line, re.IGNORECASE):
-                return level, info["priority"], info["color"]
+        match = re.match(r"^(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b", line)
+        if match:
+            level = match.group(1).upper()
+            return LOG_LEVELS.get(level, -1)
+        return -1
 
-        return None, -1, Colors.WHITE
-
-    def should_display(self, line: str) -> tuple:
+    def should_display(self, line: str) -> bool:
         """Determine if this log line should be displayed"""
-        level, priority, color = self.parse_log_level(line)
+        priority = self.parse_log_level(line)
 
         if priority >= self.min_level:
-            return True, level, color
-        return False, None, None
+            return True
+        return False
 
     def format_output(self, line: str) -> str:
         """Format output"""
@@ -159,15 +179,16 @@ class LogManager:
         min_level: str = "DEBUG",
         scan_interval: float = 0.5,
         last_n_lines: int = 0,
+        search_pattern: str | None = None,
         color_output: bool = True,
     ):
         self.log_dir = Path(log_dir)
         self.keyword = keyword
         self.min_level_name = min_level.upper()
-        self.min_level_priority = LOG_LEVELS.get(self.min_level_name, {}).get("priority", 0)
+        self.min_level_priority = LOG_LEVELS.get(self.min_level_name, 0)
         self.scan_interval = scan_interval
         self.color_output = color_output
-
+        self.search_pattern = search_pattern
         self.trackers: Dict[str, LogFileTracker] = {}
         self.running = False
         self.last_n_lines = last_n_lines
@@ -193,7 +214,11 @@ class LogManager:
             for filepath in current_files:
                 if filepath not in self.trackers:
                     tracker = LogFileTracker(
-                        filepath, self.min_level_priority, self.color_output, self.last_n_lines
+                        filepath,
+                        self.min_level_priority,
+                        self.color_output,
+                        self.last_n_lines,
+                        self.search_pattern,
                     )
                     if tracker.open_file():
                         self.trackers[filepath] = tracker
