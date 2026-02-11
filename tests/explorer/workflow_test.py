@@ -836,8 +836,8 @@ class ConcurrentTestWorkflow(Workflow):
             == history_exps[1].tokens[:prompt_length].shape
         )
         self.logger.debug("[DEBUG MESSAGE]")
-        self.logger.info("[INFO MESSSAGE]")
-        self.logger.warning("[WARNING MESSSAGE]")
+        self.logger.info("[INFO MESSAGE]")
+        self.logger.warning("[WARNING MESSAGE]")
         return history_exps
 
 
@@ -961,30 +961,30 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
         with open(sequential_log_path, "r") as f:
             sequential_logs = f.read()
             assert "[DEBUG MESSAGE]" in sequential_logs
-            assert "[INFO MESSSAGE]" in sequential_logs
-            assert "[WARNING MESSSAGE]" in sequential_logs
+            assert "[INFO MESSAGE]" in sequential_logs
+            assert "[WARNING MESSAGE]" in sequential_logs
             # count the occurrences of each log level
             debug_count = sequential_logs.count("[DEBUG MESSAGE]")
-            info_count = sequential_logs.count("[INFO MESSSAGE]")
-            warning_count = sequential_logs.count("[WARNING MESSSAGE]")
+            info_count = sequential_logs.count("[INFO MESSAGE]")
+            warning_count = sequential_logs.count("[WARNING MESSAGE]")
             assert debug_count == 4
             assert info_count == 4
             assert warning_count == 4
         with open(async_log_path, "r") as f:
             async_logs = f.read()
             assert "[DEBUG MESSAGE]" not in async_logs
-            assert "[INFO MESSSAGE]" in async_logs
-            assert "[WARNING MESSSAGE]" in async_logs
-            info_count = async_logs.count("[INFO MESSSAGE]")
-            warning_count = async_logs.count("[WARNING MESSSAGE]")
+            assert "[INFO MESSAGE]" in async_logs
+            assert "[WARNING MESSAGE]" in async_logs
+            info_count = async_logs.count("[INFO MESSAGE]")
+            warning_count = async_logs.count("[WARNING MESSAGE]")
             assert info_count == 4
             assert warning_count == 4
         with open(thread_log_path, "r") as f:
             thread_logs = f.read()
             assert "[DEBUG MESSAGE]" not in thread_logs
-            assert "[INFO MESSSAGE]" not in thread_logs
-            assert "[WARNING MESSSAGE]" in thread_logs
-            warning_count = thread_logs.count("[WARNING MESSSAGE]")
+            assert "[INFO MESSAGE]" not in thread_logs
+            assert "[WARNING MESSAGE]" in thread_logs
+            warning_count = thread_logs.count("[WARNING MESSAGE]")
             assert warning_count == 4
 
     def tearDown(self):
