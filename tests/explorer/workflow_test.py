@@ -932,6 +932,12 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
             task, batch_id="test", repeat_times=4, run_id_base=0
         )
         async_runtime = time.time() - st
+
+        # warmup
+        thread_status, thread_exps = await thread_runner.run_task.remote(
+            task, batch_id="test", repeat_times=1, run_id_base=0
+        )
+
         st = time.time()
         thread_status, thread_exps = await thread_runner.run_task.remote(
             task, batch_id="test", repeat_times=4, run_id_base=0
@@ -977,15 +983,15 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
             assert "[WARNING MESSAGE]" in async_logs
             info_count = async_logs.count("[INFO MESSAGE]")
             warning_count = async_logs.count("[WARNING MESSAGE]")
-            assert info_count == 4
-            assert warning_count == 4
+            assert info_count == 6
+            assert warning_count == 6
         with open(thread_log_path, "r") as f:
             thread_logs = f.read()
             assert "[DEBUG MESSAGE]" not in thread_logs
             assert "[INFO MESSAGE]" not in thread_logs
             assert "[WARNING MESSAGE]" in thread_logs
             warning_count = thread_logs.count("[WARNING MESSAGE]")
-            assert warning_count == 4
+            assert warning_count == 5
 
     def tearDown(self):
         shutil.rmtree(self.config.log.save_dir, ignore_errors=True)
