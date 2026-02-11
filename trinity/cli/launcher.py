@@ -420,8 +420,7 @@ def log(
         # we do not use check_and_update here because user may use this command
         # in another environment
         log_dir = os.path.join(checkpoint_job_dir, "log")
-        if not os.path.exists(log_dir):
-            raise FileNotFoundError(f"Log directory not found: {log_dir}")
+
     if not os.path.exists(log_dir):
         raise FileNotFoundError(f"Log directory not found: {log_dir}")
 

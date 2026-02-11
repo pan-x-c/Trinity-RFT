@@ -115,7 +115,8 @@ class LogFileTracker:
             return False
         except FileNotFoundError:
             return True
-        except Exception:
+        except Exception as e:
+            print(f"{Colors.RED}[ERROR] Error checking file rotation for {self.filepath}: {e}{Colors.RESET}")
             return False
 
     def read_new_lines(self) -> List[str]:
