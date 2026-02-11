@@ -388,11 +388,11 @@ def log(
     ] = "",
     keyword: Annotated[
         Optional[str],
-        typer.Option("--keyword", "-k", help="The keyword to filter log files."),
+        typer.Option("--keyword", "-k", help="Only track log files containing the keyword in their filenames."),
     ] = None,
     level: Annotated[
         str,
-        typer.Option("--level", "-l", help="The minimum log level to display."),
+        typer.Option("--level", "-l", help="The minimum log level to display in real-time."),
     ] = "INFO",
     last_n_lines: Annotated[
         int,
