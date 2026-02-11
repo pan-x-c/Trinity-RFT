@@ -190,7 +190,7 @@ def run_stage(config: Config) -> None:
 def run(
     config: Annotated[
         str,
-        typer.Option("--config", help="Path to the config file."),
+        typer.Option("--config", "-c", help="Path to the config file."),
     ],
     dlc: Annotated[
         bool,
@@ -261,7 +261,7 @@ def run(
 def studio(
     port: Annotated[
         int,
-        typer.Option("--port", help="The port for Trinity-Studio."),
+        typer.Option("--port", "-p", help="The port for Trinity-Studio."),
     ] = 8501,
 ) -> None:
     """Run studio to manage configurations."""
@@ -274,12 +274,13 @@ def studio(
 def debug(
     config: Annotated[
         str,
-        typer.Option("--config", help="Path to the config file."),
+        typer.Option("--config", "-c", help="Path to the config file."),
     ],
     module: Annotated[
         str,
         typer.Option(
             "--module",
+            "-m",
             help="The module to debug: 'inference_model', 'workflow', or 'viewer'.",
         ),
     ],
@@ -289,7 +290,7 @@ def debug(
     ] = None,
     output_dir: Annotated[
         str,
-        typer.Option("--output-dir", help="The output directory for debug files."),
+        typer.Option("--output-dir", "-o", help="The output directory for debug files."),
     ] = "debug_output",
     disable_overwrite: Annotated[
         bool,
@@ -301,7 +302,7 @@ def debug(
     ] = False,
     port: Annotated[
         int,
-        typer.Option("--port", help="The port for Experience Viewer."),
+        typer.Option("--port", "-p", help="The port for Experience Viewer."),
     ] = 8502,
 ) -> None:
     """Debug a workflow implementation."""
@@ -351,11 +352,11 @@ def debug(
 def convert(
     checkpoint_dir: Annotated[
         str,
-        typer.Option("--checkpoint-dir", help="The path to the checkpoint directory."),
+        typer.Option("--checkpoint-dir", "-c", help="The path to the checkpoint directory."),
     ],
     base_model_dir: Annotated[
         Optional[str],
-        typer.Option("--base-model-dir", help="The path to the base model."),
+        typer.Option("--base-model-dir", "-b", help="The path to the base model."),
     ] = None,
 ) -> None:
     """Convert checkpoints to huggingface format."""
@@ -381,6 +382,7 @@ def log(
         str,
         typer.Option(
             "--config",
+            "-c",
             help="Path to the config file. If provided, it will automatically locate the log directory based on the config.",
         ),
     ] = "",
