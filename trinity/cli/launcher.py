@@ -388,7 +388,11 @@ def log(
     ] = "",
     keyword: Annotated[
         Optional[str],
-        typer.Option("--keyword", "-k", help="Only track log files containing the keyword in their filenames."),
+        typer.Option(
+            "--keyword",
+            "-k",
+            help="Only track log files containing the keyword in their filenames.",
+        ),
     ] = None,
     level: Annotated[
         str,
