@@ -367,6 +367,44 @@ def convert(
     converter.convert(dir_path)
 
 
+@app.command()
+def log(
+    log_dir: Annotated[
+        str,
+        typer.Option("--log-dir", "-d", help="Path to the log directory."),
+    ],
+    keyword: Annotated[
+        Optional[str],
+        typer.Option("--keyword", "-k", help="The keyword to filter log files."),
+    ] = None,
+    level: Annotated[
+        str,
+        typer.Option("--level", "-l", help="The minimum log level to display."),
+    ] = "INFO",
+    last_n_lines: Annotated[
+        int,
+        typer.Option("--last-n-lines", "-n", help="Number of last lines to display when starting."),
+    ] = 0,
+    no_color: Annotated[
+        bool,
+        typer.Option("--no-color", help="Disable colored output."),
+    ] = False,
+) -> None:
+    """Monitor log files in real-time."""
+    if not os.path.exists(log_dir):
+        raise FileNotFoundError(f"Log directory not found: {log_dir}")
+    from trinity.manager.log_manager import LogManager
+
+    log_manager = LogManager(
+        log_dir,
+        keyword=keyword,
+        min_level=level,
+        color_output=not no_color,
+        last_n_lines=last_n_lines,
+    )
+    log_manager.monitor()
+
+
 def main() -> None:
     """The main entrypoint."""
     app()
