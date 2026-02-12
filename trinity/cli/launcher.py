@@ -431,7 +431,7 @@ def log(
         raise FileNotFoundError(f"Log directory not found: {log_dir}")
 
     log_manager = LogManager(
-        log_dir,
+        log_dir=log_dir,
         keyword=keyword,
         min_level=level,
         color_output=not no_color,
