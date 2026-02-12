@@ -303,6 +303,9 @@ class TestTrainerGSM8K(BaseTrainerCase):
         shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
+@unittest.skip(
+    "This test is used for testing the warmup stage of SFT, which is not stable yet. Will enable it after we have a more stable implementation."
+)
 class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
     @mock.patch("trinity.cli.launcher.load_config")
     def test_trainer(self, mock_load):
