@@ -1,6 +1,7 @@
 """Tests for trainer."""
 
 import asyncio
+import gc
 import json
 import math
 import multiprocessing
@@ -352,7 +353,10 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
 
         with self.assertRaises(Exception):
             run(config="dummy.yaml")
+
         ray.shutdown(_exiting_interpreter=True)
+        self._cleanup_ray_data_state()
+        gc.collect()
 
         stage_configs = [cfg.check_and_update() for cfg in deepcopy(self.config)]
 
