@@ -18,6 +18,7 @@ def check_flash_attn_installed():
     try:
         import flash_attn
 
+        print(f"flash_attn version: {flash_attn.__version__}")
         return True
     except ImportError:
         return False
