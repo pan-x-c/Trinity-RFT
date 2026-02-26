@@ -18,7 +18,6 @@ def check_flash_attn_installed():
     try:
         import flash_attn
 
-        print(f"flash_attn {flash_attn.__version__} is already installed.")
         return True
     except ImportError:
         return False
@@ -69,8 +68,7 @@ def install_flash_attn(uv: bool = False, keep_wheel: bool = False):
     print(f"wheel_url: {wheel_url}")
     print(f"target_local_file: {local_filename}")
 
-    if keep_wheel:
-        local_path = os.path.abspath(local_filename)
+    def _install_helper(local_path: str):
         subprocess.run(["wget", wheel_url, "-O", local_path], check=True)
         install_cmd = (
             ["uv", "pip", "install", local_path]
@@ -78,16 +76,14 @@ def install_flash_attn(uv: bool = False, keep_wheel: bool = False):
             else [sys.executable, "-m", "pip", "install", local_path]
         )
         subprocess.run(install_cmd, check=True)
+
+    if keep_wheel:
+        local_path = os.path.abspath(local_filename)
+        _install_helper(local_path)
     else:
         with tempfile.TemporaryDirectory() as tempdir:
             local_path = os.path.join(tempdir, local_filename)
-            subprocess.run(["wget", wheel_url, "-O", local_path], check=True)
-            install_cmd = (
-                ["uv", "pip", "install", local_path]
-                if uv
-                else [sys.executable, "-m", "pip", "install", local_path]
-            )
-            subprocess.run(install_cmd, check=True)
+            _install_helper(local_path)
 
     # Try to import flash_attn
     if not check_flash_attn_installed():
@@ -104,6 +100,7 @@ def main(
 ):
     """Install flash-attn from a pre-built wheel."""
     if check_flash_attn_installed():
+        print("flash_attn is already installed. Skipping installation.")
         return
     install_flash_attn(uv=uv, keep_wheel=keep_wheel)
 
