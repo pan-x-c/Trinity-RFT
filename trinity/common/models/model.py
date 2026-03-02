@@ -506,7 +506,7 @@ class ModelWrapper:
                 extra_body["return_token_ids"] = True
                 response = ori_create(*args, extra_body=extra_body, logprobs=logprobs, **kwargs)
                 if kwargs.get("stream", False):
-                    return _SyncHistoryRecordingStream(response, self.history)
+                    return HistoryRecordingStream(response, self.history, is_async=False)
                 self.history.extend(convert_api_output_to_experience(response))
                 return response
 
@@ -569,7 +569,7 @@ class ModelWrapper:
                     *args, extra_body=extra_body, logprobs=logprobs, **kwargs
                 )
                 if kwargs.get("stream", False):
-                    return _AsyncHistoryRecordingStream(response, self.history)
+                    return HistoryRecordingStream(response, self.history, is_async=True)
                 self.history.extend(convert_api_output_to_experience(response))
                 return response
 
@@ -637,18 +637,27 @@ def convert_api_output_to_experience(
     return _convert_stream_chunks_to_experience(output)
 
 
-class _SyncHistoryRecordingStream:
-    def __init__(self, stream, history: List[Experience]) -> None:
+class HistoryRecordingStream:
+    def __init__(self, stream, history: List[Experience], is_async: bool = False) -> None:
         self._stream = stream
         self._history = history
-        self._iterator = iter(stream)
         self._chunks = []
         self._recorded = False
+        self._is_async = is_async
+        if is_async:
+            self._iterator = stream.__aiter__()
+        else:
+            self._iterator = iter(stream)
 
+    # --- Sync methods ---
     def __iter__(self):
+        if self._is_async:
+            raise TypeError("Use 'async for' for async streams.")
         return self
 
     def __next__(self):
+        if self._is_async:
+            raise TypeError("Use 'async for' for async streams.")
         try:
             chunk = next(self._iterator)
         except StopIteration:
@@ -658,34 +667,22 @@ class _SyncHistoryRecordingStream:
         return chunk
 
     def close(self) -> None:
+        if self._is_async:
+            raise TypeError("Use 'aclose' for async streams.")
         self._record_history_once()
         close_fn = getattr(self._stream, "close", None)
         if callable(close_fn):
             close_fn()
 
-    def _record_history_once(self) -> None:
-        if self._recorded:
-            return
-        self._recorded = True
-        if self._chunks:
-            self._history.extend(convert_api_output_to_experience(self._chunks))
-
-    def __getattr__(self, name: str):
-        return getattr(self._stream, name)
-
-
-class _AsyncHistoryRecordingStream:
-    def __init__(self, stream, history: List[Experience]) -> None:
-        self._stream = stream
-        self._iterator = stream.__aiter__()
-        self._history = history
-        self._chunks = []
-        self._recorded = False
-
+    # --- Async methods ---
     def __aiter__(self):
+        if not self._is_async:
+            raise TypeError("Use 'for' for sync streams.")
         return self
 
     async def __anext__(self):
+        if not self._is_async:
+            raise TypeError("Use 'for' for sync streams.")
         try:
             chunk = await self._iterator.__anext__()
         except StopAsyncIteration:
@@ -695,6 +692,8 @@ class _AsyncHistoryRecordingStream:
         return chunk
 
     async def aclose(self) -> None:
+        if not self._is_async:
+            raise TypeError("Use 'close' for sync streams.")
         self._record_history_once()
         close_fn = getattr(self._stream, "aclose", None)
         if callable(close_fn):
