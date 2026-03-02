@@ -21,8 +21,13 @@ from tests.tools import (
     get_unittest_dataset_config,
 )
 from trinity.buffer import get_buffer_reader
+from trinity.buffer.operators import ExperienceOperatorV1
 from trinity.cli.launcher import explore, run_stage
-from trinity.common.config import ExperienceBufferConfig, InferenceModelConfig
+from trinity.common.config import (
+    ExperienceBufferConfig,
+    InferenceModelConfig,
+    OperatorConfig,
+)
 from trinity.common.constants import StorageType
 from trinity.explorer.explorer import Explorer
 from trinity.explorer.proxy.client import TrinityClient
@@ -115,11 +120,39 @@ class TestExplorerEvalDetailedStats(BaseExplorerCase):
                 )
 
 
+class DummyOperatorWithAuxiliaryModel(ExperienceOperatorV1):
+    def __init__(self) -> None:
+        super().__init__()
+
+    async def prepare(self) -> None:
+        import openai
+
+        await super().prepare()
+        # make sure the auxiliary model wrapper is correctly passed
+        assert len(self.auxiliary_models) == 1
+        assert "aux_model" in self.auxiliary_models
+        assert len(self.auxiliary_models["aux_model"]) == 2
+        assert isinstance(self.auxiliary_models["aux_model"][0], openai.AsyncOpenAI)
+
+    async def process(self, exps: list) -> tuple:
+        # call the auxiliary model to make sure the model wrapper is correctly passed to the operator
+        messages = [{"role": "user", "content": "Hello"}]
+        responses = []
+        for model in self.auxiliary_models["aux_model"]:
+            response = await model.chat.completions.create(
+                model=model.model_path, messages=messages
+            )
+            print(response)
+            responses.append(response)
+        return exps, {}
+
+
 class TestExplorerGSM8KRULERNoEval(BaseExplorerCase):
     def test_explorer(self):
         self.config.explorer.rollout_model.engine_num = 2
         self.config.explorer.auxiliary_models = [
             InferenceModelConfig(
+                name="aux_model",
                 model_path=get_api_model_path(),
                 tensor_parallel_size=1,
                 engine_num=2,
@@ -134,6 +167,12 @@ class TestExplorerGSM8KRULERNoEval(BaseExplorerCase):
         self.config.algorithm.advantage_fn_args = {
             "std_threshold": 0.0001,
         }
+        self.config.data_processor.experience_pipeline.operators.append(
+            OperatorConfig(
+                name="tests.explorer.explorer_test.DummyOperatorWithAuxiliaryModel",
+                args={},
+            )
+        )
         self.config.check_and_update()
         explore(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))

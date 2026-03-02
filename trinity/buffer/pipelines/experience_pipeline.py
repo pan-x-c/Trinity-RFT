@@ -44,6 +44,7 @@ class ExperiencePipeline:
             config.buffer.trainer_input.experience_buffer,  # type: ignore [arg-type]
         )
         self.auxiliary_model_wrappers = {}
+        self.auxiliary_models = {}
 
     def _init_input_storage(
         self,
@@ -103,11 +104,21 @@ class ExperiencePipeline:
         # make sure auxiliary models are ready before creating operators
         model_wrappers = await get_auxiliary_model_wrappers(self.config)
         self.auxiliary_model_wrappers.update(model_wrappers)
+        self.auxiliary_models = (
+            {
+                model_name: [
+                    model_wrapper.get_openai_async_client() for model_wrapper in model_wrappers
+                ]
+                for model_name, model_wrappers in self.auxiliary_model_wrappers.items()
+            }
+            if self.auxiliary_model_wrappers
+            else {}
+        )
         await self.output.acquire()
         try:
             self.operators = create_operators(
                 self.config.data_processor.experience_pipeline.operators,
-                self.auxiliary_model_wrappers,
+                self.auxiliary_models,
             )
             self._set_algorithm_operators(self.config.algorithm)
             for operator in self.operators:

@@ -7,7 +7,7 @@ from trinity.common.config import OperatorConfig
 from trinity.common.experience import Experience
 
 if TYPE_CHECKING:
-    from trinity.common.models.model import ModelWrapper
+    from openai import AsyncOpenAI
 
 
 class ExperienceOperator(ABC):
@@ -39,20 +39,10 @@ class ExperienceOperatorV1(ABC):
     """An enhanced version of ExperienceOperator that runs asynchronously and has access to auxiliary models."""
 
     def set_auxiliary_model(
-        self, auxiliary_model_wrappers: Dict[str | int, List["ModelWrapper"]] | None = None
+        self, auxiliary_models: Dict[str | int, List["AsyncOpenAI"]] | None = None
     ) -> None:
         """Set the auxiliary models for the operator."""
-        self.auxiliary_model_wrappers = auxiliary_model_wrappers or {}
-        self.auxiliary_models = (
-            {
-                model_name: [
-                    model_wrapper.get_openai_async_client() for model_wrapper in model_wrappers
-                ]
-                for model_name, model_wrappers in self.auxiliary_model_wrappers.items()
-            }
-            if self.auxiliary_model_wrappers
-            else {}
-        )
+        self.auxiliary_models = auxiliary_models or {}
 
     async def prepare(self) -> None:
         """Prepare the operator if it has any asynchronous initialization."""
@@ -98,12 +88,15 @@ def ensure_v1_operator(operator: ExperienceOperator | ExperienceOperatorV1) -> E
 
 def create_operators(
     operator_configs: List[OperatorConfig],
-    auxiliary_model_wrappers: Dict[str | int, List["ModelWrapper"]] | None = None,
+    auxiliary_models: Dict[str | int, List["AsyncOpenAI"]] | None = None,
 ) -> List[ExperienceOperatorV1]:
     """Create a list of ExperienceOperatorV1 instances based on the provided operator configurations.
 
     Args:
         operator_configs (List[OperatorConfig]): List of operator configurations.
+        auxiliary_models (Dict[str | int, List["AsyncOpenAI"]], optional): A dictionary of auxiliary
+            models that can be used by the operators. The keys are model identifiers and the values
+            are lists of openai.AsyncOpenAI instances. Defaults to None.
 
     Returns:
         List[ExperienceOperatorV1]: List of instantiated ExperienceOperatorV1 objects.
@@ -122,6 +115,6 @@ def create_operators(
             raise ValueError(f"Unknown operator type: {config.name}")
 
         operator = ensure_v1_operator(operator_class(**config.args))
-        operator.set_auxiliary_model(auxiliary_model_wrappers)
+        operator.set_auxiliary_model(auxiliary_models)
         operators.append(operator)
     return operators

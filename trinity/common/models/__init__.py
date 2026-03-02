@@ -268,4 +268,11 @@ async def get_auxiliary_model_wrappers(config: Config) -> Dict[str | int, List[M
     for key, actor in zip(keys, actors):
         auxiliary_models[key].append(ModelWrapper(actor))
 
+    # call prepare on all auxiliary models to make sure they are ready before returning
+    prepare_tasks = []
+    for model_wrappers in auxiliary_models.values():
+        for model_wrapper in model_wrappers:
+            prepare_tasks.append(model_wrapper.prepare())
+    await asyncio.gather(*prepare_tasks)
+
     return dict(auxiliary_models)

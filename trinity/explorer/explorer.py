@@ -183,10 +183,6 @@ class Explorer:
     async def prepare(self) -> None:
         """Preparation before running."""
         try:
-            # prepare experience pipeline
-            if self.experience_pipeline:
-                await self.experience_pipeline.prepare.remote()
-            self.logger.info("Experience pipeline is ready.")
             # make sure all rollout models are ready
             run_api_ref = [model.prepare.remote() for model in self.models]
             run_api_ref.extend(
@@ -194,7 +190,10 @@ class Explorer:
             )
             await asyncio.gather(*run_api_ref)
             self.logger.info("All models are ready.")
-
+            # prepare experience pipeline
+            if self.experience_pipeline:
+                await self.experience_pipeline.prepare.remote()
+            self.logger.info("Experience pipeline is ready.")
             if not self.use_nccl_sync and self.model_type != "tinker":
                 if self.config.mode == "serve":
                     # In serving mode, each engine will setup its own process group
@@ -204,6 +203,7 @@ class Explorer:
                         0
                     ].get_available_address.remote()
                     await self.setup_weight_sync_group(master_address, master_port)
+
             if self.config.mode != "serve":
                 self.scheduler = Scheduler(self.config, self.models, self.auxiliary_models)
                 await self.scheduler.start()
