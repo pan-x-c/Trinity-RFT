@@ -448,6 +448,8 @@ class Explorer:
         """Init experience pipeline for the explorer."""
         if self.config.mode == "bench":
             return None
+        # place the pipeline on the same node as the explorer to
+        # avoid unnecessary data transfer between nodes
         node_id = ray.get_runtime_context().get_node_id()
         return (
             ray.remote(ExperiencePipeline)

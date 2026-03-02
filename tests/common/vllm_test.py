@@ -70,9 +70,7 @@ class ModelWrapperTest(RayUnittestBaseAsync):
         self.config.check_and_update()
 
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(
-            self.engines[0], engine_type="vllm", enable_history=self.enable_history
-        )
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=self.enable_history)
 
     async def test_generate(self):
         await prepare_engines(self.engines, self.auxiliary_engines)
@@ -188,7 +186,7 @@ class TestModelLen(RayUnittestBaseAsync):
         self.config.check_and_update()
 
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=True)
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model.model_path)
 
     async def test_model_len(self):
@@ -257,7 +255,7 @@ class TestModelLenWithoutPromptTruncation(RayUnittestBaseAsync):
         self.config.check_and_update()
 
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=True)
 
     async def test_model_len(self):
         await prepare_engines(self.engines, self.auxiliary_engines)
@@ -305,7 +303,7 @@ class TestMessageProcess(RayUnittestBaseAsync):
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=True)
 
     async def test_truncation_status(self):
         """Test truncation status for multi-turn conversations."""
@@ -380,10 +378,8 @@ class TestAPIServer(RayUnittestBaseAsync):
 
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
-        self.model_wrapper_no_history = ModelWrapper(
-            self.engines[0], engine_type="vllm", enable_history=False
-        )
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=True)
+        self.model_wrapper_no_history = ModelWrapper(self.engines[0], enable_history=False)
 
     async def test_api(self):
         await prepare_engines(self.engines, self.auxiliary_engines)
@@ -512,7 +508,7 @@ class TestLogprobs(RayUnittestBaseAsync):
 
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=True)
 
     async def test_logprobs_api(self):
         await prepare_engines(self.engines, self.auxiliary_engines)
@@ -707,12 +703,8 @@ class TestAsyncAPIServer(RayUnittestBaseAsync):
 
     async def _setup_engines(self):
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(
-            self.engines[0], engine_type=self.engine_type, enable_history=True
-        )
-        self.model_wrapper_no_history = ModelWrapper(
-            self.engines[0], engine_type=self.engine_type, enable_history=False
-        )
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=True)
+        self.model_wrapper_no_history = ModelWrapper(self.engines[0], enable_history=False)
 
     async def test_api_async(self):
         await prepare_engines(self.engines, self.auxiliary_engines)
@@ -955,10 +947,8 @@ class TestAPIServerToolCall(RayUnittestBaseAsync):
 
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
-        self.model_wrapper_no_history = ModelWrapper(
-            self.engines[0], engine_type="vllm", enable_history=False
-        )
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=True)
+        self.model_wrapper_no_history = ModelWrapper(self.engines[0], enable_history=False)
 
     async def test_api_tool_calls(self):
         """Tests the full conversation flow of a tool call via the OpenAI API.
@@ -1238,7 +1228,7 @@ class TestSuperLongGeneration(RayUnittestBaseAsync):
 
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=True)
 
     async def test_generate(self):
         base_dir = os.path.dirname(__file__)
@@ -1290,7 +1280,7 @@ class TestTinkerAPI(RayUnittestBaseAsync):
 
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], engine_type="vllm", enable_history=True)
+        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=True)
 
     async def test_tinker_api(self):
         from tinker import types

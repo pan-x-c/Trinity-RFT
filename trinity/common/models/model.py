@@ -61,6 +61,10 @@ class InferenceModel(ABC):
     def get_model_version(self) -> int:
         """Get the checkpoint version."""
 
+    @abstractmethod
+    def get_engine_type(self) -> str:
+        """Get the engine type of the model, e.g., vLLM or tinker."""
+
     def get_available_address(self) -> Tuple[str, int]:
         """Get the address of the actor."""
         address = ray.util.get_node_ip_address()
@@ -249,7 +253,6 @@ class ModelWrapper:
     def __init__(
         self,
         model: InferenceModel,
-        engine_type: str = "vllm",
         enable_lora: bool = False,
         enable_history: bool = False,
     ):
@@ -257,15 +260,10 @@ class ModelWrapper:
 
         Args:
             model (InferenceModel): The inference model Ray actor.
-            engine_type (str): The type of the model engine. Default to "vllm".
             enable_lora (bool): Whether to enable LoRA. Default to False.
             enable_history (bool): Whether to enable history recording. Default to False.
         """
-        assert (
-            engine_type.startswith("vllm") or engine_type == "tinker"
-        ), "Only vLLM and tinker model is supported for now."
         self.model = model
-        self.engine_type = engine_type
         self.config: InferenceModelConfig = None  # init during prepare
         self._model_name: str = None
         self.api_address: str = None
@@ -286,6 +284,7 @@ class ModelWrapper:
         self.config = await self.model.get_model_config.remote()
         self._model_name = self.config.name
         self._api_key = await self.model.get_api_key.remote()
+        self._engine_type = await self.model.get_engine_type.remote()
         self._generate_kwargs = {
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,
@@ -299,7 +298,7 @@ class ModelWrapper:
         if self.api_address is None:
             self.logger.info("API server is not enabled for inference model.")
             return
-        if self.engine_type == "tinker":
+        if self._engine_type == "tinker":
             return
         max_retries = 30
         interval = 2  # seconds
@@ -473,7 +472,7 @@ class ModelWrapper:
             base_url=f"{self.api_address}/v1",
             api_key=self._api_key,
         )
-        if self.engine_type == "tinker":
+        if self._engine_type == "tinker":
             # ! TODO: because tinker's OpenAI API interface is in beta,
             # we need to use original API in thinker instead.
             def chat_completions(*args, **kwargs):
@@ -536,7 +535,7 @@ class ModelWrapper:
             api_key=self._api_key,
         )
 
-        if self.engine_type == "tinker":
+        if self._engine_type == "tinker":
             # ! TODO: because tinker's OpenAI API interface is in beta,
             # we need to use original API in thinker instead.
             async def chat_completions(*args, **kwargs):
