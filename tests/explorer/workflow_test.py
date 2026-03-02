@@ -720,15 +720,11 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
         async def mock_get_model_config_remote():
             return InferenceModelConfig(model_path="dummy_model")
 
-        async def mock_get_engine_type_remote():
-            return "vllm"
-
         model = MagicMock()
         model.get_api_server_url.remote = MagicMock(side_effect=mock_get_api_server_url_remote)
         model.get_model_version.remote = MagicMock(side_effect=mock_get_model_version_remote)
         model.get_api_key.remote = MagicMock(side_effect=mock_get_api_key_remote)
         model.get_model_config.remote = MagicMock(side_effect=mock_get_model_config_remote)
-        model.get_engine_type.remote = MagicMock(side_effect=mock_get_engine_type_remote)
 
         runner = WorkflowRunner(
             config,

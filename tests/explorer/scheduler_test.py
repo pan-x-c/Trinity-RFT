@@ -203,9 +203,6 @@ class DummyModel(InferenceModel):
     async def prepare(self):
         return
 
-    def get_engine_type(self) -> str:
-        return "vllm"
-
     def get_model_version(self):
         return 0
 
@@ -252,9 +249,6 @@ class DummyAuxiliaryModel(InferenceModel):
 
     def get_model_version(self):
         return 0
-
-    def get_engine_type(self) -> str:
-        return "vllm"
 
     def init_process_group(
         self,

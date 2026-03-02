@@ -568,9 +568,6 @@ class vLLMRolloutModel(BaseInferenceModel):
     async def reset_prefix_cache(self) -> None:
         await self.async_llm.reset_prefix_cache()
 
-    def get_engine_type(self) -> str:
-        return "vllm"
-
     def get_model_version(self) -> int:
         return self.model_version
 

@@ -1,3 +1,4 @@
+import asyncio
 import time
 import traceback
 from typing import Dict, List, Optional
@@ -140,6 +141,11 @@ class ExperiencePipeline:
         if self.input_store is not None:
             await self.input_store.write_async(exps)
 
+        if not hasattr(self, "operators"):
+            raise RuntimeError(
+                "ExperiencePipeline is not prepared. Please call prepare() before processing experiences."
+            )
+
         metrics = {}
 
         # Process experiences through operators
@@ -170,8 +176,9 @@ class ExperiencePipeline:
 
     async def close(self) -> None:
         try:
-            await self.output.release()
+            if self.output:
+                await self.output.release()
+            if hasattr(self, "operators") and self.operators:
+                await asyncio.gather(*[operator.close() for operator in self.operators])
         except Exception as e:
             self.logger.error(f"Failed to release output buffer: {e}")
-        for operator in self.operators:
-            await operator.close()

@@ -61,10 +61,6 @@ class InferenceModel(ABC):
     def get_model_version(self) -> int:
         """Get the checkpoint version."""
 
-    @abstractmethod
-    def get_engine_type(self) -> str:
-        """Get the engine type of the model, e.g., vLLM or tinker."""
-
     def get_available_address(self) -> Tuple[str, int]:
         """Get the address of the actor."""
         address = ray.util.get_node_ip_address()
@@ -288,7 +284,7 @@ class ModelWrapper:
         self.config = await self.model.get_model_config.remote()
         self._model_name = self.config.name
         self._api_key = await self.model.get_api_key.remote()
-        self._engine_type = await self.model.get_engine_type.remote()
+        self._engine_type = self.config.engine_type
         self._generate_kwargs = {
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,

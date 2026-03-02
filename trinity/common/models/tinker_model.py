@@ -157,9 +157,6 @@ class TinkerModel(BaseInferenceModel):
         self.model_path = remote_sampler_path
         return model_version
 
-    def get_engine_type(self) -> str:
-        return "tinker"
-
     def get_model_version(self) -> int:
         """Get the checkpoint version."""
         return self.model_version
