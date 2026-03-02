@@ -89,6 +89,9 @@ class InferenceModel(ABC):
         """Get the model path"""
         return self.config.model_path
 
+    async def shutdown(self) -> None:
+        """Shutdown the model and release resources."""
+        pass
 
 class BaseInferenceModel(InferenceModel):
     """Base class for inference models containing common logic."""
@@ -626,7 +629,6 @@ class ModelWrapper:
         new_wrapper.openai_client = None
         new_wrapper.history = []
         return new_wrapper
-
 
 def convert_api_output_to_experience(
     output,

@@ -436,6 +436,13 @@ class Explorer:
         if self.monitor:
             self.monitor.close()
             self.monitor = None
+        handlers = []
+        for model in self.models:
+            handlers.append(model.shutdown.remote())
+        for auxiliary_model_list in self.auxiliary_models:
+            for model in auxiliary_model_list:
+                handlers.append(model.shutdown.remote())
+        await asyncio.gather(*handlers)
         self.logger.info(
             f"Explorer ({self.config.explorer.name}) shutdown successfully at step {self.explore_step_num}."
         )
