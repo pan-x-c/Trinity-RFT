@@ -46,6 +46,10 @@ class TestLauncherMain(unittest.TestCase):
     def tearDown(self):
         sys.argv = self._orig_argv
         shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
+        import trinity.utils.log as log
+
+        log._ray_logger_ctx.set(None)
+        log._ray_logger = None
 
     @mock.patch("trinity.cli.launcher.serve")
     @mock.patch("trinity.cli.launcher.explore")
