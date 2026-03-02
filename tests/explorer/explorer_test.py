@@ -142,7 +142,6 @@ class DummyOperatorWithAuxiliaryModel(ExperienceOperatorV1):
             response = await model.chat.completions.create(
                 model=model.model_path, messages=messages
             )
-            print(response)
             responses.append(response)
         return exps, {}
 

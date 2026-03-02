@@ -107,7 +107,6 @@ def both(config: Config) -> None:
     explorer = Explorer.get_actor(config)
     trainer = Trainer.get_actor(config)
     try:
-
         ray.get([explorer.__ray_ready__.remote(), trainer.__ray_ready__.remote()])
         ray.get(
             [

@@ -95,7 +95,7 @@ class ExperiencePipeline:
                 not advantage_fn_cls.compute_in_trainer()
             ), f"AdvantageFn {algorithm_config.advantage_fn} can only be computed in the trainer, please check your implementation."
             operator = ensure_v1_operator(advantage_fn_cls(**algorithm_config.advantage_fn_args))
-            operator.set_auxiliary_model(self.auxiliary_model_wrappers)
+            operator.set_auxiliary_model(self.auxiliary_models)
             self.operators.append(operator)
 
     async def prepare(self) -> None:
