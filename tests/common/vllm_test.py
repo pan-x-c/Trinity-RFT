@@ -391,9 +391,14 @@ class TestAPIServer(RayUnittestBaseAsync):
             {"role": "user", "content": "What is your name?"},
         ]
         model_id = openai_client.models.list().data[0].id
-        response = openai_client.chat.completions.create(model=model_id, messages=messages, n=1)
-        self.assertEqual(1, len(response.choices))
-        self.assertTrue(len(response.choices[0].message.content) > 0)
+        response = openai_client.chat.completions.create(
+            model=model_id, messages=messages, n=1, stream=True
+        )
+        content = ""
+        for chunk in response:
+            content += chunk.choices[0].delta.content
+            self.assertTrue(len(chunk.choices) == 1)
+        self.assertTrue(len(content) > 0)
         response = openai_client.chat.completions.create(
             model=model_id,
             messages=messages,
@@ -413,6 +418,7 @@ class TestAPIServer(RayUnittestBaseAsync):
         self.assertTrue(len(response.choices[0].token_ids) > 0)
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 3)
+        self.assertEqual(exps[0].response_text, content)
         response = openai_client.chat.completions.create(
             model=model_id,
             messages=messages,
@@ -745,16 +751,23 @@ class TestAsyncAPIServer(RayUnittestBaseAsync):
             model=model_id,
             messages=messages,
             n=4,
+            stream=True,
             temperature=0.5,
             logprobs=True,
             top_logprobs=0,
+            max_tokens=10,
         )
+        contents = ["", "", "", ""]
+        async for chunk in response:
+            for choice in chunk.choices:
+                contents[choice.index] += choice.delta.content
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 4)
         for exp in exps:
             self.assertTrue(len(exp.tokens) > 0)
             self.assertTrue(len(exp.logprobs) > 0)
             self.assertTrue(exp.prompt_length + len(exp.logprobs) == len(exp.tokens))
+            self.assertTrue(exp.response_text in contents)
         self.assertEqual(len(self.model_wrapper.extract_experience_from_history()), 0)
         response = await openai_client.chat.completions.create(
             model=model_id,
