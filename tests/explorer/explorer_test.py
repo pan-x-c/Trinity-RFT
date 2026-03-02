@@ -231,7 +231,7 @@ def run_serve(config):
     run_stage(config)
 
 
-def run_agent(proxy_url, model_path: str):
+def run_agent(proxy_url, model_path: str, stream: bool):
     proxy_client = TrinityClient(proxy_url=proxy_url)
     openai_client = proxy_client.get_openai_client()
     contents = [
@@ -246,17 +246,43 @@ def run_agent(proxy_url, model_path: str):
         "What is the best way to learn programming?",
         "Describe the process of photosynthesis.",
     ]
-    response = openai_client.chat.completions.create(
-        model=model_path,
-        messages=[{"role": "user", "content": random.choice(contents)}],
-    )
-    proxy_client.feedback(reward=2.0, msg_ids=[response.id])
-    return response.choices[0].message.content
+    if stream:
+        stream_response = openai_client.chat.completions.create(
+            model=model_path,
+            messages=[{"role": "user", "content": random.choice(contents)}],
+            stream=True,
+        )
+        response_id = None
+        text_parts = []
+        for chunk in stream_response:
+            if response_id is None and getattr(chunk, "id", None):
+                response_id = chunk.id
+            if not getattr(chunk, "choices", None):
+                continue
+            delta = chunk.choices[0].delta
+            if delta is None:
+                continue
+            content = getattr(delta, "content", None)
+            if content:
+                text_parts.append(content)
+
+        if response_id is not None:
+            proxy_client.feedback(reward=2.0, msg_ids=[response_id])
+        return "".join(text_parts)
+    else:
+        response = openai_client.chat.completions.create(
+            model=model_path,
+            messages=[{"role": "user", "content": random.choice(contents)}],
+            stream=False,
+        )
+        proxy_client.feedback(reward=2.0, msg_ids=[response.id])
+        return response.choices[0].message.content
 
 
 class ServeTest(RayUnittestBaseAsync):
     def setUp(self):
         self.config = get_template_config()
+        self.config.name = f"explorer-test-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         self.config.mode = "serve"
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm"
@@ -312,7 +338,7 @@ class ServeTest(RayUnittestBaseAsync):
         apps = []
         for i in range(task_num):
             app_process = multiprocessing.Process(
-                target=run_agent, args=(server_url, self.config.model.model_path)
+                target=run_agent, args=(server_url, self.config.model.model_path, i % 2 == 0)
             )
             apps.append(app_process)
             app_process.start()
@@ -338,9 +364,6 @@ class ServeTest(RayUnittestBaseAsync):
                 break
             await asyncio.sleep(3)
 
-        serve_process.terminate()
-        serve_process.join(timeout=10)
-
         # check buffer
         self.config.buffer.trainer_input.experience_buffer.max_read_timeout = 5
         buffer_reader = get_buffer_reader(
@@ -353,6 +376,8 @@ class ServeTest(RayUnittestBaseAsync):
             self.assertTrue(exp.prompt_length > 0)
             self.assertTrue(exp.reward == 2.0)
         self.assertEqual(len(exps), task_num)
+        serve_process.terminate()
+        serve_process.join(timeout=10)
 
     def tearDown(self):
         shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
