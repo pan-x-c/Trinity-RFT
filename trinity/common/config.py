@@ -139,6 +139,20 @@ class ReplayBufferConfig:
 
 
 @dataclass
+class ZMQConfig:
+    """Config for optional ZeroMQ data transport in queue storage."""
+
+    enable: bool = False
+    bind_host: str = "0.0.0.0"
+    connect_host: Optional[str] = None
+    writer_port: int = 0
+    reader_port: int = 0
+    sndhwm: int = 10000
+    rcvhwm: int = 10000
+    linger_ms: int = 0
+
+
+@dataclass
 class OverRolloutConfig:
     """Config for over-rollout in explorer."""
 
@@ -179,6 +193,7 @@ class StorageConfig:
     capacity: int = 10000
     max_read_timeout: float = 1800
     replay_buffer: Optional[ReplayBufferConfig] = field(default_factory=ReplayBufferConfig)
+    zmq: Optional[ZMQConfig] = field(default_factory=ZMQConfig)
 
     # used for StorageType.SQL
     max_retry_times: int = 3
@@ -299,6 +314,7 @@ class ExperienceBufferConfig:
     capacity: int = 10000
     max_read_timeout: float = 1800
     replay_buffer: Optional[ReplayBufferConfig] = field(default_factory=ReplayBufferConfig)
+    zmq: Optional[ZMQConfig] = field(default_factory=ZMQConfig)
 
     # used for StorageType.SQL
     max_retry_times: int = 3
@@ -333,6 +349,7 @@ class ExperienceBufferConfig:
             capacity=self.capacity,
             max_read_timeout=self.max_read_timeout,
             replay_buffer=self.replay_buffer,
+            zmq=self.zmq,
             max_retry_times=self.max_retry_times,
             max_retry_interval=self.max_retry_interval,
             split=self.split,
