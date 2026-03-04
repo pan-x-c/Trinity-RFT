@@ -129,6 +129,37 @@ class TestExperience(unittest.TestCase):
         self.assertEqual(restored[1].reward, exp2.reward)
         self.assertEqual(restored[1].prompt_length, exp2.prompt_length)
 
+    def test_serialize_many_with_shared_multimodal_tensor(self):
+        shared_pixel_values = torch.randn(2, 3)
+        shared_image_grid_thw = torch.tensor([1, 2, 3], dtype=torch.int64)
+        exps = []
+
+        for i in range(4):
+            exps.append(
+                Experience(
+                    eid=EID(batch=1, task=1, run=i, step=1),
+                    tokens=torch.tensor([1, 2, 3], dtype=torch.int32),
+                    prompt_length=1,
+                    multi_modal_inputs={
+                        "pixel_values": shared_pixel_values,
+                        "image_grid_thw": shared_image_grid_thw,
+                    },
+                )
+            )
+
+        data = Experience.serialize_many(exps)
+        restored = Experience.deserialize_many(data)
+
+        self.assertEqual(len(restored), 4)
+        for exp in restored:
+            self.assertIsNotNone(exp.multi_modal_inputs)
+            self.assertTrue(
+                torch.equal(exp.multi_modal_inputs["pixel_values"], shared_pixel_values)
+            )
+            self.assertTrue(
+                torch.equal(exp.multi_modal_inputs["image_grid_thw"], shared_image_grid_thw)
+            )
+
     def test_deserialize_legacy_pickle_payload(self):
         exp = Experience(tokens=torch.tensor([1, 2, 3]), reward=1.23, prompt_length=1)
         legacy_data = pickle.dumps(exp)
