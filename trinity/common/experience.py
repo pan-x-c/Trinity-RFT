@@ -366,7 +366,9 @@ class Experience:
                 item_meta["multi_modal_input_keys"] = mm_keys
                 for key in mm_keys:
                     value = exp.multi_modal_inputs[key]
-                    tensor_data[f"{index}:multi_modal_inputs:{key}"] = value.detach().cpu().contiguous()
+                    tensor_data[f"{index}:multi_modal_inputs:{key}"] = (
+                        value.detach().cpu().contiguous()
+                    )
 
             metadata["items"].append(item_meta)
 

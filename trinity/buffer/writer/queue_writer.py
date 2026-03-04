@@ -1,6 +1,5 @@
 """Writer of the Queue buffer."""
-import asyncio
-from typing import Any, Dict, List, cast
+from typing import List
 
 import ray
 

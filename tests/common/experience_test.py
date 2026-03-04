@@ -119,7 +119,9 @@ class TestExperience(unittest.TestCase):
         self.assertEqual(restored[0].metrics, exp1.metrics)
         self.assertIsNotNone(restored[0].multi_modal_inputs)
         self.assertIn("image", restored[0].multi_modal_inputs)
-        self.assertTrue(torch.equal(restored[0].multi_modal_inputs["image"], exp1.multi_modal_inputs["image"]))
+        self.assertTrue(
+            torch.equal(restored[0].multi_modal_inputs["image"], exp1.multi_modal_inputs["image"])
+        )
         self.assertEqual(len(restored[0].custom_fields), 1)
         self.assertEqual(restored[0].custom_fields[0].destination_field, "bar")
 

@@ -23,7 +23,9 @@ class QueueReader(BufferReader):
     def read(self, batch_size: Optional[int] = None, **kwargs) -> List[Experience]:
         try:
             batch_size = self.read_batch_size if batch_size is None else batch_size
-            exp_bytes = ray.get(self.queue.get_batch.remote(batch_size, timeout=self.timeout, **kwargs))
+            exp_bytes = ray.get(
+                self.queue.get_batch.remote(batch_size, timeout=self.timeout, **kwargs)
+            )
             exps = Experience.deserialize_many(exp_bytes)
             if len(exps) != batch_size:
                 raise TimeoutError(
