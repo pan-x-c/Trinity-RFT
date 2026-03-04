@@ -5,7 +5,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import deque
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import ray
@@ -127,17 +127,16 @@ class QueueBuffer(ABC):
     def get_queue(cls, config: StorageConfig) -> "QueueBuffer":
         """Get a queue instance based on the storage configuration."""
         logger = get_logger(__name__)
-        replay_buffer = config.replay_buffer
-        if replay_buffer is not None and replay_buffer.enable:
+        if config.replay_buffer.enable:
             capacity = config.capacity
             logger.info(
-                f"Using AsyncPriorityQueue with capacity {capacity}, reuse_cooldown_time {replay_buffer.reuse_cooldown_time}."
+                f"Using AsyncPriorityQueue with capacity {capacity}, reuse_cooldown_time {config.replay_buffer.reuse_cooldown_time}."
             )
             return AsyncPriorityQueue(
                 capacity=capacity,
-                reuse_cooldown_time=replay_buffer.reuse_cooldown_time,
-                priority_fn=replay_buffer.priority_fn,
-                priority_fn_args=replay_buffer.priority_fn_args,
+                reuse_cooldown_time=config.replay_buffer.reuse_cooldown_time,
+                priority_fn=config.replay_buffer.priority_fn,
+                priority_fn_args=config.replay_buffer.priority_fn_args,
             )
         else:
             return AsyncQueue(capacity=config.capacity)
@@ -172,11 +171,10 @@ class AsyncQueue(asyncio.Queue, QueueBuffer):
     async def close(self) -> None:
         """Close the queue."""
         self._closed = True
-        getters = getattr(self, "_getters", [])
-        for getter in getters:
+        for getter in self._getters:
             if not getter.done():
                 getter.set_exception(StopAsyncIteration())
-        getters.clear()
+        self._getters.clear()
 
     def stopped(self) -> bool:
         """Check if there is no more data to read."""
@@ -353,165 +351,7 @@ class QueueStorage:
         self.exp_pool = deque()  # A pool to store experiences
         self.closed = False
 
-        self.zmq_config = config.zmq
-        self._zmq_enabled = bool(self.zmq_config and self.zmq_config.enable)
-        self._zmq_context = None
-        self._zmq_pull_socket = None
-        self._zmq_rep_socket = None
-        self._zmq_server_task = None
-        self._zmq_server_lock = asyncio.Lock()
-        self._zmq_endpoints: Dict[str, str] = {}
-
-        if self._zmq_enabled:
-            self.logger.warning("QueueStorage ZeroMQ data transport is enabled.")
-
-    async def _ensure_zmq_server(self) -> None:
-        if not self._zmq_enabled:
-            return
-        zmq_config = self.zmq_config
-        if zmq_config is None:
-            return
-        async with self._zmq_server_lock:
-            if self._zmq_server_task is not None and not self._zmq_server_task.done():
-                return
-
-            try:
-                import zmq
-                import zmq.asyncio
-            except ImportError as exc:
-                raise RuntimeError(
-                    "ZeroMQ transport is enabled, but dependency `pyzmq` is not installed."
-                ) from exc
-
-            self._zmq_context = zmq.asyncio.Context.instance()
-            self._zmq_pull_socket = self._zmq_context.socket(zmq.PULL)
-            self._zmq_rep_socket = self._zmq_context.socket(zmq.REP)
-
-            self._zmq_pull_socket.setsockopt(zmq.RCVHWM, zmq_config.rcvhwm)
-            self._zmq_pull_socket.setsockopt(zmq.LINGER, zmq_config.linger_ms)
-            self._zmq_rep_socket.setsockopt(zmq.SNDHWM, zmq_config.sndhwm)
-            self._zmq_rep_socket.setsockopt(zmq.RCVHWM, zmq_config.rcvhwm)
-            self._zmq_rep_socket.setsockopt(zmq.LINGER, zmq_config.linger_ms)
-
-            bind_host = zmq_config.bind_host
-            writer_port = zmq_config.writer_port
-            reader_port = zmq_config.reader_port
-
-            if writer_port > 0:
-                self._zmq_pull_socket.bind(f"tcp://{bind_host}:{writer_port}")
-            else:
-                writer_port = self._zmq_pull_socket.bind_to_random_port(f"tcp://{bind_host}")
-
-            if reader_port > 0:
-                self._zmq_rep_socket.bind(f"tcp://{bind_host}:{reader_port}")
-            else:
-                reader_port = self._zmq_rep_socket.bind_to_random_port(f"tcp://{bind_host}")
-
-            connect_host = zmq_config.connect_host or ray.util.get_node_ip_address()
-            self._zmq_endpoints = {
-                "writer_endpoint": f"tcp://{connect_host}:{writer_port}",
-                "reader_endpoint": f"tcp://{connect_host}:{reader_port}",
-            }
-
-            self._zmq_server_task = asyncio.create_task(self._zmq_server_loop())
-            self.logger.warning(
-                "ZeroMQ server started for queue %s, writer=%s, reader=%s",
-                self.config.name,
-                self._zmq_endpoints["writer_endpoint"],
-                self._zmq_endpoints["reader_endpoint"],
-            )
-
-    async def _stop_zmq_server(self) -> None:
-        task = self._zmq_server_task
-        if task is not None:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                self.logger.warning("Error when stopping ZeroMQ server: %s", e)
-        self._zmq_server_task = None
-
-        if self._zmq_pull_socket is not None:
-            self._zmq_pull_socket.close(0)
-            self._zmq_pull_socket = None
-        if self._zmq_rep_socket is not None:
-            self._zmq_rep_socket.close(0)
-            self._zmq_rep_socket = None
-        self._zmq_endpoints = {}
-
-    async def _zmq_server_loop(self) -> None:
-        import zmq
-        import zmq.asyncio
-
-        if self._zmq_pull_socket is None or self._zmq_rep_socket is None:
-            return
-
-        poller = zmq.asyncio.Poller()
-        poller.register(self._zmq_pull_socket, zmq.POLLIN)
-        poller.register(self._zmq_rep_socket, zmq.POLLIN)
-
-        try:
-            while True:
-                events = dict(await poller.poll(timeout=1000))
-
-                if self._zmq_pull_socket in events:
-                    payload = await self._zmq_pull_socket.recv()
-                    exps = Experience.deserialize_many(payload)
-                    await self.put_batch(exps)
-
-                if self._zmq_rep_socket in events:
-                    request = await self._zmq_rep_socket.recv_json()
-                    command = request.get("cmd", "get_batch")
-
-                    if command == "ping":
-                        await self._zmq_rep_socket.send_multipart([b"ok", b"pong"])
-                        continue
-
-                    if command != "get_batch":
-                        await self._zmq_rep_socket.send_multipart(
-                            [b"error", f"Unknown command: {command}".encode("utf-8")]
-                        )
-                        continue
-
-                    batch_size = int(request.get("batch_size", self.config.batch_size or 1))
-                    timeout_sec = float(request.get("timeout", self.config.max_read_timeout))
-                    min_model_version = int(request.get("min_model_version", 0))
-                    try:
-                        exps = await self.get_batch(
-                            batch_size=batch_size,
-                            timeout=timeout_sec,
-                            min_model_version=min_model_version,
-                        )
-                        payload = Experience.serialize_many(exps)
-                        await self._zmq_rep_socket.send_multipart([b"ok", payload])
-                    except StopAsyncIteration:
-                        await self._zmq_rep_socket.send_multipart([b"eos", b""])
-                    except Exception as e:
-                        await self._zmq_rep_socket.send_multipart([b"error", str(e).encode("utf-8")])
-        except asyncio.CancelledError:
-            return
-        except Exception as e:
-            self.logger.exception("ZeroMQ server loop crashed: %s", e)
-
-    async def get_zmq_endpoints(self) -> Dict[str, Any]:
-        if not self._zmq_enabled:
-            return {"enabled": False}
-        zmq_config = self.zmq_config
-        if zmq_config is None:
-            return {"enabled": False}
-
-        await self._ensure_zmq_server()
-        return {
-            "enabled": True,
-            "writer_endpoint": self._zmq_endpoints["writer_endpoint"],
-            "reader_endpoint": self._zmq_endpoints["reader_endpoint"],
-        }
-
     async def acquire(self) -> int:
-        if self._zmq_enabled:
-            await self._ensure_zmq_server()
         self.ref_count += 1
         return self.ref_count
 
@@ -519,9 +359,6 @@ class QueueStorage:
         """Release the queue."""
         self.ref_count -= 1
         if self.ref_count <= 0:
-            self.closed = True
-            if self._zmq_enabled:
-                await self._stop_zmq_server()
             await self.queue.close()
             if self.writer is not None:
                 await self.writer.release()
@@ -531,13 +368,14 @@ class QueueStorage:
         """The length of the queue."""
         return self.queue.qsize()
 
-    async def put_batch(self, exp_list: List) -> None:
+    async def put_batch(self, exp_bytes: bytes) -> None:
         """Put batch of experience."""
+        exp_list = Experience.deserialize_many(exp_bytes)
         await self.queue.put(exp_list)
         if self.writer is not None:
             self.writer.write(exp_list)
 
-    async def get_batch(self, batch_size: int, timeout: float, min_model_version: int = 0) -> List:
+    async def get_batch(self, batch_size: int, timeout: float, min_model_version: int = 0) -> bytes:
         """Get batch of experience."""
         await self.queue.set_min_model_version(min_model_version)
         start_time = time.time()
@@ -566,8 +404,8 @@ class QueueStorage:
                     )
                     batch = list(self.exp_pool)
                     self.exp_pool.clear()
-                    return batch
-        return result
+                    return Experience.serialize_many(batch)
+        return Experience.serialize_many(result)
 
     @classmethod
     def get_wrapper(cls, config: StorageConfig):
