@@ -241,6 +241,41 @@ class TestModelLen(RayUnittestBaseAsync):
             self.config.model.max_response_tokens,
         )
 
+        # test prompt truncation branch in generate
+        if self.max_prompt_tokens == 5:
+            await prepare_engines(self.engines, self.auxiliary_engines)
+            await self.model_wrapper.prepare()
+
+            prompt = "This is a deliberately long prompt for truncation coverage."
+            prompt_token_ids = self.tokenizer(prompt, truncation=False, return_tensors="pt")[
+                "input_ids"
+            ][0].tolist()
+            self.assertGreater(len(prompt_token_ids), self.config.model.max_prompt_tokens)
+
+            responses = self.model_wrapper.generate([prompt], n=2)
+            self.assertEqual(len(responses), 2)
+
+            expected_tokens = prompt_token_ids[: self.config.model.max_prompt_tokens + 1]
+            expected_prompt_text = self.tokenizer.decode(expected_tokens[:-1])
+            expected_response_text = "[This experience is masked out due to overlong prompt]"
+
+            for response in responses:
+                self.assertEqual(response.truncate_status, "prompt_truncated")
+                self.assertEqual(response.prompt_length, len(prompt_token_ids))
+                self.assertEqual(response.tokens.tolist(), expected_tokens)
+                self.assertEqual(response.prompt_text, expected_prompt_text)
+                self.assertEqual(response.response_text, expected_response_text)
+                self.assertTrue(torch.equal(response.logprobs, torch.zeros(1, dtype=torch.float32)))
+
+            exps = self.model_wrapper.extract_experience_from_history()
+            self.assertEqual(len(exps), 2)
+            for exp in exps:
+                self.assertEqual(exp.truncate_status, "prompt_truncated")
+                self.assertEqual(exp.prompt_length, len(prompt_token_ids))
+                self.assertEqual(exp.tokens.tolist(), expected_tokens)
+                self.assertEqual(exp.prompt_text, expected_prompt_text)
+                self.assertEqual(exp.response_text, expected_response_text)
+
 
 class TestModelLenWithoutPromptTruncation(RayUnittestBaseAsync):
     def setUp(self):
