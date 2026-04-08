@@ -142,20 +142,14 @@ class BaseInferenceModel(InferenceModel):
             self.logger.warning(f"Prompt was truncated to {self.config.max_prompt_tokens} tokens")
 
             dummy_response = "[This experience is masked out due to overlong prompt]"
-            dummy_response_tokens = self.tokenizer(  # type: ignore
-                dummy_response, truncation=False, return_tensors="pt"
-            )["input_ids"][0].tolist()
-            dummy_response_tokens = dummy_response_tokens[
-                : min(len(dummy_response_tokens), self.config.max_response_tokens)  # type: ignore
-            ]
 
-            token_ids = prompt_token_ids[: self.config.max_prompt_tokens] + dummy_response_tokens
+            token_ids = prompt_token_ids[: self.config.max_prompt_tokens + 1]
             return [
                 Experience(
                     tokens=token_ids,
-                    logprobs=torch.zeros(len(dummy_response_tokens), dtype=torch.float32),
+                    logprobs=torch.zeros(1, dtype=torch.float32),
                     prompt_length=len(prompt_token_ids),
-                    prompt_text=self.tokenizer.decode(prompt_token_ids),
+                    prompt_text=self.tokenizer.decode(token_ids[:-1]),
                     response_text=dummy_response,
                     truncate_status="prompt_truncated",
                     reward=0.0,
