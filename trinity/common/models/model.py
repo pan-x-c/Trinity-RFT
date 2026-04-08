@@ -148,7 +148,7 @@ class BaseInferenceModel(InferenceModel):
                 Experience(
                     tokens=token_ids,
                     logprobs=torch.zeros(1, dtype=torch.float32),
-                    prompt_length=len(prompt_token_ids),
+                    prompt_length=self.config.max_prompt_tokens,  # Use truncated length
                     prompt_text=self.tokenizer.decode(token_ids[:-1]),
                     response_text=dummy_response,
                     truncate_status="prompt_truncated",
