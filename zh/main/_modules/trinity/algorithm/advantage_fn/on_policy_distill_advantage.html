@@ -1063,7 +1063,7 @@ window.runMermaid = runMermaid;</script>
         <span class="n">metrics</span> <span class="o">=</span> <span class="p">{}</span>
 
         <span class="n">old_log_probs</span> <span class="o">=</span> <span class="n">exps</span><span class="o">.</span><span class="n">batch</span><span class="p">[</span><span class="s2">&quot;old_log_probs&quot;</span><span class="p">]</span>  <span class="c1"># student sampling logprobs</span>
-        <span class="n">teacher_log_probs</span> <span class="o">=</span> <span class="n">exps</span><span class="o">.</span><span class="n">batch</span><span class="p">[</span><span class="s2">&quot;teacher_log_probs&quot;</span><span class="p">]</span>
+        <span class="n">teacher_log_probs</span> <span class="o">=</span> <span class="n">exps</span><span class="o">.</span><span class="n">batch</span><span class="p">[</span><span class="s2">&quot;teacher_logprobs&quot;</span><span class="p">]</span>
         <span class="n">response_mask</span> <span class="o">=</span> <span class="n">exps</span><span class="o">.</span><span class="n">batch</span><span class="p">[</span><span class="s2">&quot;response_mask&quot;</span><span class="p">]</span>
 
         <span class="c1"># advantages = -(student - teacher) = teacher - student</span>
