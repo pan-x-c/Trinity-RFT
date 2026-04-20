@@ -42,7 +42,7 @@ dependencies = [
     "sortedcontainers",
     "word2number",
     "matplotlib",
-    "transformers>=5.4.3",
+    "transformers>=5.5.3",
     "datasets>=4.0.0",
     "typer>=0.20.1",
 ]
