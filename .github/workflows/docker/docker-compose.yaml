@@ -13,7 +13,7 @@ services:
       - TRINITY_TASKSET_PATH=/mnt/data
       - TRINITY_EVAL_TASKSET_PATH=/mnt/data
       - TRINITY_SFT_DATASET_PATH=/mnt/data
-      - TRINITY_MODEL_PATH=/mnt/models/Qwen3.5-0.8B
+      - TRINITY_MODEL_PATH=/mnt/models/Qwen3-0.6B
       - TRINITY_API_MODEL_PATH=/mnt/models/Qwen3.5-0.8B
       - TRINITY_VLM_MODEL_PATH=/mnt/models/Qwen3.5-0.8B
       - TRINITY_ALTERNATIVE_VLM_MODEL_PATH=/mnt/models/Qwen3.5-0.8B
@@ -44,7 +44,7 @@ services:
       - HF_HUB_DISABLE_PROGRESS_BARS=1
       - TRINITY_CHECKPOINT_ROOT_DIR=/mnt/checkpoints
       - TRINITY_TASKSET_PATH=/mnt/data
-      - TRINITY_MODEL_PATH=/mnt/models/Qwen3.5-0.8B
+      - TRINITY_MODEL_PATH=/mnt/models/Qwen3-0.6B
       - VIRTUAL_ENV=/opt/venv
     working_dir: /workspace
     volumes:
