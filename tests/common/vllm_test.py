@@ -1427,7 +1427,11 @@ class TestTinkerAPI(RayUnittestBaseAsync):
         response = await engine.sample.remote(
             prompt=prompt,
             num_samples=num_samples,
-            sampling_params=types.SamplingParams(temperature=0.7),  # no limit on length
+            sampling_params=types.SamplingParams(
+                temperature=0.7,
+                top_p=0.9,
+                top_k=20,
+            ),  # no limit on length
         )
         self.assertEqual(len(response.sequences), num_samples)
         for sequence in response.sequences:

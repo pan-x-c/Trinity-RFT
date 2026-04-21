@@ -14,6 +14,9 @@ def create_dummy_lora(
     from transformers import AutoConfig, AutoModelForCausalLM
 
     config = AutoConfig.from_pretrained(model_path)
+    if not hasattr(config, "vocab_size"):
+        # for Qwen3.5, vocab_size might be stored in the top-level config
+        config = config.get_text_config()
     model = AutoModelForCausalLM.from_config(config)
     lora_config = {
         "task_type": TaskType.CAUSAL_LM,
