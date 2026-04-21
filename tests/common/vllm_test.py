@@ -932,7 +932,6 @@ class TestTinkerAsyncAPIServer(TestAsyncAPIServer):
 
 
 class TestTokenizer(unittest.TestCase):
-
     def test_action_mask(self):
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},

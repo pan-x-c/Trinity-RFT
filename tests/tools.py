@@ -29,7 +29,7 @@ SFT_DATASET_PATH_ENV_VAR = "TRINITY_SFT_DATASET_PATH"
 
 
 # Qwen3.5 chat template with {% generation %} mark
-CHAT_TEMPLATE= r"""
+CHAT_TEMPLATE = r"""
 {%- if tools %}
     {{- '<|im_start|>system\n' }}
     {%- if messages[0].role == 'system' %}
