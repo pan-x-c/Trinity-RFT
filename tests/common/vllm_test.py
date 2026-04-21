@@ -10,6 +10,7 @@ from transformers import AutoTokenizer
 
 from tests.tools import (
     CHAT_TEMPLATE,
+    CHAT_TEMPLATE_QWEN2_5,
     RayUnittestBaseAsync,
     get_api_model_path,
     get_model_path,
@@ -950,12 +951,12 @@ class TestTokenizer(unittest.TestCase):
         token_ids, action_mask, prompt_length = tokenize_and_mask_messages_default(
             tokenizer=tokenizer,
             messages=messages,
-            chat_template=CHAT_TEMPLATE,
+            chat_template=CHAT_TEMPLATE_QWEN2_5,
         )
         token_ids_hf, action_mask_hf, prompt_length_hf = tokenize_and_mask_messages_hf(
             tokenizer=tokenizer,
             messages=messages,
-            chat_template=CHAT_TEMPLATE,
+            chat_template=CHAT_TEMPLATE_QWEN2_5,
         )
         self.assertEqual(token_ids.shape, token_ids_hf.shape)
         self.assertEqual(action_mask.shape, action_mask_hf.shape)
@@ -1023,13 +1024,13 @@ class TestTokenizer(unittest.TestCase):
             tokenizer=tokenizer,
             messages=messages,
             tools=tools,
-            chat_template=CHAT_TEMPLATE,
+            chat_template=CHAT_TEMPLATE_QWEN2_5,
         )
         token_ids_hf, action_mask_hf, prompt_length_hf = tokenize_and_mask_messages_hf(
             tokenizer=tokenizer,
             messages=messages,
             tools=tools,
-            chat_template=CHAT_TEMPLATE,
+            chat_template=CHAT_TEMPLATE_QWEN2_5,
         )
         self.assertEqual(token_ids.shape, token_ids_hf.shape)
         self.assertEqual(action_mask.shape, action_mask_hf.shape)
