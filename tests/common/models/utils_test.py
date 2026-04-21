@@ -31,13 +31,22 @@ class TestTokenizeAndMaskMessagesDefault(unittest.TestCase):
             enable_thinking=True,
         )
 
+        if "Qwen3.5" in get_model_path():
+            # For Qwen3.5
+            expected_mask = torch.tensor([0] * 26 + [1] * 12, dtype=torch.int)
+            expected_prompt_length = 26
+        else:
+            # For Qwen3
+            expected_mask = torch.tensor([0] * 24 + [1] * 14, dtype=torch.int)
+            expected_prompt_length = 24
+
         self.assertTrue(
             torch.equal(
                 assistant_mask,
-                torch.tensor([0] * 26 + [1] * 12, dtype=torch.int),
+                expected_mask,
             )
         )
-        self.assertEqual(prompt_length, 26)
+        self.assertEqual(prompt_length, expected_prompt_length)
 
     def test_messages_empty(self):
         with self.assertRaises(ValueError):
@@ -71,10 +80,19 @@ class TestTokenizeAndMaskMessagesDefault(unittest.TestCase):
             enable_thinking=True,
         )
 
+        if "Qwen3.5" in get_model_path():
+            # For Qwen3.5
+            expected_mask = torch.tensor([0] * 22 + [1] * 9, dtype=torch.int)
+            expected_prompt_length = 22
+        else:
+            # For Qwen3
+            expected_mask = torch.tensor([0] * 20 + [1] * 11, dtype=torch.int)
+            expected_prompt_length = 20
+
         self.assertTrue(
             torch.equal(
                 assistant_mask,
-                torch.tensor([0] * 22 + [1] * 9, dtype=torch.int),
+                expected_mask,
             )
         )
-        self.assertEqual(prompt_length, 22)
+        self.assertEqual(prompt_length, expected_prompt_length)
