@@ -64,7 +64,7 @@ def _get_api_server_runner(vllm_version):
 
         return run_api_server_in_ray_actor_v13
 
-    if VLLM_VERSION_0170 <= vllm_version < VLLM_VERSION_0191:
+    if VLLM_VERSION_0170 <= vllm_version <= VLLM_VERSION_0191:
         from trinity.common.models.vllm_patch.api_patch_v17 import (
             run_api_server_in_ray_actor_v17,
         )
@@ -73,7 +73,7 @@ def _get_api_server_runner(vllm_version):
 
     raise ValueError(
         f"Unsupported vLLM version: {vllm.__version__}. "
-        "This patch supports vLLM versions 0.12.0, (0.12.0, 0.17.0), and [0.17.0, 0.19.1)."
+        "This patch supports vLLM versions 0.12.0, (0.12.0, 0.17.0), and [0.17.0, 0.19.1]."
     )
 
 
