@@ -2,7 +2,10 @@ import asyncio
 import gc
 import os
 import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import ray
 
 from tests.tools import get_model_path, get_template_config
@@ -134,3 +137,90 @@ class TestExternalModelLoad(unittest.IsolatedAsyncioTestCase):
         client = wrapper.get_openai_client()
         self.assertEqual(str(client.base_url).rstrip("/"), f"{wrapper.api_address}/v1")
         self.assertEqual(client.api_key, mock_api_key)
+
+
+class FakeAsyncClient:
+    def __init__(self, responses):
+        self.responses = responses
+        self.calls = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url, timeout=5, headers=None):
+        self.calls.append({"url": url, "timeout": timeout, "headers": headers})
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+class TestModelWrapperReadiness(unittest.IsolatedAsyncioTestCase):
+    async def test_prepare_waits_for_models_endpoint(self):
+        config = InferenceModelConfig(model_path="dummy-model", engine_type="vllm")
+
+        model = MagicMock()
+        model.get_model_config.remote = AsyncMock(return_value=config)
+        model.get_api_key.remote = AsyncMock(return_value="EMPTY")
+        model.get_api_server_url.remote = AsyncMock(return_value="http://127.0.0.1:8000")
+
+        fake_client = FakeAsyncClient(
+            responses=[
+                SimpleNamespace(status_code=200),
+                SimpleNamespace(status_code=503),
+                SimpleNamespace(status_code=200),
+                SimpleNamespace(status_code=200),
+            ]
+        )
+
+        wrapper = ModelWrapper(model, enable_history=False)
+
+        with (
+            patch("trinity.common.models.model.httpx.AsyncClient", return_value=fake_client),
+            patch("trinity.common.models.model.asyncio.sleep", new=AsyncMock()) as sleep_mock,
+        ):
+            await wrapper.prepare()
+
+        self.assertEqual(
+            [call["url"] for call in fake_client.calls],
+            [
+                "http://127.0.0.1:8000/health",
+                "http://127.0.0.1:8000/v1/models",
+                "http://127.0.0.1:8000/health",
+                "http://127.0.0.1:8000/v1/models",
+            ],
+        )
+        self.assertEqual(
+            fake_client.calls[1]["headers"],
+            {"Authorization": "Bearer EMPTY"},
+        )
+        self.assertEqual(sleep_mock.await_count, 1)
+
+    async def test_prepare_retries_after_probe_error(self):
+        config = InferenceModelConfig(model_path="dummy-model", engine_type="vllm")
+
+        model = MagicMock()
+        model.get_model_config.remote = AsyncMock(return_value=config)
+        model.get_api_key.remote = AsyncMock(return_value="EMPTY")
+        model.get_api_server_url.remote = AsyncMock(return_value="http://127.0.0.1:8000")
+
+        fake_client = FakeAsyncClient(
+            responses=[
+                httpx.ConnectError("not ready"),
+                SimpleNamespace(status_code=200),
+                SimpleNamespace(status_code=200),
+            ]
+        )
+
+        wrapper = ModelWrapper(model, enable_history=False)
+
+        with (
+            patch("trinity.common.models.model.httpx.AsyncClient", return_value=fake_client),
+            patch("trinity.common.models.model.asyncio.sleep", new=AsyncMock()) as sleep_mock,
+        ):
+            await wrapper.prepare()
+
+        self.assertEqual(sleep_mock.await_count, 1)

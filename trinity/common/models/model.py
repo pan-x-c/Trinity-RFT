@@ -300,17 +300,48 @@ class ModelWrapper:
             return
         if self._engine_type in {"tinker", "external"}:
             return
+        await self._wait_for_api_server_ready()
+
+    def _get_api_probe_headers(self) -> Dict[str, str]:
+        headers = {}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        return headers
+
+    async def _is_api_server_ready(self, client: httpx.AsyncClient) -> bool:
+        health_response = await client.get(self.api_address + "/health", timeout=5)
+        if health_response.status_code != 200:
+            return False
+
+        models_response = await client.get(
+            self.api_address + "/v1/models",
+            headers=self._get_api_probe_headers(),
+            timeout=5,
+        )
+        return models_response.status_code == 200
+
+    async def _wait_for_api_server_ready(self) -> None:
         max_retries = 30
         interval = 2  # seconds
-        for i in range(max_retries):
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(self.api_address + "/health", timeout=5)
-                    if response.status_code == 200:
+        async with httpx.AsyncClient() as client:
+            for i in range(max_retries):
+                try:
+                    if await self._is_api_server_ready(client):
                         return
-            except Exception as e:
-                self.logger.info(f"API server not ready (attempt {i + 1}/{max_retries}): {e}")
-            await asyncio.sleep(interval)
+                except (httpx.HTTPError, OSError) as e:
+                    self.logger.info(
+                        "API server not ready (attempt %d/%d): %s",
+                        i + 1,
+                        max_retries,
+                        e,
+                    )
+                else:
+                    self.logger.info(
+                        "API server not ready (attempt %d/%d): OpenAI models endpoint unavailable.",
+                        i + 1,
+                        max_retries,
+                    )
+                await asyncio.sleep(interval)
         raise RuntimeError(
             f"API server at {self.api_address} not ready after {max_retries} attempts."
         )
