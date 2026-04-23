@@ -532,7 +532,6 @@ class TestWorkflowStateRecording(unittest.IsolatedAsyncioTestCase):
 
 
 class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
-
     async def test_adapter_v1(self):
         try:
             from agentscope.model import ChatModelBase
