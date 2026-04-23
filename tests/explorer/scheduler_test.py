@@ -904,7 +904,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         statuses, exps = await scheduler.get_results(
             batch_id=0,
             min_num=1,
-            timeout=3,
+            timeout=2,
             return_partial_tasks=True,
         )
         end_time = time.time()
