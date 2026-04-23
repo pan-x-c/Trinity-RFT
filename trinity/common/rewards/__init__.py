@@ -7,7 +7,6 @@ from trinity.utils.registry import Registry
 REWARD_FUNCTIONS = Registry(
     "reward_functions",
     default_mapping={
-        "rm_gallery_reward": "trinity.common.rewards.reward_fn.RMGalleryFn",
         "math_reward": "trinity.common.rewards.math_reward.MathRewardFn",
         "math_boxed_reward": "trinity.common.rewards.math_reward.MathBoxedRewardFn",
         "format_reward": "trinity.common.rewards.format_reward.FormatReward",
@@ -19,6 +18,5 @@ REWARD_FUNCTIONS = Registry(
 
 __all__ = [
     "RewardFn",
-    "RMGalleryFn",
     "REWARD_FUNCTIONS",
 ]
