@@ -818,8 +818,9 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         statuses, exps = await scheduler.get_results(batch_id=0)
         self.assertEqual(len(statuses), 2)
         self.assertEqual(len(exps), 1 * 4 * 1 + 1 * 8 * 4)
-        self.assertAlmostEqual(statuses[0].metrics[0]["run_metrics"], 1.5)  # (0+1+2+3)/4
-        self.assertAlmostEqual(statuses[1].metrics[0]["run_metrics"], 3.5)  # (0+1+2+3+4+5+6+7)/8
+        expected_run_metrics = set({1.5, 3.5})  # (0+1+2+3)/4 and (0+1+2+3+4+5+6+7)/8
+        actual_run_metrics = set(status.metrics[0]["run_metrics"] for status in statuses)
+        self.assertSetEqual(expected_run_metrics, actual_run_metrics)
 
     @parameterized.expand(
         [
