@@ -536,8 +536,7 @@ class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
         try:
             from agentscope.model import ChatModelBase
             from agentscope.tuner import JudgeOutput, WorkflowOutput
-        except ImportError as e:
-            print(str(e))
+        except ImportError:
             self.skipTest("agentscope >= 1.0.12 is not installed")
 
         async def as_workflow_func(task, model) -> WorkflowOutput:

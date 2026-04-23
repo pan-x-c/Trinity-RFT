@@ -445,8 +445,8 @@ class WorkflowRunner:
             self.logger.error(f"WorkflowRunner run task error: {e}\nTraceback:\n{error_trace_back}")
             return (
                 Status(
-                    0,
-                    repeat_times,
+                    completed_runs=0,
+                    total_runs=repeat_times,
                     metrics=[{"time/run_execution": time.time() - st}],
                     message=error_trace_back.rstrip(),
                 ),
