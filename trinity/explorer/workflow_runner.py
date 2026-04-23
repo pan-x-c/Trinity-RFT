@@ -216,6 +216,7 @@ class WorkflowRunner:
         task: Task,
         repeat_times: int,
         run_id_base: int,
+        collect_partial_runs: bool = True,
         use_threads: bool = False,
     ) -> RunnerExecutionResult:
         async def run_single(
@@ -224,15 +225,48 @@ class WorkflowRunner:
             workflow = self._create_isolated_workflow_instance(task)
             return await self._execute_single_run(workflow, task, i, run_id_base)
 
-        if use_threads:
-            results = await asyncio.gather(
-                *(
-                    asyncio.to_thread(lambda idx=i: asyncio.run(run_single(idx)))  # type: ignore[misc]
-                    for i in range(repeat_times)
+        if collect_partial_runs:
+            if use_threads:
+                results = await asyncio.gather(
+                    *(
+                        asyncio.to_thread(lambda idx=i: asyncio.run(run_single(idx)))  # type: ignore[misc]
+                        for i in range(repeat_times)
+                    )
                 )
+            else:
+                results = await asyncio.gather(*(run_single(i) for i in range(repeat_times)))
+            return self._aggregate_run_results(repeat_times, results)
+
+        future_to_run_index = {}
+        for i in range(repeat_times):
+            if use_threads:
+                future = asyncio.create_task(
+                    asyncio.to_thread(lambda idx=i: asyncio.run(run_single(idx)))  # type: ignore[misc]
+                )
+            else:
+                future = asyncio.create_task(run_single(i))
+            future_to_run_index[future] = i
+
+        results = []
+        while future_to_run_index:
+            done, pending = await asyncio.wait(
+                future_to_run_index.keys(),
+                return_when=asyncio.FIRST_COMPLETED,
             )
-        else:
-            results = await asyncio.gather(*(run_single(i) for i in range(repeat_times)))
+            should_stop = False
+            for future in done:
+                future_to_run_index.pop(future)
+                result = future.result()
+                results.append(result)
+                ok, _, _, _ = result
+                if not ok:
+                    should_stop = True
+            if should_stop:
+                for future in pending:
+                    future.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+                break
 
         return self._aggregate_run_results(repeat_times, results)
 
@@ -266,7 +300,11 @@ class WorkflowRunner:
             return False, [], None, error_trace_back.rstrip()
 
     async def _run_task(
-        self, task: Task, repeat_times: int, run_id_base: int
+        self,
+        task: Task,
+        repeat_times: int,
+        run_id_base: int,
+        collect_partial_runs: bool = True,
     ) -> RunnerExecutionResult:
         """Init workflow from the task and run it."""
         if task.workflow.can_repeat:
@@ -291,19 +329,31 @@ class WorkflowRunner:
                 experiences=exps,
             )
         else:
-            return await self.concurrent_run_fn(task, repeat_times, run_id_base)
+            return await self.concurrent_run_fn(
+                task,
+                repeat_times,
+                run_id_base,
+                collect_partial_runs=collect_partial_runs,
+            )
 
     async def _sequential_run(
         self,
         task: Task,
         repeat_times: int,
         run_id_base: int,
+        collect_partial_runs: bool = True,
     ) -> RunnerExecutionResult:
         results = []
         for i in range(repeat_times):
             workflow = self._create_workflow_instance(task)
             result = await self._execute_single_run(workflow, task, i, run_id_base)
             results.append(result)
+            if collect_partial_runs:
+                continue
+            ok, _, _, _ = result
+            if ok:
+                continue
+            break
         return self._aggregate_run_results(repeat_times, results)
 
     async def _asynchronous_run(
@@ -311,16 +361,29 @@ class WorkflowRunner:
         task: Task,
         repeat_times: int,
         run_id_base: int,
+        collect_partial_runs: bool = True,
     ) -> RunnerExecutionResult:
-        return await self._run_parallel_runs(task, repeat_times, run_id_base)
+        return await self._run_parallel_runs(
+            task,
+            repeat_times,
+            run_id_base,
+            collect_partial_runs=collect_partial_runs,
+        )
 
     async def _multi_threading_run(
         self,
         task: Task,
         repeat_times: int,
         run_id_base: int,
+        collect_partial_runs: bool = True,
     ) -> RunnerExecutionResult:
-        return await self._run_parallel_runs(task, repeat_times, run_id_base, use_threads=True)
+        return await self._run_parallel_runs(
+            task,
+            repeat_times,
+            run_id_base,
+            collect_partial_runs=collect_partial_runs,
+            use_threads=True,
+        )
 
     async def get_runner_state(self) -> Dict:
         """Get the runner state."""
@@ -334,6 +397,7 @@ class WorkflowRunner:
         batch_id: str,
         repeat_times: int = 1,
         run_id_base: int = 0,
+        collect_partial_runs: bool = True,
     ) -> Tuple[Status, List[Experience]]:
         """Run the task and return the states."""
         # TODO: avoid sending the experiences back to the scheduler to reduce the communication overhead
@@ -344,7 +408,12 @@ class WorkflowRunner:
             self.logger.info(
                 f"Starting task: step={batch_id}, model_version={model_version}, repeat_times={repeat_times}, run_id_base={run_id_base}"
             )
-            execution_result = await self._run_task(task, repeat_times, run_id_base)
+            execution_result = await self._run_task(
+                task,
+                repeat_times,
+                run_id_base,
+                collect_partial_runs=collect_partial_runs,
+            )
             exps = execution_result.experiences
             if execution_result.status.completed_runs > 0:
                 assert exps is not None and len(exps) > 0, "An empty experience is generated"

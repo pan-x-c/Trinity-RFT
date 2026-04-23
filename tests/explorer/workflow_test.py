@@ -10,7 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 from unittest import mock
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import openai
 import ray
@@ -752,6 +752,78 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(status.total_runs, 3)
             self.assertEqual(len(exps), expected_success_runs)
             self.assertIn(f"{expected_success_runs}/3 runs completed successfully", status.message)  # type: ignore[arg-type]
+
+    @parameterized.expand(
+        [
+            ("sequential",),
+            ("asynchronous",),
+            ("multi-threading",),
+        ]
+    )
+    async def test_workflow_runner_fail_fast_without_partial_collection(
+        self, concurrent_mode: str
+    ):
+        config = get_template_config()
+        config.explorer.concurrent_mode = concurrent_mode
+
+        with mock.patch(
+            "trinity.explorer.workflow_runner.ModelWrapper",
+            DummyModelWrapper,
+        ):
+            runner = WorkflowRunner(
+                config,
+                model=MagicMock(),
+                auxiliary_models=[],
+                runner_id=0,
+            )
+            await runner.prepare()
+
+            task = Task(
+                workflow=PartialFailureWorkflow,
+                repeat_times=3,
+                raw_task={"fail_call_ids": []},
+            )
+
+            async def mock_execute_single_run(
+                workflow: Workflow,
+                task: Task,
+                run_index: int,
+                run_id_base: int,
+            ):
+                if run_index == 0:
+                    await asyncio.sleep(0.01)
+                    exp = Experience(
+                        tokens=Tensor([0, 1, 2]),
+                        prompt_length=1,
+                        metrics={"run_metrics": 0.0},
+                    )
+                    return True, [exp], {"run_metrics": 0.0}, None
+                if run_index == 1:
+                    await asyncio.sleep(0.02)
+                    return False, [], None, "planned failure"
+                await asyncio.sleep(0.5)
+                exp = Experience(
+                    tokens=Tensor([0, 1, 2]),
+                    prompt_length=1,
+                    metrics={"run_metrics": 2.0},
+                )
+                return True, [exp], {"run_metrics": 2.0}, None
+
+            runner._execute_single_run = AsyncMock(side_effect=mock_execute_single_run)
+
+            status, exps = await runner.run_task(
+                task,
+                batch_id="test",
+                repeat_times=3,
+                run_id_base=0,
+                collect_partial_runs=False,
+            )
+
+            self.assertFalse(status.ok)
+            self.assertEqual(status.completed_runs, 1)
+            self.assertEqual(status.total_runs, 3)
+            self.assertEqual(len(exps), 1)
+            self.assertIn("1/3 runs completed successfully", status.message)  # type: ignore[arg-type]
 
     async def test_workflow_runner_get_state(self):
         config = get_template_config()

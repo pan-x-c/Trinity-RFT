@@ -173,7 +173,12 @@ class RunnerWrapper:
         self.state["running_time"] = time.time() - self.state.get("begin_time", time.time())
 
     async def run_with_retry(
-        self, task: TaskWrapper, repeat_times: int, run_id_base: int, timeout: float
+        self,
+        task: TaskWrapper,
+        repeat_times: int,
+        run_id_base: int,
+        timeout: float,
+        collect_partial_runs: bool,
     ) -> Tuple[Status, List, int, float]:
         """
         Args:
@@ -209,6 +214,7 @@ class RunnerWrapper:
                             batch_id=str(task.batch_id),
                             repeat_times=repeat_times,
                             run_id_base=run_id_base,
+                            collect_partial_runs=collect_partial_runs,
                         ),
                         timeout=timeout,
                     )
@@ -393,6 +399,7 @@ class Scheduler:
                         repeat_times=repeat_times,
                         run_id_base=run_id_base,
                         timeout=self.dynamic_timeout(),
+                        collect_partial_runs=self.config.explorer.over_rollout.return_partial_tasks,
                     )
                 )
                 self.running_task_map[future] = task
