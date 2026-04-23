@@ -198,6 +198,7 @@ class RunnerWrapper:
         start_time = time.time()
         status = Status(completed_runs=0, total_runs=repeat_times, metrics=list())
         exps = []
+        run_task_ref = None
         task2run = replace(
             task.task,
             rollout_args=replace(
@@ -208,21 +209,24 @@ class RunnerWrapper:
         try:
             for attempt in range(self.retry_times + 1):
                 try:
+                    run_task_ref = self.runner.run_task.remote(
+                        task=task2run,
+                        batch_id=str(task.batch_id),
+                        repeat_times=repeat_times,
+                        run_id_base=run_id_base,
+                        collect_partial_runs=collect_partial_runs,
+                    )
                     status, exps = await asyncio.wait_for(
-                        self.runner.run_task.remote(
-                            task=task2run,
-                            batch_id=str(task.batch_id),
-                            repeat_times=repeat_times,
-                            run_id_base=run_id_base,
-                            collect_partial_runs=collect_partial_runs,
-                        ),
+                        run_task_ref,
                         timeout=timeout,
                     )
+                    run_task_ref = None
                     if status.ok:
                         break
                     else:
                         self.logger.error(status.message)
                 except asyncio.TimeoutError:
+                    run_task_ref = None
                     last_exception_msg = f"Timeout when running task of batch {task.batch_id} at runner {self.runner_id} at attempt {attempt + 1}: {task.task}"
                     self.logger.error(last_exception_msg)
                     status = Status(
@@ -231,7 +235,12 @@ class RunnerWrapper:
                         metrics=list(),
                         message=last_exception_msg,
                     )
+                except asyncio.CancelledError:
+                    if run_task_ref is not None:
+                        ray.cancel(run_task_ref, force=False)
+                    raise
                 except Exception:
+                    run_task_ref = None
                     last_exception_msg = traceback.format_exc()
                     self.logger.warning(
                         f"Task execution attempt {attempt + 1} failed:\n{last_exception_msg}"
@@ -310,11 +319,14 @@ class Scheduler:
             int
         )  # batch_id -> tasks scheduled under this batch_id
         self.running_task_map: Dict[asyncio.Future, TaskWrapper] = dict()  # future -> task
+        self.running_task_runner_map: Dict[asyncio.Future, int] = dict()  # future -> runner_id
+        self.cancelled_task_restart_map: Dict[asyncio.Future, bool] = dict()
         self.completed_tasks: Dict[
             Union[int, str], deque[Tuple[Status, List[Experience]]]
         ] = defaultdict(
             deque
         )  # batch_id -> results
+        self.background_tasks: set[asyncio.Task] = set()
 
         self.scheduler_task: Optional[asyncio.Task] = None
         self.running = False
@@ -351,6 +363,11 @@ class Scheduler:
 
         self.idle_runners.add(runner_id)
         self.logger.info(f"Runner {runner_id} restarted.")
+
+    def _schedule_runner_restart(self, runner_id: int) -> None:
+        restart_task = asyncio.create_task(self._restart_runner(runner_id))
+        self.background_tasks.add(restart_task)
+        restart_task.add_done_callback(self.background_tasks.discard)
 
     async def _scheduler_loop(self) -> None:
         self.logger.info("Scheduler loop started.")
@@ -403,6 +420,7 @@ class Scheduler:
                     )
                 )
                 self.running_task_map[future] = task
+                self.running_task_runner_map[future] = runner_id
                 future.add_done_callback(self.task_done_callback)
                 self.running_tasks[batch_id].add(future)
 
@@ -411,18 +429,24 @@ class Scheduler:
 
     def task_done_callback(self, async_task: asyncio.Task):
         task = self.running_task_map.pop(async_task)
+        runner_id = self.running_task_runner_map.pop(async_task)
         if async_task.cancelled():
-            return
+            should_restart = self.cancelled_task_restart_map.pop(async_task, True)
+            if not should_restart:
+                self.busy_runners.pop(runner_id, None)
+                self.idle_runners.add(runner_id)
         elif async_task.exception():
             self.logger.error(f"Task {task.task.task_id} failed: {async_task.exception()}")
-            return
+            self.cancelled_task_restart_map.pop(async_task, None)
+            self._schedule_runner_restart(runner_id)
         else:
+            self.cancelled_task_restart_map.pop(async_task, None)
             status, exps, runner_id, run_time = async_task.result()
             if not task.task.is_eval:  # only count running time for non-eval tasks
                 self.total_running_time += run_time
                 self.total_completed_tasks += 1
             self._accumulate_task_result(task, status, exps)
-            self.busy_runners.pop(runner_id)
+            self.busy_runners.pop(runner_id, None)
             self.idle_runners.add(runner_id)
             # If all sub runs in a task are completed
             if task.finished_sub_task_num == task.sub_task_num:
@@ -485,16 +509,25 @@ class Scheduler:
                 f"Task partially completed and emitted (batch_id {task.batch_id}, task_id {task.task.task_id})."
             )
 
-    def _clear_timeout_tasks(self, batch_id: Union[int, str]) -> None:
+    def _clear_timeout_tasks(self, batch_id: Union[int, str]) -> List[asyncio.Future]:
+        cancelled_futures = []
         if batch_id in self.pending_tasks:
             self.logger.info(f"Clear timeout pending tasks at batch_id {batch_id}.")
             del self.pending_tasks[batch_id]
         if batch_id in self.running_tasks:
             self.logger.info(f"Clear timeout running tasks at batch_id {batch_id}.")
             for future in self.running_tasks[batch_id]:
+                cancelled_futures.append(future)
                 future.cancel()
             del self.running_tasks[batch_id]
         self.task_num_map.pop(batch_id, None)
+        return cancelled_futures
+
+    def _mark_running_tasks_for_cleanup(
+        self, batch_id: Union[int, str], restart_runners: bool
+    ) -> None:
+        for future in self.running_tasks.get(batch_id, set()):
+            self.cancelled_task_restart_map[future] = restart_runners
 
     async def start(self) -> None:
         if self.running:
@@ -519,6 +552,9 @@ class Scheduler:
         if all_running_futures:
             self.logger.info(f"Waiting for {len(all_running_futures)} running tasks to complete...")
             await asyncio.gather(*all_running_futures, return_exceptions=True)
+
+        if self.background_tasks:
+            await asyncio.gather(*list(self.background_tasks), return_exceptions=True)
 
         if self.scheduler_task:
             self.scheduler_task.cancel()
@@ -580,13 +616,21 @@ class Scheduler:
             avg_time_per_task * self.config.explorer.dynamic_timeout.ratio,
         )
 
-    async def _cleanup_batch_and_restart_runners(
-        self, batch_id: Union[int, str], return_partial_tasks: bool = False
+    async def _cleanup_batch(
+        self,
+        batch_id: Union[int, str],
+        return_partial_tasks: bool = False,
+        restart_runners: bool = True,
     ) -> None:
-        """Clear timeout tasks for a batch and restart associated runners."""
+        """Clear unfinished tasks for a batch and optionally restart associated runners."""
         if return_partial_tasks:
             self._emit_partial_tasks_for_batch(batch_id)
-        self._clear_timeout_tasks(batch_id=batch_id)
+        self._mark_running_tasks_for_cleanup(batch_id, restart_runners=restart_runners)
+        cancelled_futures = self._clear_timeout_tasks(batch_id=batch_id)
+        if cancelled_futures:
+            await asyncio.gather(*cancelled_futures, return_exceptions=True)
+        if not restart_runners:
+            return
         runners_to_restart = [
             runner_id
             for runner_id, task in list(self.busy_runners.items())
@@ -636,9 +680,10 @@ class Scheduler:
                     >= self.config.explorer.over_rollout.wait_after_min
                 ):
                     if clear_timeout_tasks:
-                        await self._cleanup_batch_and_restart_runners(
+                        await self._cleanup_batch(
                             batch_id,
                             return_partial_tasks=return_partial_tasks,
+                            restart_runners=False,
                         )
                         break
             await asyncio.sleep(0.1)
@@ -648,9 +693,10 @@ class Scheduler:
                 f"Timed out waiting for tasks at batch {batch_id} to complete after {timeout} seconds"
             )
             if clear_timeout_tasks:
-                await self._cleanup_batch_and_restart_runners(
+                await self._cleanup_batch(
                     batch_id,
                     return_partial_tasks=return_partial_tasks,
+                    restart_runners=True,
                 )
 
         statuses = []
