@@ -747,7 +747,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
 
     @parameterized.expand(
         [
-            ("sequential", 1),
+            ("sequential", 2),
             ("asynchronous", 2),
             ("multi-threading", 2),
         ]

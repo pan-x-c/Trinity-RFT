@@ -304,10 +304,6 @@ class WorkflowRunner:
             workflow = self._create_workflow_instance(task)
             result = await self._execute_single_run(workflow, task, i, run_id_base)
             results.append(result)
-            ok, _, _, _ = result
-            if ok:
-                continue
-            break
         return self._aggregate_run_results(repeat_times, results)
 
     async def _asynchronous_run(
