@@ -760,9 +760,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
             ("multi-threading",),
         ]
     )
-    async def test_workflow_runner_fail_fast_without_partial_collection(
-        self, concurrent_mode: str
-    ):
+    async def test_workflow_runner_fail_fast_without_partial_collection(self, concurrent_mode: str):
         config = get_template_config()
         config.explorer.concurrent_mode = concurrent_mode
 
