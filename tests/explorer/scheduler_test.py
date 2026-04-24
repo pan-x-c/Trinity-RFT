@@ -135,6 +135,7 @@ class DummyPartialSnapshotWorkflow(Workflow):
 class DummyAsyncPartialSnapshotWorkflow(Workflow):
     can_reset: bool = True
     is_async: bool = True
+    _run_index_by_key = defaultdict(int)
 
     def __init__(self, *, task, model, auxiliary_models):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
@@ -145,12 +146,29 @@ class DummyAsyncPartialSnapshotWorkflow(Workflow):
 
     async def run_async(self) -> List[Experience]:
         actions = self.task.workflow_args.get("actions_by_repeat_times", {})
-        action = actions.get(self.task.rollout_args.n, "success")
+        action_sequences = self.task.workflow_args.get("action_sequence_by_repeat_times", {})
+        metric_sequences = self.task.workflow_args.get("metric_sequence_by_repeat_times", {})
+
+        key = (self.task.batch_id, self.task.task_id, self.task.rollout_args.n)
+        run_index = DummyAsyncPartialSnapshotWorkflow._run_index_by_key[key]
+        DummyAsyncPartialSnapshotWorkflow._run_index_by_key[key] += 1
+
+        sequence_actions = action_sequences.get(self.task.rollout_args.n)
+        if sequence_actions and run_index < len(sequence_actions):
+            action = sequence_actions[run_index]
+        else:
+            action = actions.get(self.task.rollout_args.n, "success")
 
         if action.startswith("sleep_"):
             await asyncio.sleep(float(action.split("_", 1)[1]))
         elif action == "exception":
             raise ValueError("planned partial failure")
+
+        sequence = metric_sequences.get(self.task.rollout_args.n)
+        if sequence and run_index < len(sequence):
+            run_metric = float(sequence[run_index])
+        else:
+            run_metric = float(self.task.rollout_args.n * 10)
 
         return [
             Experience(
@@ -158,7 +176,7 @@ class DummyAsyncPartialSnapshotWorkflow(Workflow):
                 tokens=torch.zeros(5),
                 prompt_length=2,
                 prompt_text=action,
-                metrics={"run_metrics": float(self.task.rollout_args.n * 10)},
+                metrics={"run_metrics": run_metric},
             )
         ]
 
@@ -394,6 +412,7 @@ def generate_tasks(
 class SchedulerTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         ray.init(ignore_reinit_error=True)
+        DummyAsyncPartialSnapshotWorkflow._run_index_by_key.clear()
         self.config = get_template_config()
         self.config.explorer.max_retry_times = 1
         self.config.explorer.max_timeout = 5
@@ -923,12 +942,22 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
                 raw_task={},
             ),
             Task(
+                # split into 2 sub-tasks with repeat_times=2 and 1.
+                # Inside the repeat_times=2 sub-task, one internal run succeeds and
+                # the other raises, so runner returns a partial subtask result.
+                # The repeat_times=1 sub-task remains in sleep_5 and is later cleaned
+                # up by over-rollout before it can contribute any metric.
                 workflow=DummyAsyncPartialSnapshotWorkflow,  # type: ignore[type-abstract]
                 workflow_args={
+                    "action_sequence_by_repeat_times": {
+                        2: ["success", "exception"],
+                    },
                     "actions_by_repeat_times": {
-                        2: "success",
                         1: "sleep_5",
-                    }
+                    },
+                    "metric_sequence_by_repeat_times": {
+                        2: [10.0, 30.0],
+                    },
                 },
                 repeat_times=3,
                 raw_task={},
@@ -947,14 +976,45 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertLess(end_time - start_time, 5)
         self.assertEqual(len(statuses), 2)
-        self.assertEqual(len(exps), 3)
+        self.assertEqual(len(exps), 2)
 
         full_status = next(status for status in statuses if status.total_runs == 1)
         partial_status = next(status for status in statuses if status.total_runs == 3)
         self.assertTrue(full_status.ok)
-        self.assertEqual(partial_status.completed_runs, 2)
+        self.assertEqual(partial_status.completed_runs, 1)
         self.assertFalse(partial_status.ok)
-        self.assertIn("2/3 runs completed successfully", partial_status.message)
+        metric_bearing_exps = [exp for exp in exps if exp.metrics]
+        full_task_run_metrics = [
+            exp.metrics["run_metrics"]
+            for exp in metric_bearing_exps
+            if exp.info and exp.info.get("repeat_times") == 1
+        ]
+        partial_task_run_metrics = [
+            exp.metrics["run_metrics"]
+            for exp in metric_bearing_exps
+            if not (exp.info and exp.info.get("repeat_times") == 1)
+        ]
+
+        # The normal task should keep its own task-level metric, proving scheduler
+        # does not mix metrics between different tasks in the same batch.
+        self.assertEqual(full_task_run_metrics, [0.0])
+        self.assertEqual(full_status.metrics[0]["run_metrics"], 0.0)
+
+        # End-to-end check: the partially returned task contributes only the single
+        # successful run from the partially failed repeat_times=2 sub-task. The
+        # failed internal run and the cancelled repeat_times=1 sub-task must not be
+        # counted when scheduler computes the task-level metric. This also guards
+        # against retrying the partially successful sub-task, which would add extra
+        # successful runs and change both the emitted experiences and task metric.
+        # We identify partial-task experiences by excluding the known full-task
+        # marker (`info["repeat_times"] == 1`) rather than assuming empty info.
+        self.assertEqual(sorted(partial_task_run_metrics), [10.0])
+        self.assertEqual(
+            partial_status.metrics[0]["run_metrics"],
+            sum(partial_task_run_metrics) / len(partial_task_run_metrics),
+        )
+        self.assertEqual(partial_status.metrics[0]["run_metrics"], 10.0)
+        self.assertIn("1/3 runs completed successfully", partial_status.message)
 
         statuses, exps = await scheduler.get_results(batch_id=0, timeout=1)
         self.assertEqual(len(statuses), 0)

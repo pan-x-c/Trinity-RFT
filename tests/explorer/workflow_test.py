@@ -750,6 +750,21 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(status.completed_runs, expected_success_runs)
             self.assertEqual(status.total_runs, 3)
             self.assertEqual(len(exps), expected_success_runs)
+
+            # One internal run fails with call_id=1, so runner-level metrics should
+            # retain only the successful runs from this single subtask: call_id=0 and 2.
+            self.assertEqual(len(status.metrics), expected_success_runs)
+            self.assertEqual(
+                sorted(metric["run_metrics"] for metric in status.metrics),
+                [0.0, 2.0],
+            )
+
+            # Experiences returned from the runner should match the same successful
+            # run set, proving failed runs do not leak into partial-return outputs.
+            self.assertEqual(
+                sorted(exp.metrics["run_metrics"] for exp in exps if exp.metrics),
+                [0.0, 2.0],
+            )
             self.assertIn(f"{expected_success_runs}/3 runs completed successfully", status.message)  # type: ignore[arg-type]
 
     @parameterized.expand(

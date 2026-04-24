@@ -223,6 +223,13 @@ class RunnerWrapper:
                     run_task_ref = None
                     if status.ok:
                         break
+                    if collect_partial_runs and status.completed_runs > 0:
+                        self.logger.warning(
+                            "Task returned partial success; skipping retry to avoid "
+                            "re-running successful runs. %s",
+                            status.message,
+                        )
+                        break
                     else:
                         self.logger.error(status.message)
                 except asyncio.TimeoutError:
@@ -470,10 +477,11 @@ class Scheduler:
 
     def _build_task_result(self, task: TaskWrapper) -> Tuple[Status, List[Experience]]:
         if task.completed_runs < task.total_runs:
-            message = task.first_error or (
-                f"{task.completed_runs}/{task.total_runs} runs completed successfully. "
-                "Remaining runs were cancelled during scheduler cleanup."
-            )
+            message = f"{task.completed_runs}/{task.total_runs} runs completed successfully."
+            if task.first_error:
+                message = f"{message} First error: {task.first_error}"
+            else:
+                message = f"{message} Remaining runs were cancelled during scheduler cleanup."
         else:
             message = None
         status = Status(
