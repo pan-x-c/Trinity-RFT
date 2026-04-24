@@ -60,7 +60,7 @@ data = [
     "py-data-juicer>=1.4.3"
 ]
 agent = [
-    "agentscope[tuner]>=1.0.18"
+    "agentscope[tuner]>=1.0.19"
 ]
 openjudge = [
     "py-openjudge>=0.2.2"
