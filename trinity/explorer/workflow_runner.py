@@ -68,7 +68,6 @@ class WorkflowRunner:
         config: Config,
         model: InferenceModel,
         auxiliary_models: Optional[List[InferenceModel]] = None,
-        experience_pipeline=None,
         runner_id: Optional[int] = None,
     ) -> None:
         self.name = f"{config.explorer.name}_runner_{runner_id}"
@@ -81,7 +80,6 @@ class WorkflowRunner:
             enable_history=config.explorer.rollout_model.enable_history,
         )
         self.auxiliary_models = auxiliary_models or []
-        self.experience_pipeline = experience_pipeline
         self.auxiliary_model_wrappers = [
             ModelWrapper(
                 model,
@@ -441,13 +439,6 @@ class WorkflowRunner:
                 return status, b""
             else:
                 exp_payload = Experience.serialize_many(exps)
-                if self.experience_pipeline is not None:
-                    await self.experience_pipeline.stage_task_payloads.remote(
-                        task.batch_id,
-                        task.task_id,
-                        [exp_payload],
-                    )
-                    return status, b""
                 return status, exp_payload
 
         except Exception as e:

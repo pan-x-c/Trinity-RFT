@@ -44,7 +44,6 @@ class CompletedTaskResult:
 
     task_id: Union[int, str]
     status: Status
-    experiences: List[Experience] = field(default_factory=list)
     experience_payloads: List[bytes] = field(default_factory=list)
 
 
@@ -156,14 +155,12 @@ class RunnerWrapper:
         rollout_model: InferenceModel,
         auxiliary_models: List[InferenceModel],
         config: Config,
-        experience_pipeline=None,
     ):
         self.logger = get_logger(__name__)
         self.runner_id = runner_id
         self.rollout_model = rollout_model
         self.auxiliary_models = auxiliary_models
         self.config = config
-        self.experience_pipeline = experience_pipeline
         self.retry_times = config.explorer.max_retry_times
         self.timeout = config.explorer.max_timeout
         self.namespace = config.ray_namespace
@@ -185,7 +182,6 @@ class RunnerWrapper:
                 self.config,
                 self.rollout_model,
                 self.auxiliary_models,
-                self.experience_pipeline,
                 self.runner_id,
             )
         )
@@ -325,13 +321,11 @@ class Scheduler:
         config: Config,
         rollout_model: List[InferenceModel],
         auxiliary_models: Optional[List[List[InferenceModel]]] = None,
-        experience_pipeline=None,
     ):
         self.logger = get_logger(__name__)
         self.config = config
         self.rollout_model = rollout_model
         self.auxiliary_models = auxiliary_models or []
-        self.experience_pipeline = experience_pipeline
         self.namespace = ray.get_runtime_context().namespace
         self.default_timeout = config.explorer.max_timeout * (config.explorer.max_retry_times + 1)
         self.max_retry_times = config.explorer.max_retry_times
@@ -386,7 +380,6 @@ class Scheduler:
                 for j in range(len(self.auxiliary_models))
             ],
             config=self.config,
-            experience_pipeline=self.experience_pipeline,
         )
         await runner.prepare()
         self.runners[runner_id] = runner
@@ -777,52 +770,28 @@ class Scheduler:
 
     async def _collect_batch_results(
         self, batch_id: Union[int, str]
-    ) -> Tuple[List[Status], List[Experience]]:
+    ) -> Tuple[List[Status], List[bytes]]:
         statuses = []
-        experiences = []
+        payload_chunks = []
         completed_results = list(self.completed_tasks.get(batch_id, {}).values())
-        staged_task_ids = []
         for result in completed_results:
             statuses.append(result.status)
             if result.experience_payloads:
-                for exp_payload in result.experience_payloads:
-                    experiences.extend(Experience.deserialize_many(exp_payload))
-                continue
+                payload_chunks.extend(result.experience_payloads)
 
-            experiences.extend(result.experiences)
-            if (
-                self.experience_pipeline is not None
-                and result.status.completed_runs > 0
-                and not result.experiences
-            ):
-                staged_task_ids.append(result.task_id)
+        return statuses, payload_chunks
 
-        if staged_task_ids:
-            staged_payloads = await self.experience_pipeline.take_staged_task_payloads.remote(
-                batch_id, staged_task_ids
-            )
-            for exp_payload in staged_payloads:
-                experiences.extend(Experience.deserialize_many(exp_payload))
-
-        return statuses, experiences
-
-    async def get_results(
+    async def _get_batch_payload_results(
         self,
         batch_id: Union[int, str],
-        min_num: Optional[int] = None,
-        timeout: Optional[float] = None,
-        clear_timeout_tasks: bool = True,
-        return_partial_tasks: bool = False,
-    ) -> Tuple[List[Status], List[Experience]]:
-        """Get the result of tasks at the specific batch_id.
+        *,
+        min_num: Optional[int],
+        timeout: Optional[float],
+        clear_timeout_tasks: bool,
+        return_partial_tasks: bool,
+    ) -> Tuple[List[Status], List[bytes]]:
+        """Wait for one batch and drain its completed payload chunks."""
 
-        Args:
-            batch_id (`Union[int, str]`): Only wait for tasks at this batch.
-            min_num (`int`): The minimum number of tasks to wait for. If `None`, wait for all tasks at `batch_id`.
-            timeout (`float`): The timeout for waiting for tasks to finish. If `None`, wait for default timeout.
-            clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
-            return_partial_tasks (`bool`): Whether to emit tasks with partial successful runs when cleaning up unfinished tasks.
-        """
         timeout = timeout or self.default_timeout
         scheduled_num, min_num = self._resolve_result_target(batch_id, min_num)
 
@@ -846,13 +815,10 @@ class Scheduler:
                     restart_runners=True,
                 )
 
-        statuses, experiences = await self._collect_batch_results(batch_id)
+        statuses, payload_chunks = await self._collect_batch_results(batch_id)
 
         if batch_id in self.completed_tasks:
             del self.completed_tasks[batch_id]
-
-        if clear_timeout_tasks and self.experience_pipeline is not None:
-            await self.experience_pipeline.abort_batch.remote(batch_id)
 
         completed_count = len(statuses)
         self._finalize_dynamic_timeout_step(batch_id, scheduled_num, completed_count)
@@ -861,7 +827,86 @@ class Scheduler:
                 f"Timeout reached, only {completed_count}/{min_num} tasks completed"
             )
 
+        return statuses, payload_chunks
+
+    async def get_payload_results(
+        self,
+        batch_id: Union[int, str],
+        min_num: Optional[int] = None,
+        timeout: Optional[float] = None,
+        clear_timeout_tasks: bool = True,
+        return_partial_tasks: bool = False,
+    ) -> Tuple[List[Status], List[bytes]]:
+        """Wait for one batch and return task statuses plus serialized payload chunks."""
+
+        return await self._get_batch_payload_results(
+            batch_id=batch_id,
+            min_num=min_num,
+            timeout=timeout,
+            clear_timeout_tasks=clear_timeout_tasks,
+            return_partial_tasks=return_partial_tasks,
+        )
+
+    async def get_results(
+        self,
+        batch_id: Union[int, str],
+        min_num: Optional[int] = None,
+        timeout: Optional[float] = None,
+        clear_timeout_tasks: bool = True,
+        return_partial_tasks: bool = False,
+    ) -> Tuple[List[Status], List[Experience]]:
+        """Get the result of tasks at the specific batch_id.
+
+        Args:
+            batch_id (`Union[int, str]`): Only wait for tasks at this batch.
+            min_num (`int`): The minimum number of tasks to wait for. If `None`, wait for all tasks at `batch_id`.
+            timeout (`float`): The timeout for waiting for tasks to finish. If `None`, wait for default timeout.
+            clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
+            return_partial_tasks (`bool`): Whether to emit tasks with partial successful runs when cleaning up unfinished tasks.
+        """
+        statuses, payload_chunks = await self._get_batch_payload_results(
+            batch_id=batch_id,
+            min_num=min_num,
+            timeout=timeout,
+            clear_timeout_tasks=clear_timeout_tasks,
+            return_partial_tasks=return_partial_tasks,
+        )
+        experiences = []
+        for exp_payload in payload_chunks:
+            experiences.extend(Experience.deserialize_many(exp_payload))
         return statuses, experiences
+
+    async def get_statuses(
+        self,
+        batch_id: Union[int, str],
+        min_num: Optional[int] = None,
+        timeout: Optional[float] = None,
+        clear_timeout_tasks: bool = True,
+        return_partial_tasks: bool = False,
+    ) -> List[Status]:
+        """Wait for one batch and return only task statuses without materializing experiences."""
+
+        statuses, _ = await self._get_batch_payload_results(
+            batch_id=batch_id,
+            min_num=min_num,
+            timeout=timeout,
+            clear_timeout_tasks=clear_timeout_tasks,
+            return_partial_tasks=return_partial_tasks,
+        )
+        return statuses
+
+    async def abort_batch(
+        self,
+        batch_id: Union[int, str],
+        return_partial_tasks: bool = False,
+        restart_runners: bool = True,
+    ) -> None:
+        """Abort one batch and cleanup unfinished scheduler state."""
+        await self._cleanup_batch(
+            batch_id,
+            return_partial_tasks=return_partial_tasks,
+            restart_runners=restart_runners,
+        )
 
     def has_step(self, batch_id: Union[int, str]) -> bool:
         return (
@@ -909,8 +954,6 @@ class Scheduler:
             batch_ids_to_abort = self.pending_tasks.keys() | self.running_tasks.keys()
             for batch_id in batch_ids_to_abort:
                 self._clear_timeout_tasks(batch_id)
-                if self.experience_pipeline is not None:
-                    await self.experience_pipeline.abort_batch.remote(batch_id)
             asyncio.gather(
                 *[self._restart_runner(runner_id) for runner_id in self.busy_runners.keys()]
             )

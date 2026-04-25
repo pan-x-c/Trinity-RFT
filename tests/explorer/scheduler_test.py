@@ -1318,13 +1318,8 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
         await scheduler.stop()
 
-    async def test_get_results_reads_payloads_staged_by_workflow_runner(self):
-        payload_stage = DummyPayloadStage.remote()
-        scheduler = Scheduler(
-            self.config,
-            [DummyModel.remote(), DummyModel.remote()],
-            experience_pipeline=payload_stage,
-        )
+    async def test_get_results_reads_payloads_returned_by_workflow_runner(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
 
         scheduler.schedule(generate_tasks(3, repeat_times=2), batch_id=0)
@@ -1332,38 +1327,23 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         statuses, exps = await scheduler.get_results(batch_id=0, timeout=10)
         self.assertEqual(len(statuses), 3)
         self.assertEqual(len(exps), 6)
-        self.assertEqual(ray.get(payload_stage.get_staged_task_ids.remote(0)), [])
 
         await scheduler.stop()
 
-    async def test_timeout_cleanup_aborts_leftover_staged_payloads(self):
-        payload_stage = DummyPayloadStage.remote()
-        scheduler = Scheduler(
-            self.config,
-            [DummyModel.remote(), DummyModel.remote()],
-            experience_pipeline=payload_stage,
-        )
+    async def test_timeout_cleanup_keeps_completed_payloads_local(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
 
-        # Seed one orphan staged payload to verify timeout cleanup clears the
-        # whole batch after draining any successfully completed task payloads.
-        await payload_stage.stage_task_payloads.remote(0, 99, [b"orphan-payload"])
         scheduler.schedule(generate_tasks(1, timeout_num=1, timeout_seconds=10), batch_id=0)
 
         statuses, exps = await scheduler.get_results(batch_id=0, min_num=2, timeout=1)
         self.assertEqual(len(statuses), 1)
         self.assertEqual(len(exps), 1)
-        self.assertEqual(ray.get(payload_stage.get_staged_task_ids.remote(0)), [])
 
         await scheduler.stop()
 
-    async def test_eval_tasks_do_not_stage_payloads(self):
-        payload_stage = DummyPayloadStage.remote()
-        scheduler = Scheduler(
-            self.config,
-            [DummyModel.remote(), DummyModel.remote()],
-            experience_pipeline=payload_stage,
-        )
+    async def test_eval_tasks_do_not_return_training_experiences(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
 
         eval_tasks = generate_tasks(2, repeat_times=2)
@@ -1375,7 +1355,40 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(statuses), 2)
         self.assertEqual(len(exps), 0)
-        self.assertEqual(ray.get(payload_stage.get_staged_task_ids.remote("0/eval")), [])
+
+        await scheduler.stop()
+
+    async def test_get_statuses_skips_payload_deserialization(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+
+        scheduler.schedule(generate_tasks(2, repeat_times=2), batch_id=0)
+
+        with patch(
+            "trinity.explorer.scheduler.Experience.deserialize_many",
+            side_effect=AssertionError("payload deserialization should not happen"),
+        ):
+            statuses = await scheduler.get_statuses(batch_id=0, timeout=10)
+
+        self.assertEqual(len(statuses), 2)
+
+        await scheduler.stop()
+
+    async def test_get_payload_results_keeps_payloads_serialized(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+
+        scheduler.schedule(generate_tasks(2, repeat_times=2), batch_id=0)
+
+        with patch(
+            "trinity.explorer.scheduler.Experience.deserialize_many",
+            side_effect=AssertionError("payload deserialization should not happen"),
+        ):
+            statuses, payloads = await scheduler.get_payload_results(batch_id=0, timeout=10)
+
+        self.assertEqual(len(statuses), 2)
+        self.assertEqual(len(payloads), 2)
+        self.assertTrue(all(isinstance(payload, bytes) for payload in payloads))
 
         await scheduler.stop()
 
