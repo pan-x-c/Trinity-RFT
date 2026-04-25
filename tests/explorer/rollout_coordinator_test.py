@@ -2,6 +2,7 @@
 
 import asyncio
 import unittest
+from collections import defaultdict
 from types import SimpleNamespace
 
 from trinity.explorer.rollout_coordinator import RolloutCoordinator
@@ -21,6 +22,7 @@ class FakePipeline:
         self.abort_calls = []
         self.prepare_called = False
         self.close_called = False
+        self.staged_payloads = defaultdict(dict)
 
     async def prepare(self):
         """Record pipeline preparation."""
@@ -30,15 +32,25 @@ class FakePipeline:
     async def stage_task_payloads(self, batch_id, task_id, exp_chunks):
         """Record task payload staging."""
 
-        self.stage_calls.append((batch_id, task_id, list(exp_chunks)))
-        return f"{batch_id}:{task_id}" if exp_chunks else None
+        chunks = [chunk for chunk in exp_chunks if chunk]
+        self.stage_calls.append((batch_id, task_id, chunks))
+        if not chunks:
+            return None
+        self.staged_payloads[batch_id][task_id] = chunks
+        return f"{batch_id}:{task_id}"
 
     async def finalize_batch(self, batch_id, task_ids=None):
         """Record batch finalization."""
 
-        task_ids = [] if task_ids is None else list(task_ids)
-        self.finalize_calls.append((batch_id, task_ids))
-        return {"experience_pipeline/experience_count": float(len(task_ids))}
+        staged = self.staged_payloads.get(batch_id, {})
+        selected_task_ids = sorted(staged) if task_ids is None else list(task_ids)
+        self.finalize_calls.append((batch_id, selected_task_ids))
+        exp_chunks = []
+        for task_id in selected_task_ids:
+            exp_chunks.extend(staged.pop(task_id, []))
+        if batch_id in self.staged_payloads and not self.staged_payloads[batch_id]:
+            del self.staged_payloads[batch_id]
+        return {"experience_pipeline/experience_count": float(len(exp_chunks))}
 
     async def process_serialized_chunks(self, exp_chunks):
         """Record serialized chunk processing."""
@@ -51,6 +63,7 @@ class FakePipeline:
         """Record batch abort cleanup."""
 
         self.abort_calls.append(batch_id)
+        self.staged_payloads.pop(batch_id, None)
 
     async def close(self):
         """Record pipeline closure."""
@@ -230,8 +243,6 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
         )
 
         result = await self.coordinator.finalize_train_batch(1, timeout=1.0)
-        repeated = await self.coordinator.finalize_train_batch(1, timeout=1.0)
-
         self.assertEqual(result["finalize_reason"], "complete")
         self.assertEqual(result["finished_task_count"], 2)
         self.assertEqual(result["metrics"]["rollout/run_metrics/mean"], 15.0)
@@ -239,12 +250,10 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.pipeline.prepare_called)
         self.assertEqual(len(self.pipeline.stage_calls), 2)
         self.assertEqual(self.pipeline.finalize_calls, [(1, [0, 1])])
-        self.assertEqual(result, repeated)
         self.assertNotIn(1, self.coordinator.pending_batches)
-        self.assertEqual(
-            self.coordinator.terminal_batch_results[1]["finalize_reason"],
-            "complete",
-        )
+
+        with self.assertRaisesRegex(KeyError, "not registered"):
+            await self.coordinator.finalize_train_batch(1, timeout=1.0)
 
     async def test_finalize_train_batch_supports_partial_finalize(self):
         """Train finalize should allow partial completion when policy permits it."""
@@ -299,8 +308,62 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.get_statuses_calls[0]["batch_id"], batch_id)
         self.assertNotIn(batch_id, self.coordinator.pending_batches)
 
-    async def test_abort_batch_marks_batch_aborted_and_is_visible_to_finalize(self):
-        """Abort should short-circuit later finalize calls."""
+    async def test_finalize_train_batch_rejects_eval_batches_before_waiting(self):
+        """Train finalize should reject an active eval batch instead of entering wait logic."""
+
+        batch_id = "4/eval_set"
+        await self.coordinator.submit_batch(
+            batch_id=batch_id,
+            tasks=[SimpleNamespace(is_eval=True)],
+            batch_type="eval",
+        )
+
+        with self.assertRaisesRegex(ValueError, "expected train"):
+            await self.coordinator.finalize_train_batch(batch_id, timeout=0.1)
+
+    async def test_terminal_batches_are_not_reusable_after_finalize(self):
+        """A finalized batch should be evicted instead of being cached for later reuse."""
+
+        eval_batch_id = "5/eval_set"
+        await self.coordinator.submit_batch(
+            batch_id=eval_batch_id,
+            tasks=[SimpleNamespace(is_eval=True)],
+            batch_type="eval",
+        )
+        self.scheduler.batch_results[eval_batch_id] = ([_build_status(3.0)], [])
+        await self.coordinator.finalize_eval_batch(eval_batch_id, timeout=1.0)
+
+        with self.assertRaisesRegex(KeyError, "not registered"):
+            await self.coordinator.finalize_train_batch(eval_batch_id, timeout=0.1)
+
+        with self.assertRaisesRegex(KeyError, "not registered"):
+            await self.coordinator.finalize_eval_batch(eval_batch_id, timeout=0.1)
+
+        await self.coordinator.submit_batch(
+            batch_id=6,
+            tasks=[SimpleNamespace(is_eval=False)],
+            batch_type="train",
+        )
+        self.scheduler.emit_completed_task(
+            6,
+            0,
+            CompletedTaskResult(
+                batch_id=6,
+                task_id=0,
+                status=_build_status(11.0),
+                experience_payloads=[b"payload-0"],
+            ),
+        )
+        await self.coordinator.finalize_train_batch(6, timeout=1.0)
+
+        with self.assertRaisesRegex(KeyError, "not registered"):
+            await self.coordinator.finalize_eval_batch(6, timeout=0.1)
+
+        with self.assertRaisesRegex(KeyError, "not registered"):
+            await self.coordinator.finalize_train_batch(6, timeout=0.1)
+
+    async def test_abort_batch_marks_batch_aborted_and_evicts_it(self):
+        """Abort should cleanup the batch immediately instead of caching a terminal result."""
 
         await self.coordinator.submit_batch(
             batch_id=4,
@@ -309,13 +372,13 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
         )
 
         await self.coordinator.abort_batch(4, reason="shutdown")
-        result = await self.coordinator.finalize_train_batch(4, timeout=0.1)
 
-        self.assertEqual(result["finalize_reason"], "abort")
-        self.assertFalse(result["finalized"])
         self.assertEqual(self.scheduler.abort_calls[0]["batch_id"], 4)
         self.assertEqual(self.pipeline.abort_calls, [4])
         self.assertNotIn(4, self.coordinator.pending_batches)
+
+        with self.assertRaisesRegex(KeyError, "not registered"):
+            await self.coordinator.finalize_train_batch(4, timeout=0.1)
 
     async def test_shutdown_closes_internal_dependencies(self):
         """Shutdown should close both owned scheduler and owned pipeline."""
