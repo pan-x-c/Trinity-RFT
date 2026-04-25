@@ -35,7 +35,7 @@ from trinity.common.config import (
 )
 from trinity.common.constants import StorageType
 from trinity.common.experience import Experience
-from trinity.explorer.explorer import ExploreStepBuffer, Explorer
+from trinity.explorer.explorer import Explorer, ExploreStepBuffer
 from trinity.explorer.proxy.client import TrinityClient
 from trinity.explorer.scheduler import CompletedTaskRef, CompletedTaskResult
 from trinity.explorer.workflow_runner import Status
@@ -506,9 +506,7 @@ class TestExplorerFallbackPaths(unittest.IsolatedAsyncioTestCase):
         explorer.explore_step_num = 1
         explorer.model_version = 7
         explorer.config = SimpleNamespace(
-            explorer=SimpleNamespace(
-                over_rollout=SimpleNamespace(return_partial_tasks=True)
-            )
+            explorer=SimpleNamespace(over_rollout=SimpleNamespace(return_partial_tasks=True))
         )
 
         await explorer.finish_current_steps()
@@ -567,9 +565,7 @@ class TestExplorerFallbackPaths(unittest.IsolatedAsyncioTestCase):
         explorer.explore_step_num = 3
         explorer.detailed_stats = False
         explorer.config = SimpleNamespace(
-            explorer=SimpleNamespace(
-                over_rollout=SimpleNamespace(return_partial_tasks=False)
-            )
+            explorer=SimpleNamespace(over_rollout=SimpleNamespace(return_partial_tasks=False))
         )
 
         await explorer._finish_eval_step(step=3)

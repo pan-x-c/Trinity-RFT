@@ -89,8 +89,7 @@ class Explorer:
         else:
             self.min_wait_num = None
         self.use_task_event_completion = (
-            self.min_wait_num is None
-            and not self.config.explorer.over_rollout.return_partial_tasks
+            self.min_wait_num is None and not self.config.explorer.over_rollout.return_partial_tasks
         )
         self.use_nccl_sync = self.config.synchronizer.sync_method == SyncMethod.NCCL
         self.pending_eval_tasks = deque()
@@ -431,8 +430,10 @@ class Explorer:
                         step, step_buffer.staged_task_ids
                     )
                 else:
-                    pipeline_metrics = await self.experience_pipeline.process_serialized_chunks.remote(
-                        step_buffer.experience_payloads
+                    pipeline_metrics = (
+                        await self.experience_pipeline.process_serialized_chunks.remote(
+                            step_buffer.experience_payloads
+                        )
                     )
                 self.taskset.feedback(pipeline_metrics)
                 metric.update(pipeline_metrics)

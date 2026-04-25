@@ -1258,6 +1258,30 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(statuses), 4)
         self.assertEqual(len(exps), 4)
 
+    async def test_dynamic_timeout_counts_completed_tasks_instead_of_sub_tasks(self):
+        self.config.explorer.dynamic_timeout.enable = True
+        self.config.explorer.dynamic_timeout.ratio = 1.5
+        self.config.buffer.batch_size = 3
+        self.config.explorer.max_timeout = 20
+        self.config.explorer.max_retry_times = 0
+        self.config.explorer.max_repeat_times_per_runner = 2
+        self.config.check_and_update()
+
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+
+        tasks = generate_tasks(0, timeout_num=2, repeat_times=4, timeout_seconds=1)
+        scheduler.schedule(tasks, batch_id=0)
+        statuses, exps = await scheduler.get_results(batch_id=0)
+
+        self.assertEqual(len(statuses), 2)
+        self.assertEqual(len(exps), 8)
+        self.assertEqual(scheduler.total_completed_tasks, 2)
+        self.assertEqual(scheduler.total_completed_sub_tasks, 4)
+        self.assertEqual(scheduler.dynamic_timeout(), scheduler.default_timeout)
+
+        await scheduler.stop()
+
     async def test_completed_task_events_keep_get_results_compatible(self):
         scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()

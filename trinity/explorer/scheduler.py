@@ -356,9 +356,7 @@ class Scheduler:
         self.running_task_map: Dict[asyncio.Future, TaskWrapper] = dict()  # future -> task
         self.running_task_runner_map: Dict[asyncio.Future, int] = dict()  # future -> runner_id
         self.cancelled_task_restart_map: Dict[asyncio.Future, bool] = dict()
-        self.completed_tasks: Dict[
-            Union[int, str], Dict[int, CompletedTaskResult]
-        ] = defaultdict(
+        self.completed_tasks: Dict[Union[int, str], Dict[int, CompletedTaskResult]] = defaultdict(
             dict
         )  # batch_id -> results
         self.completed_task_refs: asyncio.Queue[CompletedTaskRef] = asyncio.Queue()
@@ -369,6 +367,7 @@ class Scheduler:
         self.running = False
 
         self.total_running_time = 0.0
+        self.total_completed_sub_tasks = 0
         self.total_completed_tasks = 0
 
     async def _create_runner(
@@ -480,14 +479,16 @@ class Scheduler:
         else:
             self.cancelled_task_restart_map.pop(async_task, None)
             status, exp_payload, runner_id, run_time = async_task.result()
-            if not task.task.is_eval:  # only count running time for non-eval tasks
+            if not task.task.is_eval:
                 self.total_running_time += run_time
-                self.total_completed_tasks += 1
+                self.total_completed_sub_tasks += 1
             self._accumulate_task_result(task, status, exp_payload)
             self.busy_runners.pop(runner_id, None)
             self.idle_runners.add(runner_id)
             # If all sub runs in a task are completed
             if task.finished_sub_task_num == task.sub_task_num:
+                if not task.task.is_eval:
+                    self.total_completed_tasks += 1
                 self._emit_task_result(task)
                 self.logger.debug(f"Task completed (batch_id {task.batch_id}).")
 
@@ -686,7 +687,7 @@ class Scheduler:
             return max_timeout
         if self.total_completed_tasks < self.default_batch_size:
             return max_timeout
-        avg_time_per_task = self.total_running_time / self.total_completed_tasks
+        avg_time_per_task = self.total_running_time / self.total_completed_sub_tasks
         return min(
             max_timeout,
             avg_time_per_task * self.config.explorer.dynamic_timeout.ratio,
