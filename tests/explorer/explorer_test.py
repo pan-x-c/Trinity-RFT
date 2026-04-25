@@ -5,10 +5,15 @@ import multiprocessing
 import os
 import random
 import shutil
+import unittest
+from collections import deque
 from datetime import datetime
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import httpx
 import ray
+import torch
 
 from tests.tools import (
     RayUnittestBase,
@@ -29,9 +34,114 @@ from trinity.common.config import (
     OperatorConfig,
 )
 from trinity.common.constants import StorageType
-from trinity.explorer.explorer import Explorer
+from trinity.common.experience import Experience
+from trinity.explorer.explorer import ExploreStepBuffer, Explorer
 from trinity.explorer.proxy.client import TrinityClient
+from trinity.explorer.scheduler import CompletedTaskRef, CompletedTaskResult
+from trinity.explorer.workflow_runner import Status
 from trinity.manager.state_manager import StateManager
+
+
+def _build_fake_task_event_explorer(use_payloads: bool = False):
+    class FakeScheduler:
+        def __init__(self):
+            self.default_timeout = 5.0
+            # Step 2 finishes before step 1 on purpose. This simulates the
+            # fully async path where Scheduler can return completed tasks in
+            # task order rather than in step order.
+            self.completed_task_refs = deque(
+                [
+                    CompletedTaskRef(batch_id=2, task_id=0),
+                    CompletedTaskRef(batch_id=1, task_id=0),
+                    CompletedTaskRef(batch_id=1, task_id=1),
+                ]
+            )
+            self.completed_results = {
+                (2, 0): CompletedTaskResult(
+                    task_id=0,
+                    status=Status(
+                        completed_runs=1,
+                        total_runs=1,
+                        metrics=[{"run_metrics": 20.0}],
+                    ),
+                    experiences=[],
+                    experience_payloads=[b"step-2-task-0"] if use_payloads else [],
+                ),
+                (1, 0): CompletedTaskResult(
+                    task_id=0,
+                    status=Status(
+                        completed_runs=1,
+                        total_runs=1,
+                        metrics=[{"run_metrics": 10.0}],
+                    ),
+                    experiences=[],
+                    experience_payloads=[b"step-1-task-0"] if use_payloads else [],
+                ),
+                (1, 1): CompletedTaskResult(
+                    task_id=1,
+                    status=Status(
+                        completed_runs=1,
+                        total_runs=1,
+                        metrics=[{"run_metrics": 11.0}],
+                    ),
+                    experiences=[],
+                    experience_payloads=[b"step-1-task-1"] if use_payloads else [],
+                ),
+            }
+            self.get_results_calls = []
+
+        async def wait_completed_task(self, timeout=None):
+            if self.completed_task_refs:
+                return self.completed_task_refs.popleft()
+            return None
+
+        def pop_completed_task(self, batch_id, task_id):
+            return self.completed_results.pop((batch_id, task_id), None)
+
+        async def get_results(
+            self,
+            batch_id,
+            timeout=None,
+            clear_timeout_tasks=True,
+            return_partial_tasks=False,
+        ):
+            self.get_results_calls.append(
+                {
+                    "batch_id": batch_id,
+                    "timeout": timeout,
+                    "clear_timeout_tasks": clear_timeout_tasks,
+                    "return_partial_tasks": return_partial_tasks,
+                }
+            )
+            return [], []
+
+    class FakeMonitor:
+        def __init__(self):
+            self.logged = []
+
+        def log(self, metric, step):
+            self.logged.append((step, metric))
+
+    explorer = Explorer.__new__(Explorer)
+    explorer.logger = MagicMock()
+    explorer.scheduler = FakeScheduler()
+    explorer.monitor = FakeMonitor()
+    explorer.experience_pipeline = None
+    explorer.taskset = SimpleNamespace(feedback=lambda metrics: None)
+    explorer.use_task_event_completion = True
+    explorer.pending_eval_tasks = deque()
+    explorer.pending_step_buffers = {
+        1: ExploreStepBuffer(expected_task_count=2),
+        2: ExploreStepBuffer(expected_task_count=1),
+    }
+    explorer.explore_start_time = None
+    explorer.last_monitored_step = 0
+    explorer.explore_step_num = 2
+    explorer.model_version = 7
+    explorer.config = SimpleNamespace(
+        explorer=SimpleNamespace(over_rollout=SimpleNamespace(return_partial_tasks=False))
+    )
+    return explorer
 
 
 class BaseExplorerCase(RayUnittestBase):
@@ -224,6 +334,301 @@ class TestExplorerGSM8k(BaseExplorerCase):
             exp = json.loads(lines[0])
             self.assertEqual(exp["response_length"], 8192)
         ray.get(explorer.shutdown.remote())
+
+
+class TestExplorerTaskLevelCompletion(unittest.IsolatedAsyncioTestCase):
+    """Tests Explorer's task-level completion buffering.
+
+    The task event stream may arrive out of step order because Scheduler emits a
+    completion event as soon as one task is fully done. Explorer must therefore
+    accept task-level completions eagerly, buffer them by step, and only publish
+    aggregated step metrics when all tasks of the next step are ready.
+    """
+
+    async def test_out_of_order_task_completion_is_buffered_before_step_finish(self):
+        explorer = _build_fake_task_event_explorer()
+
+        # Waiting for step 1 is allowed to consume and buffer task events from
+        # later steps. The important property is that step 2 is not blocked from
+        # returning at task granularity just because step 1 is still incomplete.
+        await explorer._wait_step_buffer(1)
+
+        self.assertEqual(explorer.pending_step_buffers[1].completed_task_count, 2)
+        self.assertEqual(explorer.pending_step_buffers[2].completed_task_count, 1)
+        self.assertEqual(explorer.scheduler.get_results_calls, [])
+
+        # When Explorer finally flushes steps, aggregation and monitor logging
+        # must still happen in ascending step order even though the underlying
+        # task completion order was 2 -> 1 -> 1.
+        await explorer._finish_steps(1, 2, model_version=7)
+
+        self.assertEqual([step for step, _ in explorer.monitor.logged], [1, 2])
+        self.assertEqual(explorer.scheduler.get_results_calls, [])
+        self.assertEqual(explorer.pending_step_buffers, {})
+
+    async def test_finish_current_steps_flushes_buffered_steps_in_order(self):
+        explorer = _build_fake_task_event_explorer()
+
+        # This exercises the public sync boundary: finish_current_steps should
+        # drain any out-of-order task events gathered so far, but still flush
+        # step metrics strictly in step order and advance the monitored cursor.
+        await explorer.finish_current_steps()
+
+        self.assertEqual([step for step, _ in explorer.monitor.logged], [1, 2])
+        self.assertEqual(explorer.last_monitored_step, 2)
+        self.assertEqual(explorer.scheduler.get_results_calls, [])
+        self.assertEqual(explorer.pending_step_buffers, {})
+
+    async def test_finish_current_steps_stages_payloads_before_ordered_finalize(self):
+        class FakeRemoteMethod:
+            def __init__(self, func):
+                self.func = func
+
+            async def remote(self, *args, **kwargs):
+                return await self.func(*args, **kwargs)
+
+        class FakePipeline:
+            def __init__(self):
+                self.stage_calls = []
+                self.finalize_calls = []
+                self.chunk_process_calls = []
+                self.stage_task_payloads = FakeRemoteMethod(self._stage_task_payloads)
+                self.finalize_batch = FakeRemoteMethod(self._finalize_batch)
+                self.process_serialized_chunks = FakeRemoteMethod(self._process_serialized_chunks)
+
+            async def _stage_task_payloads(self, batch_id, task_id, exp_chunks):
+                self.stage_calls.append((batch_id, task_id, list(exp_chunks)))
+                return f"{batch_id}:{task_id}"
+
+            async def _finalize_batch(self, batch_id, task_ids):
+                self.finalize_calls.append((batch_id, list(task_ids)))
+                return {"experience_pipeline/experience_count": float(len(task_ids))}
+
+            async def _process_serialized_chunks(self, exp_chunks):
+                self.chunk_process_calls.append(list(exp_chunks))
+                return {"experience_pipeline/experience_count": float(len(exp_chunks))}
+
+        explorer = _build_fake_task_event_explorer(use_payloads=True)
+        explorer.experience_pipeline = FakePipeline()
+        explorer.taskset = SimpleNamespace(feedback=lambda metrics: None)
+
+        # Task payloads are staged immediately when completion events arrive,
+        # but batch finalize still runs in step order during the flush.
+        await explorer.finish_current_steps()
+
+        self.assertEqual(
+            explorer.experience_pipeline.stage_calls,
+            [
+                (2, 0, [b"step-2-task-0"]),
+                (1, 0, [b"step-1-task-0"]),
+                (1, 1, [b"step-1-task-1"]),
+            ],
+        )
+        self.assertEqual(
+            explorer.experience_pipeline.finalize_calls,
+            [
+                (1, [0, 1]),
+                (2, [0]),
+            ],
+        )
+        self.assertEqual(explorer.experience_pipeline.chunk_process_calls, [])
+        self.assertEqual([step for step, _ in explorer.monitor.logged], [1, 2])
+
+
+class TestExplorerFallbackPaths(unittest.IsolatedAsyncioTestCase):
+    async def test_over_rollout_path_keeps_batch_get_results_and_process(self):
+        class FakeRemoteMethod:
+            def __init__(self, func):
+                self.func = func
+
+            async def remote(self, *args, **kwargs):
+                return await self.func(*args, **kwargs)
+
+        class FakeScheduler:
+            def __init__(self):
+                self.calls = []
+
+            async def get_results(
+                self,
+                batch_id,
+                min_num=None,
+                timeout=None,
+                clear_timeout_tasks=True,
+                return_partial_tasks=False,
+            ):
+                self.calls.append(
+                    {
+                        "batch_id": batch_id,
+                        "min_num": min_num,
+                        "timeout": timeout,
+                        "clear_timeout_tasks": clear_timeout_tasks,
+                        "return_partial_tasks": return_partial_tasks,
+                    }
+                )
+                return [Status(1, 1, metrics=[{"run_metrics": 1.0}])], [
+                    Experience(tokens=torch.zeros(5), prompt_length=2)
+                ]
+
+        class FakePipeline:
+            def __init__(self):
+                self.process_calls = []
+                self.finalize_calls = []
+                self.process = FakeRemoteMethod(self._process)
+                self.finalize_batch = FakeRemoteMethod(self._finalize_batch)
+
+            async def _process(self, exp_bytes):
+                self.process_calls.append(exp_bytes)
+                return {"experience_pipeline/experience_count": 1.0}
+
+            async def _finalize_batch(self, batch_id, task_ids):
+                self.finalize_calls.append((batch_id, list(task_ids)))
+                return {"experience_pipeline/experience_count": 0.0}
+
+        class FakeMonitor:
+            def __init__(self):
+                self.logged = []
+
+            def log(self, metric, step):
+                self.logged.append((step, metric))
+
+        explorer = Explorer.__new__(Explorer)
+        explorer.logger = MagicMock()
+        explorer.scheduler = FakeScheduler()
+        explorer.monitor = FakeMonitor()
+        explorer.experience_pipeline = FakePipeline()
+        explorer.taskset = SimpleNamespace(feedback=lambda metrics: None)
+        explorer.use_task_event_completion = False
+        explorer.min_wait_num = 1
+        explorer.pending_eval_tasks = deque()
+        explorer.pending_step_buffers = {}
+        explorer.explore_start_time = None
+        explorer.last_monitored_step = 0
+        explorer.explore_step_num = 1
+        explorer.model_version = 7
+        explorer.config = SimpleNamespace(
+            explorer=SimpleNamespace(
+                over_rollout=SimpleNamespace(return_partial_tasks=True)
+            )
+        )
+
+        await explorer.finish_current_steps()
+
+        self.assertEqual(len(explorer.scheduler.calls), 1)
+        self.assertEqual(explorer.scheduler.calls[0]["batch_id"], 1)
+        self.assertEqual(explorer.scheduler.calls[0]["min_num"], 1)
+        self.assertTrue(explorer.scheduler.calls[0]["return_partial_tasks"])
+        self.assertEqual(len(explorer.experience_pipeline.process_calls), 1)
+        self.assertEqual(explorer.experience_pipeline.finalize_calls, [])
+        self.assertEqual([step for step, _ in explorer.monitor.logged], [1])
+
+    async def test_eval_flush_does_not_use_training_pipeline_staging(self):
+        class FakeScheduler:
+            def __init__(self):
+                self.calls = []
+
+            async def get_results(
+                self,
+                batch_id,
+                min_num=None,
+                timeout=None,
+                clear_timeout_tasks=True,
+                return_partial_tasks=False,
+            ):
+                self.calls.append(
+                    {
+                        "batch_id": batch_id,
+                        "min_num": min_num,
+                        "timeout": timeout,
+                        "clear_timeout_tasks": clear_timeout_tasks,
+                        "return_partial_tasks": return_partial_tasks,
+                    }
+                )
+                return [Status(1, 1, metrics=[{"accuracy": 1.0}])], []
+
+        class FakePipeline:
+            def __init__(self):
+                self.finalize_calls = []
+                self.process_calls = []
+
+        class FakeMonitor:
+            def __init__(self):
+                self.logged = []
+
+            def log(self, metric, step):
+                self.logged.append((step, metric))
+
+        explorer = Explorer.__new__(Explorer)
+        explorer.logger = MagicMock()
+        explorer.scheduler = FakeScheduler()
+        explorer.monitor = FakeMonitor()
+        explorer.experience_pipeline = FakePipeline()
+        explorer.pending_eval_tasks = deque([(3, "eval-set")])
+        explorer.eval_start_time = None
+        explorer.explore_step_num = 3
+        explorer.detailed_stats = False
+        explorer.config = SimpleNamespace(
+            explorer=SimpleNamespace(
+                over_rollout=SimpleNamespace(return_partial_tasks=False)
+            )
+        )
+
+        await explorer._finish_eval_step(step=3)
+
+        self.assertEqual(len(explorer.scheduler.calls), 1)
+        self.assertEqual(explorer.scheduler.calls[0]["batch_id"], "3/eval-set")
+        self.assertEqual(explorer.experience_pipeline.process_calls, [])
+        self.assertEqual(explorer.experience_pipeline.finalize_calls, [])
+        self.assertEqual([step for step, _ in explorer.monitor.logged], [3])
+
+    async def test_finish_current_steps_finalizes_upstream_staged_tasks_in_order(self):
+        class FakeRemoteMethod:
+            def __init__(self, func):
+                self.func = func
+
+            async def remote(self, *args, **kwargs):
+                return await self.func(*args, **kwargs)
+
+        class FakePipeline:
+            def __init__(self):
+                self.stage_calls = []
+                self.finalize_calls = []
+                self.chunk_process_calls = []
+                self.stage_task_payloads = FakeRemoteMethod(self._stage_task_payloads)
+                self.finalize_batch = FakeRemoteMethod(self._finalize_batch)
+                self.process_serialized_chunks = FakeRemoteMethod(self._process_serialized_chunks)
+
+            async def _stage_task_payloads(self, batch_id, task_id, exp_chunks):
+                self.stage_calls.append((batch_id, task_id, list(exp_chunks)))
+                return f"{batch_id}:{task_id}"
+
+            async def _finalize_batch(self, batch_id, task_ids):
+                self.finalize_calls.append((batch_id, list(task_ids)))
+                return {"experience_pipeline/experience_count": float(len(task_ids))}
+
+            async def _process_serialized_chunks(self, exp_chunks):
+                self.chunk_process_calls.append(list(exp_chunks))
+                return {"experience_pipeline/experience_count": float(len(exp_chunks))}
+
+        explorer = _build_fake_task_event_explorer(use_payloads=False)
+        explorer.experience_pipeline = FakePipeline()
+        explorer.taskset = SimpleNamespace(feedback=lambda metrics: None)
+
+        # In the real direct-staging path, Scheduler returns only lightweight
+        # task completion metadata here because payloads were already staged by
+        # WorkflowRunner. Explorer should therefore skip re-staging and only
+        # drive ordered batch finalization.
+        await explorer.finish_current_steps()
+
+        self.assertEqual(explorer.experience_pipeline.stage_calls, [])
+        self.assertEqual(
+            explorer.experience_pipeline.finalize_calls,
+            [
+                (1, [0, 1]),
+                (2, [0]),
+            ],
+        )
+        self.assertEqual(explorer.experience_pipeline.chunk_process_calls, [])
+        self.assertEqual([step for step, _ in explorer.monitor.logged], [1, 2])
 
 
 def run_serve(config):

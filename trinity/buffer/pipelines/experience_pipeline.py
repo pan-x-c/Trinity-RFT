@@ -1,6 +1,7 @@
 import asyncio
 import time
 import traceback
+from collections import defaultdict
 from typing import Dict, Optional
 
 from trinity.buffer.buffer import BufferWriter, get_buffer_reader, get_buffer_writer
@@ -46,6 +47,7 @@ class ExperiencePipeline:
         )
         self.auxiliary_model_wrappers = {}
         self.auxiliary_models = {}
+        self.staged_task_payloads = defaultdict(dict)
 
     def _init_input_storage(
         self,
@@ -137,8 +139,62 @@ class ExperiencePipeline:
         Returns:
             Dict: A dictionary containing metrics collected during the processing of experiences.
         """
-        st = time.time()
         exps = Experience.deserialize_many(exp_bytes)
+        return await self._process_experiences(exps)
+
+    async def process_serialized_chunks(self, exp_chunks: list[bytes]) -> Dict:
+        """Process a batch assembled from multiple serialized task payloads."""
+        exps = []
+        for exp_bytes in exp_chunks:
+            if not exp_bytes:
+                continue
+            exps.extend(Experience.deserialize_many(exp_bytes))
+        return await self._process_experiences(exps)
+
+    async def stage_task_payloads(
+        self, batch_id, task_id: int, exp_chunks: list[bytes]
+    ) -> Optional[str]:
+        """Stage serialized payload chunks for one completed task."""
+        valid_chunks = [chunk for chunk in exp_chunks if chunk]
+        if not valid_chunks:
+            return None
+        self.staged_task_payloads[batch_id][task_id] = valid_chunks
+        return f"{batch_id}:{task_id}"
+
+    async def finalize_batch(self, batch_id, task_ids: Optional[list[int]] = None) -> Dict:
+        """Finalize a staged batch and process all staged task payloads."""
+        batch_payloads = self.staged_task_payloads.get(batch_id, {})
+        if not batch_payloads:
+            return await self._process_experiences([])
+
+        selected_task_ids = task_ids or list(batch_payloads.keys())
+        exp_chunks = []
+        for task_id in selected_task_ids:
+            exp_chunks.extend(batch_payloads.pop(task_id, []))
+
+        if batch_id in self.staged_task_payloads and not self.staged_task_payloads[batch_id]:
+            del self.staged_task_payloads[batch_id]
+
+        return await self.process_serialized_chunks(exp_chunks)
+
+    async def take_staged_task_payloads(self, batch_id, task_ids: list[int]) -> list[bytes]:
+        """Drain staged payload chunks for selected tasks without processing them."""
+        batch_payloads = self.staged_task_payloads.get(batch_id, {})
+        exp_chunks = []
+        for task_id in task_ids:
+            exp_chunks.extend(batch_payloads.pop(task_id, []))
+
+        if batch_id in self.staged_task_payloads and not self.staged_task_payloads[batch_id]:
+            del self.staged_task_payloads[batch_id]
+
+        return exp_chunks
+
+    async def abort_batch(self, batch_id) -> None:
+        """Discard any staged payloads for a batch."""
+        self.staged_task_payloads.pop(batch_id, None)
+
+    async def _process_experiences(self, exps: list[Experience]) -> Dict:
+        st = time.time()
         if self.input_store is not None:
             await self.input_store.write_async(exps)
 

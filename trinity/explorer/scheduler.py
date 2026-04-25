@@ -33,9 +33,27 @@ class TaskWrapper:
     completed_runs: int = 0
     total_runs: int = 0  # total planned runs for the whole task
     metrics: List[Dict[str, float]] = field(default_factory=list)
-    experiences: List[Experience] = field(default_factory=list)
+    experience_payloads: List[bytes] = field(default_factory=list)
     first_error: Optional[str] = None
     emitted: bool = False
+
+
+@dataclass(frozen=True)
+class CompletedTaskResult:
+    """A completed task result stored by batch and task id."""
+
+    task_id: int
+    status: Status
+    experiences: List[Experience] = field(default_factory=list)
+    experience_payloads: List[bytes] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CompletedTaskRef:
+    """A lightweight reference to a completed task result."""
+
+    batch_id: Union[int, str]
+    task_id: int
 
 
 # Adapted from verl/trainer/ppo/metric_utils.py
@@ -138,12 +156,14 @@ class RunnerWrapper:
         rollout_model: InferenceModel,
         auxiliary_models: List[InferenceModel],
         config: Config,
+        experience_pipeline=None,
     ):
         self.logger = get_logger(__name__)
         self.runner_id = runner_id
         self.rollout_model = rollout_model
         self.auxiliary_models = auxiliary_models
         self.config = config
+        self.experience_pipeline = experience_pipeline
         self.retry_times = config.explorer.max_retry_times
         self.timeout = config.explorer.max_timeout
         self.namespace = config.ray_namespace
@@ -161,7 +181,13 @@ class RunnerWrapper:
                     "env_vars": self.config.explorer.env_vars,
                 },
             )
-            .remote(self.config, self.rollout_model, self.auxiliary_models, self.runner_id)
+            .remote(
+                self.config,
+                self.rollout_model,
+                self.auxiliary_models,
+                self.experience_pipeline,
+                self.runner_id,
+            )
         )
 
     async def prepare(self):
@@ -179,7 +205,7 @@ class RunnerWrapper:
         run_id_base: int,
         timeout: float,
         collect_partial_runs: bool,
-    ) -> Tuple[Status, List, int, float]:
+    ) -> Tuple[Status, bytes, int, float]:
         """
         Args:
             task (`TaskWrapper`): The task to run.
@@ -197,7 +223,7 @@ class RunnerWrapper:
         await self.runner.__ray_ready__.remote()
         start_time = time.time()
         status = Status(completed_runs=0, total_runs=repeat_times, metrics=list())
-        exps = []
+        exp_payload = b""
         run_task_ref = None
         task2run = replace(
             task.task,
@@ -216,7 +242,7 @@ class RunnerWrapper:
                         run_id_base=run_id_base,
                         collect_partial_runs=collect_partial_runs,
                     )
-                    status, exps = await asyncio.wait_for(
+                    status, exp_payload = await asyncio.wait_for(
                         run_task_ref,
                         timeout=timeout,
                     )
@@ -261,7 +287,7 @@ class RunnerWrapper:
         finally:
             end_time = time.time()
             status.metrics.append({"time/task_execution": end_time - start_time})
-        return status, exps, self.runner_id, end_time - start_time
+        return status, exp_payload, self.runner_id, end_time - start_time
 
     async def restart_runner(self):
         old_runner = self.runner
@@ -299,11 +325,13 @@ class Scheduler:
         config: Config,
         rollout_model: List[InferenceModel],
         auxiliary_models: Optional[List[List[InferenceModel]]] = None,
+        experience_pipeline=None,
     ):
         self.logger = get_logger(__name__)
         self.config = config
         self.rollout_model = rollout_model
         self.auxiliary_models = auxiliary_models or []
+        self.experience_pipeline = experience_pipeline
         self.namespace = ray.get_runtime_context().namespace
         self.default_timeout = config.explorer.max_timeout * (config.explorer.max_retry_times + 1)
         self.max_retry_times = config.explorer.max_retry_times
@@ -329,10 +357,12 @@ class Scheduler:
         self.running_task_runner_map: Dict[asyncio.Future, int] = dict()  # future -> runner_id
         self.cancelled_task_restart_map: Dict[asyncio.Future, bool] = dict()
         self.completed_tasks: Dict[
-            Union[int, str], deque[Tuple[Status, List[Experience]]]
+            Union[int, str], Dict[int, CompletedTaskResult]
         ] = defaultdict(
-            deque
+            dict
         )  # batch_id -> results
+        self.completed_task_refs: asyncio.Queue[CompletedTaskRef] = asyncio.Queue()
+        self.emit_completed_task_events = False
         self.background_tasks: set[asyncio.Task] = set()
 
         self.scheduler_task: Optional[asyncio.Task] = None
@@ -353,6 +383,7 @@ class Scheduler:
                 for j in range(len(self.auxiliary_models))
             ],
             config=self.config,
+            experience_pipeline=self.experience_pipeline,
         )
         await runner.prepare()
         self.runners[runner_id] = runner
@@ -448,11 +479,11 @@ class Scheduler:
             self._schedule_runner_restart(runner_id)
         else:
             self.cancelled_task_restart_map.pop(async_task, None)
-            status, exps, runner_id, run_time = async_task.result()
+            status, exp_payload, runner_id, run_time = async_task.result()
             if not task.task.is_eval:  # only count running time for non-eval tasks
                 self.total_running_time += run_time
                 self.total_completed_tasks += 1
-            self._accumulate_task_result(task, status, exps)
+            self._accumulate_task_result(task, status, exp_payload)
             self.busy_runners.pop(runner_id, None)
             self.idle_runners.add(runner_id)
             # If all sub runs in a task are completed
@@ -466,16 +497,17 @@ class Scheduler:
                 del self.running_tasks[task.batch_id]
 
     def _accumulate_task_result(
-        self, task: TaskWrapper, status: Status, experiences: List[Experience]
+        self, task: TaskWrapper, status: Status, experience_payload: bytes
     ) -> None:
         task.finished_sub_task_num += 1
         task.completed_runs += status.completed_runs
         task.metrics.extend(status.metrics)
-        task.experiences.extend(experiences)
+        if experience_payload:
+            task.experience_payloads.append(experience_payload)
         if not status.ok and task.first_error is None:
             task.first_error = status.message
 
-    def _build_task_result(self, task: TaskWrapper) -> Tuple[Status, List[Experience]]:
+    def _build_task_result(self, task: TaskWrapper) -> Tuple[Status, List[bytes]]:
         if task.completed_runs < task.total_runs:
             message = f"{task.completed_runs}/{task.total_runs} runs completed successfully."
             if task.first_error:
@@ -490,13 +522,49 @@ class Scheduler:
             metrics=[calculate_task_level_metrics(task.metrics, task.task.is_eval)],
             message=message,
         )
-        return status, list(task.experiences)
+        return status, list(task.experience_payloads)
 
     def _emit_task_result(self, task: TaskWrapper) -> None:
         if task.emitted:
             return
-        self.completed_tasks[task.batch_id].appendleft(self._build_task_result(task))
+        status, experience_payloads = self._build_task_result(task)
+        self.completed_tasks[task.batch_id][task.task.task_id] = CompletedTaskResult(
+            task_id=task.task.task_id,
+            status=status,
+            experience_payloads=experience_payloads,
+        )
+        if self.emit_completed_task_events and not task.task.is_eval:
+            self.completed_task_refs.put_nowait(
+                CompletedTaskRef(batch_id=task.batch_id, task_id=task.task.task_id)
+            )
         task.emitted = True
+
+    def enable_completed_task_events(self) -> None:
+        self.emit_completed_task_events = True
+
+    def disable_completed_task_events(self) -> None:
+        self.emit_completed_task_events = False
+
+    async def wait_completed_task(
+        self, timeout: Optional[float] = None
+    ) -> Optional[CompletedTaskRef]:
+        try:
+            if timeout is None:
+                return await self.completed_task_refs.get()
+            return await asyncio.wait_for(self.completed_task_refs.get(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
+
+    def pop_completed_task(
+        self, batch_id: Union[int, str], task_id: int
+    ) -> Optional[CompletedTaskResult]:
+        batch_results = self.completed_tasks.get(batch_id)
+        if not batch_results:
+            return None
+        result = batch_results.pop(task_id, None)
+        if batch_id in self.completed_tasks and not self.completed_tasks[batch_id]:
+            del self.completed_tasks[batch_id]
+        return result
 
     def _collect_incomplete_tasks(self, batch_id: Union[int, str]) -> List[TaskWrapper]:
         tasks = {}
@@ -709,17 +777,34 @@ class Scheduler:
 
         statuses = []
         experiences = []
-        completed_queue = self.completed_tasks.get(batch_id, deque())
-        while completed_queue:
-            status, exps = completed_queue.pop()
-            statuses.append(status)
-            if isinstance(exps, list):
-                experiences.extend(exps)
+        completed_results = list(self.completed_tasks.get(batch_id, {}).values())
+        staged_task_ids = []
+        for result in completed_results:
+            statuses.append(result.status)
+            if result.experience_payloads:
+                for exp_payload in result.experience_payloads:
+                    experiences.extend(Experience.deserialize_many(exp_payload))
             else:
-                experiences.append(exps)
+                experiences.extend(result.experiences)
+                if (
+                    self.experience_pipeline is not None
+                    and result.status.completed_runs > 0
+                    and not result.experiences
+                ):
+                    staged_task_ids.append(result.task_id)
 
-        if batch_id in self.completed_tasks and not self.completed_tasks[batch_id]:
+        if staged_task_ids:
+            staged_payloads = await self.experience_pipeline.take_staged_task_payloads.remote(
+                batch_id, staged_task_ids
+            )
+            for exp_payload in staged_payloads:
+                experiences.extend(Experience.deserialize_many(exp_payload))
+
+        if batch_id in self.completed_tasks:
             del self.completed_tasks[batch_id]
+
+        if clear_timeout_tasks and self.experience_pipeline is not None:
+            await self.experience_pipeline.abort_batch.remote(batch_id)
 
         completed_count = len(statuses)
         if completed_count < min_num:
@@ -772,8 +857,11 @@ class Scheduler:
         self.logger.error(error_msg)
 
         if clear_timeout_tasks:
-            for batch_id in self.pending_tasks.keys() | self.running_tasks.keys():
+            batch_ids_to_abort = self.pending_tasks.keys() | self.running_tasks.keys()
+            for batch_id in batch_ids_to_abort:
                 self._clear_timeout_tasks(batch_id)
+                if self.experience_pipeline is not None:
+                    await self.experience_pipeline.abort_batch.remote(batch_id)
             asyncio.gather(
                 *[self._restart_runner(runner_id) for runner_id in self.busy_runners.keys()]
             )

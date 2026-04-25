@@ -15,7 +15,7 @@ from trinity.common.constants import StorageType, SyncStyle
 from trinity.common.experience import EID, Experience
 from trinity.common.models.model import InferenceModel, ModelWrapper
 from trinity.common.workflows import WORKFLOWS, Task, Workflow
-from trinity.explorer.scheduler import Scheduler
+from trinity.explorer.scheduler import CompletedTaskRef, Scheduler
 
 
 @WORKFLOWS.register_module("dummy_workflow")
@@ -349,6 +349,31 @@ class DummyAuxiliaryModel(InferenceModel):
 
     def get_api_server_url(self) -> str:
         return "http://localhost:12345"
+
+
+@ray.remote
+class DummyPayloadStage:
+    def __init__(self):
+        self.staged_payloads = defaultdict(dict)
+
+    async def stage_task_payloads(self, batch_id, task_id: int, exp_chunks: list[bytes]):
+        self.staged_payloads[batch_id][task_id] = list(exp_chunks)
+        return f"{batch_id}:{task_id}"
+
+    async def take_staged_task_payloads(self, batch_id, task_ids: list[int]) -> list[bytes]:
+        batch_payloads = self.staged_payloads.get(batch_id, {})
+        exp_chunks = []
+        for task_id in task_ids:
+            exp_chunks.extend(batch_payloads.pop(task_id, []))
+        if batch_id in self.staged_payloads and not self.staged_payloads[batch_id]:
+            del self.staged_payloads[batch_id]
+        return exp_chunks
+
+    async def get_staged_task_ids(self, batch_id):
+        return sorted(self.staged_payloads.get(batch_id, {}).keys())
+
+    async def abort_batch(self, batch_id):
+        self.staged_payloads.pop(batch_id, None)
 
 
 def generate_tasks(
@@ -1232,6 +1257,90 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         statuses, exps = await scheduler.get_results(batch_id=2)
         self.assertEqual(len(statuses), 4)
         self.assertEqual(len(exps), 4)
+
+    async def test_completed_task_events_keep_get_results_compatible(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+        await scheduler.start()
+        scheduler.enable_completed_task_events()
+
+        scheduler.schedule(generate_tasks(4, repeat_times=2), batch_id=0)
+
+        completed_refs = []
+        for _ in range(4):
+            completed_ref = await scheduler.wait_completed_task(timeout=10)
+            self.assertIsNotNone(completed_ref)
+            self.assertIsInstance(completed_ref, CompletedTaskRef)
+            completed_refs.append(completed_ref)
+
+        self.assertEqual({ref.batch_id for ref in completed_refs}, {0})
+        self.assertEqual({ref.task_id for ref in completed_refs}, {0, 1, 2, 3})
+
+        statuses, exps = await scheduler.get_results(batch_id=0, timeout=1)
+        self.assertEqual(len(statuses), 4)
+        self.assertEqual(len(exps), 8)
+
+        await scheduler.stop()
+
+    async def test_get_results_reads_payloads_staged_by_workflow_runner(self):
+        payload_stage = DummyPayloadStage.remote()
+        scheduler = Scheduler(
+            self.config,
+            [DummyModel.remote(), DummyModel.remote()],
+            experience_pipeline=payload_stage,
+        )
+        await scheduler.start()
+
+        scheduler.schedule(generate_tasks(3, repeat_times=2), batch_id=0)
+
+        statuses, exps = await scheduler.get_results(batch_id=0, timeout=10)
+        self.assertEqual(len(statuses), 3)
+        self.assertEqual(len(exps), 6)
+        self.assertEqual(ray.get(payload_stage.get_staged_task_ids.remote(0)), [])
+
+        await scheduler.stop()
+
+    async def test_timeout_cleanup_aborts_leftover_staged_payloads(self):
+        payload_stage = DummyPayloadStage.remote()
+        scheduler = Scheduler(
+            self.config,
+            [DummyModel.remote(), DummyModel.remote()],
+            experience_pipeline=payload_stage,
+        )
+        await scheduler.start()
+
+        # Seed one orphan staged payload to verify timeout cleanup clears the
+        # whole batch after draining any successfully completed task payloads.
+        await payload_stage.stage_task_payloads.remote(0, 99, [b"orphan-payload"])
+        scheduler.schedule(generate_tasks(1, timeout_num=1, timeout_seconds=10), batch_id=0)
+
+        statuses, exps = await scheduler.get_results(batch_id=0, min_num=2, timeout=1)
+        self.assertEqual(len(statuses), 1)
+        self.assertEqual(len(exps), 1)
+        self.assertEqual(ray.get(payload_stage.get_staged_task_ids.remote(0)), [])
+
+        await scheduler.stop()
+
+    async def test_eval_tasks_do_not_stage_payloads(self):
+        payload_stage = DummyPayloadStage.remote()
+        scheduler = Scheduler(
+            self.config,
+            [DummyModel.remote(), DummyModel.remote()],
+            experience_pipeline=payload_stage,
+        )
+        await scheduler.start()
+
+        eval_tasks = generate_tasks(2, repeat_times=2)
+        for task in eval_tasks:
+            task.is_eval = True
+
+        scheduler.schedule(eval_tasks, batch_id="0/eval")
+        statuses, exps = await scheduler.get_results(batch_id="0/eval", timeout=10)
+
+        self.assertEqual(len(statuses), 2)
+        self.assertEqual(len(exps), 0)
+        self.assertEqual(ray.get(payload_stage.get_staged_task_ids.remote("0/eval")), [])
+
+        await scheduler.stop()
 
     def tearDown(self):
         try:

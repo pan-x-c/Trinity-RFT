@@ -68,6 +68,7 @@ class WorkflowRunner:
         config: Config,
         model: InferenceModel,
         auxiliary_models: Optional[List[InferenceModel]] = None,
+        experience_pipeline=None,
         runner_id: Optional[int] = None,
     ) -> None:
         self.name = f"{config.explorer.name}_runner_{runner_id}"
@@ -80,6 +81,7 @@ class WorkflowRunner:
             enable_history=config.explorer.rollout_model.enable_history,
         )
         self.auxiliary_models = auxiliary_models or []
+        self.experience_pipeline = experience_pipeline
         self.auxiliary_model_wrappers = [
             ModelWrapper(
                 model,
@@ -398,11 +400,11 @@ class WorkflowRunner:
         repeat_times: int = 1,
         run_id_base: int = 0,
         collect_partial_runs: bool = True,
-    ) -> Tuple[Status, List[Experience]]:
+    ) -> Tuple[Status, bytes]:
         """Run the task and return the states."""
         # TODO: avoid sending the experiences back to the scheduler to reduce the communication overhead
+        st = time.time()
         try:
-            st = time.time()
             model_version = await self.model_wrapper.model_version_async
             self.runner_state["model_version"] = model_version
             self.logger.info(
@@ -436,9 +438,17 @@ class WorkflowRunner:
 
             if task.is_eval:
                 # If the task is an evaluation task, we do not record the experiences to the buffer
-                return status, []
+                return status, b""
             else:
-                return status, exps
+                exp_payload = Experience.serialize_many(exps)
+                if self.experience_pipeline is not None:
+                    await self.experience_pipeline.stage_task_payloads.remote(
+                        task.batch_id,
+                        task.task_id,
+                        [exp_payload],
+                    )
+                    return status, b""
+                return status, exp_payload
 
         except Exception as e:
             error_trace_back = traceback.format_exc()
@@ -450,7 +460,7 @@ class WorkflowRunner:
                     metrics=[{"time/run_execution": time.time() - st}],
                     message=error_trace_back.rstrip(),
                 ),
-                [],
+                b"",
             )
 
 

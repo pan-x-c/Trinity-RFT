@@ -8,7 +8,8 @@ import os
 import time
 import traceback
 from collections import deque
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
 import ray
 import torch
@@ -34,6 +35,17 @@ from trinity.utils.log import get_logger
 from trinity.utils.monitor import MONITOR, gather_eval_metrics, gather_metrics
 from trinity.utils.plugin_loader import load_plugins
 from trinity.utils.timer import Timer
+
+
+@dataclass
+class ExploreStepBuffer:
+    """Buffered task results for one explore step."""
+
+    expected_task_count: int
+    statuses: List = field(default_factory=list)
+    experience_payloads: List[bytes] = field(default_factory=list)
+    staged_task_ids: List[int] = field(default_factory=list)
+    completed_task_count: int = 0
 
 
 class Explorer:
@@ -76,8 +88,13 @@ class Explorer:
             )
         else:
             self.min_wait_num = None
+        self.use_task_event_completion = (
+            self.min_wait_num is None
+            and not self.config.explorer.over_rollout.return_partial_tasks
+        )
         self.use_nccl_sync = self.config.synchronizer.sync_method == SyncMethod.NCCL
         self.pending_eval_tasks = deque()
+        self.pending_step_buffers: Dict[int, ExploreStepBuffer] = {}
 
         # For checkpoint weights update
         # Use explorer to periodically load the latest model weights and
@@ -206,8 +223,17 @@ class Explorer:
                     await self.setup_weight_sync_group(master_address, master_port)
 
             if self.config.mode != "serve":
-                self.scheduler = Scheduler(self.config, self.models, self.auxiliary_models)
+                self.scheduler = Scheduler(
+                    self.config,
+                    self.models,
+                    self.auxiliary_models,
+                    experience_pipeline=self.experience_pipeline
+                    if self.use_task_event_completion
+                    else None,
+                )
                 await self.scheduler.start()
+                if self.use_task_event_completion:
+                    self.scheduler.enable_completed_task_events()
             if self.config.explorer.eval_on_startup and self.explore_step_num == 0:
                 await self.eval()
 
@@ -269,6 +295,10 @@ class Explorer:
             return False
         self.explore_step_num += 1
         self.scheduler.schedule(tasks, batch_id=self.explore_step_num)
+        if self.use_task_event_completion:
+            self.pending_step_buffers[self.explore_step_num] = ExploreStepBuffer(
+                expected_task_count=len(tasks)
+            )
         return True
 
     async def finish_current_steps(self) -> None:
@@ -388,6 +418,36 @@ class Explorer:
                 self.monitor.log(metric, step=end_step)
 
     async def _finish_explore_step(self, step: int, model_version: int) -> None:
+        if self.use_task_event_completion:
+            await self._wait_step_buffer(step)
+            step_buffer = self.pending_step_buffers.pop(step, None)
+            if step_buffer is None:
+                return
+
+            metric = {"rollout/model_version": model_version}
+            if self.experience_pipeline is not None:
+                if step_buffer.staged_task_ids:
+                    pipeline_metrics = await self.experience_pipeline.finalize_batch.remote(
+                        step, step_buffer.staged_task_ids
+                    )
+                else:
+                    pipeline_metrics = await self.experience_pipeline.process_serialized_chunks.remote(
+                        step_buffer.experience_payloads
+                    )
+                self.taskset.feedback(pipeline_metrics)
+                metric.update(pipeline_metrics)
+            if step_buffer.statuses:
+                metric.update(
+                    gather_metrics(
+                        [status.metrics[0] for status in step_buffer.statuses],
+                        "rollout",
+                    )
+                )
+                metric["rollout/finished_task_count"] = len(step_buffer.statuses)
+                if self.monitor is not None:
+                    self.monitor.log(metric, step=step)
+            return
+
         metric = {"rollout/model_version": model_version}
         with Timer(metric, "time/wait_explore_step"):
             statuses, exps = await self.scheduler.get_results(
@@ -406,6 +466,65 @@ class Explorer:
             metric["rollout/finished_task_count"] = len(statuses)
             if self.monitor is not None:
                 self.monitor.log(metric, step=step)
+
+    async def _store_completed_task_result(self, step: int, result) -> None:
+        step_buffer = self.pending_step_buffers.get(step)
+        if step_buffer is None:
+            return
+        step_buffer.completed_task_count += 1
+        step_buffer.statuses.append(result.status)
+        if self.experience_pipeline is not None and result.experience_payloads:
+            staged = await self.experience_pipeline.stage_task_payloads.remote(
+                step,
+                result.task_id,
+                result.experience_payloads,
+            )
+            if staged is not None:
+                step_buffer.staged_task_ids.append(result.task_id)
+        elif self.experience_pipeline is not None and result.status.completed_runs > 0:
+            step_buffer.staged_task_ids.append(result.task_id)
+        elif result.experience_payloads:
+            step_buffer.experience_payloads.extend(result.experience_payloads)
+        elif result.experiences:
+            step_buffer.experience_payloads.append(Experience.serialize_many(result.experiences))
+
+    async def _wait_step_buffer(self, step: int) -> None:
+        if self.scheduler is None:
+            return
+
+        step_buffer = self.pending_step_buffers.get(step)
+        if step_buffer is None:
+            return
+
+        start_time = time.time()
+        while step_buffer.completed_task_count < step_buffer.expected_task_count:
+            remaining = self.scheduler.default_timeout - (time.time() - start_time)
+            if remaining <= 0:
+                break
+            completed_ref = await self.scheduler.wait_completed_task(timeout=remaining)
+            if completed_ref is None:
+                break
+            completed_result = self.scheduler.pop_completed_task(
+                completed_ref.batch_id, completed_ref.task_id
+            )
+            if completed_result is None:
+                continue
+            if isinstance(completed_ref.batch_id, int):
+                await self._store_completed_task_result(completed_ref.batch_id, completed_result)
+
+        if step_buffer.completed_task_count >= step_buffer.expected_task_count:
+            return
+
+        statuses, exps = await self.scheduler.get_results(
+            batch_id=step,
+            timeout=0,
+            clear_timeout_tasks=True,
+            return_partial_tasks=self.config.explorer.over_rollout.return_partial_tasks,
+        )
+        step_buffer.statuses.extend(statuses)
+        if exps:
+            step_buffer.experience_payloads.append(Experience.serialize_many(exps))
+        step_buffer.completed_task_count += len(statuses)
 
     async def _finish_eval_step(self, step: Optional[int] = None, prefix: str = "eval") -> None:
         if not self.pending_eval_tasks:
