@@ -12,7 +12,6 @@ import numpy as np
 import ray
 
 from trinity.common.config import Config
-from trinity.common.experience import Experience
 from trinity.common.models import InferenceModel
 from trinity.common.workflows import Task
 from trinity.explorer.workflow_runner import Status, WorkflowRunner
@@ -846,35 +845,6 @@ class Scheduler:
             clear_timeout_tasks=clear_timeout_tasks,
             return_partial_tasks=return_partial_tasks,
         )
-
-    async def get_results(
-        self,
-        batch_id: Union[int, str],
-        min_num: Optional[int] = None,
-        timeout: Optional[float] = None,
-        clear_timeout_tasks: bool = True,
-        return_partial_tasks: bool = False,
-    ) -> Tuple[List[Status], List[Experience]]:
-        """Get the result of tasks at the specific batch_id.
-
-        Args:
-            batch_id (`Union[int, str]`): Only wait for tasks at this batch.
-            min_num (`int`): The minimum number of tasks to wait for. If `None`, wait for all tasks at `batch_id`.
-            timeout (`float`): The timeout for waiting for tasks to finish. If `None`, wait for default timeout.
-            clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
-            return_partial_tasks (`bool`): Whether to emit tasks with partial successful runs when cleaning up unfinished tasks.
-        """
-        statuses, payload_chunks = await self._get_batch_payload_results(
-            batch_id=batch_id,
-            min_num=min_num,
-            timeout=timeout,
-            clear_timeout_tasks=clear_timeout_tasks,
-            return_partial_tasks=return_partial_tasks,
-        )
-        experiences = []
-        for exp_payload in payload_chunks:
-            experiences.extend(Experience.deserialize_many(exp_payload))
-        return statuses, experiences
 
     async def get_statuses(
         self,
