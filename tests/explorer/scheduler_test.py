@@ -546,10 +546,14 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         # test _cleanup_batch_and_restart_runners: part I, no clear
         tasks = generate_tasks(3, timeout_num=1, timeout_seconds=3)
         scheduler.schedule(tasks, batch_id=2)
-        statuses, exps = await collect_results(scheduler, batch_id=2, timeout=2, clear_timeout_tasks=False)
+        statuses, exps = await collect_results(
+            scheduler, batch_id=2, timeout=2, clear_timeout_tasks=False
+        )
         self.assertEqual(len(statuses), 3)
         self.assertEqual(len(exps), 3)
-        statuses, exps = await collect_results(scheduler, batch_id=2, timeout=2, clear_timeout_tasks=False)
+        statuses, exps = await collect_results(
+            scheduler, batch_id=2, timeout=2, clear_timeout_tasks=False
+        )
         self.assertEqual(len(statuses), 1)
         self.assertEqual(len(exps), 1)
         #  test _cleanup_batch_and_restart_runners: part II, clear
@@ -642,7 +646,9 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         async def schedule_tasks(batch_id, num_tasks):
             tasks = generate_tasks(num_tasks)
             scheduler.schedule(tasks, batch_id=batch_id)
-            return await collect_results(scheduler, batch_id=batch_id, min_num=num_tasks, timeout=10)
+            return await collect_results(
+                scheduler, batch_id=batch_id, min_num=num_tasks, timeout=10
+            )
 
         results = await asyncio.gather(
             schedule_tasks(0, 3),

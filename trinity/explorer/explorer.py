@@ -29,7 +29,7 @@ from trinity.manager.state_manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
 from trinity.utils.annotations import Experimental
 from trinity.utils.log import get_logger
-from trinity.utils.monitor import MONITOR, gather_eval_metrics, gather_metrics
+from trinity.utils.monitor import MONITOR
 from trinity.utils.plugin_loader import load_plugins
 from trinity.utils.timer import Timer
 
@@ -416,7 +416,9 @@ class Explorer:
             if eval_step != step:
                 return
             self.pending_eval_tasks.popleft()
-            assert self.rollout_coordinator is not None, "Rollout coordinator must be prepared first."
+            assert (
+                self.rollout_coordinator is not None
+            ), "Rollout coordinator must be prepared first."
             result = await self.rollout_coordinator.finalize_eval_batch.remote(
                 f"{step}/{eval_task_name}"
             )

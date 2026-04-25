@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from trinity.buffer.pipelines.experience_pipeline import ExperiencePipeline
 from trinity.common.config import Config
-from trinity.common.experience import Experience
 from trinity.common.models import InferenceModel
 from trinity.common.workflows import Task
 from trinity.explorer.scheduler import CompletedTaskResult, Scheduler
@@ -293,7 +292,9 @@ class RolloutCoordinator:
                         completed_ref.task_id,
                     )
                     continue
-                completed_result = scheduler.pop_completed_task(completed_ref.batch_id, completed_ref.task_id)
+                completed_result = scheduler.pop_completed_task(
+                    completed_ref.batch_id, completed_ref.task_id
+                )
                 if completed_result is None:
                     continue
                 batch_state = self.pending_batches.get(completed_ref.batch_id)
