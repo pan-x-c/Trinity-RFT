@@ -42,7 +42,7 @@ class TaskWrapper:
 class CompletedTaskResult:
     """A completed task result stored by batch and task id."""
 
-    task_id: int
+    task_id: Union[int, str]
     status: Status
     experiences: List[Experience] = field(default_factory=list)
     experience_payloads: List[bytes] = field(default_factory=list)
@@ -53,7 +53,7 @@ class CompletedTaskRef:
     """A lightweight reference to a completed task result."""
 
     batch_id: Union[int, str]
-    task_id: int
+    task_id: Union[int, str]
 
 
 # Adapted from verl/trainer/ppo/metric_utils.py
@@ -356,7 +356,10 @@ class Scheduler:
         self.running_task_map: Dict[asyncio.Future, TaskWrapper] = dict()  # future -> task
         self.running_task_runner_map: Dict[asyncio.Future, int] = dict()  # future -> runner_id
         self.cancelled_task_restart_map: Dict[asyncio.Future, bool] = dict()
-        self.completed_tasks: Dict[Union[int, str], Dict[int, CompletedTaskResult]] = defaultdict(
+        self.batch_is_eval_map: Dict[Union[int, str], bool] = dict()
+        self.completed_tasks: Dict[
+            Union[int, str], Dict[Union[int, str], CompletedTaskResult]
+        ] = defaultdict(
             dict
         )  # batch_id -> results
         self.completed_task_refs: asyncio.Queue[CompletedTaskRef] = asyncio.Queue()
@@ -367,6 +370,7 @@ class Scheduler:
         self.running = False
 
         self.total_running_time = 0.0
+        self.total_completed_steps = 0
         self.total_completed_sub_tasks = 0
         self.total_completed_tasks = 0
 
@@ -530,8 +534,6 @@ class Scheduler:
             return
         status, experience_payloads = self._build_task_result(task)
         task_id = task.task.task_id
-        if not isinstance(task_id, int):
-            raise TypeError(f"Expected task_id to be int when emitting results, got {task_id!r}")
         self.completed_tasks[task.batch_id][task_id] = CompletedTaskResult(
             task_id=task_id,
             status=status,
@@ -661,6 +663,7 @@ class Scheduler:
         """
         if not tasks:
             return
+        self.batch_is_eval_map[batch_id] = tasks[0].is_eval
         self.task_num_map[batch_id] += len(tasks)
         self._split_and_submit_tasks(tasks, batch_id=batch_id)
 
@@ -688,7 +691,7 @@ class Scheduler:
         max_timeout = timeout or self.default_timeout
         if not self.config.explorer.dynamic_timeout.enable:
             return max_timeout
-        if self.total_completed_tasks < self.default_batch_size:
+        if self.total_completed_steps < self.config.explorer.dynamic_timeout.warmup_min_steps:
             return max_timeout
         avg_time_per_task = self.total_running_time / self.total_completed_sub_tasks
         return min(
@@ -731,6 +734,15 @@ class Scheduler:
             )
             return scheduled_num, scheduled_num
         return scheduled_num, min_num
+
+    def _finalize_dynamic_timeout_step(
+        self, batch_id: Union[int, str], scheduled_num: int, completed_count: int
+    ) -> None:
+        if batch_id in self.pending_tasks or batch_id in self.running_tasks:
+            return
+        is_eval = self.batch_is_eval_map.pop(batch_id, False)
+        if not is_eval and completed_count >= scheduled_num:
+            self.total_completed_steps += 1
 
     async def _wait_for_batch_results(
         self,
@@ -843,6 +855,7 @@ class Scheduler:
             await self.experience_pipeline.abort_batch.remote(batch_id)
 
         completed_count = len(statuses)
+        self._finalize_dynamic_timeout_step(batch_id, scheduled_num, completed_count)
         if completed_count < min_num:
             self.logger.warning(
                 f"Timeout reached, only {completed_count}/{min_num} tasks completed"

@@ -1214,6 +1214,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_dynamic_timeout(self):
         self.config.explorer.dynamic_timeout.enable = True
+        self.config.explorer.dynamic_timeout.warmup_min_steps = 1
         self.config.explorer.dynamic_timeout.ratio = 3.0
         self.config.buffer.batch_size = 4
         self.config.explorer.max_timeout = 20
@@ -1231,6 +1232,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(statuses), 4)
         self.assertEqual(len(exps), 0)
         self.assertEqual(scheduler.total_running_time, 0)
+        self.assertEqual(scheduler.total_completed_steps, 0)
         self.assertEqual(scheduler.total_completed_tasks, 0)
         tasks = []
         # generate 4 tasks that will run 1 second
@@ -1258,8 +1260,9 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(statuses), 4)
         self.assertEqual(len(exps), 4)
 
-    async def test_dynamic_timeout_counts_completed_tasks_instead_of_sub_tasks(self):
+    async def test_dynamic_timeout_warmup_min_steps_uses_completed_steps(self):
         self.config.explorer.dynamic_timeout.enable = True
+        self.config.explorer.dynamic_timeout.warmup_min_steps = 2
         self.config.explorer.dynamic_timeout.ratio = 1.5
         self.config.buffer.batch_size = 3
         self.config.explorer.max_timeout = 20
@@ -1276,9 +1279,19 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(statuses), 2)
         self.assertEqual(len(exps), 8)
+        self.assertEqual(scheduler.total_completed_steps, 1)
         self.assertEqual(scheduler.total_completed_tasks, 2)
         self.assertEqual(scheduler.total_completed_sub_tasks, 4)
         self.assertEqual(scheduler.dynamic_timeout(), scheduler.default_timeout)
+
+        tasks = generate_tasks(0, timeout_num=2, repeat_times=4, timeout_seconds=1)
+        scheduler.schedule(tasks, batch_id=1)
+        statuses, exps = await scheduler.get_results(batch_id=1)
+
+        self.assertEqual(len(statuses), 2)
+        self.assertEqual(len(exps), 8)
+        self.assertEqual(scheduler.total_completed_steps, 2)
+        self.assertAlmostEqual(scheduler.dynamic_timeout(), 1.5, delta=0.8)
 
         await scheduler.stop()
 
