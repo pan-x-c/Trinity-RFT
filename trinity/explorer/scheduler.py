@@ -41,17 +41,10 @@ class TaskWrapper:
 class CompletedTaskResult:
     """A completed task result stored by batch and task id."""
 
+    batch_id: Union[int, str]
     task_id: Union[int, str]
     status: Status
     experience_payloads: List[bytes] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class CompletedTaskRef:
-    """A lightweight reference to a completed task result."""
-
-    batch_id: Union[int, str]
-    task_id: Union[int, str]
 
 
 # Adapted from verl/trainer/ppo/metric_utils.py
@@ -320,6 +313,8 @@ class Scheduler:
         config: Config,
         rollout_model: List[InferenceModel],
         auxiliary_models: Optional[List[List[InferenceModel]]] = None,
+        *,
+        emit_completed_task_events: bool = False,
     ):
         self.logger = get_logger(__name__)
         self.config = config
@@ -355,8 +350,8 @@ class Scheduler:
         ] = defaultdict(
             dict
         )  # batch_id -> results
-        self.completed_task_refs: asyncio.Queue[CompletedTaskRef] = asyncio.Queue()
-        self.emit_completed_task_events = False
+        self.completed_task_results: asyncio.Queue[CompletedTaskResult] = asyncio.Queue()
+        self.emit_completed_task_events = emit_completed_task_events
         self.background_tasks: set[asyncio.Task] = set()
 
         self.scheduler_task: Optional[asyncio.Task] = None
@@ -526,43 +521,27 @@ class Scheduler:
             return
         status, experience_payloads = self._build_task_result(task)
         task_id = task.task.task_id
-        self.completed_tasks[task.batch_id][task_id] = CompletedTaskResult(
+        completed_result = CompletedTaskResult(
+            batch_id=task.batch_id,
             task_id=task_id,
             status=status,
             experience_payloads=experience_payloads,
         )
         if self.emit_completed_task_events and not task.task.is_eval:
-            self.completed_task_refs.put_nowait(
-                CompletedTaskRef(batch_id=task.batch_id, task_id=task_id)
-            )
+            self.completed_task_results.put_nowait(completed_result)
+        else:
+            self.completed_tasks[task.batch_id][task_id] = completed_result
         task.emitted = True
-
-    def enable_completed_task_events(self) -> None:
-        self.emit_completed_task_events = True
-
-    def disable_completed_task_events(self) -> None:
-        self.emit_completed_task_events = False
 
     async def wait_completed_task(
         self, timeout: Optional[float] = None
-    ) -> Optional[CompletedTaskRef]:
+    ) -> Optional[CompletedTaskResult]:
         try:
             if timeout is None:
-                return await self.completed_task_refs.get()
-            return await asyncio.wait_for(self.completed_task_refs.get(), timeout=timeout)
+                return await self.completed_task_results.get()
+            return await asyncio.wait_for(self.completed_task_results.get(), timeout=timeout)
         except asyncio.TimeoutError:
             return None
-
-    def pop_completed_task(
-        self, batch_id: Union[int, str], task_id: int
-    ) -> Optional[CompletedTaskResult]:
-        batch_results = self.completed_tasks.get(batch_id)
-        if not batch_results:
-            return None
-        result = batch_results.pop(task_id, None)
-        if batch_id in self.completed_tasks and not self.completed_tasks[batch_id]:
-            del self.completed_tasks[batch_id]
-        return result
 
     def _collect_incomplete_tasks(self, batch_id: Union[int, str]) -> List[TaskWrapper]:
         tasks = {}

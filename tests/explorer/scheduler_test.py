@@ -15,7 +15,7 @@ from trinity.common.constants import StorageType, SyncStyle
 from trinity.common.experience import EID, Experience
 from trinity.common.models.model import InferenceModel, ModelWrapper
 from trinity.common.workflows import WORKFLOWS, Task, Workflow
-from trinity.explorer.scheduler import CompletedTaskRef, Scheduler
+from trinity.explorer.scheduler import CompletedTaskResult, Scheduler
 
 
 @WORKFLOWS.register_module("dummy_workflow")
@@ -1317,24 +1317,33 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
         await scheduler.stop()
 
-    async def test_completed_task_events_keep_payload_results_compatible(self):
-        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
+    async def test_completed_task_events_return_full_task_results_directly(self):
+        scheduler = Scheduler(
+            self.config,
+            [DummyModel.remote(), DummyModel.remote()],
+            emit_completed_task_events=True,
+        )
         await scheduler.start()
-        scheduler.enable_completed_task_events()
 
         scheduler.schedule(generate_tasks(4, repeat_times=2), batch_id=0)
 
-        completed_refs = []
+        completed_results = []
         for _ in range(4):
-            completed_ref = await scheduler.wait_completed_task(timeout=10)
-            self.assertIsNotNone(completed_ref)
-            self.assertIsInstance(completed_ref, CompletedTaskRef)
-            completed_refs.append(completed_ref)
+            completed_result = await scheduler.wait_completed_task(timeout=10)
+            self.assertIsNotNone(completed_result)
+            self.assertIsInstance(completed_result, CompletedTaskResult)
+            completed_results.append(completed_result)
 
-        self.assertEqual({ref.batch_id for ref in completed_refs}, {0})
-        self.assertEqual({ref.task_id for ref in completed_refs}, {0, 1, 2, 3})
+        self.assertEqual({result.batch_id for result in completed_results}, {0})
+        self.assertEqual({result.task_id for result in completed_results}, {0, 1, 2, 3})
+        self.assertNotIn(0, scheduler.completed_tasks)
 
-        statuses, exps = await collect_results(scheduler, batch_id=0, timeout=1)
+        statuses = [result.status for result in completed_results]
+        exps = []
+        for result in completed_results:
+            for payload in result.experience_payloads:
+                exps.extend(Experience.deserialize_many(payload))
+
         self.assertEqual(len(statuses), 4)
         self.assertEqual(len(exps), 8)
 
