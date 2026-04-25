@@ -12,7 +12,6 @@ from typing import List, Optional
 
 import ray
 import torch
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from trinity.buffer.buffer import get_buffer_reader
 from trinity.buffer.task_scheduler import get_taskset_scheduler
@@ -199,7 +198,11 @@ class Explorer:
                     await self.setup_weight_sync_group(master_address, master_port)
 
             if self.config.mode != "serve":
-                self.rollout_coordinator = self._init_rollout_coordinator()
+                self.rollout_coordinator = RolloutCoordinator.get_actor(
+                    self.config,
+                    self.models,
+                    self.auxiliary_models,
+                )
                 await self.rollout_coordinator.prepare.remote()
                 self.logger.info("Rollout coordinator is ready.")
             if self.config.explorer.eval_on_startup and self.explore_step_num == 0:
@@ -268,7 +271,6 @@ class Explorer:
             tasks=tasks,
             batch_type="train",
             min_wait_num=self.min_wait_num,
-            allow_partial_finalize=self.min_wait_num is not None,
         )
         return True
 
@@ -450,25 +452,6 @@ class Explorer:
     async def is_alive(self) -> bool:
         """Check if the explorer is alive."""
         return True
-
-    def _init_rollout_coordinator(self) -> ray.actor.ActorHandle:
-        """Init rollout coordinator for the task-event-completion path."""
-        node_id = ray.get_runtime_context().get_node_id()
-        return (
-            ray.remote(RolloutCoordinator)
-            .options(
-                namespace=self.config.ray_namespace,
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=node_id,
-                    soft=False,
-                ),
-            )
-            .remote(
-                self.config,
-                self.models,
-                self.auxiliary_models,
-            )
-        )
 
     @Experimental
     async def serve(self) -> None:

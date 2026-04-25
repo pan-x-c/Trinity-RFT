@@ -254,7 +254,6 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
             tasks=[SimpleNamespace(is_eval=False), SimpleNamespace(is_eval=False)],
             batch_type="train",
             min_wait_num=1,
-            allow_partial_finalize=True,
         )
 
         self.scheduler.emit_completed_task(
