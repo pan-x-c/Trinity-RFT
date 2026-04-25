@@ -529,14 +529,17 @@ class Scheduler:
         if task.emitted:
             return
         status, experience_payloads = self._build_task_result(task)
-        self.completed_tasks[task.batch_id][task.task.task_id] = CompletedTaskResult(
-            task_id=task.task.task_id,
+        task_id = task.task.task_id
+        if not isinstance(task_id, int):
+            raise TypeError(f"Expected task_id to be int when emitting results, got {task_id!r}")
+        self.completed_tasks[task.batch_id][task_id] = CompletedTaskResult(
+            task_id=task_id,
             status=status,
             experience_payloads=experience_payloads,
         )
         if self.emit_completed_task_events and not task.task.is_eval:
             self.completed_task_refs.put_nowait(
-                CompletedTaskRef(batch_id=task.batch_id, task_id=task.task.task_id)
+                CompletedTaskRef(batch_id=task.batch_id, task_id=task_id)
             )
         task.emitted = True
 
@@ -716,6 +719,81 @@ class Scheduler:
         if runners_to_restart:
             await asyncio.gather(*[self._restart_runner(rid) for rid in runners_to_restart])
 
+    def _resolve_result_target(
+        self, batch_id: Union[int, str], min_num: Optional[int]
+    ) -> Tuple[int, int]:
+        scheduled_num = self.task_num_map.get(batch_id, 0)
+        if min_num is None:
+            return scheduled_num, scheduled_num
+        if min_num > scheduled_num:
+            self.logger.warning(
+                f"Requested min_num {min_num} is greater than scheduled tasks {scheduled_num} at batch_id {batch_id}. Adjusting min_num to {scheduled_num}."
+            )
+            return scheduled_num, scheduled_num
+        return scheduled_num, min_num
+
+    async def _wait_for_batch_results(
+        self,
+        batch_id: Union[int, str],
+        min_num: int,
+        scheduled_num: int,
+        timeout: float,
+        clear_timeout_tasks: bool,
+        return_partial_tasks: bool,
+    ) -> bool:
+        start_time = time.time()
+        min_threshold_reached_time = None
+        while time.time() - start_time <= timeout:
+            completed_count = len(self.completed_tasks.get(batch_id, {}))
+            if completed_count >= min_num:
+                min_threshold_reached_time = min_threshold_reached_time or time.time()
+                if completed_count >= scheduled_num:
+                    return False
+                if (
+                    time.time() - min_threshold_reached_time
+                    >= self.config.explorer.over_rollout.wait_after_min
+                ):
+                    if clear_timeout_tasks:
+                        await self._cleanup_batch(
+                            batch_id,
+                            return_partial_tasks=return_partial_tasks,
+                            restart_runners=False,
+                        )
+                    return False
+            await asyncio.sleep(0.1)
+        return True
+
+    async def _collect_batch_results(
+        self, batch_id: Union[int, str]
+    ) -> Tuple[List[Status], List[Experience]]:
+        statuses = []
+        experiences = []
+        completed_results = list(self.completed_tasks.get(batch_id, {}).values())
+        staged_task_ids = []
+        for result in completed_results:
+            statuses.append(result.status)
+            if result.experience_payloads:
+                for exp_payload in result.experience_payloads:
+                    experiences.extend(Experience.deserialize_many(exp_payload))
+                continue
+
+            experiences.extend(result.experiences)
+            if (
+                self.experience_pipeline is not None
+                and result.status.completed_runs > 0
+                and not result.experiences
+            ):
+                staged_task_ids.append(result.task_id)
+
+        if staged_task_ids:
+            staged_payloads = await self.experience_pipeline.take_staged_task_payloads.remote(
+                batch_id, staged_task_ids
+            )
+            for exp_payload in staged_payloads:
+                experiences.extend(Experience.deserialize_many(exp_payload))
+
+        return statuses, experiences
+
     async def get_results(
         self,
         batch_id: Union[int, str],
@@ -734,38 +812,18 @@ class Scheduler:
             return_partial_tasks (`bool`): Whether to emit tasks with partial successful runs when cleaning up unfinished tasks.
         """
         timeout = timeout or self.default_timeout
-        start_time = time.time()
-        scheduled_num = self.task_num_map.get(batch_id, 0)
-        if min_num is None:
-            min_num = scheduled_num
-        elif min_num > scheduled_num:
-            self.logger.warning(
-                f"Requested min_num {min_num} is greater than scheduled tasks {scheduled_num} at batch_id {batch_id}. Adjusting min_num to {scheduled_num}."
-            )
-            min_num = scheduled_num
+        scheduled_num, min_num = self._resolve_result_target(batch_id, min_num)
 
         self.logger.debug(f"Waiting for {min_num} tasks to complete...")
-        min_threshold_reached_time = None
-        while time.time() - start_time <= timeout:
-            completed_count = len(self.completed_tasks.get(batch_id, []))
-            if completed_count >= min_num:
-                min_threshold_reached_time = min_threshold_reached_time or time.time()
-                if completed_count >= scheduled_num:
-                    break
-                if (
-                    time.time() - min_threshold_reached_time
-                    >= self.config.explorer.over_rollout.wait_after_min
-                ):
-                    if clear_timeout_tasks:
-                        await self._cleanup_batch(
-                            batch_id,
-                            return_partial_tasks=return_partial_tasks,
-                            restart_runners=False,
-                        )
-                        break
-            await asyncio.sleep(0.1)
-
-        if time.time() - start_time > timeout:
+        timed_out = await self._wait_for_batch_results(
+            batch_id=batch_id,
+            min_num=min_num,
+            scheduled_num=scheduled_num,
+            timeout=timeout,
+            clear_timeout_tasks=clear_timeout_tasks,
+            return_partial_tasks=return_partial_tasks,
+        )
+        if timed_out:
             self.logger.error(
                 f"Timed out waiting for tasks at batch {batch_id} to complete after {timeout} seconds"
             )
@@ -776,30 +834,7 @@ class Scheduler:
                     restart_runners=True,
                 )
 
-        statuses = []
-        experiences = []
-        completed_results = list(self.completed_tasks.get(batch_id, {}).values())
-        staged_task_ids = []
-        for result in completed_results:
-            statuses.append(result.status)
-            if result.experience_payloads:
-                for exp_payload in result.experience_payloads:
-                    experiences.extend(Experience.deserialize_many(exp_payload))
-            else:
-                experiences.extend(result.experiences)
-                if (
-                    self.experience_pipeline is not None
-                    and result.status.completed_runs > 0
-                    and not result.experiences
-                ):
-                    staged_task_ids.append(result.task_id)
-
-        if staged_task_ids:
-            staged_payloads = await self.experience_pipeline.take_staged_task_payloads.remote(
-                batch_id, staged_task_ids
-            )
-            for exp_payload in staged_payloads:
-                experiences.extend(Experience.deserialize_many(exp_payload))
+        statuses, experiences = await self._collect_batch_results(batch_id)
 
         if batch_id in self.completed_tasks:
             del self.completed_tasks[batch_id]
