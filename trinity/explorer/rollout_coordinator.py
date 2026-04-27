@@ -29,15 +29,6 @@ class BatchLifecycleState(str, Enum):
     ABORTED = "aborted"
 
 
-class FinalizeReason(str, Enum):
-    """Reasons why a batch finalize call returns."""
-
-    COMPLETE = "complete"
-    PARTIAL = "partial"
-    TIMEOUT = "timeout"
-    ABORT = "abort"
-
-
 @dataclass
 class BatchState:
     """In-memory state tracked for one train or eval batch."""
@@ -189,12 +180,7 @@ class RolloutCoordinator:
                 if task_id in batch_state.statuses:
                     continue
                 batch_state.statuses[task_id] = status
-            reason = (
-                FinalizeReason.COMPLETE
-                if batch_state.completed_task_count >= batch_state.expected_task_count
-                else FinalizeReason.TIMEOUT
-            )
-            return self._finish_batch(batch_state, reason, {})
+            return self._finish_batch(batch_state, pipeline_metrics={})
 
     async def abort_batch(
         self,
@@ -220,7 +206,7 @@ class RolloutCoordinator:
         scheduler.discard_completed_results(batch_id)
 
         batch_state.state = BatchLifecycleState.ABORTED
-        batch_state.final_result = self._build_batch_result(batch_state, FinalizeReason.ABORT, {})
+        batch_state.final_result = self._build_batch_result(batch_state, pipeline_metrics={})
         self.pending_batches.pop(batch_id, None)
 
     @classmethod
@@ -256,7 +242,7 @@ class RolloutCoordinator:
             return dict(batch_state.final_result)
         if batch_state.state != BatchLifecycleState.ABORTED:
             return None
-        batch_state.final_result = self._build_batch_result(batch_state, FinalizeReason.ABORT, {})
+        batch_state.final_result = self._build_batch_result(batch_state, pipeline_metrics={})
         return dict(batch_state.final_result)
 
     async def _finalize_train_batch(
@@ -269,58 +255,46 @@ class RolloutCoordinator:
                 return existing_result
 
             scheduler = self._require_scheduler()
-            completed_count, scheduled_num = await scheduler.wait_for_batch_results(
+            scheduled_num = batch_state.expected_task_count
+            statuses, payload_chunks = await scheduler.get_payload_results(
                 batch_id=batch_state.batch_id,
                 min_num=batch_state.min_wait_num,
                 timeout=timeout,
                 clear_timeout_tasks=False,
                 return_partial_tasks=self.config.explorer.over_rollout.return_partial_tasks,
             )
+            completed_count = len(statuses)
             if scheduled_num == 0:
-                ready_reason = FinalizeReason.COMPLETE
-                payload_chunks = []
+                is_complete = True
             else:
                 if completed_count == 0:
                     raise TimeoutError(f"Timeout waiting for batch {batch_state.batch_id}.")
                 if batch_state.min_wait_num is None and completed_count < scheduled_num:
                     raise TimeoutError(f"Timeout waiting for batch {batch_state.batch_id}.")
 
-                statuses, payload_chunks = await scheduler.drain_batch_payload_results(
-                    batch_state.batch_id
-                )
                 batch_state.statuses = {task_id: status for task_id, status in enumerate(statuses)}
-
-                if completed_count >= scheduled_num:
-                    ready_reason = FinalizeReason.COMPLETE
-                elif (
-                    batch_state.min_wait_num is not None
-                    and completed_count >= batch_state.min_wait_num
-                ):
-                    ready_reason = FinalizeReason.PARTIAL
-                else:
-                    ready_reason = FinalizeReason.TIMEOUT
+                is_complete = completed_count >= scheduled_num
 
             batch_state.state = BatchLifecycleState.FINALIZING
             try:
                 pipeline_metrics = await self._finalize_train_payloads(payload_chunks)
-                if ready_reason != FinalizeReason.COMPLETE:
+                if not is_complete:
                     await self._cleanup_train_batch_runtime(batch_state)
             except Exception:
                 batch_state.state = self._get_active_batch_state(batch_state)
                 raise
 
-            return self._finish_batch(batch_state, ready_reason, pipeline_metrics)
+            return self._finish_batch(batch_state, pipeline_metrics=pipeline_metrics)
 
     def _finish_batch(
         self,
         batch_state: BatchState,
-        reason: FinalizeReason,
         pipeline_metrics: dict,
     ) -> dict:
         """Persist one terminal result and evict the batch from active state."""
         self._require_scheduler().discard_completed_results(batch_state.batch_id)
         batch_state.state = BatchLifecycleState.FINALIZED
-        batch_state.final_result = self._build_batch_result(batch_state, reason, pipeline_metrics)
+        batch_state.final_result = self._build_batch_result(batch_state, pipeline_metrics)
         self.pending_batches.pop(batch_state.batch_id, None)
         return dict(batch_state.final_result)
 
@@ -348,7 +322,6 @@ class RolloutCoordinator:
     def _build_batch_result(
         self,
         batch_state: BatchState,
-        reason: FinalizeReason,
         pipeline_metrics: dict,
     ) -> dict:
         """Build the public finalize result returned to Explorer."""
@@ -378,8 +351,6 @@ class RolloutCoordinator:
             "batch_type": batch_state.batch_type,
             "finished_task_count": batch_state.completed_task_count,
             "metrics": metrics,
-            "finalize_reason": reason.value,
-            "finalized": reason != FinalizeReason.ABORT,
         }
 
     def _eval_metric_prefix(self, batch_id: BatchId) -> str:

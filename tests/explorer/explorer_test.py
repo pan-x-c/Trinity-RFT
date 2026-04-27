@@ -72,8 +72,6 @@ def _build_fake_coordinator_explorer():
                     "rollout/run_metrics/mean": float(batch_id),
                     "rollout/finished_task_count": 1.0,
                 },
-                "finalize_reason": "complete",
-                "finalized": True,
             }
 
         async def _finalize_eval_batch(self, batch_id):
@@ -87,8 +85,6 @@ def _build_fake_coordinator_explorer():
                     f"eval/{eval_name}/accuracy": 0.5,
                     f"eval/{eval_name}/finished_task_count": 2.0,
                 },
-                "finalize_reason": "complete",
-                "finalized": True,
             }
 
         async def _shutdown(self):

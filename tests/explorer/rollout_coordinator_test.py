@@ -88,7 +88,7 @@ class FakeScheduler:
         statuses, _ = self.batch_results.pop(batch_id, ([], []))
         return statuses
 
-    async def wait_for_batch_results(
+    async def get_payload_results(
         self,
         batch_id,
         min_num=None,
@@ -96,13 +96,7 @@ class FakeScheduler:
         clear_timeout_tasks=True,
         return_partial_tasks=False,
     ):
-        _ = timeout, clear_timeout_tasks, return_partial_tasks
-        statuses, _ = self.batch_results.get(batch_id, ([], []))
-        return len(statuses), self.scheduled_task_counts.get(batch_id, 0)
-
-    async def drain_batch_payload_results(self, batch_id):
-        """Drain cached batch results."""
-
+        _ = min_num, timeout, clear_timeout_tasks, return_partial_tasks
         return self.batch_results.pop(batch_id, ([], []))
 
     async def abort_batch(self, batch_id, return_partial_tasks=False, restart_runners=True):
@@ -200,7 +194,6 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
         )
 
         result = await self.coordinator.finalize_train_batch(1, timeout=1.0)
-        self.assertEqual(result["finalize_reason"], "complete")
         self.assertEqual(result["finished_task_count"], 2)
         self.assertEqual(result["metrics"]["rollout/run_metrics/mean"], 15.0)
         self.assertEqual(result["metrics"]["experience_pipeline/experience_count"], 2.0)
@@ -228,7 +221,6 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
 
         result = await self.coordinator.finalize_train_batch(2, timeout=1.0)
 
-        self.assertEqual(result["finalize_reason"], "partial")
         self.assertEqual(result["finished_task_count"], 1)
         self.assertEqual(self.pipeline.process_chunk_calls[-1], [b"payload-0"])
         self.assertEqual(self.scheduler.abort_calls[-1]["batch_id"], 2)
@@ -262,7 +254,6 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
 
         result = await self.coordinator.finalize_eval_batch(batch_id, timeout=1.0)
 
-        self.assertEqual(result["finalize_reason"], "complete")
         self.assertEqual(result["finished_task_count"], 2)
         self.assertEqual(result["metrics"]["eval/eval_set/run_metrics"], 4.0)
         self.assertEqual(self.pipeline.process_chunk_calls, [])

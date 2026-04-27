@@ -47,6 +47,15 @@ class CompletedTaskResult:
     experience_payloads: List[bytes] = field(default_factory=list)
 
 
+@dataclass
+class RunningTaskState:
+    """Per-future execution state tracked while one task is running."""
+
+    task: TaskWrapper
+    runner_id: int
+    restart_runner_on_cancel: bool = True
+
+
 # Adapted from verl/trainer/ppo/metric_utils.py
 def bootstrap_metric(
     data: list[Any],
@@ -327,8 +336,8 @@ class Scheduler:
 
         self.runner_num = len(rollout_model) * config.explorer.runner_per_model
         self.runners: Dict[int, RunnerWrapper] = dict()
-        self.idle_runners = set()  # runner_id of idle runners
-        self.busy_runners = dict()  # runner_id -> task
+        self.idle_runners: set[int] = set()  # runner_id of idle runners
+        self.busy_runners: Dict[int, RunningTaskState] = dict()  # runner_id -> running state
 
         self.pending_tasks: Dict[Union[int, str], deque] = defaultdict(
             deque
@@ -339,9 +348,7 @@ class Scheduler:
         self.task_num_map: Dict[Union[int, str], int] = defaultdict(
             int
         )  # batch_id -> tasks scheduled under this batch_id
-        self.running_task_map: Dict[asyncio.Future, TaskWrapper] = dict()  # future -> task
-        self.running_task_runner_map: Dict[asyncio.Future, int] = dict()  # future -> runner_id
-        self.cancelled_task_restart_map: Dict[asyncio.Future, bool] = dict()
+        self.running_task_state_map: Dict[asyncio.Future, RunningTaskState] = dict()
         self.batch_is_eval_map: Dict[Union[int, str], bool] = dict()
         self.completed_tasks: Dict[
             Union[int, str], Dict[Union[int, str], CompletedTaskResult]
@@ -351,7 +358,7 @@ class Scheduler:
         self.background_tasks: set[asyncio.Task] = set()
 
         self.scheduler_task: Optional[asyncio.Task] = None
-        self.running = False
+        self.monitor_task: Optional[asyncio.Task] = None
 
         self.total_running_time = 0.0
         self.total_completed_steps = 0
@@ -380,7 +387,8 @@ class Scheduler:
         await self.runners[runner_id].restart_runner()
 
         if runner_id in self.busy_runners:
-            task = self.busy_runners.pop(runner_id)
+            running_state = self.busy_runners.pop(runner_id)
+            task = running_state.task
             self.logger.warning(
                 f"Runner {runner_id} failed to run task at batch_id {task.batch_id}: {task.task.raw_task}"
             )
@@ -433,7 +441,6 @@ class Scheduler:
             while task_queue and self.idle_runners:
                 task, repeat_times, run_id_base = task_queue.pop()
                 runner_id = self.idle_runners.pop()
-                self.busy_runners[runner_id] = task
                 future = asyncio.create_task(
                     self.runners[runner_id].run_with_retry(
                         task,
@@ -443,8 +450,9 @@ class Scheduler:
                         collect_partial_runs=self.config.explorer.over_rollout.return_partial_tasks,
                     )
                 )
-                self.running_task_map[future] = task
-                self.running_task_runner_map[future] = runner_id
+                running_state = RunningTaskState(task=task, runner_id=runner_id)
+                self.busy_runners[runner_id] = running_state
+                self.running_task_state_map[future] = running_state
                 future.add_done_callback(self.task_done_callback)
                 self.running_tasks[batch_id].add(future)
 
@@ -452,19 +460,17 @@ class Scheduler:
                 del self.pending_tasks[batch_id]
 
     def task_done_callback(self, async_task: asyncio.Task):
-        task = self.running_task_map.pop(async_task)
-        runner_id = self.running_task_runner_map.pop(async_task)
+        running_state = self.running_task_state_map.pop(async_task)
+        task = running_state.task
+        runner_id = running_state.runner_id
         if async_task.cancelled():
-            should_restart = self.cancelled_task_restart_map.pop(async_task, True)
-            if not should_restart:
+            if not running_state.restart_runner_on_cancel:
                 self.busy_runners.pop(runner_id, None)
                 self.idle_runners.add(runner_id)
         elif async_task.exception():
             self.logger.error(f"Task {task.task.task_id} failed: {async_task.exception()}")
-            self.cancelled_task_restart_map.pop(async_task, None)
             self._schedule_runner_restart(runner_id)
         else:
-            self.cancelled_task_restart_map.pop(async_task, None)
             status, exp_payload, runner_id, run_time = async_task.result()
             if not task.task.is_eval:
                 self.total_running_time += run_time
@@ -536,9 +542,9 @@ class Scheduler:
         for task, _, _ in self.pending_tasks.get(batch_id, deque()):
             tasks[id(task)] = task
         for future in self.running_tasks.get(batch_id, set()):
-            task = self.running_task_map.get(future)
-            if task is not None:
-                tasks[id(task)] = task
+            running_state = self.running_task_state_map.get(future)
+            if running_state is not None:
+                tasks[id(running_state.task)] = running_state.task
         return list(tasks.values())
 
     def _emit_partial_tasks_for_batch(self, batch_id: Union[int, str]) -> None:
@@ -568,7 +574,9 @@ class Scheduler:
         self, batch_id: Union[int, str], restart_runners: bool
     ) -> None:
         for future in self.running_tasks.get(batch_id, set()):
-            self.cancelled_task_restart_map[future] = restart_runners
+            running_state = self.running_task_state_map.get(future)
+            if running_state is not None:
+                running_state.restart_runner_on_cancel = restart_runners
 
     async def start(self) -> None:
         if self.running:
@@ -675,8 +683,8 @@ class Scheduler:
             return
         runners_to_restart = [
             runner_id
-            for runner_id, task in list(self.busy_runners.items())
-            if task.batch_id == batch_id
+            for runner_id, running_state in list(self.busy_runners.items())
+            if running_state.task.batch_id == batch_id
         ]
         if runners_to_restart:
             await asyncio.gather(*[self._restart_runner(rid) for rid in runners_to_restart])
@@ -734,9 +742,7 @@ class Scheduler:
             await asyncio.sleep(0.1)
         return True
 
-    async def _collect_batch_results(
-        self, batch_id: Union[int, str]
-    ) -> Tuple[List[Status], List[bytes]]:
+    def _collect_batch_results(self, batch_id: Union[int, str]) -> Tuple[List[Status], List[bytes]]:
         statuses = []
         payload_chunks = []
         completed_results = list(self.completed_tasks.get(batch_id, {}).values())
@@ -747,15 +753,31 @@ class Scheduler:
 
         return statuses, payload_chunks
 
-    async def wait_for_batch_results(
+    async def drain_batch_payload_results(
+        self, batch_id: Union[int, str]
+    ) -> Tuple[List[Status], List[bytes]]:
+        """Drain cached completed results for one batch."""
+
+        statuses, payload_chunks = self._collect_batch_results(batch_id)
+
+        if batch_id in self.completed_tasks:
+            del self.completed_tasks[batch_id]
+
+        completed_count = len(statuses)
+        scheduled_num = self.task_num_map.get(batch_id, 0)
+        self._finalize_dynamic_timeout_step(batch_id, scheduled_num, completed_count)
+        return statuses, payload_chunks
+
+    async def _get_batch_payload_results(
         self,
         batch_id: Union[int, str],
-        min_num: Optional[int] = None,
-        timeout: Optional[float] = None,
-        clear_timeout_tasks: bool = True,
-        return_partial_tasks: bool = False,
-    ) -> Tuple[int, int]:
-        """Wait until one batch reaches the requested threshold without draining results."""
+        *,
+        min_num: Optional[int],
+        timeout: Optional[float],
+        clear_timeout_tasks: bool,
+        return_partial_tasks: bool,
+    ) -> Tuple[List[Status], List[bytes]]:
+        """Wait for one batch and drain its completed payload chunks."""
 
         timeout = timeout or self.default_timeout
         scheduled_num, min_num = self._resolve_result_target(batch_id, min_num)
@@ -786,41 +808,6 @@ class Scheduler:
                 f"Timeout reached, only {completed_count}/{min_num} tasks completed"
             )
 
-        return completed_count, scheduled_num
-
-    async def drain_batch_payload_results(
-        self, batch_id: Union[int, str]
-    ) -> Tuple[List[Status], List[bytes]]:
-        """Drain cached completed results for one batch."""
-
-        statuses, payload_chunks = await self._collect_batch_results(batch_id)
-
-        if batch_id in self.completed_tasks:
-            del self.completed_tasks[batch_id]
-
-        completed_count = len(statuses)
-        scheduled_num = self.task_num_map.get(batch_id, 0)
-        self._finalize_dynamic_timeout_step(batch_id, scheduled_num, completed_count)
-        return statuses, payload_chunks
-
-    async def _get_batch_payload_results(
-        self,
-        batch_id: Union[int, str],
-        *,
-        min_num: Optional[int],
-        timeout: Optional[float],
-        clear_timeout_tasks: bool,
-        return_partial_tasks: bool,
-    ) -> Tuple[List[Status], List[bytes]]:
-        """Wait for one batch and drain its completed payload chunks."""
-
-        await self.wait_for_batch_results(
-            batch_id=batch_id,
-            min_num=min_num,
-            timeout=timeout,
-            clear_timeout_tasks=clear_timeout_tasks,
-            return_partial_tasks=return_partial_tasks,
-        )
         return await self.drain_batch_payload_results(batch_id)
 
     async def get_payload_results(

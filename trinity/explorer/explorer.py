@@ -197,14 +197,13 @@ class Explorer:
                     ].get_available_address.remote()
                     await self.setup_weight_sync_group(master_address, master_port)
 
-            if self.config.mode != "serve":
-                self.rollout_coordinator = RolloutCoordinator.get_actor(
-                    self.config,
-                    self.models,
-                    self.auxiliary_models,
-                )
-                await self.rollout_coordinator.prepare.remote()
-                self.logger.info("Rollout coordinator is ready.")
+            self.rollout_coordinator = RolloutCoordinator.get_actor(
+                self.config,
+                self.models,
+                self.auxiliary_models,
+            )
+            await self.rollout_coordinator.prepare.remote()
+            self.logger.info("Rollout coordinator is ready.")
             if self.config.explorer.eval_on_startup and self.explore_step_num == 0:
                 await self.eval()
 

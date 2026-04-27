@@ -1292,32 +1292,6 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
         await scheduler.stop()
 
-    async def test_wait_for_batch_results_leaves_results_available_for_drain(self):
-        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
-        await scheduler.start()
-
-        scheduler.schedule(generate_tasks(4, repeat_times=2), batch_id=0)
-
-        completed_count, scheduled_num = await scheduler.wait_for_batch_results(
-            batch_id=0,
-            timeout=10,
-        )
-
-        self.assertEqual(completed_count, 4)
-        self.assertEqual(scheduled_num, 4)
-        self.assertIn(0, scheduler.completed_tasks)
-
-        statuses, payloads = await scheduler.drain_batch_payload_results(batch_id=0)
-        exps = []
-        for payload in payloads:
-            exps.extend(Experience.deserialize_many(payload))
-
-        self.assertEqual(len(statuses), 4)
-        self.assertEqual(len(exps), 8)
-        self.assertNotIn(0, scheduler.completed_tasks)
-
-        await scheduler.stop()
-
     async def test_collect_results_reads_payloads_returned_by_workflow_runner(self):
         scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
