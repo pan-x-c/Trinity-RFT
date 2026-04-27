@@ -769,7 +769,7 @@ class Scheduler:
             del self.completed_tasks[batch_id]
 
         completed_count = len(statuses)
-        scheduled_num = self.task_num_map.pop(batch_id, 0)
+        scheduled_num = self.task_num_map.get(batch_id, 0)
         self._finalize_dynamic_timeout_step(batch_id, scheduled_num, completed_count)
         return statuses, payload_chunks
 
