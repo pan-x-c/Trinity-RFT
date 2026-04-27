@@ -1,0 +1,69 @@
+mode: explore
+project: Trinity-RFT
+group: explorer-perf
+name: example
+checkpoint_root_dir: ${oc.env:TRINITY_CHECKPOINT_ROOT_DIR,/tmp/trinity-checkpoints}
+
+algorithm:
+  algorithm_type: ppo
+  repeat_times: 4
+  optimizer:
+    lr: 1e-06
+
+data_processor: {}
+
+model:
+  model_path: ${oc.env:TRINITY_MODEL_PATH,Qwen/Qwen3-0.6B}
+  max_prompt_tokens: 256
+  max_response_tokens: 1024
+  enable_thinking: false
+
+cluster:
+  ray_address: ${oc.env:RAY_ADDRESS,auto}
+  node_num: 1
+  gpu_per_node: 1
+
+buffer:
+  batch_size: 8
+  total_epochs: 1
+  explorer_input:
+    taskset:
+      name: taskset
+      storage_type: file
+      path: ${oc.env:TRINITY_TASKSET_PATH,null}
+      split: train
+      format:
+        prompt_key: question
+        response_key: answer
+      rollout_args:
+        temperature: 1.0
+        logprobs: 0
+      workflow_type: math_workflow
+      reward_fn_type: countdown_reward
+    eval_tasksets: []
+
+explorer:
+  runner_per_model: 4
+  max_timeout: 900
+  max_retry_times: 2
+  eval_interval: 1000
+  eval_on_startup: false
+  rollout_model:
+    engine_num: 1
+    tensor_parallel_size: 1
+    enforce_eager: false
+    enable_prefix_caching: false
+    enable_chunked_prefill: false
+    gpu_memory_utilization: 0.85
+    dtype: bfloat16
+    seed: 42
+    enable_openai_api: false
+
+monitor:
+  monitor_type: tensorboard
+
+synchronizer:
+  sync_method: nccl
+  sync_style: fixed
+  sync_interval: 1
+  sync_timeout: 1200
