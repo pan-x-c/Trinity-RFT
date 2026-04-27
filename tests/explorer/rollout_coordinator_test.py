@@ -119,6 +119,7 @@ class FakeScheduler:
 def _build_config(wait_after_min=0.0, return_partial_tasks=True, detailed_stats=False):
     return SimpleNamespace(
         explorer=SimpleNamespace(
+            name="test_explorer",
             over_rollout=SimpleNamespace(
                 wait_after_min=wait_after_min,
                 return_partial_tasks=return_partial_tasks,
