@@ -1,7 +1,6 @@
 """Rollout coordinator for async batch submission and finalize."""
 
 import asyncio
-import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Union
@@ -12,7 +11,7 @@ from trinity.buffer.pipelines.experience_pipeline import ExperiencePipeline
 from trinity.common.config import Config
 from trinity.common.models import InferenceModel
 from trinity.common.workflows import Task
-from trinity.explorer.scheduler import CompletedTaskResult, Scheduler
+from trinity.explorer.scheduler import Scheduler
 from trinity.utils.log import get_logger
 from trinity.utils.monitor import gather_eval_metrics, gather_metrics
 
@@ -51,7 +50,6 @@ class BatchState:
     state: BatchLifecycleState = BatchLifecycleState.PENDING
     final_result: Optional[dict] = None
     finalize_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    min_threshold_reached_time: Optional[float] = None
 
     @property
     def completed_task_count(self) -> int:
@@ -77,7 +75,6 @@ class RolloutCoordinator:
         self.experience_pipeline = None
         self.scheduler: Optional[Scheduler] = None
         self.pending_batches: Dict[BatchId, BatchState] = {}
-        self.event_loop_task: Optional[asyncio.Task] = None
         self.running = False
         self.detailed_stats = getattr(getattr(config, "monitor", None), "detailed_stats", False)
 
@@ -86,25 +83,14 @@ class RolloutCoordinator:
         if self.running:
             return
         if self.experience_pipeline is None:
-            self.experience_pipeline = self._init_experience_pipeline()
-            if self.experience_pipeline is not None:
-                await self.experience_pipeline.prepare()
+            await self._init_experience_pipeline()
         if self.scheduler is None:
-            self.scheduler = self._init_scheduler()
-        await self.scheduler.start()
+            await self._init_scheduler()
         self.running = True
-        self.event_loop_task = asyncio.create_task(self._completed_task_event_loop())
 
     async def shutdown(self) -> None:
         """Stop background work and close owned dependencies."""
         self.running = False
-        if self.event_loop_task is not None:
-            self.event_loop_task.cancel()
-            try:
-                await self.event_loop_task
-            except asyncio.CancelledError:
-                pass
-            self.event_loop_task = None
         if self.scheduler is not None:
             await self.scheduler.stop()
             self.scheduler = None
@@ -112,20 +98,23 @@ class RolloutCoordinator:
             await self.experience_pipeline.close()
             self.experience_pipeline = None
 
-    def _init_experience_pipeline(self):
+    async def _init_experience_pipeline(self):
         """Create the experience pipeline owned by this coordinator actor."""
         if self.config.mode == "bench":
             return None
-        return ExperiencePipeline(self.config)
+        self.experience_pipeline = ExperiencePipeline(self.config)
+        await self.experience_pipeline.prepare()
 
-    def _init_scheduler(self) -> Scheduler:
+    async def _init_scheduler(self):
         """Create the scheduler owned by this coordinator."""
-        return Scheduler(
+        if self.config.mode == "serve":
+            return
+        self.scheduler = Scheduler(
             self.config,
             self.rollout_model,
             self.auxiliary_models,
-            emit_completed_task_events=True,
         )
+        await self.scheduler.start()
 
     def _require_scheduler(self) -> Scheduler:
         """Return the initialized scheduler."""
@@ -228,8 +217,7 @@ class RolloutCoordinator:
             return_partial_tasks=keep_partial_results,
             restart_runners=True,
         )
-        if self.experience_pipeline is not None:
-            await self.experience_pipeline.abort_batch(batch_id)
+        scheduler.discard_completed_results(batch_id)
 
         batch_state.state = BatchLifecycleState.ABORTED
         batch_state.final_result = self._build_batch_result(batch_state, FinalizeReason.ABORT, {})
@@ -249,48 +237,6 @@ class RolloutCoordinator:
                 auxiliary_models,
             )
         )
-
-    async def _completed_task_event_loop(self) -> None:
-        """Consume task completion events emitted by the scheduler."""
-        scheduler = self._require_scheduler()
-        while self.running:
-            try:
-                completed_result = await scheduler.wait_completed_task(timeout=0.1)
-                if completed_result is None:
-                    return
-                if not isinstance(completed_result.task_id, int):
-                    self.logger.warning(
-                        "Skip completed task event with non-integer task id: %s",
-                        completed_result.task_id,
-                    )
-                    return
-                batch_state = self.pending_batches.get(completed_result.batch_id)
-                if batch_state is None:
-                    return
-                await self._store_completed_task_result(batch_state, completed_result)
-                self._maybe_mark_ready(batch_state)
-            except Exception:  # noqa: BLE001
-                self.logger.exception("RolloutCoordinator task event loop failed.")
-
-    async def _store_completed_task_result(
-        self, batch_state: BatchState, result: CompletedTaskResult
-    ) -> None:
-        """Persist one completed task into batch-level aggregation state."""
-        if result.task_id in batch_state.statuses:
-            return
-        batch_state.statuses[result.task_id] = result.status
-
-        if batch_state.batch_type != "train":
-            return
-
-        if self.experience_pipeline is not None and result.experience_payloads:
-            staged_task_id = int(result.task_id)
-            await self.experience_pipeline.stage_task_payloads(
-                batch_state.batch_id,
-                staged_task_id,
-                result.experience_payloads,
-            )
-            return
 
     def _get_batch_state(self, batch_id: BatchId, *, expected_type: BatchType) -> BatchState:
         """Return one registered batch and validate its type."""
@@ -313,48 +259,6 @@ class RolloutCoordinator:
         batch_state.final_result = self._build_batch_result(batch_state, FinalizeReason.ABORT, {})
         return dict(batch_state.final_result)
 
-    def _get_ready_reason(self, batch_state: BatchState) -> Optional[FinalizeReason]:
-        """Check whether a batch is ready to finalize and why."""
-        if batch_state.state == BatchLifecycleState.ABORTED:
-            return FinalizeReason.ABORT
-        if batch_state.completed_task_count >= batch_state.expected_task_count:
-            return FinalizeReason.COMPLETE
-        if batch_state.batch_type != "train":
-            return None
-        if batch_state.min_wait_num is None:
-            return None
-        if batch_state.completed_task_count < batch_state.min_wait_num:
-            batch_state.min_threshold_reached_time = None
-            return None
-
-        if batch_state.min_threshold_reached_time is None:
-            batch_state.min_threshold_reached_time = time.time()
-
-        wait_after_min = getattr(self.config.explorer.over_rollout, "wait_after_min", 0.0)
-        if time.time() - batch_state.min_threshold_reached_time >= wait_after_min:
-            return FinalizeReason.PARTIAL
-        return None
-
-    def _maybe_mark_ready(self, batch_state: BatchState) -> Optional[FinalizeReason]:
-        """Transition a batch to ready state when finalize conditions are met."""
-        ready_reason = self._get_ready_reason(batch_state)
-        if ready_reason is None:
-            return None
-        return ready_reason
-
-    async def _wait_for_ready(
-        self, batch_state: BatchState, timeout: Optional[float]
-    ) -> Optional[FinalizeReason]:
-        """Wait until a batch is ready to finalize or the timeout expires."""
-        start_time = time.time()
-        while True:
-            ready_reason = self._maybe_mark_ready(batch_state)
-            if ready_reason is not None:
-                return ready_reason
-            if timeout is not None and (time.time() - start_time) >= timeout:
-                return None
-            await asyncio.sleep(0.05)
-
     async def _finalize_train_batch(
         self, batch_state: BatchState, *, timeout: Optional[float]
     ) -> dict:
@@ -364,16 +268,41 @@ class RolloutCoordinator:
             if existing_result is not None:
                 return existing_result
 
-            ready_reason = await self._wait_for_ready(batch_state, timeout)
-            if ready_reason is None:
-                if batch_state.min_wait_num is not None and batch_state.statuses:
-                    ready_reason = FinalizeReason.TIMEOUT
-                else:
+            scheduler = self._require_scheduler()
+            completed_count, scheduled_num = await scheduler.wait_for_batch_results(
+                batch_id=batch_state.batch_id,
+                min_num=batch_state.min_wait_num,
+                timeout=timeout,
+                clear_timeout_tasks=False,
+                return_partial_tasks=self.config.explorer.over_rollout.return_partial_tasks,
+            )
+            if scheduled_num == 0:
+                ready_reason = FinalizeReason.COMPLETE
+                payload_chunks = []
+            else:
+                if completed_count == 0:
                     raise TimeoutError(f"Timeout waiting for batch {batch_state.batch_id}.")
+                if batch_state.min_wait_num is None and completed_count < scheduled_num:
+                    raise TimeoutError(f"Timeout waiting for batch {batch_state.batch_id}.")
+
+                statuses, payload_chunks = await scheduler.drain_batch_payload_results(
+                    batch_state.batch_id
+                )
+                batch_state.statuses = {task_id: status for task_id, status in enumerate(statuses)}
+
+                if completed_count >= scheduled_num:
+                    ready_reason = FinalizeReason.COMPLETE
+                elif (
+                    batch_state.min_wait_num is not None
+                    and completed_count >= batch_state.min_wait_num
+                ):
+                    ready_reason = FinalizeReason.PARTIAL
+                else:
+                    ready_reason = FinalizeReason.TIMEOUT
 
             batch_state.state = BatchLifecycleState.FINALIZING
             try:
-                pipeline_metrics = await self._finalize_train_payloads(batch_state)
+                pipeline_metrics = await self._finalize_train_payloads(payload_chunks)
                 if ready_reason != FinalizeReason.COMPLETE:
                     await self._cleanup_train_batch_runtime(batch_state)
             except Exception:
@@ -389,6 +318,7 @@ class RolloutCoordinator:
         pipeline_metrics: dict,
     ) -> dict:
         """Persist one terminal result and evict the batch from active state."""
+        self._require_scheduler().discard_completed_results(batch_state.batch_id)
         batch_state.state = BatchLifecycleState.FINALIZED
         batch_state.final_result = self._build_batch_result(batch_state, reason, pipeline_metrics)
         self.pending_batches.pop(batch_state.batch_id, None)
@@ -408,13 +338,11 @@ class RolloutCoordinator:
             return_partial_tasks=False,
             restart_runners=True,
         )
-        if self.experience_pipeline is not None:
-            await self.experience_pipeline.abort_batch(batch_state.batch_id)
 
-    async def _finalize_train_payloads(self, batch_state: BatchState) -> dict:
-        """Flush staged train payloads through the experience pipeline."""
-        if self.experience_pipeline is not None and batch_state.statuses:
-            return await self.experience_pipeline.finalize_batch(batch_state.batch_id)
+    async def _finalize_train_payloads(self, payload_chunks: list[bytes]) -> dict:
+        """Process collected train payload chunks through the experience pipeline."""
+        if self.experience_pipeline is not None and payload_chunks:
+            return await self.experience_pipeline.process_serialized_chunks(payload_chunks)
         return {}
 
     def _build_batch_result(

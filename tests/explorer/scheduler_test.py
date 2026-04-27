@@ -15,7 +15,7 @@ from trinity.common.constants import StorageType, SyncStyle
 from trinity.common.experience import EID, Experience
 from trinity.common.models.model import InferenceModel, ModelWrapper
 from trinity.common.workflows import WORKFLOWS, Task, Workflow
-from trinity.explorer.scheduler import CompletedTaskResult, Scheduler
+from trinity.explorer.scheduler import Scheduler
 
 
 @WORKFLOWS.register_module("dummy_workflow")
@@ -349,31 +349,6 @@ class DummyAuxiliaryModel(InferenceModel):
 
     def get_api_server_url(self) -> str:
         return "http://localhost:12345"
-
-
-@ray.remote
-class DummyPayloadStage:
-    def __init__(self):
-        self.staged_payloads = defaultdict(dict)
-
-    async def stage_task_payloads(self, batch_id, task_id: int, exp_chunks: list[bytes]):
-        self.staged_payloads[batch_id][task_id] = list(exp_chunks)
-        return f"{batch_id}:{task_id}"
-
-    async def take_staged_task_payloads(self, batch_id, task_ids: list[int]) -> list[bytes]:
-        batch_payloads = self.staged_payloads.get(batch_id, {})
-        exp_chunks = []
-        for task_id in task_ids:
-            exp_chunks.extend(batch_payloads.pop(task_id, []))
-        if batch_id in self.staged_payloads and not self.staged_payloads[batch_id]:
-            del self.staged_payloads[batch_id]
-        return exp_chunks
-
-    async def get_staged_task_ids(self, batch_id):
-        return sorted(self.staged_payloads.get(batch_id, {}).keys())
-
-    async def abort_batch(self, batch_id):
-        self.staged_payloads.pop(batch_id, None)
 
 
 def generate_tasks(
@@ -1317,35 +1292,29 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
         await scheduler.stop()
 
-    async def test_completed_task_events_return_full_task_results_directly(self):
-        scheduler = Scheduler(
-            self.config,
-            [DummyModel.remote(), DummyModel.remote()],
-            emit_completed_task_events=True,
-        )
+    async def test_wait_for_batch_results_leaves_results_available_for_drain(self):
+        scheduler = Scheduler(self.config, [DummyModel.remote(), DummyModel.remote()])
         await scheduler.start()
 
         scheduler.schedule(generate_tasks(4, repeat_times=2), batch_id=0)
 
-        completed_results = []
-        for _ in range(4):
-            completed_result = await scheduler.wait_completed_task(timeout=10)
-            self.assertIsNotNone(completed_result)
-            self.assertIsInstance(completed_result, CompletedTaskResult)
-            completed_results.append(completed_result)
+        completed_count, scheduled_num = await scheduler.wait_for_batch_results(
+            batch_id=0,
+            timeout=10,
+        )
 
-        self.assertEqual({result.batch_id for result in completed_results}, {0})
-        self.assertEqual({result.task_id for result in completed_results}, {0, 1, 2, 3})
-        self.assertNotIn(0, scheduler.completed_tasks)
+        self.assertEqual(completed_count, 4)
+        self.assertEqual(scheduled_num, 4)
+        self.assertIn(0, scheduler.completed_tasks)
 
-        statuses = [result.status for result in completed_results]
+        statuses, payloads = await scheduler.drain_batch_payload_results(batch_id=0)
         exps = []
-        for result in completed_results:
-            for payload in result.experience_payloads:
-                exps.extend(Experience.deserialize_many(payload))
+        for payload in payloads:
+            exps.extend(Experience.deserialize_many(payload))
 
         self.assertEqual(len(statuses), 4)
         self.assertEqual(len(exps), 8)
+        self.assertNotIn(0, scheduler.completed_tasks)
 
         await scheduler.stop()
 

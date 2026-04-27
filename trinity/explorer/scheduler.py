@@ -313,8 +313,6 @@ class Scheduler:
         config: Config,
         rollout_model: List[InferenceModel],
         auxiliary_models: Optional[List[List[InferenceModel]]] = None,
-        *,
-        emit_completed_task_events: bool = False,
     ):
         self.logger = get_logger(__name__)
         self.config = config
@@ -350,8 +348,6 @@ class Scheduler:
         ] = defaultdict(
             dict
         )  # batch_id -> results
-        self.completed_task_results: asyncio.Queue[CompletedTaskResult] = asyncio.Queue()
-        self.emit_completed_task_events = emit_completed_task_events
         self.background_tasks: set[asyncio.Task] = set()
 
         self.scheduler_task: Optional[asyncio.Task] = None
@@ -527,21 +523,13 @@ class Scheduler:
             status=status,
             experience_payloads=experience_payloads,
         )
-        if self.emit_completed_task_events and not task.task.is_eval:
-            self.completed_task_results.put_nowait(completed_result)
-        else:
-            self.completed_tasks[task.batch_id][task_id] = completed_result
+        self.completed_tasks[task.batch_id][task_id] = completed_result
         task.emitted = True
 
-    async def wait_completed_task(
-        self, timeout: Optional[float] = None
-    ) -> Optional[CompletedTaskResult]:
-        try:
-            if timeout is None:
-                return await self.completed_task_results.get()
-            return await asyncio.wait_for(self.completed_task_results.get(), timeout=timeout)
-        except asyncio.TimeoutError:
-            return None
+    def discard_completed_results(self, batch_id: Union[int, str]) -> None:
+        """Drop cached completed results for one batch."""
+
+        self.completed_tasks.pop(batch_id, None)
 
     def _collect_incomplete_tasks(self, batch_id: Union[int, str]) -> List[TaskWrapper]:
         tasks = {}
@@ -759,16 +747,15 @@ class Scheduler:
 
         return statuses, payload_chunks
 
-    async def _get_batch_payload_results(
+    async def wait_for_batch_results(
         self,
         batch_id: Union[int, str],
-        *,
-        min_num: Optional[int],
-        timeout: Optional[float],
-        clear_timeout_tasks: bool,
-        return_partial_tasks: bool,
-    ) -> Tuple[List[Status], List[bytes]]:
-        """Wait for one batch and drain its completed payload chunks."""
+        min_num: Optional[int] = None,
+        timeout: Optional[float] = None,
+        clear_timeout_tasks: bool = True,
+        return_partial_tasks: bool = False,
+    ) -> Tuple[int, int]:
+        """Wait until one batch reaches the requested threshold without draining results."""
 
         timeout = timeout or self.default_timeout
         scheduled_num, min_num = self._resolve_result_target(batch_id, min_num)
@@ -793,19 +780,48 @@ class Scheduler:
                     restart_runners=True,
                 )
 
+        completed_count = len(self.completed_tasks.get(batch_id, {}))
+        if completed_count < min_num:
+            self.logger.warning(
+                f"Timeout reached, only {completed_count}/{min_num} tasks completed"
+            )
+
+        return completed_count, scheduled_num
+
+    async def drain_batch_payload_results(
+        self, batch_id: Union[int, str]
+    ) -> Tuple[List[Status], List[bytes]]:
+        """Drain cached completed results for one batch."""
+
         statuses, payload_chunks = await self._collect_batch_results(batch_id)
 
         if batch_id in self.completed_tasks:
             del self.completed_tasks[batch_id]
 
         completed_count = len(statuses)
+        scheduled_num = self.task_num_map.get(batch_id, 0)
         self._finalize_dynamic_timeout_step(batch_id, scheduled_num, completed_count)
-        if completed_count < min_num:
-            self.logger.warning(
-                f"Timeout reached, only {completed_count}/{min_num} tasks completed"
-            )
-
         return statuses, payload_chunks
+
+    async def _get_batch_payload_results(
+        self,
+        batch_id: Union[int, str],
+        *,
+        min_num: Optional[int],
+        timeout: Optional[float],
+        clear_timeout_tasks: bool,
+        return_partial_tasks: bool,
+    ) -> Tuple[List[Status], List[bytes]]:
+        """Wait for one batch and drain its completed payload chunks."""
+
+        await self.wait_for_batch_results(
+            batch_id=batch_id,
+            min_num=min_num,
+            timeout=timeout,
+            clear_timeout_tasks=clear_timeout_tasks,
+            return_partial_tasks=return_partial_tasks,
+        )
+        return await self.drain_batch_payload_results(batch_id)
 
     async def get_payload_results(
         self,
