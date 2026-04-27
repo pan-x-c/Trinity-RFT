@@ -1097,6 +1097,10 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
         self.assertTrue(thread_status.ok)
         self.assertTrue(sequential_status.ok)
 
+        async_exps = deserialize_experiences(async_exps)
+        thread_exps = deserialize_experiences(thread_exps)
+        sequential_exps = deserialize_experiences(sequential_exps)
+
         self.assertEqual(len(async_exps), 8)
         self.assertEqual(len(thread_exps), 8)
         self.assertEqual(len(sequential_exps), 8)

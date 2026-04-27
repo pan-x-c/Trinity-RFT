@@ -315,19 +315,20 @@ class Explorer:
             eval_taskset = get_buffer_reader(eval_taskset_config)
             eval_batch_id = f"{self.explore_step_num}/{eval_taskset_config.name}"
             self.pending_eval_tasks.append((self.explore_step_num, eval_taskset_config.name))
+            eval_tasks = []
             while True:
                 try:
-                    data = await eval_taskset.read_async()
-                    assert (
-                        self.rollout_coordinator is not None
-                    ), "Rollout coordinator must be prepared first."
-                    await self.rollout_coordinator.submit_batch.remote(
-                        batch_id=eval_batch_id,
-                        tasks=data,
-                        batch_type="eval",
-                    )
+                    eval_tasks.extend(await eval_taskset.read_async())
                 except StopAsyncIteration:
                     break
+            assert (
+                self.rollout_coordinator is not None
+            ), "Rollout coordinator must be prepared first."
+            await self.rollout_coordinator.submit_batch.remote(
+                batch_id=eval_batch_id,
+                tasks=eval_tasks,
+                batch_type="eval",
+            )
 
     async def benchmark(self) -> bool:
         """Benchmark the model checkpoints."""

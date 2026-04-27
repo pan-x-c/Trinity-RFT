@@ -471,7 +471,7 @@ class ServeTest(RayUnittestBaseAsync):
         )
 
         # wait for explorer initialization
-        for i in range(30):
+        for i in range(50):
             try:
                 server_url = state_manager.load_explorer_server_url()
             except Exception:

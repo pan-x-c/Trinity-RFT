@@ -209,6 +209,14 @@ class RolloutCoordinator:
         batch_state.final_result = self._build_batch_result(batch_state, pipeline_metrics={})
         self.pending_batches.pop(batch_id, None)
 
+    async def process_experiences(self, payloads: list[bytes]) -> dict:
+        """Process one batch of experience payloads through the pipeline."""
+        if self.experience_pipeline is None:
+            raise RuntimeError("Experience pipeline is not initialized.")
+        if not payloads:
+            return {}
+        return await self.experience_pipeline.process_serialized_chunks(payloads)
+
     @classmethod
     def get_actor(
         cls, config: Config, models: List, auxiliary_models: List
@@ -277,7 +285,7 @@ class RolloutCoordinator:
 
             batch_state.state = BatchLifecycleState.FINALIZING
             try:
-                pipeline_metrics = await self._finalize_train_payloads(payload_chunks)
+                pipeline_metrics = await self.process_experiences(payload_chunks)
                 if not is_complete:
                     await self._cleanup_train_batch_runtime(batch_state)
             except Exception:
@@ -312,12 +320,6 @@ class RolloutCoordinator:
             return_partial_tasks=False,
             restart_runners=True,
         )
-
-    async def _finalize_train_payloads(self, payload_chunks: list[bytes]) -> dict:
-        """Process collected train payload chunks through the experience pipeline."""
-        if self.experience_pipeline is not None and payload_chunks:
-            return await self.experience_pipeline.process_serialized_chunks(payload_chunks)
-        return {}
 
     def _build_batch_result(
         self,
