@@ -424,9 +424,15 @@ class Explorer:
             result = await self.rollout_coordinator.finalize_eval_batch.remote(
                 f"{step}/{eval_task_name}"
             )
-            metric.update(result["metrics"])
+            batch_metrics = result["metrics"]
+            if prefix != "eval":
+                batch_metrics = {
+                    key.replace("eval/", f"{prefix}/", 1) if key.startswith("eval/") else key: value
+                    for key, value in batch_metrics.items()
+                }
+            metric.update(batch_metrics)
         if self.eval_start_time is not None:
-            metric.update({"time/eval": time.time() - self.eval_start_time})
+            metric.update({f"time/{prefix}": time.time() - self.eval_start_time})
             self.eval_start_time = None
         if self.monitor is not None:
             self.monitor.log(metric, step)

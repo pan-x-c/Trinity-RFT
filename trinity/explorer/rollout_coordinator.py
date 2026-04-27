@@ -59,7 +59,7 @@ class RolloutCoordinator:
         auxiliary_models: Optional[List[List[InferenceModel]]] = None,
     ):
         """Create a coordinator with internally managed scheduler and pipeline."""
-        self.logger = get_logger("rollout_coordinator", in_ray_actor=True)
+        self.logger = get_logger(f"{config.explorer.name}_rollout_coordinator", in_ray_actor=True)
         self.config = config
         self.rollout_model = rollout_model
         self.auxiliary_models = auxiliary_models or []
