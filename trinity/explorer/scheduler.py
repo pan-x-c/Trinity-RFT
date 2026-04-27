@@ -536,6 +536,8 @@ class Scheduler:
         """Drop cached completed results for one batch."""
 
         self.completed_tasks.pop(batch_id, None)
+        self.task_num_map.pop(batch_id, None)
+        self.batch_is_eval_map.pop(batch_id, None)
 
     def _collect_incomplete_tasks(self, batch_id: Union[int, str]) -> List[TaskWrapper]:
         tasks = {}
@@ -658,7 +660,10 @@ class Scheduler:
         max_timeout = timeout or self.default_timeout
         if not self.config.explorer.dynamic_timeout.enable:
             return max_timeout
-        if self.total_completed_steps < self.config.explorer.dynamic_timeout.warmup_min_steps:
+        if (
+            self.total_completed_steps < self.config.explorer.dynamic_timeout.warmup_min_steps
+            or self.total_completed_sub_tasks == 0
+        ):
             return max_timeout
         avg_time_per_task = self.total_running_time / self.total_completed_sub_tasks
         return min(
@@ -764,7 +769,7 @@ class Scheduler:
             del self.completed_tasks[batch_id]
 
         completed_count = len(statuses)
-        scheduled_num = self.task_num_map.get(batch_id, 0)
+        scheduled_num = self.task_num_map.pop(batch_id, 0)
         self._finalize_dynamic_timeout_step(batch_id, scheduled_num, completed_count)
         return statuses, payload_chunks
 

@@ -179,8 +179,8 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
 
         await self.coordinator.shutdown()
 
-    async def test_finalize_train_batch_processes_scheduler_payloads_and_is_idempotent(self):
-        """Train finalize should consume batch payloads once and reuse the final result."""
+    async def test_finalize_train_batch_processes_scheduler_payloads(self):
+        """Train finalize should consume batch payloads."""
 
         await self.coordinator.submit_batch(
             batch_id=1,
