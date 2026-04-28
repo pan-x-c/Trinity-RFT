@@ -59,8 +59,8 @@ perf/
 trinity/
   perf/
     __init__.py
-    explorer_perf.py
-    explorer_metrics.py
+    stage_perf.py
+    tensorboard_metrics.py
     report_utils.py
     resource_backends.py
     resource_sampler.py
@@ -74,7 +74,7 @@ trinity/
    提供独立资源采样器，支持启动、停止、导出原始样本和聚合统计。
 3. `trinity/perf/report_utils.py`
    提供时间序列聚合、百分位数计算和统一 JSON 序列化能力。
-4. `trinity/perf/explorer_perf.py`
+4. `trinity/perf/stage_perf.py`
   负责 Explorer perf 的单次运行编排和结果落盘。
 5. `perf/scripts/explorer/example.yaml`
    提供最小可运行的 Trinity Explorer 配置样例。
@@ -341,8 +341,8 @@ python -m trinity.cli.launcher perf --module explorer --config <path_to_config> 
 2. 实现 `trinity/perf/resource_backends.py`。
 3. 实现 `trinity/perf/resource_sampler.py`。
 4. 实现 `trinity/perf/report_utils.py`。
-5. 在 `trinity/perf/explorer_perf.py` 中完成单次运行编排。
-6. 在 `trinity/perf/explorer_perf.py` 中实现 TensorBoard 指标解析。
+5. 在 `trinity/perf/stage_perf.py` 中完成单次运行编排。
+6. 在 `trinity/perf/stage_perf.py` 中实现 TensorBoard 指标解析。
 7. 补充 `perf/scripts/explorer/example.yaml`。
 8. 补充测试和文档示例。
 

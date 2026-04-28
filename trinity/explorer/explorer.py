@@ -382,14 +382,14 @@ class Explorer:
 
         # Record the time: read_task + explore_step (>=1) + eval (if any)
         if self.explore_start_time is not None:
-            metric = {"time/explorer_sync_interval": time.time() - self.explore_start_time}
+            metric = {"explore/time/sync_interval": time.time() - self.explore_start_time}
             self.explore_start_time = None
             if self.monitor is not None:
                 self.monitor.log(metric, step=end_step)
 
     async def _finish_explore_step(self, step: int, model_version: int) -> None:
         metric = {"rollout/model_version": model_version}
-        with Timer(metric, "time/wait_explore_step"):
+        with Timer(metric, "explore/time/wait_explore_step"):
             statuses, exps = await self.scheduler.get_results(
                 batch_id=step,
                 min_num=self.min_wait_num,

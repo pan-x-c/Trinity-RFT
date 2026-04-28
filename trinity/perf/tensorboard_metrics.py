@@ -1,4 +1,4 @@
-"""Helpers for Explorer performance metric parsing and aggregation."""
+"""Helpers for TensorBoard metric parsing and aggregation."""
 
 from __future__ import annotations
 

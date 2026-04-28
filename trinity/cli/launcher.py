@@ -2,7 +2,9 @@
 import asyncio
 import os
 import sys
+import time
 import traceback
+from dataclasses import dataclass
 from pprint import pprint
 from typing import Optional
 
@@ -14,7 +16,11 @@ from trinity.common.config import Config, load_config
 from trinity.common.constants import DEBUG_NAMESPACE, PLUGIN_DIRS_ENV_VAR
 from trinity.manager.checkpoint_converter import Converter
 from trinity.manager.state_manager import StateManager
-from trinity.perf import ExplorerPerfOptions, run_explorer_perf, write_explorer_perf_output
+from trinity.perf import (
+    ExplorerPerfOptions,
+    run_explorer_perf,
+    write_explorer_perf_output,
+)
 from trinity.utils.dlc_utils import is_running, setup_ray_cluster, stop_ray_cluster
 from trinity.utils.log import get_logger
 from trinity.utils.plugin_loader import load_plugins
@@ -28,71 +34,190 @@ app = typer.Typer(
 )
 
 
-def bench(config: Config) -> None:
+@dataclass(slots=True)
+class StageError:
+    type_name: str
+    message: str
+    traceback_text: str
+
+
+@dataclass(slots=True)
+class StageStatus:
+    stage: str
+    success: bool
+    startup_time_sec: Optional[float] = None
+    run_time_sec: Optional[float] = None
+    total_time_sec: Optional[float] = None
+    error: Optional[StageError] = None
+
+
+def _build_stage_error(error: BaseException) -> StageError:
+    return StageError(
+        type_name=type(error).__name__,
+        message=str(error),
+        traceback_text=traceback.format_exc(),
+    )
+
+
+def bench(config: Config, *, timeout: Optional[float] = None) -> StageStatus:
     """Evaluate model."""
     from trinity.explorer.explorer import Explorer
 
     config.explorer.name = "benchmark"
     explorer = Explorer.get_actor(config)
+    startup_started_at = time.perf_counter()
+    startup_time_sec: Optional[float] = None
     try:
-        ray.get(explorer.prepare.remote())
-        ray.get(explorer.benchmark.remote())
+        ray.get(explorer.prepare.remote(), timeout=timeout)
+        startup_time_sec = time.perf_counter() - startup_started_at
+
+        run_started_at = time.perf_counter()
+        ray.get(explorer.benchmark.remote(), timeout=timeout)
+        run_time_sec = time.perf_counter() - run_started_at
         logger.info("Benchmark finished.")
-    except Exception:
-        logger.error(f"Benchmark failed:\n{traceback.format_exc()}")
+        return StageStatus(
+            stage="bench",
+            success=True,
+            startup_time_sec=startup_time_sec,
+            run_time_sec=run_time_sec,
+            total_time_sec=time.perf_counter() - startup_started_at,
+        )
+    except Exception as exc:
+        error = _build_stage_error(exc)
+        logger.error(f"Benchmark failed:\n{error.traceback_text}")
+        return StageStatus(
+            stage="bench",
+            success=False,
+            startup_time_sec=startup_time_sec,
+            run_time_sec=None,
+            total_time_sec=time.perf_counter() - startup_started_at,
+            error=error,
+        )
     finally:
-        ray.get(explorer.shutdown.remote())
+        ray.get(explorer.shutdown.remote(), timeout=timeout)
 
 
-def explore(config: Config) -> None:
+def explore(config: Config, *, timeout: Optional[float] = None) -> StageStatus:
     """Run explorer."""
     from trinity.explorer.explorer import Explorer
 
     explorer = Explorer.get_actor(config)
+    startup_started_at = time.perf_counter()
+    startup_time_sec: Optional[float] = None
+    run_started_at: Optional[float] = None
 
     try:
-        ray.get(explorer.prepare.remote())
-        ray.get(explorer.sync_weight.remote())
-        ray.get(explorer.explore.remote())
-    except Exception:
-        logger.error(f"Explorer failed:\n{traceback.format_exc()}")
+        ray.get(explorer.prepare.remote(), timeout=timeout)
+        startup_time_sec = time.perf_counter() - startup_started_at
+
+        run_started_at = time.perf_counter()
+        ray.get(explorer.sync_weight.remote(), timeout=timeout)
+        ray.get(explorer.explore.remote(), timeout=timeout)
+        run_time_sec = time.perf_counter() - run_started_at
+        return StageStatus(
+            stage="explore",
+            success=True,
+            startup_time_sec=startup_time_sec,
+            run_time_sec=run_time_sec,
+            total_time_sec=time.perf_counter() - startup_started_at,
+        )
+    except Exception as exc:
+        error = _build_stage_error(exc)
+        logger.error(f"Explorer failed:\n{error.traceback_text}")
+        run_time_sec = time.perf_counter() - run_started_at if run_started_at is not None else None
+        return StageStatus(
+            stage="explore",
+            success=False,
+            startup_time_sec=startup_time_sec,
+            run_time_sec=run_time_sec,
+            total_time_sec=time.perf_counter() - startup_started_at,
+            error=error,
+        )
     finally:
-        ray.get(explorer.shutdown.remote())
+        ray.get(explorer.shutdown.remote(), timeout=timeout)
 
 
-def train(config: Config) -> None:
+def train(config: Config, *, timeout: Optional[float] = None) -> StageStatus:
     """Run trainer."""
     from trinity.trainer.trainer import Trainer
 
     trainer = Trainer.get_actor(config)
+    startup_started_at = time.perf_counter()
+    startup_time_sec: Optional[float] = None
+    run_started_at: Optional[float] = None
 
     try:
-        ray.get(trainer.prepare.remote())
-        ray.get(trainer.sync_weight.remote())
-        ray.get(trainer.train.remote())
-    except Exception:
-        logger.error(f"Trainer failed:\n{traceback.format_exc()}")
+        ray.get(trainer.prepare.remote(), timeout=timeout)
+        startup_time_sec = time.perf_counter() - startup_started_at
+
+        run_started_at = time.perf_counter()
+        ray.get(trainer.sync_weight.remote(), timeout=timeout)
+        ray.get(trainer.train.remote(), timeout=timeout)
+        run_time_sec = time.perf_counter() - run_started_at
+        return StageStatus(
+            stage="train",
+            success=True,
+            startup_time_sec=startup_time_sec,
+            run_time_sec=run_time_sec,
+            total_time_sec=time.perf_counter() - startup_started_at,
+        )
+    except Exception as exc:
+        error = _build_stage_error(exc)
+        logger.error(f"Trainer failed:\n{error.traceback_text}")
+        run_time_sec = time.perf_counter() - run_started_at if run_started_at is not None else None
+        return StageStatus(
+            stage="train",
+            success=False,
+            startup_time_sec=startup_time_sec,
+            run_time_sec=run_time_sec,
+            total_time_sec=time.perf_counter() - startup_started_at,
+            error=error,
+        )
     finally:
-        ray.get(trainer.shutdown.remote())
+        ray.get(trainer.shutdown.remote(), timeout=timeout)
 
 
-def serve(config: Config) -> None:
+def serve(config: Config, *, timeout: Optional[float] = None) -> StageStatus:
     """Run explorer in server mode."""
     from trinity.explorer.explorer import Explorer
 
     explorer = Explorer.get_actor(config)
+    startup_started_at = time.perf_counter()
+    startup_time_sec: Optional[float] = None
+    run_started_at: Optional[float] = None
 
     try:
-        ray.get(explorer.prepare.remote())
-        ray.get(explorer.sync_weight.remote())
-        ray.get(explorer.serve.remote())
-    except Exception:
-        logger.error(f"Explorer failed:\n{traceback.format_exc()}")
+        ray.get(explorer.prepare.remote(), timeout=timeout)
+        startup_time_sec = time.perf_counter() - startup_started_at
+
+        run_started_at = time.perf_counter()
+        ray.get(explorer.sync_weight.remote(), timeout=timeout)
+        ray.get(explorer.serve.remote(), timeout=timeout)
+        run_time_sec = time.perf_counter() - run_started_at
+        return StageStatus(
+            stage="serve",
+            success=True,
+            startup_time_sec=startup_time_sec,
+            run_time_sec=run_time_sec,
+            total_time_sec=time.perf_counter() - startup_started_at,
+        )
+    except Exception as exc:
+        error = _build_stage_error(exc)
+        logger.error(f"Explorer failed:\n{error.traceback_text}")
+        run_time_sec = time.perf_counter() - run_started_at if run_started_at is not None else None
+        return StageStatus(
+            stage="serve",
+            success=False,
+            startup_time_sec=startup_time_sec,
+            run_time_sec=run_time_sec,
+            total_time_sec=time.perf_counter() - startup_started_at,
+            error=error,
+        )
     finally:
-        ray.get(explorer.shutdown.remote())
+        ray.get(explorer.shutdown.remote(), timeout=timeout)
 
 
-def both(config: Config) -> None:
+def both(config: Config) -> StageStatus:
     """Setup both explorer and trainer.
 
     For the explorer, a step contains `batch_size * sync_interval` number
@@ -107,6 +232,7 @@ def both(config: Config) -> None:
 
     explorer = Explorer.get_actor(config)
     trainer = Trainer.get_actor(config)
+    started_at = time.perf_counter()
     try:
         ray.get([explorer.__ray_ready__.remote(), trainer.__ray_ready__.remote()])
         ray.get(
@@ -148,8 +274,20 @@ def both(config: Config) -> None:
                 "==============================================================="
             )
             ray.wait(wait_ref, timeout=config.synchronizer.sync_timeout)
-    except Exception:
-        logger.error(f"Explorer or Trainer failed:\n{traceback.format_exc()}")
+        return StageStatus(
+            stage="both",
+            success=True,
+            total_time_sec=time.perf_counter() - started_at,
+        )
+    except Exception as exc:
+        error = _build_stage_error(exc)
+        logger.error(f"Explorer or Trainer failed:\n{error.traceback_text}")
+        return StageStatus(
+            stage="both",
+            success=False,
+            total_time_sec=time.perf_counter() - started_at,
+            error=error,
+        )
     finally:
         ray.wait(
             [explorer.shutdown.remote(), trainer.shutdown.remote()],
@@ -168,7 +306,7 @@ MODE_MAP = {
 }
 
 
-def run_stage(config: Config) -> None:
+def run_stage(config: Config) -> StageStatus:
     ray.init(
         address=config.cluster.ray_address,
         ignore_reinit_error=True,
@@ -180,7 +318,7 @@ def run_stage(config: Config) -> None:
         from trinity.buffer.pipelines.task_pipeline import check_and_run_task_pipeline
 
         check_and_run_task_pipeline(config)
-        MODE_MAP[config.mode](config)
+        return MODE_MAP[config.mode](config)  # type: ignore[operator]
     finally:
         if config.monitor.enable_ray_timeline:
             timeline_file = os.path.join(config.monitor.cache_dir, "timeline.json")
@@ -287,12 +425,14 @@ def perf(
     ],
     module: Annotated[
         str,
-        typer.Option("--module", "-m", help="Perf module to run. Currently only supports 'explorer'."),
+        typer.Option(
+            "--module", "-m", help="Perf module to run. Currently only supports 'explorer'."
+        ),
     ] = "explorer",
     output_path: Annotated[
         str,
         typer.Option("--output-path", "-o", help="Path to the output JSON file."),
-    ] = "perf/scripts/explorer/output/perf_result.json",
+    ] = "./perf/output.json",
     monitor_interval: Annotated[
         float,
         typer.Option("--monitor-interval", help="Resource sampling interval in seconds."),
@@ -303,7 +443,9 @@ def perf(
     ] = 5,
     timeout: Annotated[
         Optional[float],
-        typer.Option("--timeout", help="Optional timeout in seconds for prepare, sync and explore calls."),
+        typer.Option(
+            "--timeout", help="Optional timeout in seconds for prepare, sync and explore calls."
+        ),
     ] = None,
     plugin_dir: Annotated[
         Optional[str],
@@ -314,20 +456,30 @@ def perf(
     if module != "explorer":
         raise typer.BadParameter("Only --module explorer is supported for now.")
 
-    if plugin_dir:
-        os.environ[PLUGIN_DIRS_ENV_VAR] = plugin_dir
+    try:
+        if plugin_dir:
+            os.environ[PLUGIN_DIRS_ENV_VAR] = plugin_dir
 
-    options = ExplorerPerfOptions(
-        config_path=config,
-        output_path=output_path,
-        monitor_interval=monitor_interval,
-        total_steps=total_steps,
-        timeout=timeout,
-    )
-    payload = run_explorer_perf(options)
-    write_explorer_perf_output(output_path, payload)
+        options = ExplorerPerfOptions(
+            config_path=config,
+            output_path=output_path,
+            monitor_interval=monitor_interval,
+            total_steps=total_steps,
+            timeout=timeout,
+        )
+        payload = run_explorer_perf(options)
+        write_explorer_perf_output(output_path, payload)
+    except Exception:
+        payload = {
+            "status": {
+                "success": False,
+                "error": traceback.format_exc(),
+            },
+            "data": None,
+        }
+        write_explorer_perf_output(output_path, payload)
     if not payload["status"]["success"]:
-        raise typer.Exit(code=1)
+        typer.echo(f"Failed to run perf: {payload['status']['error']}")
 
 
 @app.command()
