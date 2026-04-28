@@ -479,7 +479,7 @@ def perf(
         }
         write_explorer_perf_output(output_path, payload)
     if not payload["status"]["success"]:
-        typer.echo(f"Failed to run perf: {payload['status']['error']}")
+        typer.echo(f"Failed to run perf: {payload['status']['message']}")
 
 
 @app.command()

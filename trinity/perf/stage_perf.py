@@ -40,11 +40,11 @@ def validate_explorer_perf_config(config: Config) -> None:
 
 def build_explorer_perf_payload(
     *,
-    config: Optional[Config],
+    config: Config,
     options: ExplorerPerfOptions,
-    startup_time_sec: Optional[float],
-    run_time_sec: Optional[float],
-    total_time_sec: Optional[float],
+    startup_time_sec: float,
+    execution_time_sec: float,
+    total_time_sec: float,
     resource_payload: dict[str, Any],
     step_metrics: list[dict[str, Any]],
     success: bool,
@@ -66,6 +66,7 @@ def build_explorer_perf_payload(
 
     return {
         "run_meta": {
+            "module": "explorer",
             "config_path": options.config_path,
             "explorer_name": explorer_name,
             "monitor_interval_sec": options.monitor_interval,
@@ -75,12 +76,12 @@ def build_explorer_perf_payload(
         },
         "timing": {
             "startup_time_sec": startup_time_sec,
-            "run_time_sec": run_time_sec,
+            "execution_time_sec": execution_time_sec,
             "total_time_sec": total_time_sec,
         },
         **resource_payload,
         "step_metrics": step_metrics,
-        "global_metrics": build_global_metrics(step_metrics),
+        "global_metrics": build_global_metrics(step_metrics, execution_time_sec=execution_time_sec),
         "artifacts": artifacts,
         "status": {
             "success": success,
@@ -103,12 +104,12 @@ def run_explorer_perf(options: ExplorerPerfOptions) -> dict[str, Any]:
     from trinity.cli.launcher import explore
 
     load_plugins()
-    config: Optional[Config] = None
+    config: Config = None
     sampler: Optional[ResourceSampler] = None
     error: Optional[str] = None
-    startup_time_sec: Optional[float] = None
-    run_time_sec: Optional[float] = None
-    total_time_sec: Optional[float] = None
+    startup_time_sec: float = None
+    execution_time_sec: float = None
+    total_time_sec: float = None
     resource_payload: dict[str, Any] = {"resource_timeline": [], "chart_series": {}}
     step_metrics: list[dict[str, Any]] = []
 
@@ -133,12 +134,14 @@ def run_explorer_perf(options: ExplorerPerfOptions) -> dict[str, Any]:
 
         stage_status = explore(config, timeout=options.timeout)
         startup_time_sec = stage_status.startup_time_sec
-        run_time_sec = stage_status.run_time_sec
+        execution_time_sec = stage_status.execution_time_sec
         total_time_sec = stage_status.total_time_sec
         if stage_status.error is not None:
             error = stage_status.error.traceback_text
-    except (RuntimeError, ValueError):
+    except (RuntimeError, ValueError) as e:
         error = traceback.format_exc()
+        print(f"Explorer perf failed with error: {e}\n{error}")
+        raise e
     finally:
         collected_samples = sampler.stop() if sampler is not None else []
         resource_payload = build_resource_timeline_payload(collected_samples)
@@ -158,7 +161,7 @@ def run_explorer_perf(options: ExplorerPerfOptions) -> dict[str, Any]:
         config=config,
         options=options,
         startup_time_sec=startup_time_sec,
-        run_time_sec=run_time_sec,
+        execution_time_sec=execution_time_sec,
         total_time_sec=total_time_sec,
         resource_payload=resource_payload,
         step_metrics=step_metrics,

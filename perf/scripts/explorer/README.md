@@ -186,7 +186,7 @@ Explorer 运行指标优先从 TensorBoard 事件文件提取，原因如下：
 记录关键耗时：
 
 1. `startup_time_sec`
-2. `run_time_sec`
+2. `execution_time_sec`
 3. `total_time_sec`
 
 ### `resource_timeline`
@@ -294,7 +294,7 @@ python -m trinity.cli.launcher perf --module explorer --config <path_to_config> 
   },
   "timing": {
     "startup_time_sec": 32.5,
-    "run_time_sec": 640.2,
+    "execution_time_sec": 640.2,
     "total_time_sec": 672.7
   },
   "resource_timeline": [

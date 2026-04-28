@@ -8,10 +8,8 @@ from typing import Any, Optional
 
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
-STEP_TIME_METRIC_CANDIDATES = (
-    "time/wait_explore_step",
-    "time/explorer_sync_interval",
-)
+TASK_EXECUTION_METRIC_NAME = "rollout/time/task_execution/mean"
+RUN_EXECUTION_METRIC_NAME = "rollout/time/run_execution/mean"
 FINISHED_TASK_METRIC_NAME = "rollout/finished_task_count"
 
 
@@ -43,14 +41,6 @@ class TensorBoardScalarReader:
         return sorted(event_files)
 
 
-def get_step_time(metric_map: dict[str, dict[int, float]], step: int) -> Optional[float]:
-    """Select the best available step duration metric for one step."""
-    for metric_name in STEP_TIME_METRIC_CANDIDATES:
-        if step in metric_map.get(metric_name, {}):
-            return float(metric_map[metric_name][step])
-    return None
-
-
 def extract_raw_metrics_for_step(
     metric_map: dict[str, dict[int, float]], step: int
 ) -> dict[str, float]:
@@ -68,47 +58,27 @@ def collect_step_metrics(metric_map: dict[str, dict[int, float]]) -> list[dict[s
     step_metrics: list[dict[str, Any]] = []
     for step in step_numbers:
         finished_task_count = float(metric_map[FINISHED_TASK_METRIC_NAME][step])
-        step_time_sec = get_step_time(metric_map, step)
+        time_per_task = float(metric_map[TASK_EXECUTION_METRIC_NAME][step])
+        time_per_run = float(metric_map[RUN_EXECUTION_METRIC_NAME][step])
         step_metrics.append(
             {
                 "step": step,
                 "finished_task_count": finished_task_count,
-                "step_time_sec": step_time_sec,
-                "throughput_task_per_min": (
-                    finished_task_count / step_time_sec * 60.0
-                    if step_time_sec is not None and step_time_sec > 0 and finished_task_count > 0
-                    else None
-                ),
-                "avg_task_time_sec": (
-                    step_time_sec / finished_task_count
-                    if step_time_sec is not None and step_time_sec > 0 and finished_task_count > 0
-                    else None
-                ),
+                "time_per_task": time_per_task,
+                "time_per_run": time_per_run,
                 "raw_metrics": extract_raw_metrics_for_step(metric_map, step),
             }
         )
     return step_metrics
 
 
-def build_global_metrics(step_metrics: list[dict[str, Any]]) -> dict[str, Optional[float]]:
+def build_global_metrics(
+    step_metrics: list[dict[str, Any]], execution_time_sec: float
+) -> dict[str, Optional[float]]:
     """Aggregate global metrics from per-step records."""
     total_finished_task_count = float(
         sum(step_metric["finished_task_count"] for step_metric in step_metrics)
     )
-    total_step_time_sec = sum(
-        step_metric["step_time_sec"]
-        for step_metric in step_metrics
-        if step_metric["step_time_sec"] is not None
-    )
-    if total_finished_task_count > 0 and total_step_time_sec > 0:
-        overall_throughput = total_finished_task_count / total_step_time_sec * 60.0
-        overall_avg_task_time = total_step_time_sec / total_finished_task_count
-    else:
-        overall_throughput = None
-        overall_avg_task_time = None
     return {
         "total_finished_task_count": total_finished_task_count,
-        "overall_throughput_task_per_min": overall_throughput,
-        "overall_avg_task_time_sec": overall_avg_task_time,
-        "total_step_time_sec": total_step_time_sec if total_step_time_sec > 0 else None,
     }
