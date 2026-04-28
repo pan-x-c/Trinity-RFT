@@ -17,7 +17,6 @@ from trinity.perf.report_utils import build_resource_timeline_payload
 from trinity.perf.resource_sampler import ResourceSampler
 from trinity.perf.tensorboard_metrics import (
     TensorBoardScalarReader,
-    build_global_metrics,
     collect_step_metrics,
 )
 from trinity.utils.plugin_loader import load_plugins
@@ -81,7 +80,6 @@ def build_explorer_perf_payload(
         },
         **resource_payload,
         "step_metrics": step_metrics,
-        "global_metrics": build_global_metrics(step_metrics, execution_time_sec=execution_time_sec),
         "artifacts": artifacts,
         "status": {
             "success": success,

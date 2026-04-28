@@ -9,7 +9,6 @@ from .stage_perf import (
 )
 from .tensorboard_metrics import (
     TensorBoardScalarReader,
-    build_global_metrics,
     collect_step_metrics,
 )
 
@@ -17,7 +16,6 @@ __all__ = [
     "ExplorerPerfOptions",
     "ResourceSampler",
     "TensorBoardScalarReader",
-    "build_global_metrics",
     "build_resource_timeline_payload",
     "collect_step_metrics",
     "run_explorer_perf",

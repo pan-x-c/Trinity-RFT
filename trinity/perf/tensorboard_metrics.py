@@ -57,28 +57,7 @@ def collect_step_metrics(metric_map: dict[str, dict[int, float]]) -> list[dict[s
     step_numbers = sorted(metric_map.get(FINISHED_TASK_METRIC_NAME, {}).keys())
     step_metrics: list[dict[str, Any]] = []
     for step in step_numbers:
-        finished_task_count = float(metric_map[FINISHED_TASK_METRIC_NAME][step])
-        time_per_task = float(metric_map[TASK_EXECUTION_METRIC_NAME][step])
-        time_per_run = float(metric_map[RUN_EXECUTION_METRIC_NAME][step])
-        step_metrics.append(
-            {
-                "step": step,
-                "finished_task_count": finished_task_count,
-                "time_per_task": time_per_task,
-                "time_per_run": time_per_run,
-                "raw_metrics": extract_raw_metrics_for_step(metric_map, step),
-            }
-        )
+        metrics = extract_raw_metrics_for_step(metric_map, step)
+        metrics["step"] = step
+        step_metrics.append(metrics)
     return step_metrics
-
-
-def build_global_metrics(
-    step_metrics: list[dict[str, Any]], execution_time_sec: float
-) -> dict[str, Optional[float]]:
-    """Aggregate global metrics from per-step records."""
-    total_finished_task_count = float(
-        sum(step_metric["finished_task_count"] for step_metric in step_metrics)
-    )
-    return {
-        "total_finished_task_count": total_finished_task_count,
-    }

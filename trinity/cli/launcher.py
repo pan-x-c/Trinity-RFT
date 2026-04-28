@@ -46,7 +46,7 @@ class StageStatus:
     stage: str
     success: bool
     startup_time_sec: Optional[float] = None
-    run_time_sec: Optional[float] = None
+    execution_time_sec: Optional[float] = None
     total_time_sec: Optional[float] = None
     error: Optional[StageError] = None
 
@@ -73,13 +73,13 @@ def bench(config: Config, *, timeout: Optional[float] = None) -> StageStatus:
 
         run_started_at = time.perf_counter()
         ray.get(explorer.benchmark.remote(), timeout=timeout)
-        run_time_sec = time.perf_counter() - run_started_at
+        execution_time_sec = time.perf_counter() - run_started_at
         logger.info("Benchmark finished.")
         return StageStatus(
             stage="bench",
             success=True,
             startup_time_sec=startup_time_sec,
-            run_time_sec=run_time_sec,
+            execution_time_sec=execution_time_sec,
             total_time_sec=time.perf_counter() - startup_started_at,
         )
     except Exception as exc:
@@ -89,7 +89,7 @@ def bench(config: Config, *, timeout: Optional[float] = None) -> StageStatus:
             stage="bench",
             success=False,
             startup_time_sec=startup_time_sec,
-            run_time_sec=None,
+            execution_time_sec=None,
             total_time_sec=time.perf_counter() - startup_started_at,
             error=error,
         )
@@ -113,23 +113,25 @@ def explore(config: Config, *, timeout: Optional[float] = None) -> StageStatus:
         run_started_at = time.perf_counter()
         ray.get(explorer.sync_weight.remote(), timeout=timeout)
         ray.get(explorer.explore.remote(), timeout=timeout)
-        run_time_sec = time.perf_counter() - run_started_at
+        execution_time_sec = time.perf_counter() - run_started_at
         return StageStatus(
             stage="explore",
             success=True,
             startup_time_sec=startup_time_sec,
-            run_time_sec=run_time_sec,
+            execution_time_sec=execution_time_sec,
             total_time_sec=time.perf_counter() - startup_started_at,
         )
     except Exception as exc:
         error = _build_stage_error(exc)
         logger.error(f"Explorer failed:\n{error.traceback_text}")
-        run_time_sec = time.perf_counter() - run_started_at if run_started_at is not None else None
+        execution_time_sec = (
+            time.perf_counter() - run_started_at if run_started_at is not None else None
+        )
         return StageStatus(
             stage="explore",
             success=False,
             startup_time_sec=startup_time_sec,
-            run_time_sec=run_time_sec,
+            execution_time_sec=execution_time_sec,
             total_time_sec=time.perf_counter() - startup_started_at,
             error=error,
         )
@@ -153,23 +155,25 @@ def train(config: Config, *, timeout: Optional[float] = None) -> StageStatus:
         run_started_at = time.perf_counter()
         ray.get(trainer.sync_weight.remote(), timeout=timeout)
         ray.get(trainer.train.remote(), timeout=timeout)
-        run_time_sec = time.perf_counter() - run_started_at
+        execution_time_sec = time.perf_counter() - run_started_at
         return StageStatus(
             stage="train",
             success=True,
             startup_time_sec=startup_time_sec,
-            run_time_sec=run_time_sec,
+            execution_time_sec=execution_time_sec,
             total_time_sec=time.perf_counter() - startup_started_at,
         )
     except Exception as exc:
         error = _build_stage_error(exc)
         logger.error(f"Trainer failed:\n{error.traceback_text}")
-        run_time_sec = time.perf_counter() - run_started_at if run_started_at is not None else None
+        execution_time_sec = (
+            time.perf_counter() - run_started_at if run_started_at is not None else None
+        )
         return StageStatus(
             stage="train",
             success=False,
             startup_time_sec=startup_time_sec,
-            run_time_sec=run_time_sec,
+            execution_time_sec=execution_time_sec,
             total_time_sec=time.perf_counter() - startup_started_at,
             error=error,
         )
@@ -193,23 +197,25 @@ def serve(config: Config, *, timeout: Optional[float] = None) -> StageStatus:
         run_started_at = time.perf_counter()
         ray.get(explorer.sync_weight.remote(), timeout=timeout)
         ray.get(explorer.serve.remote(), timeout=timeout)
-        run_time_sec = time.perf_counter() - run_started_at
+        execution_time_sec = time.perf_counter() - run_started_at
         return StageStatus(
             stage="serve",
             success=True,
             startup_time_sec=startup_time_sec,
-            run_time_sec=run_time_sec,
+            execution_time_sec=execution_time_sec,
             total_time_sec=time.perf_counter() - startup_started_at,
         )
     except Exception as exc:
         error = _build_stage_error(exc)
         logger.error(f"Explorer failed:\n{error.traceback_text}")
-        run_time_sec = time.perf_counter() - run_started_at if run_started_at is not None else None
+        execution_time_sec = (
+            time.perf_counter() - run_started_at if run_started_at is not None else None
+        )
         return StageStatus(
             stage="serve",
             success=False,
             startup_time_sec=startup_time_sec,
-            run_time_sec=run_time_sec,
+            execution_time_sec=execution_time_sec,
             total_time_sec=time.perf_counter() - startup_started_at,
             error=error,
         )
@@ -436,7 +442,7 @@ def perf(
     monitor_interval: Annotated[
         float,
         typer.Option("--monitor-interval", help="Resource sampling interval in seconds."),
-    ] = 5.0,
+    ] = 2.0,
     total_steps: Annotated[
         int,
         typer.Option("--total-steps", help="Total steps to run the explorer for."),
@@ -479,7 +485,7 @@ def perf(
         }
         write_explorer_perf_output(output_path, payload)
     if not payload["status"]["success"]:
-        typer.echo(f"Failed to run perf: {payload['status']['message']}")
+        typer.echo(f"Failed to run perf: {payload['status']['error']}")
 
 
 @app.command()
