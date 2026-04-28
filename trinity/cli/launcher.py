@@ -14,6 +14,7 @@ from trinity.common.config import Config, load_config
 from trinity.common.constants import DEBUG_NAMESPACE, PLUGIN_DIRS_ENV_VAR
 from trinity.manager.checkpoint_converter import Converter
 from trinity.manager.state_manager import StateManager
+from trinity.perf import ExplorerPerfOptions, run_explorer_perf, write_explorer_perf_output
 from trinity.utils.dlc_utils import is_running, setup_ray_cluster, stop_ray_cluster
 from trinity.utils.log import get_logger
 from trinity.utils.plugin_loader import load_plugins
@@ -276,6 +277,57 @@ def studio(
     from trinity.manager.config_manager import ConfigManager
 
     ConfigManager.run(port)
+
+
+@app.command()
+def perf(
+    config: Annotated[
+        str,
+        typer.Option("--config", "-c", help="Path to the config file."),
+    ],
+    module: Annotated[
+        str,
+        typer.Option("--module", "-m", help="Perf module to run. Currently only supports 'explorer'."),
+    ] = "explorer",
+    output_path: Annotated[
+        str,
+        typer.Option("--output-path", "-o", help="Path to the output JSON file."),
+    ] = "perf/scripts/explorer/output/perf_result.json",
+    monitor_interval: Annotated[
+        float,
+        typer.Option("--monitor-interval", help="Resource sampling interval in seconds."),
+    ] = 5.0,
+    total_steps: Annotated[
+        int,
+        typer.Option("--total-steps", help="Total steps to run the explorer for."),
+    ] = 5,
+    timeout: Annotated[
+        Optional[float],
+        typer.Option("--timeout", help="Optional timeout in seconds for prepare, sync and explore calls."),
+    ] = None,
+    plugin_dir: Annotated[
+        Optional[str],
+        typer.Option("--plugin-dir", help="Path to the directory containing plugin modules."),
+    ] = None,
+) -> None:
+    """Run performance benchmark."""
+    if module != "explorer":
+        raise typer.BadParameter("Only --module explorer is supported for now.")
+
+    if plugin_dir:
+        os.environ[PLUGIN_DIRS_ENV_VAR] = plugin_dir
+
+    options = ExplorerPerfOptions(
+        config_path=config,
+        output_path=output_path,
+        monitor_interval=monitor_interval,
+        total_steps=total_steps,
+        timeout=timeout,
+    )
+    payload = run_explorer_perf(options)
+    write_explorer_perf_output(output_path, payload)
+    if not payload["status"]["success"]:
+        raise typer.Exit(code=1)
 
 
 @app.command()

@@ -56,10 +56,10 @@ perf/
     explorer/
       README.md
       example.yaml
-      main.py
 trinity/
   perf/
     __init__.py
+    explorer_perf.py
     explorer_metrics.py
     report_utils.py
     resource_backends.py
@@ -74,8 +74,8 @@ trinity/
    提供独立资源采样器，支持启动、停止、导出原始样本和聚合统计。
 3. `trinity/perf/report_utils.py`
    提供时间序列聚合、百分位数计算和统一 JSON 序列化能力。
-4. `perf/scripts/explorer/main.py`
-   负责 Explorer perf 的命令行入口、单次运行编排和结果落盘。
+4. `trinity/perf/explorer_perf.py`
+  负责 Explorer perf 的单次运行编排和结果落盘。
 5. `perf/scripts/explorer/example.yaml`
    提供最小可运行的 Trinity Explorer 配置样例。
 
@@ -254,7 +254,7 @@ Explorer 运行指标优先从 TensorBoard 事件文件提取，原因如下：
 ## 使用方法
 
 ```
-python main.py --config <path_to_config> --output-path <path_to_output> [--monitor-interval <interval_in_seconds>]
+python -m trinity.cli.launcher perf --module explorer --config <path_to_config> --output-path <path_to_output> [--monitor-interval <interval_in_seconds>]
 ```
 
 建议支持以下参数：
@@ -267,8 +267,10 @@ python main.py --config <path_to_config> --output-path <path_to_output> [--monit
    资源采样间隔，默认 5 秒。
 4. `--timeout`
    整次 perf 运行的超时时间，可选。
-5. `--resource-backend`
-   资源采样后端，例如 `auto`、`psutil`、`pynvml`。
+5. `--total-steps`
+  覆盖配置中的 Explorer 总步数，默认 5。
+6. `--module`
+  当前固定为 `explorer`，为后续扩展 trainer perf 预留统一入口。
 
 ## 配置要求
 
@@ -339,8 +341,8 @@ python main.py --config <path_to_config> --output-path <path_to_output> [--monit
 2. 实现 `trinity/perf/resource_backends.py`。
 3. 实现 `trinity/perf/resource_sampler.py`。
 4. 实现 `trinity/perf/report_utils.py`。
-5. 在 `perf/scripts/explorer/main.py` 中完成单次运行编排。
-6. 在 `perf/scripts/explorer/main.py` 中实现 TensorBoard 指标解析。
+5. 在 `trinity/perf/explorer_perf.py` 中完成单次运行编排。
+6. 在 `trinity/perf/explorer_perf.py` 中实现 TensorBoard 指标解析。
 7. 补充 `perf/scripts/explorer/example.yaml`。
 8. 补充测试和文档示例。
 
