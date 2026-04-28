@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 

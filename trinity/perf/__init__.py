@@ -7,10 +7,7 @@ from .stage_perf import (
     run_explorer_perf,
     write_explorer_perf_output,
 )
-from .tensorboard_metrics import (
-    TensorBoardScalarReader,
-    collect_step_metrics,
-)
+from .tensorboard_metrics import TensorBoardScalarReader, collect_step_metrics
 
 __all__ = [
     "ExplorerPerfOptions",
