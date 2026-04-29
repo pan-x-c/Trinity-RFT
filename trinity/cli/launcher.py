@@ -12,10 +12,13 @@ import ray
 import typer
 from typing_extensions import Annotated
 
+from trinity.cli.convert import convert_command
+from trinity.cli.log import log_command
 from trinity.cli.perf import perf_app
+from trinity.cli.studio import studio_command
+from trinity.cli.view import view_command
 from trinity.common.config import Config, load_config
 from trinity.common.constants import DEBUG_NAMESPACE, PLUGIN_DIRS_ENV_VAR
-from trinity.manager.checkpoint_converter import Converter
 from trinity.manager.state_manager import StateManager
 from trinity.utils.dlc_utils import is_running, setup_ray_cluster, stop_ray_cluster
 from trinity.utils.log import get_logger
@@ -28,7 +31,6 @@ app = typer.Typer(
     pretty_exceptions_show_locals=False,
     pretty_exceptions_short=True,
 )
-app.add_typer(perf_app, name="perf")
 
 
 @dataclass(slots=True)
@@ -408,19 +410,6 @@ def run(
 
 
 @app.command()
-def studio(
-    port: Annotated[
-        int,
-        typer.Option("--port", "-p", help="The port for Trinity-Studio."),
-    ] = 8501,
-) -> None:
-    """Run studio to manage configurations."""
-    from trinity.manager.config_manager import ConfigManager
-
-    ConfigManager.run(port)
-
-
-@app.command()
 def debug(
     config: Annotated[
         str,
@@ -499,145 +488,11 @@ def debug(
         )
 
 
-@app.command()
-def view(
-    url: Annotated[
-        str,
-        typer.Option(
-            "--url",
-            help="Database URL for the experience table, for example sqlite:////path/to/debug_buffer.db.",
-        ),
-    ],
-    table: Annotated[
-        str,
-        typer.Option("--table", help="Name of the experience table to monitor."),
-    ],
-    tokenizer: Annotated[
-        str,
-        typer.Option(
-            "--tokenizer",
-            help="Tokenizer/model path used to decode token ids in the viewer.",
-        ),
-    ],
-    schema: Annotated[
-        str,
-        typer.Option(
-            "--schema",
-            help="Schema type of the table. Supported values: experience, sft.",
-        ),
-    ] = "experience",
-    port: Annotated[
-        int,
-        typer.Option("--port", "-p", help="The port for Experience Viewer."),
-    ] = 8502,
-) -> None:
-    """Run the Streamlit viewer to inspect an experience table."""
-    from trinity.buffer.viewer import SQLExperienceViewer
-
-    schema = schema.lower()
-    if schema not in {"experience", "sft"}:
-        raise typer.BadParameter("--schema only supports 'experience' or 'sft'.")
-
-    SQLExperienceViewer.run_viewer(
-        model_path=tokenizer,
-        db_url=url,
-        table_name=table,
-        schema_type=schema,
-        port=port,
-    )
-
-
-@app.command()
-def convert(
-    checkpoint_dir: Annotated[
-        str,
-        typer.Option("--checkpoint-dir", "-c", help="The path to the checkpoint directory."),
-    ],
-    base_model_dir: Annotated[
-        Optional[str],
-        typer.Option("--base-model-dir", "-b", help="The path to the base model."),
-    ] = None,
-) -> None:
-    """Convert checkpoints to huggingface format."""
-    dir_path = checkpoint_dir
-    if "global_step_" in dir_path:
-        while not os.path.basename(dir_path).startswith("global_step_"):
-            dir_path = os.path.dirname(dir_path)
-    converter = Converter(base_model_dir)
-    converter.convert(dir_path)
-
-
-@app.command()
-def log(
-    log_dir: Annotated[
-        str,
-        typer.Option(
-            "--log-dir",
-            "-d",
-            help="Path to the log directory. If provided, it will be used directly and ignore --config.",
-        ),
-    ] = "",
-    config: Annotated[
-        str,
-        typer.Option(
-            "--config",
-            "-c",
-            help="Path to the config file. If provided, it will automatically locate the log directory based on the config.",
-        ),
-    ] = "",
-    keyword: Annotated[
-        Optional[str],
-        typer.Option(
-            "--keyword",
-            "-k",
-            help="Only track log files containing the keyword in their filenames.",
-        ),
-    ] = None,
-    level: Annotated[
-        str,
-        typer.Option("--level", "-l", help="The minimum log level to display in real-time."),
-    ] = "INFO",
-    last_n_lines: Annotated[
-        int,
-        typer.Option("--last-n-lines", "-n", help="Number of last lines to display when starting."),
-    ] = 0,
-    search_pattern: Annotated[
-        Optional[str],
-        typer.Option(
-            "--search-pattern",
-            "-p",
-            help="The pattern to search in log files. Only search for history logs and display all lines containing the pattern.",
-        ),
-    ] = None,
-    no_color: Annotated[
-        bool,
-        typer.Option("--no-color", help="Disable colored output."),
-    ] = False,
-) -> None:
-    """Monitor log files in real-time."""
-    from trinity.manager.log_manager import LogManager
-
-    if not config and not log_dir:
-        raise typer.BadParameter("Either --config or --log-dir must be provided.")
-    if not log_dir:
-        cfg = load_config(config)
-        checkpoint_job_dir = cfg.get_checkpoint_job_dir()
-        # we do not use check_and_update here because user may use this command
-        # in another environment
-        log_dir = os.path.join(checkpoint_job_dir, "log")
-
-    if not os.path.exists(log_dir):
-        raise FileNotFoundError(f"Log directory not found: {log_dir}")
-
-    log_manager = LogManager(
-        log_dir=log_dir,
-        keyword=keyword,
-        min_level=level,
-        color_output=not no_color,
-        last_n_lines=last_n_lines,
-        search_pattern=search_pattern,
-    )
-    log_manager.monitor()
+app.command("studio")(studio_command)
+app.add_typer(perf_app, name="perf")
+app.command("view")(view_command)
+app.command("convert")(convert_command)
+app.command("log")(log_command)
 
 
 def main() -> None:

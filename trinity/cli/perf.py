@@ -13,7 +13,7 @@ from trinity.perf import (
 )
 from trinity.perf.report_viewer import launch_report_viewer
 
-perf_app = typer.Typer(help="Performance tooling commands.")
+perf_app = typer.Typer(help="Performance testing tools.")
 
 
 @perf_app.command("run")
