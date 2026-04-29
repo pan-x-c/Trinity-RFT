@@ -6,9 +6,12 @@ import typer
 from typing_extensions import Annotated
 
 from trinity.common.constants import PLUGIN_DIRS_ENV_VAR
-from trinity.perf import ExplorerPerfOptions, run_explorer_perf, write_explorer_perf_output
+from trinity.perf import (
+    ExplorerPerfOptions,
+    run_explorer_perf,
+    write_explorer_perf_output,
+)
 from trinity.perf.report_viewer import launch_report_viewer
-
 
 perf_app = typer.Typer(help="Performance tooling commands.")
 
