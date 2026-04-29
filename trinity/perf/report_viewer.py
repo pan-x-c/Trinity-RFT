@@ -51,12 +51,18 @@ class PerfReportViewer:
         sys.exit(cli.main())
 
 
+def launch_report_viewer(report_path: str, port: int) -> None:
+    """Launch the Streamlit perf report viewer from another CLI entrypoint."""
+    PerfReportViewer.run_viewer(report_path, port)
+
+
 def has_streamlit_context() -> bool:
     return get_script_run_ctx() is not None
 
 
-if has_streamlit_context():
-    st.set_page_config(page_title="Trinity Performance Report", layout="wide")
+def configure_streamlit_page() -> None:
+    if has_streamlit_context():
+        st.set_page_config(page_title="Trinity Performance Report", layout="wide")
 
 
 def parse_args() -> argparse.Namespace:
@@ -326,6 +332,7 @@ def render_resource_utilization(report: dict[str, Any]) -> None:
 
 
 def main(args: Optional[argparse.Namespace] = None) -> None:
+    configure_streamlit_page()
     if args is None:
         args = parse_args()
 
@@ -347,4 +354,4 @@ if __name__ == "__main__":
     if has_streamlit_context():
         main(parsed_args)
     else:
-        PerfReportViewer.run_viewer(parsed_args.report, parsed_args.port)
+        launch_report_viewer(parsed_args.report, parsed_args.port)
