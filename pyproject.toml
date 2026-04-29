@@ -44,7 +44,7 @@ dependencies = [
     "matplotlib",
     "psutil",
     "nvidia-ml-py",
-    "transformers>=5.5.3",
+    "transformers>=5.6.2",
     "datasets>=4.0.0",
     "typer>=0.20.1",
 ]
@@ -54,9 +54,7 @@ trinity = "trinity.cli.launcher:main"
 
 [project.optional-dependencies]
 vllm = [
-    "vllm>=0.17.0,<=0.19.1",
-    # For v0.17 to v0.19, the default dependencies require transformers < 5.
-    # We have patched vLLM to support transformers >= 5.0.0.
+    "vllm>=0.19.1,<=0.20.0",
 ]
 data = [
     "py-data-juicer>=1.4.3"
@@ -106,7 +104,6 @@ doc = [
 
 mm = [
     "qwen-vl-utils",
-    "transformers>=4.54.0",
     "blobfile",
 ]
 

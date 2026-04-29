@@ -9,7 +9,7 @@ from trinity.common.config import InferenceModelConfig
 
 VLLM_VERSION_0120 = parse_version("0.12.0")
 VLLM_VERSION_0170 = parse_version("0.17.0")
-VLLM_VERSION_0191 = parse_version("0.19.1")
+VLLM_VERSION_0191 = parse_version("0.20.0")
 
 
 def vllm_patch():

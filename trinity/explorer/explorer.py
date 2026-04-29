@@ -405,7 +405,7 @@ class Explorer:
         if self.taskset is not None:
             self.taskset.feedback(result["metrics"])
         metric.update(result["metrics"])
-        if result["rollout/finished_task_count"] > 0 and self.monitor is not None:
+        if result["finished_task_count"] > 0 and self.monitor is not None:
             self.monitor.log(metric, step=step)
 
     async def _finish_eval_step(self, step: Optional[int] = None, prefix: str = "eval") -> None:
