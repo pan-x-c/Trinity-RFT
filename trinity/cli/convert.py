@@ -4,8 +4,6 @@ from typing import Optional
 import typer
 from typing_extensions import Annotated
 
-from trinity.manager.checkpoint_converter import Converter
-
 
 def convert_command(
     checkpoint_dir: Annotated[
@@ -18,6 +16,8 @@ def convert_command(
     ] = None,
 ) -> None:
     """Convert model checkpoints to huggingface format."""
+    from trinity.manager.checkpoint_converter import Converter
+
     dir_path = checkpoint_dir
     if "global_step_" in dir_path:
         while not os.path.basename(dir_path).startswith("global_step_"):

@@ -19,7 +19,6 @@ from trinity.cli.studio import studio_command
 from trinity.cli.view import view_command
 from trinity.common.config import Config, load_config
 from trinity.common.constants import DEBUG_NAMESPACE, PLUGIN_DIRS_ENV_VAR
-from trinity.manager.state_manager import StateManager
 from trinity.utils.dlc_utils import is_running, setup_ray_cluster, stop_ray_cluster
 from trinity.utils.log import get_logger
 from trinity.utils.plugin_loader import load_plugins
@@ -368,6 +367,7 @@ def run(
 
     try:
         if cfg.stages:
+            from trinity.manager.state_manager import StateManager
             from trinity.trainer.verl.utils import get_latest_hf_checkpoint_path
 
             state_manager = StateManager(

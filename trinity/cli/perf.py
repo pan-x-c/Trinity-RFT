@@ -6,12 +6,6 @@ import typer
 from typing_extensions import Annotated
 
 from trinity.common.constants import PLUGIN_DIRS_ENV_VAR
-from trinity.perf import (
-    ExplorerPerfOptions,
-    run_explorer_perf,
-    write_explorer_perf_output,
-)
-from trinity.perf.report_viewer import launch_report_viewer
 
 perf_app = typer.Typer(help="Performance testing tools.")
 
@@ -55,6 +49,12 @@ def perf_run(
     if module != "explorer":
         raise typer.BadParameter("Only --module explorer is supported for now.")
 
+    from trinity.perf import (
+        ExplorerPerfOptions,
+        run_explorer_perf,
+        write_explorer_perf_output,
+    )
+
     try:
         if plugin_dir:
             os.environ[PLUGIN_DIRS_ENV_VAR] = plugin_dir
@@ -94,4 +94,6 @@ def perf_view(
     ] = 8503,
 ) -> None:
     """Open the Streamlit perf report viewer."""
+    from trinity.perf.report_viewer import launch_report_viewer
+
     launch_report_viewer(report, port)
