@@ -79,9 +79,8 @@ dev = [
 ]
 megatron = [
     "megatron-core[mlm]==0.16.1",
-    # if you found "undefined symbol" error in transformer engine
-    # reinstall it with --no-build-isolation and `--no-cache-dir` flag
-    "transformer-engine[pytorch]==2.13.0",
+    # Please install transformer-engine from source, do not install from pip
+    # "transformer-engine[pytorch]==2.14.1",
 
     # Install mbridge from main branch (unreleased version)
     # "mbridge @ git+https://github.com/ISEEKYAN/mbridge.git@90c4633a6cdcfe5d29723d7b145d32f6f5e73303",
