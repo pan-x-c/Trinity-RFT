@@ -11,7 +11,7 @@ class FakeProcess:
     def __init__(self):
         self._cpu_values = iter([0.0, 12.5])
 
-    def cpu_percent(self, _interval=None):
+    def cpu_percent(self, interval=None):
         return next(self._cpu_values)
 
     def memory_info(self):
