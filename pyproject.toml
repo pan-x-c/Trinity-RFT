@@ -54,7 +54,7 @@ trinity = "trinity.cli.launcher:main"
 
 [project.optional-dependencies]
 vllm = [
-    "vllm>=0.19.1,<=0.20.0",
+    "vllm>=0.19.1,<=0.20.1",
 ]
 data = [
     "py-data-juicer>=1.4.3"
