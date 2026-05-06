@@ -64,6 +64,8 @@ class InferenceModel(ABC):
     def get_available_address(self) -> Tuple[str, int]:
         """Get the address of the actor."""
         address = ray.util.get_node_ip_address()
+        if self.config.base_port is not None:
+            return address, self.config.base_port + self.config.engine_id
         with socket.socket() as s:
             s.bind(("", 0))
             port = s.getsockname()[1]
