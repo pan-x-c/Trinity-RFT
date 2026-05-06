@@ -151,6 +151,38 @@ def build_elapsed_series(series: list[dict[str, Any]]) -> tuple[list[float], lis
     return x_values, y_values
 
 
+def build_scalar_timeline_series(
+    timeline: list[dict[str, Any]], metric_key: str
+) -> list[dict[str, float]]:
+    return [
+        {"timestamp": sample["timestamp"], "value": sample[metric_key]}
+        for sample in timeline
+        if sample.get(metric_key) is not None
+    ]
+
+
+def build_gpu_timeline_series(
+    timeline: list[dict[str, Any]], metric_key: str
+) -> dict[str, dict[str, Any]]:
+    series_by_gpu: dict[str, dict[str, Any]] = {}
+    for sample in timeline:
+        timestamp = sample.get("timestamp")
+        for gpu_sample in sample.get("gpu_metrics", []):
+            if gpu_sample.get(metric_key) is None:
+                continue
+            gpu_key = str(gpu_sample.get("gpu_id"))
+            gpu_payload = series_by_gpu.setdefault(
+                gpu_key,
+                {
+                    "gpu_id": gpu_sample.get("gpu_id"),
+                    "name": gpu_sample.get("name"),
+                    "values": [],
+                },
+            )
+            gpu_payload["values"].append({"timestamp": timestamp, "value": gpu_sample[metric_key]})
+    return series_by_gpu
+
+
 def render_line_chart(
     title: str,
     x_values: list[float],
@@ -284,21 +316,21 @@ def render_step_metrics(report: dict[str, Any]) -> None:
 
 def render_resource_utilization(report: dict[str, Any]) -> None:
     st.header("Resource Utilization")
-    chart_series = report.get("chart_series", {})
+    resource_timeline = report.get("resource_timeline", [])
 
-    cpu_series = chart_series.get("cpu_percent", [])
+    cpu_series = build_scalar_timeline_series(resource_timeline, "cpu_percent")
     cpu_x, cpu_y = build_elapsed_series(cpu_series)
 
-    memory_series = chart_series.get(MEMORY_SERIES_KEY, [])
+    memory_series = build_scalar_timeline_series(resource_timeline, MEMORY_SERIES_KEY)
     memory_x, memory_y = build_elapsed_series(memory_series)
 
-    gpu_util_series = chart_series.get("gpu_util_percent", {})
+    gpu_util_series = build_gpu_timeline_series(resource_timeline, "gpu_util_percent")
     gpu_util_x: list[float] = []
     gpu_util_y: dict[str, list[float]] = {}
     for gpu_payload in gpu_util_series.values():
         gpu_util_x, values = build_elapsed_series(gpu_payload.get("values", []))
         gpu_util_y[gpu_series_label(gpu_payload)] = values
-    gpu_memory_series = chart_series.get("gpu_memory_used_mb", {})
+    gpu_memory_series = build_gpu_timeline_series(resource_timeline, "gpu_memory_used_mb")
     gpu_memory_x: list[float] = []
     gpu_memory_y: dict[str, list[float]] = {}
     for gpu_payload in gpu_memory_series.values():

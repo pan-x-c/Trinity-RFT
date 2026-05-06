@@ -3,9 +3,13 @@
 import itertools
 import time
 import unittest
+from typing import cast
 
-from trinity.perf.report_utils import build_resource_timeline_payload
-from trinity.perf.resource_backends import GPUSample, ResourceSample
+from trinity.perf.resource_backends import (
+    GPUSample,
+    ResourceSample,
+    SystemResourceBackend,
+)
 from trinity.perf.resource_sampler import ResourceSampler
 
 
@@ -50,7 +54,10 @@ class FakeBackend:
 class ResourceSamplerTest(unittest.TestCase):
     def test_resource_sampler_collects_samples(self):
         backend = FakeBackend()
-        sampler = ResourceSampler(interval_seconds=0.01, backend=backend)
+        sampler = ResourceSampler(
+            interval_seconds=0.01,
+            backend=cast(SystemResourceBackend, backend),
+        )
 
         sampler.start()
         time.sleep(0.03)
@@ -61,15 +68,15 @@ class ResourceSamplerTest(unittest.TestCase):
         self.assertGreaterEqual(len(samples), 2)
         self.assertEqual(samples[0].gpu_metrics[0].gpu_id, 0)
 
-    def test_build_resource_timeline_payload_keeps_cpu_single_line_and_gpu_per_device(self):
+    def test_resource_samples_serialize_cpu_single_line_and_gpu_per_device(self):
         samples = [FakeBackend().sample(), FakeBackend().sample()]
 
-        payload = build_resource_timeline_payload(samples)
+        payload = {"resource_timeline": [sample.to_dict() for sample in samples]}
 
         self.assertEqual(len(payload["resource_timeline"]), 2)
-        self.assertEqual(len(payload["chart_series"]["cpu_percent"]), 2)
-        self.assertEqual(set(payload["chart_series"]["gpu_util_percent"].keys()), {"0", "1"})
+        self.assertEqual(payload["resource_timeline"][0]["cpu_percent"], 50.0)
+        self.assertEqual(len(payload["resource_timeline"][0]["gpu_metrics"]), 2)
         self.assertEqual(
-            payload["chart_series"]["gpu_memory_used_mb"]["0"]["name"],
+            payload["resource_timeline"][0]["gpu_metrics"][0]["name"],
             "GPU-0",
         )

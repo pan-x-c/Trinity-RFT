@@ -13,7 +13,6 @@ import ray
 
 from trinity.buffer.pipelines.task_pipeline import check_and_run_task_pipeline
 from trinity.common.config import Config, load_config
-from trinity.perf.report_utils import build_resource_timeline_payload
 from trinity.perf.resource_sampler import ResourceSampler
 from trinity.perf.tensorboard_metrics import (
     TensorBoardScalarReader,
@@ -26,7 +25,7 @@ from trinity.utils.plugin_loader import load_plugins
 class ExplorerPerfOptions:
     config_path: str
     output_path: str
-    monitor_interval: float = 5.0
+    monitor_interval: float = 2.0
     total_steps: int = 5
     timeout: Optional[float] = None
 
@@ -39,11 +38,11 @@ def validate_explorer_perf_config(config: Config) -> None:
 
 def build_explorer_perf_payload(
     *,
-    config: Config,
+    config: Optional[Config],
     options: ExplorerPerfOptions,
-    startup_time_sec: float,
-    execution_time_sec: float,
-    total_time_sec: float,
+    startup_time_sec: Optional[float],
+    execution_time_sec: Optional[float],
+    total_time_sec: Optional[float],
     resource_payload: dict[str, Any],
     step_metrics: list[dict[str, Any]],
     success: bool,
@@ -102,13 +101,13 @@ def run_explorer_perf(options: ExplorerPerfOptions) -> dict[str, Any]:
     from trinity.cli.launcher import explore
 
     load_plugins()
-    config: Config = None
+    config: Optional[Config] = None
     sampler: Optional[ResourceSampler] = None
     error: Optional[str] = None
-    startup_time_sec: float = None
-    execution_time_sec: float = None
-    total_time_sec: float = None
-    resource_payload: dict[str, Any] = {"resource_timeline": [], "chart_series": {}}
+    startup_time_sec: Optional[float] = None
+    execution_time_sec: Optional[float] = None
+    total_time_sec: Optional[float] = None
+    resource_payload: dict[str, Any] = {"resource_timeline": []}
     step_metrics: list[dict[str, Any]] = []
 
     try:
@@ -142,7 +141,7 @@ def run_explorer_perf(options: ExplorerPerfOptions) -> dict[str, Any]:
         raise e
     finally:
         collected_samples = sampler.stop() if sampler is not None else []
-        resource_payload = build_resource_timeline_payload(collected_samples)
+        resource_payload = {"resource_timeline": [sample.to_dict() for sample in collected_samples]}
 
         if config is not None:
             tensorboard_dir = os.path.join(
