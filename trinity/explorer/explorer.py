@@ -392,7 +392,7 @@ class Explorer:
 
         # Record the time: read_task + explore_step (>=1) + eval (if any)
         if self.explore_start_time is not None:
-            metric = {"time/explorer_sync_interval": time.time() - self.explore_start_time}
+            metric = {"explore/time/sync_interval": time.time() - self.explore_start_time}
             self.explore_start_time = None
             if self.monitor is not None:
                 self.monitor.log(metric, step=end_step)
@@ -400,7 +400,7 @@ class Explorer:
     async def _finish_explore_step(self, step: int, model_version: int) -> None:
         assert self.rollout_coordinator is not None, "Rollout coordinator must be prepared first."
         metric = {"rollout/model_version": model_version}
-        with Timer(metric, "time/wait_explore_step"):
+        with Timer(metric, "explorer/time/wait_explore_step"):
             result = await self.rollout_coordinator.finalize_train_batch.remote(step)
         if self.taskset is not None:
             self.taskset.feedback(result["metrics"])
