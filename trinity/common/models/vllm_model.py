@@ -10,6 +10,7 @@ from packaging.version import parse as parse_version
 from transformers import AutoProcessor
 
 from trinity.common.config import InferenceModelConfig
+from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
 from trinity.common.models.mm_utils import (
     build_mm_input_for_training,
@@ -487,7 +488,9 @@ class vLLMRolloutModel(BaseInferenceModel):
                 method, timeout, args, kwargs
             )
 
-    async def sync_model(self, model_version: int) -> int:
+    async def sync_model(
+        self, model_version: int, sync_method: SyncMethod, timeout: float = 1200
+    ) -> int:
         """Sync model weights to vLLM."""
         if self.enable_lora:
             # Revise the lora path; no need to sync weights manually.
@@ -504,7 +507,7 @@ class vLLMRolloutModel(BaseInferenceModel):
             self.model_version = model_version
             return model_version
         await self.async_llm.reset_prefix_cache()
-        await self._collective_rpc("update_weight")
+        await self._collective_rpc("update_weight", timeout=timeout)
         self.logger.info("Sync model weights to vLLM successfully.")
         self.model_version = model_version
         return model_version
@@ -519,7 +522,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
-        state_dict_meta: dict = None,
+        state_dict_meta: List = None,
     ):
         return await self._collective_rpc(
             "init_process_group",

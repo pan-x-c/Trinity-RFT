@@ -157,7 +157,10 @@ class Explorer:
             if self.model_version != -1 or new_version > 0:
                 self.logger.info(f"New model weights version: {new_version}")
                 await asyncio.gather(
-                    *[model.sync_model.remote(new_version) for model in self.models]
+                    *[
+                        model.sync_model.remote(new_version, self.config.synchronizer.sync_method)
+                        for model in self.models
+                    ]
                 )
             self.model_version = new_version
         else:
@@ -174,7 +177,10 @@ class Explorer:
             return
         self.model_version = new_version
         await asyncio.gather(
-            *[model.sync_model.remote(self.model_version) for model in self.models]
+            *[
+                model.sync_model.remote(self.model_version, self.config.synchronizer.sync_method)
+                for model in self.models
+            ]
         )
 
     async def prepare(self) -> None:

@@ -12,6 +12,7 @@ import torch
 
 from tests.tools import get_template_config, get_unittest_dataset_config
 from trinity.common.config import InferenceModelConfig, load_config
+from trinity.common.constants import SyncMethod
 from trinity.common.models.model import InferenceModel
 
 CHECKPOINT_ROOT_DIR = os.path.join(os.path.dirname(__file__), "temp_checkpoint_dir")
@@ -30,7 +31,9 @@ class DummyInferenceModel(InferenceModel):
     async def convert_messages_to_experience(self, messages, tools=None, temperature=None):
         raise NotImplementedError
 
-    async def sync_model(self, model_version: int) -> int:
+    async def sync_model(
+        self, model_version: int, sync_method: SyncMethod, timeout: float = 1200
+    ) -> int:
         return model_version
 
     def get_model_version(self) -> int:
