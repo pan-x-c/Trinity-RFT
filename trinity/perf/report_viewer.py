@@ -21,6 +21,8 @@ STEP_METRIC_PREFIXES_BY_MODULE: dict[str, list[str]] = {
         "rollout/time/task_execution/mean",
         "rollout/prompt_length/mean",
         "rollout/response_length/mean",
+        "rollout/api_call_prompt_tokens_per_second/mean",
+        "rollout/api_call_response_tokens_per_second/mean",
         "experience_pipeline/experience_count",
     ],
     "trainer": [],
@@ -258,8 +260,10 @@ def render_header(report: dict[str, Any], report_path: str) -> None:
 def compute_global_token_throughput_metrics(report: dict[str, Any]) -> dict[str, float | None]:
     timing = report.get("timing", {})
     return {
-        "prompt_tokens_per_sec": timing.get("prompt_tokens_per_sec"),
-        "response_tokens_per_sec": timing.get("response_tokens_per_sec"),
+        "prompt_tokens_per_second": timing.get("prompt_tokens_per_second"),
+        "response_tokens_per_second": timing.get("response_tokens_per_second"),
+        "api_call_prompt_tokens_per_second": timing.get("api_call_prompt_tokens_per_second"),
+        "api_call_response_tokens_per_second": timing.get("api_call_response_tokens_per_second"),
     }
 
 
@@ -273,7 +277,7 @@ def render_global_metrics(report: dict[str, Any]) -> None:
             metric_key,
             timing.get(metric_key),
         )
-        for metric_key in ("startup_time_sec", "execution_time_sec", "total_time_sec")
+        for metric_key in ("startup_time_sec", "execution_time_sec")
     )
     metric_items.extend(compute_global_token_throughput_metrics(report).items())
 
@@ -282,8 +286,8 @@ def render_global_metrics(report: dict[str, Any]) -> None:
         st.info("No global metrics found in this report.")
         return
 
-    for row_start in range(0, len(shown_items), 3):
-        row_items = shown_items[row_start : row_start + 3]
+    for row_start in range(0, len(shown_items), 2):
+        row_items = shown_items[row_start : row_start + 2]
         columns = st.columns(len(row_items))
         for column, (metric_key, value) in zip(columns, row_items):
             with column:
