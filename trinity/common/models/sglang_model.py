@@ -113,6 +113,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             "disable_piecewise_cuda_graph": True,
             "api_key": "EMPTY",
             "device": "cuda",
+            "mamba_scheduler_strategy": "extra_buffer",
         }
         # if self.config.chat_template:
         #     server_args_kwargs["chat_template"] = self.config.chat_template

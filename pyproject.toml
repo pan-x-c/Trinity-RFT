@@ -56,6 +56,9 @@ trinity = "trinity.cli.launcher:main"
 vllm = [
     "vllm>=0.19.1,<=0.20.1",
 ]
+sglang = [
+    "sglang==0.5.11",
+]
 data = [
     "py-data-juicer>=1.4.3"
 ]
