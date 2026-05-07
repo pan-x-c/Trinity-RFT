@@ -4,7 +4,9 @@ import datetime
 import math
 import os
 import shutil
+import socket
 import unittest
+from unittest.mock import patch
 
 import torch
 
@@ -42,6 +44,24 @@ class TestConfig(unittest.TestCase):
         _, port = model.get_available_address()
 
         self.assertEqual(port, 9003)
+
+    def test_inference_model_base_port_falls_back_when_unavailable(self):
+        requested_port = 9004
+        model = DummyInferenceModel(InferenceModelConfig(base_port=9000, engine_id=4))
+
+        with socket.socket() as occupied_socket:
+            occupied_socket.bind(("", requested_port))
+
+            with patch.object(model.logger, "warning") as mock_warning:
+                _, port = model.get_available_address()
+
+        self.assertNotEqual(port, requested_port)
+        self.assertGreater(port, 0)
+        mock_warning.assert_called_once_with(
+            "Configured port %s is unavailable for engine %s; falling back to an ephemeral port.",
+            requested_port,
+            4,
+        )
 
     def test_inference_model_without_base_port_uses_ephemeral_port(self):
         model = DummyInferenceModel(InferenceModelConfig())

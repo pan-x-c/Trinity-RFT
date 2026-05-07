@@ -65,7 +65,17 @@ class InferenceModel(ABC):
         """Get the address of the actor."""
         address = ray.util.get_node_ip_address()
         if self.config.base_port is not None:
-            return address, self.config.base_port + self.config.engine_id
+            configured_port = self.config.base_port + self.config.engine_id
+            with socket.socket() as s:
+                try:
+                    s.bind(("", configured_port))
+                    return address, configured_port
+                except OSError:
+                    self.logger.warning(
+                        "Configured port %s is unavailable for engine %s; falling back to an ephemeral port.",
+                        configured_port,
+                        self.config.engine_id,
+                    )
         with socket.socket() as s:
             s.bind(("", 0))
             port = s.getsockname()[1]
@@ -758,7 +768,9 @@ def _convert_completion_output_to_experience(output) -> List[Experience]:
     return exps
 
 
-def _convert_stream_chunks_to_experience(chunks: Sequence[Any]) -> List[Experience]:
+def _convert_stream_chunks_to_experience(  # noqa: C901
+    chunks: Sequence[Any],
+) -> List[Experience]:
     """Convert streamed chat completion chunks to experiences."""
     prompt_token_ids: Optional[List[int]] = None
     prompt_length: Optional[int] = None
