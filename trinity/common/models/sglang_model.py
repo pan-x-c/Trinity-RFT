@@ -41,6 +41,20 @@ class SGLangRolloutModel(BaseInferenceModel):
         self._prepared = False
         self.async_lock = asyncio.Lock()
 
+    async def init_process_group(
+        self,
+        master_address: str,
+        master_port: int,
+        rank_offset: int,
+        world_size: int,
+        group_name: str,
+        explorer_name: str,
+        backend: str = "nccl",
+        timeout: int = 1200,
+        state_dict_meta: dict = None,
+    ):
+        return
+
     async def _initialize_tokenizer(self) -> None:
         if self.tokenizer is not None:
             return
@@ -95,7 +109,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             "trust_remote_code": self.config.trust_remote_code,
             "context_length": self.config.max_model_len,
             "enable_multimodal": self.config.enable_multimodal,
-            "skip_server_warmup": True,
+            "skip_server_warmup": False,
             "disable_piecewise_cuda_graph": True,
             "api_key": "EMPTY",
             "device": "cuda",
