@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import traceback
 from logging import Logger
-from typing import List, Literal, Optional, Sequence, Tuple
+from typing import Any, List, Literal, Optional, Sequence, Tuple, Union
 
 import httpx
 import torch
@@ -53,14 +54,25 @@ class SGLangClient:
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
+                traceback.print_exc()
                 self.logger.error(
                     f"Error during {method} request to SGLang API server at {url}: {e}"
                 )
                 return {"error": str(e)}
 
     async def health_check(self) -> bool:
-        response = await self._server_call("GET", "/health")
-        return response.get("status") == "ok"
+        try:
+            async with httpx.AsyncClient(
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Authorization": f"Bearer {self.api_key}" if self.api_key else "",
+                }
+            ) as client:
+                response = await client.get(f"{self.server_url}/health", timeout=5)
+                return response.status_code == 200
+        except Exception as e:
+            self.logger.debug(f"SGLang API server health check failed: {e}")
+            return False
 
     async def init_weights_update_group(
         self,
@@ -109,8 +121,13 @@ class SGLangClient:
         weight_version: Optional[str] = None,
         timeout: float = 300,
     ) -> bool:
+        names = [meta[0] for meta in state_dict_meta_list]
+        dtypes = [meta[1] for meta in state_dict_meta_list]
+        shapes = [meta[2] for meta in state_dict_meta_list]
         payload = {
-            "state_dict_meta_list": state_dict_meta_list,
+            "names": names,
+            "dtypes": dtypes,
+            "shapes": shapes,
             "group_name": group_name,
             "flash_cache": flash_cache,
             "abort_all_requests": abort_all_requests,
@@ -151,6 +168,45 @@ class SGLangClient:
             )
         return success
 
+    async def generate(self, prompt: Union[str, List[int]], **kwargs) -> Sequence[dict[str, Any]]:
+        sampling_params = {
+            "n": kwargs.get("n", 1),
+            "temperature": kwargs.get("temperature"),
+            "top_p": kwargs.get("top_p"),
+            "top_k": kwargs.get("top_k"),
+            "max_new_tokens": kwargs.get("max_tokens"),
+            "min_new_tokens": kwargs.get("min_tokens"),
+            "repetition_penalty": kwargs.get("repetition_penalty"),
+            "stop": kwargs.get("stop"),
+            "ignore_eos": kwargs.get("ignore_eos"),
+        }
+        sampling_params = {k: v for k, v in sampling_params.items() if v is not None}
+
+        payload: dict[str, Any] = {
+            "sampling_params": sampling_params,
+            "return_logprob": kwargs.get("return_logprob", False),
+            "top_logprobs_num": kwargs.get("top_logprobs_num", 0),
+            "return_text_in_logprobs": False,
+        }
+        if isinstance(prompt, str):
+            payload["text"] = prompt
+        else:
+            payload["input_ids"] = prompt
+
+        response = await self._server_call(
+            "POST",
+            "/generate",
+            payload,
+            timeout=kwargs.get("timeout", 300),
+        )
+        if isinstance(response, dict) and response.get("error"):
+            raise RuntimeError(f"Failed to generate with SGLang: {response['error']}")
+        if isinstance(response, dict):
+            return [response]
+        if isinstance(response, list):
+            return response
+        raise TypeError(f"Unexpected SGLang generate response type: {type(response)!r}")
+
 
 class SGLangRolloutModel(BaseInferenceModel):
     """Wrapper around the SGLang engine to handle async requests.
@@ -174,6 +230,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         self.api_server: Optional[asyncio.Task[None]] = None
         self.api_client: Optional[SGLangClient] = None
         self.synchronizer = None
+        self.state_dict_meta: List[Tuple[str, str, Tuple]] = []
         self.model_version = 0
         self.server_args: Optional[ServerArgs] = None
         self._prepared = False
@@ -189,14 +246,14 @@ class SGLangRolloutModel(BaseInferenceModel):
         explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
-        state_dict_meta: List = None,
+        state_dict_meta: Optional[List[Tuple[str, str, Tuple]]] = None,
     ):
         assert (
             self.api_client is not None
         ), "API client must be initialized before calling init_process_group"
         if not self.synchronizer:
             self.synchronizer = Synchronizer.get_actor(namespace=self.config.ray_namespace)
-        self.state_dict_meta = state_dict_meta
+        self.state_dict_meta = state_dict_meta or []
         return await self.api_client.init_weights_update_group(
             master_address=master_address,
             master_port=master_port,
@@ -223,15 +280,85 @@ class SGLangRolloutModel(BaseInferenceModel):
             await self.run_api_server()
             self._prepared = True
 
+    @staticmethod
+    def _extract_output_logprobs(meta_info: dict[str, Any]) -> List[float]:
+        output_token_logprobs = meta_info.get("output_token_logprobs") or []
+        return [float(logprob) for logprob, *_ in output_token_logprobs]
+
+    def _normalize_chat_messages(self, messages: List[dict]) -> List[dict]:
+        normalized_messages = []
+        for message in messages:
+            normalized_message = dict(message)
+            content = normalized_message.get("content")
+            if isinstance(content, list):
+                text_parts = [item["text"] for item in content if item.get("type") == "text"]
+                normalized_message["content"] = "".join(text_parts)
+            normalized_messages.append(normalized_message)
+        return normalized_messages
+
     async def generate(self, prompt: str, **kwargs) -> Sequence[Experience]:
-        raise NotImplementedError(
-            "SGLangRolloutModel currently only supports OpenAI API access via ModelWrapper clients."
+        assert self.api_client is not None, "API client must be initialized before calling generate"
+        if self.tokenizer is None:
+            await self._initialize_tokenizer()
+
+        returned_seq, is_valid = self._handle_prompt_truncation(prompt, **kwargs)
+        if not is_valid:
+            return returned_seq
+        prompt_token_ids = list(returned_seq)
+
+        logprobs = kwargs.get("logprobs", self.config.logprobs)
+        return_logprob = logprobs is not None and logprobs is not False
+        responses = await self.api_client.generate(
+            prompt=prompt_token_ids,
+            n=kwargs.get("n", 1),
+            temperature=kwargs.get("temperature", self.config.temperature),
+            top_p=kwargs.get("top_p", self.config.top_p),
+            top_k=kwargs.get("top_k", self.config.top_k),
+            max_tokens=kwargs.get("max_tokens", self.config.max_response_tokens),
+            min_tokens=kwargs.get("min_tokens", self.config.min_response_tokens),
+            repetition_penalty=kwargs.get("repetition_penalty", self.config.repetition_penalty),
+            stop=kwargs.get("stop"),
+            ignore_eos=kwargs.get("ignore_eos", self.config.ignore_eos),
+            return_logprob=return_logprob,
+            timeout=kwargs.get("timeout", 300),
         )
 
+        prompt_text = self.tokenizer.decode(prompt_token_ids)
+        experiences = []
+        for response in responses:
+            response_token_ids = response.get("output_ids") or []
+            response_text = response.get("text") or ""
+            if not response_token_ids and response_text:
+                response_token_ids = self.tokenizer.encode(response_text, add_special_tokens=False)
+
+            meta_info = response.get("meta_info") or {}
+            prompt_length = int(meta_info.get("prompt_tokens") or len(prompt_token_ids))
+            if return_logprob:
+                response_logprobs = torch.tensor(
+                    self._extract_output_logprobs(meta_info),
+                    dtype=torch.float32,
+                )
+            else:
+                response_logprobs = torch.tensor([], dtype=torch.float32)
+
+            experiences.append(
+                Experience(
+                    tokens=torch.tensor(prompt_token_ids + response_token_ids, dtype=torch.int32),
+                    logprobs=response_logprobs,
+                    prompt_length=prompt_length,
+                    prompt_text=prompt_text,
+                    response_text=response_text,
+                )
+            )
+        return experiences
+
     async def chat(self, messages: List[dict], **kwargs) -> Sequence[Experience]:
-        raise NotImplementedError(
-            "SGLangRolloutModel currently only supports OpenAI API access via ModelWrapper clients."
-        )
+        if self.tokenizer is None:
+            await self._initialize_tokenizer()
+
+        normalized_messages = self._normalize_chat_messages(messages)
+        prompt = self.apply_chat_template(self.tokenizer, normalized_messages)
+        return await self.generate(prompt=prompt, **kwargs)
 
     async def logprobs(self, token_ids: List[int], **kwargs) -> torch.Tensor:
         raise NotImplementedError(
@@ -261,7 +388,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             "trust_remote_code": self.config.trust_remote_code,
             "context_length": self.config.max_model_len,
             "enable_multimodal": self.config.enable_multimodal,
-            "skip_server_warmup": False,
+            "skip_server_warmup": True,
             "disable_piecewise_cuda_graph": True,
             "api_key": "EMPTY",
             "device": "cuda",
@@ -338,6 +465,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             self.synchronizer is not None
         ), "Synchronizer must be initialized before calling sync_model"
         if method == SyncMethod.NCCL:
+            assert self.state_dict_meta, "state_dict_meta must be initialized for NCCL sync"
             await self.api_client.update_weights_from_distributed(
                 state_dict_meta_list=self.state_dict_meta,
                 group_name="weights_update",

@@ -347,6 +347,7 @@ class TestPullLatestWeights(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.explorer = object.__new__(Explorer)
+        self.explorer.config = Config()
         self.explorer.logger = MagicMock()
         self.explorer.models = [MagicMock(), MagicMock()]
         self.explorer.synchronizer = MagicMock()
@@ -378,7 +379,11 @@ class TestPullLatestWeights(unittest.IsolatedAsyncioTestCase):
 
         for m in self.explorer.models:
             if expect_sync:
-                m.sync_model.remote.assert_called_once_with(new_version)
+                m.sync_model.remote.assert_called_once_with(
+                    new_version,
+                    self.explorer.config.synchronizer.sync_method,
+                    timeout=self.explorer.config.synchronizer.sync_timeout,
+                )
             else:
                 m.sync_model.remote.assert_not_called()
 

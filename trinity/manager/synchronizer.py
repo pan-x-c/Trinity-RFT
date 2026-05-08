@@ -264,6 +264,7 @@ class Synchronizer:
         async with self._ready_condition:
             self.model_state_dict = model_state_dict
             self.model_version = trainer_step
+            # TODO: check model_path for different trainer types
             self.model_path = os.path.join(
                 self.config.checkpoint_job_dir, f"global_step_{trainer_step}", "actor"
             )
