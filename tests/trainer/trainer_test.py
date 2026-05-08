@@ -257,7 +257,6 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.algorithm.advantage_fn_args = {
             "epsilon": 1e-6,
         }
-        self.config.explorer.rollout_model.engine_type = "sglang"
         # self.config.algorithm.repeat_times = 8  # TODO: used for real testing
         # self.config.buffer.batch_size = 96  # TODO: used for real testing
         self.config.buffer.total_epochs = 1

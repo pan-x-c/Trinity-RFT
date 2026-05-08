@@ -4,21 +4,21 @@ import asyncio
 import os
 import traceback
 from logging import Logger
-from typing import Any, List, Literal, Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, List, Literal, Optional, Sequence, Tuple
 
 import httpx
-import psutil
 import torch
 from transformers import AutoTokenizer
 
 from trinity.common.config import InferenceModelConfig
-from trinity.common.constants import SyncMethod
+from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME, SyncMethod
 from trinity.common.experience import Experience
 from trinity.common.models.model import BaseInferenceModel
 from trinity.manager.synchronizer import Synchronizer
 
 if TYPE_CHECKING:
     from sglang.srt.server_args import ServerArgs
+
 
 class SGLangClient:
     """A simple http client to interact with the SGLang API server."""
@@ -54,7 +54,7 @@ class SGLangClient:
                     raise ValueError(f"Unsupported HTTP method: {method}")
                 response.raise_for_status()
                 return response.json()
-            except Exception as e:
+            except Exception:
                 self.logger.error(
                     f"Error during {method} request to SGLang API server at {url}:\n{traceback.format_exc()}"
                 )
@@ -137,6 +137,9 @@ class SGLangClient:
             "POST", "/update_weights_from_distributed", payload, timeout=timeout
         )
         success = response.get("success", False)
+        self.logger.info(
+            "Response from update_weights_from_distributed: %s", response.get("message", "")
+        )
         if not success:
             self.logger.error(
                 f"Failed to update weights from distributed in SGLang API server: {response.get('message')}"
@@ -222,7 +225,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         if not self.config.enable_openai_api:
             self.logger.warning("SGLangRolloutModel requires OpenAI API to be enabled.")
             self.config.enable_openai_api = True
-        os.environ["SGLANG_GRPC_PORT"] = "12345" # a dummy port not actually used
+        os.environ["SGLANG_GRPC_PORT"] = "12345"  # a dummy port not actually used
         os.environ["SGLANG_ENABLE_GRPC"] = "0"
         self.api_server_host: Optional[str] = None
         self.api_server_port: Optional[int] = None
@@ -233,7 +236,9 @@ class SGLangRolloutModel(BaseInferenceModel):
         self.model_version = 0
         self.server_args: Optional[ServerArgs] = None
         self._prepared = False
+        self._has_weight_update_group = False
         self.async_lock = asyncio.Lock()
+        self.group_name = ROLLOUT_WEIGHT_SYNC_GROUP_NAME
 
     async def init_process_group(
         self,
@@ -259,6 +264,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             f"  > world_size={world_size}"
         )
         self.state_dict_meta = state_dict_meta or []
+        self.group_name = group_name
         resp = await self.api_client.init_weights_update_group(
             master_address=master_address,
             master_port=master_port,
@@ -269,6 +275,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             timeout=timeout,
         )
         self.logger.info("SGLang init_process_group finished.")
+        self._has_weight_update_group = resp
         return resp
 
     async def _initialize_tokenizer(self) -> None:
@@ -453,6 +460,8 @@ class SGLangRolloutModel(BaseInferenceModel):
 
     async def shutdown(self) -> None:
         if self.api_server is not None:
+            if self._has_weight_update_group:
+                await self.api_client.destroy_weights_update_group(group_name=self.group_name)
             self.api_server.cancel()
             try:
                 await self.api_server
@@ -462,6 +471,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             if reason not in {None, "cancelled"}:
                 self.logger.warning("Embedded SGLang HTTP server exited with error: %s", reason)
             self.api_server = None
+            self.api_client = None
 
     async def sync_model(
         self, model_version: int, method: SyncMethod, timeout: float = 1200
@@ -477,7 +487,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             assert self.state_dict_meta, "state_dict_meta must be initialized for NCCL sync"
             await self.api_client.update_weights_from_distributed(
                 state_dict_meta_list=self.state_dict_meta,
-                group_name="weights_update",
+                group_name=self.group_name,
                 weight_version=str(model_version),
                 timeout=timeout,
             )

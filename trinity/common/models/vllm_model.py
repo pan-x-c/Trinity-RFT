@@ -501,7 +501,9 @@ class vLLMRolloutModel(BaseInferenceModel):
             return model_version
         await self.async_llm.reset_prefix_cache()
         await self._collective_rpc("update_weight", timeout=timeout)
-        self.logger.info(f"Synchronized model to version {model_version} using method {sync_method}.")
+        self.logger.info(
+            f"Synchronized model to version {model_version} using method {sync_method}."
+        )
         self.model_version = model_version
         return model_version
 

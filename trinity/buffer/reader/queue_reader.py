@@ -1,9 +1,9 @@
 """Reader of the Queue buffer."""
 
+import traceback
 from typing import Dict, List, Optional
 
 import ray
-import traceback
 
 from trinity.buffer.buffer_reader import BufferReader
 from trinity.buffer.storage.queue import QueueStorage
@@ -44,7 +44,9 @@ class QueueReader(BufferReader):
     async def read_async(self, batch_size: Optional[int] = None, **kwargs) -> List[Experience]:
         batch_size = self.read_batch_size if batch_size is None else batch_size
         try:
-            exp_bytes = await self.queue.get_batch.remote(batch_size, timeout=self.timeout, **kwargs)
+            exp_bytes = await self.queue.get_batch.remote(
+                batch_size, timeout=self.timeout, **kwargs
+            )
         except Exception as e:
             if "StopAsyncIteration" in traceback.format_exc():
                 raise StopAsyncIteration() from e

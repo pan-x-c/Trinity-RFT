@@ -812,13 +812,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                     backend="nccl",
                     timeout=timeout,
                     world_size=world_size,
-                    device_id=torch.device(f"cuda:{get_device_id()}"),
                     rank=0,
                 )
-                self.logger.info("Trainer setup_weight_sync_group done.")
-                self.logger.info("Trainer waiting for rollout weight sync barrier.")
-                torch.distributed.barrier(group=self._model_update_group)
-                self.logger.info("Trainer rollout weight sync barrier done, waiting explorer setup.")
                 ray.get(setup_ref)
                 self.logger.info("Trainer explorer setup confirmation received.")
 
@@ -843,7 +838,6 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                         torch.distributed.broadcast(full_param, 0, group=self._model_update_group)
                     del full_param
             if torch.distributed.get_rank() == 0:
-                torch.distributed.barrier(group=self._model_update_group)
                 torch.cuda.synchronize()
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
