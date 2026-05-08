@@ -4,7 +4,7 @@ import asyncio
 import os
 import traceback
 from logging import Logger
-from typing import Any, List, Literal, Optional, Sequence, Tuple, Union
+from typing import Any, List, Literal, Optional, Sequence, Tuple
 
 import httpx
 import torch
@@ -168,7 +168,7 @@ class SGLangClient:
             )
         return success
 
-    async def generate(self, prompt: Union[str, List[int]], **kwargs) -> Sequence[dict[str, Any]]:
+    async def generate(self, input_ids: List[int], **kwargs) -> Sequence[dict[str, Any]]:
         sampling_params = {
             "n": kwargs.get("n", 1),
             "temperature": kwargs.get("temperature"),
@@ -187,11 +187,8 @@ class SGLangClient:
             "return_logprob": kwargs.get("return_logprob", False),
             "top_logprobs_num": kwargs.get("top_logprobs_num", 0),
             "return_text_in_logprobs": False,
+            "input_ids": input_ids,
         }
-        if isinstance(prompt, str):
-            payload["text"] = prompt
-        else:
-            payload["input_ids"] = prompt
 
         response = await self._server_call(
             "POST",
@@ -309,7 +306,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         logprobs = kwargs.get("logprobs", self.config.logprobs)
         return_logprob = logprobs is not None and logprobs is not False
         responses = await self.api_client.generate(
-            prompt=prompt_token_ids,
+            input_ids=prompt_token_ids,
             n=kwargs.get("n", 1),
             temperature=kwargs.get("temperature", self.config.temperature),
             top_p=kwargs.get("top_p", self.config.top_p),
@@ -361,9 +358,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         return await self.generate(prompt=prompt, lora_request=lora_request, **kwargs)
 
     async def logprobs(self, token_ids: List[int], **kwargs) -> torch.Tensor:
-        raise NotImplementedError(
-            "SGLangRolloutModel does not implement local logprobs in the OpenAI-API-only integration."
-        )
+        raise NotImplementedError("SGLangRolloutModel does not support logprobs.")
 
     async def convert_messages_to_experience(
         self,
@@ -373,7 +368,7 @@ class SGLangRolloutModel(BaseInferenceModel):
     ) -> Experience:
         del messages, tools, temperature
         raise NotImplementedError(
-            "SGLangRolloutModel does not implement local experience conversion in the OpenAI-API-only integration."
+            "SGLangRolloutModel does not support convert_messages_to_experience."
         )
 
     def _build_server_args(self, host: str, port: int) -> ServerArgs:
