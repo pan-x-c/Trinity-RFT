@@ -296,7 +296,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             normalized_messages.append(normalized_message)
         return normalized_messages
 
-    async def generate(self, prompt: str, **kwargs) -> Sequence[Experience]:
+    async def generate(self, prompt: str, lora_request=None, **kwargs) -> Sequence[Experience]:
         assert self.api_client is not None, "API client must be initialized before calling generate"
         if self.tokenizer is None:
             await self._initialize_tokenizer()
@@ -352,13 +352,13 @@ class SGLangRolloutModel(BaseInferenceModel):
             )
         return experiences
 
-    async def chat(self, messages: List[dict], **kwargs) -> Sequence[Experience]:
+    async def chat(self, messages: List[dict], lora_request=None, **kwargs) -> Sequence[Experience]:
         if self.tokenizer is None:
             await self._initialize_tokenizer()
 
         normalized_messages = self._normalize_chat_messages(messages)
         prompt = self.apply_chat_template(self.tokenizer, normalized_messages)
-        return await self.generate(prompt=prompt, **kwargs)
+        return await self.generate(prompt=prompt, lora_request=lora_request, **kwargs)
 
     async def logprobs(self, token_ids: List[int], **kwargs) -> torch.Tensor:
         raise NotImplementedError(
