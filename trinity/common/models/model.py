@@ -733,50 +733,25 @@ class HistoryRecordingStream:
 
 def _convert_completion_output_to_experience(output) -> List[Experience]:
     """Convert non-stream chat completion output to experiences."""
-    prompt_token_ids = getattr(output, "prompt_token_ids", None)
-    prompt_length = len(prompt_token_ids) if prompt_token_ids is not None else None
-    if prompt_length is None:
-        usage = getattr(output, "usage", None)
-        prompt_length = max(1, int(getattr(usage, "prompt_tokens", 0) or 0))
-
-    exps = []
-    for choice in output.choices:
-        response_text = getattr(choice.message, "content", None) or ""
-        response_token_ids = getattr(choice, "token_ids", None)
-        if response_token_ids is None:
-            response_length = max(1, len(response_text))
-            response_token_ids = [0] * response_length
-        logprobs = extract_logprobs(choice)
-        if len(logprobs) == 0:
-            logprobs = torch.zeros(len(response_token_ids), dtype=torch.float32)
-
-        if prompt_token_ids is not None:
-            tokens = torch.cat(
+    return [
+        Experience(
+            tokens=torch.cat(
                 (
-                    torch.tensor(prompt_token_ids, dtype=torch.int32),
-                    torch.tensor(response_token_ids, dtype=torch.int32),
+                    torch.tensor(output.prompt_token_ids, dtype=torch.int32),
+                    torch.tensor(choice.token_ids, dtype=torch.int32),
                 )
-            )
-        else:
-            tokens = torch.zeros(prompt_length + len(response_token_ids), dtype=torch.int32)
-
-        exps.append(
-            Experience(
-                tokens=tokens,
-                logprobs=logprobs,
-                prompt_length=prompt_length,
-                response_text=response_text,
-            )
+            ),
+            logprobs=extract_logprobs(choice),
+            prompt_length=len(output.prompt_token_ids),
+            response_text=getattr(choice.message, "content", None),
         )
-    return exps
+        for choice in output.choices
+    ]
 
 
-def _convert_stream_chunks_to_experience(  # noqa: C901
-    chunks: Sequence[Any],
-) -> List[Experience]:
+def _convert_stream_chunks_to_experience(chunks: Sequence[Any]) -> List[Experience]:
     """Convert streamed chat completion chunks to experiences."""
     prompt_token_ids: Optional[List[int]] = None
-    prompt_length: Optional[int] = None
     by_choice: Dict[int, Dict[str, Any]] = {}
 
     for chunk in chunks:
@@ -784,12 +759,6 @@ def _convert_stream_chunks_to_experience(  # noqa: C901
             chunk_prompt_token_ids = getattr(chunk, "prompt_token_ids", None)
             if chunk_prompt_token_ids is not None:
                 prompt_token_ids = list(chunk_prompt_token_ids)
-                prompt_length = len(prompt_token_ids)
-        if prompt_length is None:
-            usage = getattr(chunk, "usage", None)
-            usage_prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-            if usage_prompt_tokens > 0:
-                prompt_length = usage_prompt_tokens
 
         for choice in getattr(chunk, "choices", []) or []:
             idx = getattr(choice, "index", 0)
@@ -824,26 +793,18 @@ def _convert_stream_chunks_to_experience(  # noqa: C901
                     data["response_text_parts"].append(delta_content)
 
     prompt_token_ids = prompt_token_ids or []
-    prompt_length = prompt_length or len(prompt_token_ids) or 1
     exps: List[Experience] = []
     for idx in sorted(by_choice.keys()):
         data = by_choice[idx]
         response_token_ids = data["token_ids"]
-        response_text = "".join(data["response_text_parts"])
         if len(response_token_ids) == 0:
-            response_token_ids = [0] * max(1, len(response_text))
-        logprobs = data["logprobs"]
-        if len(logprobs) == 0:
-            logprobs = [0.0] * len(response_token_ids)
+            continue
+        response_text = "".join(data["response_text_parts"])
         exps.append(
             Experience(
-                tokens=(
-                    torch.tensor(prompt_token_ids + response_token_ids, dtype=torch.int32)
-                    if prompt_token_ids
-                    else torch.zeros(prompt_length + len(response_token_ids), dtype=torch.int32)
-                ),
-                logprobs=torch.tensor(logprobs, dtype=torch.float32),
-                prompt_length=prompt_length,
+                tokens=torch.tensor(prompt_token_ids + response_token_ids, dtype=torch.int32),
+                logprobs=torch.tensor(data["logprobs"], dtype=torch.float32),
+                prompt_length=len(prompt_token_ids),
                 response_text=response_text,
             )
         )

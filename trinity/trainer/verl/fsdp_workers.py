@@ -804,6 +804,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 )
                 timeout = self.config.synchronizer.sync_timeout
 
+                self.logger.info("Trainer start init_process_group.")
                 self._model_update_group = init_process_group(
                     host=master_address,
                     port=master_port,
@@ -814,8 +815,12 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                     device_id=torch.device(f"cuda:{get_device_id()}"),
                     rank=0,
                 )
+                self.logger.info("Trainer setup_weight_sync_group done.")
+                self.logger.info("Trainer waiting for rollout weight sync barrier.")
                 torch.distributed.barrier(group=self._model_update_group)
+                self.logger.info("Trainer rollout weight sync barrier done, waiting explorer setup.")
                 ray.get(setup_ref)
+                self.logger.info("Trainer explorer setup confirmation received.")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def sync_weight(self):

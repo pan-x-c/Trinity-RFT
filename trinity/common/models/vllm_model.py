@@ -57,13 +57,6 @@ class vLLMRolloutModel(BaseInferenceModel):
             os.environ["VLLM_ALLREDUCE_USE_SYMM_MEM"] = "0"
         if self.config.enable_runtime_lora_updating:
             os.environ["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] = "1"
-        if not config.enforce_eager:
-            # To avoid torch compile conflicts when multiple model are started simultaneously.
-            # remove this when the following PR is released:
-            # https://github.com/vllm-project/vllm/pull/27616
-            os.environ["VLLM_CACHE_ROOT"] = os.path.expanduser(
-                f"~/.cache/vllm/{config.bundle_indices}"
-            )
         self.tokenization_kwargs = {
             "truncate_prompt_tokens": config.max_prompt_tokens
             if config.enable_prompt_truncation
@@ -508,7 +501,7 @@ class vLLMRolloutModel(BaseInferenceModel):
             return model_version
         await self.async_llm.reset_prefix_cache()
         await self._collective_rpc("update_weight", timeout=timeout)
-        self.logger.info("Sync model weights to vLLM successfully.")
+        self.logger.info(f"Synchronized model to version {model_version} using method {sync_method}.")
         self.model_version = model_version
         return model_version
 

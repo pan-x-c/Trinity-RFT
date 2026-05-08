@@ -4,20 +4,21 @@ import asyncio
 import os
 import traceback
 from logging import Logger
-from typing import Any, List, Literal, Optional, Sequence, Tuple
+from typing import Any, List, Literal, Optional, Sequence, Tuple, TYPE_CHECKING
 
 import httpx
+import psutil
 import torch
-from sglang.srt.server_args import ServerArgs
 from transformers import AutoTokenizer
 
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
 from trinity.common.models.model import BaseInferenceModel
-from trinity.common.models.sglang_patch import get_api_server
 from trinity.manager.synchronizer import Synchronizer
 
+if TYPE_CHECKING:
+    from sglang.srt.server_args import ServerArgs
 
 class SGLangClient:
     """A simple http client to interact with the SGLang API server."""
@@ -54,11 +55,10 @@ class SGLangClient:
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
-                traceback.print_exc()
                 self.logger.error(
-                    f"Error during {method} request to SGLang API server at {url}: {e}"
+                    f"Error during {method} request to SGLang API server at {url}:\n{traceback.format_exc()}"
                 )
-                return {"error": str(e)}
+                return {"error": traceback.format_exc()}
 
     async def health_check(self) -> bool:
         try:
@@ -222,6 +222,8 @@ class SGLangRolloutModel(BaseInferenceModel):
         if not self.config.enable_openai_api:
             self.logger.warning("SGLangRolloutModel requires OpenAI API to be enabled.")
             self.config.enable_openai_api = True
+        os.environ["SGLANG_GRPC_PORT"] = "12345" # a dummy port not actually used
+        os.environ["SGLANG_ENABLE_GRPC"] = "0"
         self.api_server_host: Optional[str] = None
         self.api_server_port: Optional[int] = None
         self.api_server: Optional[asyncio.Task[None]] = None
@@ -250,8 +252,14 @@ class SGLangRolloutModel(BaseInferenceModel):
         ), "API client must be initialized before calling init_process_group"
         if not self.synchronizer:
             self.synchronizer = Synchronizer.get_actor(namespace=self.config.ray_namespace)
+        self.logger.info(
+            "SGLang starting init_process_group:\n"
+            f"  > address={master_address}:{master_port}\n"
+            f"  > rank_offset={rank_offset}\n"
+            f"  > world_size={world_size}"
+        )
         self.state_dict_meta = state_dict_meta or []
-        return await self.api_client.init_weights_update_group(
+        resp = await self.api_client.init_weights_update_group(
             master_address=master_address,
             master_port=master_port,
             rank_offset=rank_offset,
@@ -260,6 +268,8 @@ class SGLangRolloutModel(BaseInferenceModel):
             backend=backend,
             timeout=timeout,
         )
+        self.logger.info("SGLang init_process_group finished.")
+        return resp
 
     async def _initialize_tokenizer(self) -> None:
         if self.tokenizer is not None:
@@ -371,7 +381,9 @@ class SGLangRolloutModel(BaseInferenceModel):
             "SGLangRolloutModel does not support convert_messages_to_experience."
         )
 
-    def _build_server_args(self, host: str, port: int) -> ServerArgs:
+    def _build_server_args(self, host: str, port: int):
+        from sglang.srt.server_args import ServerArgs
+
         server_args_kwargs = {
             "model_path": self.config.model_path,
             "host": host,
@@ -387,7 +399,6 @@ class SGLangRolloutModel(BaseInferenceModel):
             "disable_piecewise_cuda_graph": True,
             "api_key": "EMPTY",
             "device": "cuda",
-            "mamba_scheduler_strategy": "extra_buffer",
         }
         # if self.config.chat_template:
         #     server_args_kwargs["chat_template"] = self.config.chat_template
@@ -423,6 +434,8 @@ class SGLangRolloutModel(BaseInferenceModel):
         )
 
     async def run_api_server(self) -> bool:
+        from trinity.common.models.sglang_patch import get_api_server
+
         if self.api_server_host is None or self.api_server_port is None:
             self.api_server_host, self.api_server_port = self.get_available_address()
         self.server_args = self._build_server_args(
@@ -459,6 +472,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         assert (
             self.synchronizer is not None
         ), "Synchronizer must be initialized before calling sync_model"
+        self.logger.info(f"Synchronizing model to version {model_version} using method {method}...")
         if method == SyncMethod.NCCL:
             assert self.state_dict_meta, "state_dict_meta must be initialized for NCCL sync"
             await self.api_client.update_weights_from_distributed(
@@ -477,6 +491,8 @@ class SGLangRolloutModel(BaseInferenceModel):
                 )
         else:
             raise ValueError(f"Unsupported sync method for SGLang: {method}")
+        self.logger.info(f"Synchronized model to version {model_version} using method {method}.")
+        self.model_version = model_version
         return model_version
 
     def get_model_version(self) -> int:
