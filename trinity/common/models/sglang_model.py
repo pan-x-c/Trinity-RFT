@@ -4,7 +4,7 @@ import asyncio
 import os
 import traceback
 from logging import Logger
-from typing import TYPE_CHECKING, Any, List, Literal, Optional, Sequence, Tuple
+from typing import Any, List, Literal, Optional, Sequence, Tuple
 
 import httpx
 import torch
@@ -16,8 +16,7 @@ from trinity.common.experience import Experience
 from trinity.common.models.model import BaseInferenceModel
 from trinity.manager.synchronizer import Synchronizer
 
-if TYPE_CHECKING:
-    from sglang.srt.server_args import ServerArgs
+SGLANG_API_KEY = "EMPTY"  # SGLang API server does not actually check the API key, so we can use a dummy value here.
 
 
 class SGLangClient:
@@ -234,7 +233,6 @@ class SGLangRolloutModel(BaseInferenceModel):
         self.synchronizer = None
         self.state_dict_meta: List[Tuple[str, str, Tuple]] = []
         self.model_version = 0
-        self.server_args: Optional[ServerArgs] = None
         self._prepared = False
         self._has_weight_update_group = False
         self.async_lock = asyncio.Lock()
@@ -388,30 +386,6 @@ class SGLangRolloutModel(BaseInferenceModel):
             "SGLangRolloutModel does not support convert_messages_to_experience."
         )
 
-    def _build_server_args(self, host: str, port: int):
-        from sglang.srt.server_args import ServerArgs
-
-        server_args_kwargs = {
-            "model_path": self.config.model_path,
-            "host": host,
-            "port": port,
-            "tp_size": self.config.tensor_parallel_size,
-            "dtype": self.config.dtype,
-            "mem_fraction_static": self.config.gpu_memory_utilization,
-            "served_model_name": self.config.name or self.config.model_path,
-            "trust_remote_code": self.config.trust_remote_code,
-            "context_length": self.config.max_model_len,
-            "enable_multimodal": self.config.enable_multimodal,
-            "skip_server_warmup": True,
-            "disable_piecewise_cuda_graph": True,
-            "api_key": "EMPTY",
-            "device": "cuda",
-        }
-        # if self.config.chat_template:
-        #     server_args_kwargs["chat_template"] = self.config.chat_template
-        # TODO: fill in nnodes and node_rank for distributed setups
-        return ServerArgs(**server_args_kwargs)
-
     def _get_api_server_exit_reason(self) -> Optional[str]:
         if self.api_server is None or not self.api_server.done():
             return None
@@ -422,7 +396,7 @@ class SGLangRolloutModel(BaseInferenceModel):
 
     async def _wait_until_server_ready(self, server_url: str) -> None:
         max_retries = 100
-        assert self.server_args is not None and self.api_client is not None
+        assert self.api_client is not None
         for _ in range(max_retries):
             reason = self._get_api_server_exit_reason()
             if reason is not None:
@@ -445,17 +419,27 @@ class SGLangRolloutModel(BaseInferenceModel):
 
         if self.api_server_host is None or self.api_server_port is None:
             self.api_server_host, self.api_server_port = self.get_available_address()
-        self.server_args = self._build_server_args(
+        self.api_server = get_api_server(
             host=self.api_server_host,
             port=self.api_server_port,
-        )
-        self.api_server = get_api_server(self.server_args, logger=self.logger)
-        self.api_client = SGLangClient(
-            server_url=f"http://{self.api_server_host}:{self.api_server_port}",
-            api_key=self.server_args.api_key,
+            model_path=self.config.model_path,
+            tensor_parallel_size=self.config.tensor_parallel_size,
+            dtype=self.config.dtype,
+            served_model_name=self.config.name or self.config.model_path,
+            mem_fraction_static=self.config.gpu_memory_utilization,
+            trust_remote_code=self.config.trust_remote_code,
+            context_length=self.config.max_model_len,
+            enable_multimodal=self.config.enable_multimodal,
+            api_key=SGLANG_API_KEY,
             logger=self.logger,
         )
-        await self._wait_until_server_ready(self.server_args.url())
+        server_url = f"http://{self.api_server_host}:{self.api_server_port}"
+        self.api_client = SGLangClient(
+            server_url=server_url,
+            api_key=SGLANG_API_KEY,
+            logger=self.logger,
+        )
+        await self._wait_until_server_ready(server_url)
         return True
 
     async def shutdown(self) -> None:
@@ -493,7 +477,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             )
             self.model_version = model_version
         elif method == SyncMethod.CHECKPOINT:
-            model_path = await self.synchronizer.get_latest_model_path.remote(use_huggingface=True)
+            model_path = await self.synchronizer.get_latest_model_path.remote()
             if model_path is not None:
                 await self.api_client.update_weights_from_disk(
                     model_path=model_path,
