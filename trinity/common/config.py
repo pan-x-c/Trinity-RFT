@@ -573,6 +573,11 @@ class InferenceModelConfig:
     # For external API-based engine
     external_model_config: ExternalModelConfig = field(default_factory=ExternalModelConfig)
 
+    # for multi-node setup
+    nnode: int = 1
+    # ! DO NOT SET
+    node_rank: int = 0
+
     # ! DO NOT SET
     bundle_indices: str = ""
     engine_id: int = 0
