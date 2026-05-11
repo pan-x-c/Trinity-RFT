@@ -3,7 +3,12 @@ import asyncio
 from parameterized import parameterized_class
 from transformers import AutoTokenizer
 
-from tests.tools import CHAT_TEMPLATE, RayUnittestBaseAsync, get_model_path, get_template_config
+from tests.tools import (
+    CHAT_TEMPLATE,
+    RayUnittestBaseAsync,
+    get_model_path,
+    get_template_config,
+)
 from trinity.common.models import create_explorer_models
 from trinity.common.models.model import ModelWrapper
 
@@ -20,7 +25,9 @@ async def prepare_engines(engines, auxiliary_engines):
 
 def assert_experience_tokens_match_text(test_case, tokenizer, exp, prompt_contents, response_text):
     full_text = tokenizer.decode(exp.tokens.tolist(), skip_special_tokens=False)
-    prompt_text = tokenizer.decode(exp.tokens[: exp.prompt_length].tolist(), skip_special_tokens=False)
+    prompt_text = tokenizer.decode(
+        exp.tokens[: exp.prompt_length].tolist(), skip_special_tokens=False
+    )
     decoded_response_text = tokenizer.decode(
         exp.tokens[exp.prompt_length :].tolist(), skip_special_tokens=False
     )
@@ -67,7 +74,9 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
     def _assert_experience_matches_text(self, exp, prompt_contents, response_text):
         self.assertGreater(exp.prompt_length, 0)
         self.assertGreater(len(exp.tokens), exp.prompt_length)
-        assert_experience_tokens_match_text(self, self.tokenizer, exp, prompt_contents, response_text)
+        assert_experience_tokens_match_text(
+            self, self.tokenizer, exp, prompt_contents, response_text
+        )
 
     def _assert_history_matches_responses(self, expected_count, prompt_contents, response_texts):
         if not self.enable_history:
