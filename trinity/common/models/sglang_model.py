@@ -493,7 +493,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             )
             self.model_version = model_version
         elif method == SyncMethod.CHECKPOINT:
-            model_path = await self.synchronizer.get_latest_model_path.remote()
+            model_path = await self.synchronizer.get_latest_model_path.remote(use_huggingface=True)
             if model_path is not None:
                 await self.api_client.update_weights_from_disk(
                     model_path=model_path,

@@ -356,14 +356,19 @@ class Synchronizer:
         async with self._ready_condition:
             return self.model_version
 
-    async def get_latest_model_path(self) -> Optional[str]:
+    async def get_latest_model_path(self, use_huggingface: bool = False) -> Optional[str]:
         """
         Get the latest model path available in the synchronizer.
+
+        Args:
+            use_huggingface: Whether to return the Hugging Face model path.
 
         Returns:
             The current model path.
         """
         async with self._ready_condition:
+            if self.model_path and use_huggingface:
+                return self.model_path + "/huggingface"
             return self.model_path
 
     async def ready_to_nccl_sync(self, module: str, trainer_step: int) -> Union[int, None]:
