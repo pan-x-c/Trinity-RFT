@@ -796,10 +796,12 @@ window.runMermaid = runMermaid;</script>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="build_api/trinity.common.html">trinity.common package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="build_api/trinity.common.models.html">trinity.common.models package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="build_api/trinity.common.models.sglang_patch.html">trinity.common.models.sglang_patch package</a></li>
 <li class="toctree-l4"><a class="reference internal" href="build_api/trinity.common.models.vllm_patch.html">trinity.common.models.vllm_patch package</a></li>
 <li class="toctree-l4"><a class="reference internal" href="build_api/trinity.common.models.external_model.html">trinity.common.models.external_model module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="build_api/trinity.common.models.mm_utils.html">trinity.common.models.mm_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="build_api/trinity.common.models.model.html">trinity.common.models.model module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="build_api/trinity.common.models.sglang_model.html">trinity.common.models.sglang_model module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="build_api/trinity.common.models.tinker_model.html">trinity.common.models.tinker_model module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="build_api/trinity.common.models.utils.html">trinity.common.models.utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="build_api/trinity.common.models.vllm_model.html">trinity.common.models.vllm_model module</a></li>
@@ -1321,6 +1323,10 @@ window.runMermaid = runMermaid;</script>
 </li>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.__init__">(trinity.common.models.model.ModelWrapper method)</a>
 </li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangClient.__init__">(trinity.common.models.sglang_model.SGLangClient method)</a>
+</li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.__init__">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
+</li>
         <li><a href="build_api/trinity.common.patch.qwen3_5.html#trinity.common.patch.qwen3_5.Qwen3_5CausalLMOutputForPPO.__init__">(trinity.common.patch.qwen3_5.Qwen3_5CausalLMOutputForPPO method)</a>
 </li>
         <li><a href="build_api/trinity.common.rewards.accuracy_reward.html#trinity.common.rewards.accuracy_reward.AccuracyReward.__init__">(trinity.common.rewards.accuracy_reward.AccuracyReward method)</a>
@@ -1742,6 +1748,8 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="build_api/trinity.common.config.html#trinity.common.config.LoRAConfig.base_model_name">base_model_name (trinity.common.config.LoRAConfig attribute)</a>
 </li>
+      <li><a href="build_api/trinity.common.config.html#trinity.common.config.InferenceModelConfig.base_port">base_port (trinity.common.config.InferenceModelConfig attribute)</a>
+</li>
       <li><a href="build_api/trinity.common.config.html#trinity.common.config.TinkerConfig.base_url">base_url (trinity.common.config.TinkerConfig attribute)</a>
 </li>
       <li><a href="build_api/trinity.common.config.html#trinity.common.config.ExternalModelConfig.base_url_env">base_url_env (trinity.common.config.ExternalModelConfig attribute)</a>
@@ -2019,6 +2027,8 @@ window.runMermaid = runMermaid;</script>
 </li>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.chat">(trinity.common.models.model.ModelWrapper method)</a>
 </li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.chat">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
+</li>
       </ul></li>
       <li><a href="build_api/trinity.common.models.external_model.html#trinity.common.models.external_model.ExternalModel.chat_async">chat_async() (trinity.common.models.external_model.ExternalModel method)</a>
 
@@ -2258,6 +2268,12 @@ window.runMermaid = runMermaid;</script>
       </ul></li>
       <li><a href="build_api/trinity.trainer.verl.utils.html#trinity.trainer.verl.utils.compute_data_metrics">compute_data_metrics() (in module trinity.trainer.verl.utils)</a>
 </li>
+      <li><a href="build_api/trinity.perf.report_metrics.html#trinity.perf.report_metrics.compute_global_token_throughput_metrics">compute_global_token_throughput_metrics() (in module trinity.perf.report_metrics)</a>
+
+      <ul>
+        <li><a href="build_api/trinity.perf.report_viewer.html#trinity.perf.report_viewer.compute_global_token_throughput_metrics">(in module trinity.perf.report_viewer)</a>
+</li>
+      </ul></li>
       <li><a href="build_api/trinity.algorithm.advantage_fn.advantage_fn.html#trinity.algorithm.advantage_fn.advantage_fn.AdvantageFn.compute_in_trainer">compute_in_trainer() (trinity.algorithm.advantage_fn.advantage_fn.AdvantageFn class method)</a>
 
       <ul>
@@ -2337,6 +2353,8 @@ window.runMermaid = runMermaid;</script>
 </li>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.convert_messages_to_experience">(trinity.common.models.model.ModelWrapper method)</a>
 </li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.convert_messages_to_experience">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
+</li>
       </ul></li>
       <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.convert_messages_to_experience_async">convert_messages_to_experience_async() (trinity.common.models.model.ModelWrapper method)</a>
 </li>
@@ -2372,6 +2390,10 @@ window.runMermaid = runMermaid;</script>
         <li><a href="build_api/trinity.buffer.operators.experience_operator.html#trinity.buffer.operators.experience_operator.create_operators">(in module trinity.buffer.operators.experience_operator)</a>
 </li>
       </ul></li>
+      <li><a href="build_api/trinity.common.models.html#trinity.common.models.create_sglang_explorer_models">create_sglang_explorer_models() (in module trinity.common.models)</a>
+</li>
+      <li><a href="build_api/trinity.common.models.html#trinity.common.models.create_sglang_inference_models">create_sglang_inference_models() (in module trinity.common.models)</a>
+</li>
       <li><a href="build_api/trinity.common.models.html#trinity.common.models.create_vllm_inference_models">create_vllm_inference_models() (in module trinity.common.models)</a>
 </li>
       <li><a href="build_api/trinity.trainer.verl.verl_config.html#trinity.trainer.verl.verl_config.Critic">Critic (class in trinity.trainer.verl.verl_config)</a>
@@ -2670,6 +2692,8 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="build_api/trinity.common.experience.html#trinity.common.experience.CustomField.destination_field">destination_field (trinity.common.experience.CustomField attribute)</a>
 </li>
+      <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangClient.destroy_weights_update_group">destroy_weights_update_group() (trinity.common.models.sglang_model.SGLangClient method)</a>
+</li>
       <li><a href="build_api/trinity.common.config.html#trinity.common.config.MonitorConfig.detailed_stats">detailed_stats (trinity.common.config.MonitorConfig attribute)</a>
 </li>
       <li><a href="build_api/trinity.trainer.verl.verl_config.html#trinity.trainer.verl.verl_config.Trainer.device">device (trinity.trainer.verl.verl_config.Trainer attribute)</a>
@@ -2756,6 +2780,8 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="build_api/trinity.common.config.html#trinity.common.config.InferenceModelConfig.enable_lora">enable_lora (trinity.common.config.InferenceModelConfig attribute)</a>
 </li>
+      <li><a href="build_api/trinity.common.config.html#trinity.common.config.InferenceModelConfig.enable_multimodal">enable_multimodal (trinity.common.config.InferenceModelConfig attribute)</a>
+</li>
       <li><a href="build_api/trinity.common.config.html#trinity.common.config.InferenceModelConfig.enable_openai_api">enable_openai_api (trinity.common.config.InferenceModelConfig attribute)</a>
 </li>
       <li><a href="build_api/trinity.common.config.html#trinity.common.config.InferenceModelConfig.enable_prefix_caching">enable_prefix_caching (trinity.common.config.InferenceModelConfig attribute)</a>
@@ -2793,6 +2819,8 @@ window.runMermaid = runMermaid;</script>
 </li>
       </ul></li>
       <li><a href="build_api/trinity.common.config.html#trinity.common.config.InferenceModelConfig.enforce_eager">enforce_eager (trinity.common.config.InferenceModelConfig attribute)</a>
+</li>
+      <li><a href="build_api/trinity.common.config.html#trinity.common.config.InferenceModelConfig.engine_id">engine_id (trinity.common.config.InferenceModelConfig attribute)</a>
 </li>
       <li><a href="build_api/trinity.common.config.html#trinity.common.config.InferenceModelConfig.engine_num">engine_num (trinity.common.config.InferenceModelConfig attribute)</a>
 </li>
@@ -2856,10 +2884,10 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="build_api/trinity.common.experience.html#trinity.common.experience.Experience">Experience (class in trinity.common.experience)</a>
 </li>
-      <li><a href="build_api/trinity.common.config.html#trinity.common.config.TrainerInput.experience_buffer">experience_buffer (trinity.common.config.TrainerInput attribute)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="build_api/trinity.common.config.html#trinity.common.config.TrainerInput.experience_buffer">experience_buffer (trinity.common.config.TrainerInput attribute)</a>
+</li>
       <li><a href="build_api/trinity.buffer.schema.sql_schema.html#trinity.buffer.schema.sql_schema.DPODataModel.experience_bytes">experience_bytes (trinity.buffer.schema.sql_schema.DPODataModel attribute)</a>
 
       <ul>
@@ -3243,6 +3271,10 @@ window.runMermaid = runMermaid;</script>
 </li>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.generate">(trinity.common.models.model.ModelWrapper method)</a>
 </li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangClient.generate">(trinity.common.models.sglang_model.SGLangClient method)</a>
+</li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.generate">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
+</li>
       </ul></li>
       <li><a href="build_api/trinity.common.models.external_model.html#trinity.common.models.external_model.ExternalModel.generate_async">generate_async() (trinity.common.models.external_model.ExternalModel method)</a>
 
@@ -3302,6 +3334,8 @@ window.runMermaid = runMermaid;</script>
 
       <ul>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.InferenceModel.get_api_server_url">(trinity.common.models.model.InferenceModel method)</a>
+</li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.get_api_server_url">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
 </li>
       </ul></li>
       <li><a href="build_api/trinity.common.models.html#trinity.common.models.get_auxiliary_model_wrappers">get_auxiliary_model_wrappers() (in module trinity.common.models)</a>
@@ -3372,6 +3406,12 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="build_api/trinity.trainer.verl.utils.html#trinity.trainer.verl.utils.get_latest_hf_checkpoint_path">get_latest_hf_checkpoint_path() (in module trinity.trainer.verl.utils)</a>
 </li>
+      <li><a href="build_api/trinity.manager.html#trinity.manager.Synchronizer.get_latest_model_path">get_latest_model_path() (trinity.manager.Synchronizer method)</a>
+
+      <ul>
+        <li><a href="build_api/trinity.manager.synchronizer.html#trinity.manager.synchronizer.Synchronizer.get_latest_model_path">(trinity.manager.synchronizer.Synchronizer method)</a>
+</li>
+      </ul></li>
       <li><a href="build_api/trinity.manager.html#trinity.manager.Synchronizer.get_latest_model_version">get_latest_model_version() (trinity.manager.Synchronizer method)</a>
 
       <ul>
@@ -3386,12 +3426,12 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.get_lora_request_async">get_lora_request_async() (trinity.common.models.model.ModelWrapper method)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="build_api/trinity.common.models.utils.html#trinity.common.models.utils.get_megatron_converter">get_megatron_converter() (in module trinity.common.models.utils)</a>
 </li>
       <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.get_message_token_len">get_message_token_len() (trinity.common.models.model.ModelWrapper method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="build_api/trinity.explorer.proxy.client.html#trinity.explorer.proxy.client.TrinityClient.get_metrics">get_metrics() (trinity.explorer.proxy.client.TrinityClient method)</a>
 </li>
       <li><a href="build_api/trinity.explorer.proxy.client.html#trinity.explorer.proxy.client.TrinityClient.get_metrics_async">get_metrics_async() (trinity.explorer.proxy.client.TrinityClient method)</a>
@@ -3410,6 +3450,8 @@ window.runMermaid = runMermaid;</script>
 
       <ul>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.InferenceModel.get_model_version">(trinity.common.models.model.InferenceModel method)</a>
+</li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.get_model_version">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
 </li>
       </ul></li>
       <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.get_openai_async_client">get_openai_async_client() (trinity.common.models.model.ModelWrapper method)</a>
@@ -3578,6 +3620,8 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="build_api/trinity.perf.report_viewer.html#trinity.perf.report_viewer.has_streamlit_context">has_streamlit_context() (in module trinity.perf.report_viewer)</a>
 </li>
+      <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangClient.health_check">health_check() (trinity.common.models.sglang_model.SGLangClient method)</a>
+</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="build_api/trinity.explorer.proxy.recorder.html#trinity.explorer.proxy.recorder.HistoryRecorder">HistoryRecorder (class in trinity.explorer.proxy.recorder)</a>
@@ -3651,9 +3695,13 @@ window.runMermaid = runMermaid;</script>
       <li><a href="build_api/trinity.utils.distributed.html#trinity.utils.distributed.init_process_group">init_process_group() (in module trinity.utils.distributed)</a>
 
       <ul>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.init_process_group">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
+</li>
         <li><a href="build_api/trinity.manager.checkpoint_converter.html#trinity.manager.checkpoint_converter.Converter.init_process_group">(trinity.manager.checkpoint_converter.Converter method)</a>
 </li>
       </ul></li>
+      <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangClient.init_weights_update_group">init_weights_update_group() (trinity.common.models.sglang_model.SGLangClient method)</a>
+</li>
       <li><a href="build_api/trinity.trainer.verl.verl_trainer.html#trinity.trainer.verl.verl_trainer.VerlPPOTrainerWrapper.init_workers">init_workers() (trinity.trainer.verl.verl_trainer.VerlPPOTrainerWrapper method)</a>
 </li>
       <li><a href="build_api/trinity.service.data_juicer.client.html#trinity.service.data_juicer.client.DataJuicerClient.initialize">initialize() (trinity.service.data_juicer.client.DataJuicerClient method)</a>
@@ -3672,10 +3720,10 @@ window.runMermaid = runMermaid;</script>
       </ul></li>
       <li><a href="build_api/trinity.buffer.selector.difficulty_estimator.html#trinity.buffer.selector.difficulty_estimator.InterpolationBetaPREstimator">InterpolationBetaPREstimator (class in trinity.buffer.selector.difficulty_estimator)</a>
 </li>
-      <li><a href="build_api/trinity.common.config_validator.html#trinity.common.config_validator.IntervalConfigValidator">IntervalConfigValidator (class in trinity.common.config_validator)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="build_api/trinity.common.config_validator.html#trinity.common.config_validator.IntervalConfigValidator">IntervalConfigValidator (class in trinity.common.config_validator)</a>
+</li>
       <li><a href="build_api/trinity.buffer.operators.filters.reward_filter.html#trinity.buffer.operators.filters.reward_filter.InvalidRewardFilter">InvalidRewardFilter (class in trinity.buffer.operators.filters.reward_filter)</a>
 </li>
       <li><a href="build_api/trinity.common.experience_visualizer.html#trinity.common.experience_visualizer.ExperienceTokenViewItem.is_action">is_action (trinity.common.experience_visualizer.ExperienceTokenViewItem attribute)</a>
@@ -3946,14 +3994,14 @@ window.runMermaid = runMermaid;</script>
         <li><a href="build_api/trinity.utils.monitor.html#trinity.utils.monitor.WandbMonitor.log">(trinity.utils.monitor.WandbMonitor method)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="build_api/trinity.trainer.verl.verl_config.html#trinity.trainer.verl.verl_config.Ref.log_prob_max_token_len_per_gpu">log_prob_max_token_len_per_gpu (trinity.trainer.verl.verl_config.Ref attribute)</a>
 
       <ul>
         <li><a href="build_api/trinity.trainer.verl.verl_config.html#trinity.trainer.verl.verl_config.Rollout.log_prob_max_token_len_per_gpu">(trinity.trainer.verl.verl_config.Rollout attribute)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="build_api/trinity.trainer.verl.verl_config.html#trinity.trainer.verl.verl_config.Ref.log_prob_micro_batch_size">log_prob_micro_batch_size (trinity.trainer.verl.verl_config.Ref attribute)</a>
 
       <ul>
@@ -4012,6 +4060,8 @@ window.runMermaid = runMermaid;</script>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.InferenceModel.logprobs">(trinity.common.models.model.InferenceModel method)</a>
 </li>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.logprobs">(trinity.common.models.model.ModelWrapper method)</a>
+</li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.logprobs">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
 </li>
       </ul></li>
       <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.logprobs_async">logprobs_async() (trinity.common.models.model.ModelWrapper method)</a>
@@ -4524,6 +4574,8 @@ window.runMermaid = runMermaid;</script>
 </li>
         <li><a href="build_api/trinity.common.models.model.html#module-trinity.common.models.model">trinity.common.models.model</a>
 </li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#module-trinity.common.models.sglang_model">trinity.common.models.sglang_model</a>
+</li>
         <li><a href="build_api/trinity.common.models.utils.html#module-trinity.common.models.utils">trinity.common.models.utils</a>
 </li>
         <li><a href="build_api/trinity.common.patch.html#module-trinity.common.patch">trinity.common.patch</a>
@@ -4639,6 +4691,8 @@ window.runMermaid = runMermaid;</script>
         <li><a href="build_api/trinity.manager.synchronizer.html#module-trinity.manager.synchronizer">trinity.manager.synchronizer</a>
 </li>
         <li><a href="build_api/trinity.perf.html#module-trinity.perf">trinity.perf</a>
+</li>
+        <li><a href="build_api/trinity.perf.report_metrics.html#module-trinity.perf.report_metrics">trinity.perf.report_metrics</a>
 </li>
         <li><a href="build_api/trinity.perf.report_viewer.html#module-trinity.perf.report_viewer">trinity.perf.report_viewer</a>
 </li>
@@ -5071,6 +5125,8 @@ window.runMermaid = runMermaid;</script>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.InferenceModel.prepare">(trinity.common.models.model.InferenceModel method)</a>
 </li>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.prepare">(trinity.common.models.model.ModelWrapper method)</a>
+</li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.prepare">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
 </li>
         <li><a href="build_api/trinity.explorer.html#trinity.explorer.Explorer.prepare">(trinity.explorer.Explorer method)</a>
 </li>
@@ -5753,6 +5809,8 @@ window.runMermaid = runMermaid;</script>
         <li><a href="build_api/trinity.manager.config_manager.html#trinity.manager.config_manager.ConfigManager.run">(trinity.manager.config_manager.ConfigManager static method)</a>
 </li>
       </ul></li>
+      <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.run_api_server">run_api_server() (trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
+</li>
       <li><a href="build_api/trinity.common.workflows.agentscope.react.react_workflow.html#trinity.common.workflows.agentscope.react.react_workflow.AgentScopeReActWorkflow.run_async">run_async() (trinity.common.workflows.agentscope.react.react_workflow.AgentScopeReActWorkflow method)</a>
 
       <ul>
@@ -6305,12 +6363,12 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="build_api/trinity.manager.config_registry.trainer_config_manager.html#trinity.manager.config_registry.trainer_config_manager.set_pipeline_model_parallel_size">set_pipeline_model_parallel_size() (in module trinity.manager.config_registry.trainer_config_manager)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="build_api/trinity.manager.config_registry.algorithm_config_manager.html#trinity.manager.config_registry.algorithm_config_manager.set_policy_loss_fn">set_policy_loss_fn() (in module trinity.manager.config_registry.algorithm_config_manager)</a>
 </li>
       <li><a href="build_api/trinity.manager.config_registry.trainer_config_manager.html#trinity.manager.config_registry.trainer_config_manager.set_ppo_epochs">set_ppo_epochs() (in module trinity.manager.config_registry.trainer_config_manager)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="build_api/trinity.manager.config_registry.buffer_config_manager.html#trinity.manager.config_registry.buffer_config_manager.set_priority_fn">set_priority_fn() (in module trinity.manager.config_registry.buffer_config_manager)</a>
 </li>
       <li><a href="build_api/trinity.manager.config_registry.buffer_config_manager.html#trinity.manager.config_registry.buffer_config_manager.set_priority_fn_args">set_priority_fn_args() (in module trinity.manager.config_registry.buffer_config_manager)</a>
@@ -6459,6 +6517,10 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="build_api/trinity.algorithm.policy_loss_fn.chord_policy_loss.html#trinity.algorithm.policy_loss_fn.chord_policy_loss.SFTPhiLossFn">SFTPhiLossFn (class in trinity.algorithm.policy_loss_fn.chord_policy_loss)</a>
 </li>
+      <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangClient">SGLangClient (class in trinity.common.models.sglang_model)</a>
+</li>
+      <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel">SGLangRolloutModel (class in trinity.common.models.sglang_model)</a>
+</li>
       <li><a href="build_api/trinity.common.rewards.naive_dapo_score.html#trinity.common.rewards.naive_dapo_score.should_allow_eval">should_allow_eval() (in module trinity.common.rewards.naive_dapo_score)</a>
 </li>
       <li><a href="build_api/trinity.manager.log_manager.html#trinity.manager.log_manager.LogFileTracker.should_display">should_display() (trinity.manager.log_manager.LogFileTracker method)</a>
@@ -6474,6 +6536,8 @@ window.runMermaid = runMermaid;</script>
       <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.InferenceModel.shutdown">shutdown() (trinity.common.models.model.InferenceModel method)</a>
 
       <ul>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.shutdown">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
+</li>
         <li><a href="build_api/trinity.explorer.html#trinity.explorer.Explorer.shutdown">(trinity.explorer.Explorer method)</a>
 </li>
         <li><a href="build_api/trinity.explorer.explorer.html#trinity.explorer.explorer.Explorer.shutdown">(trinity.explorer.explorer.Explorer method)</a>
@@ -6725,6 +6789,8 @@ window.runMermaid = runMermaid;</script>
 
       <ul>
         <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.InferenceModel.sync_model">(trinity.common.models.model.InferenceModel method)</a>
+</li>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangRolloutModel.sync_model">(trinity.common.models.sglang_model.SGLangRolloutModel method)</a>
 </li>
       </ul></li>
       <li><a href="build_api/trinity.common.models.model.html#trinity.common.models.model.ModelWrapper.sync_model_weights">sync_model_weights() (trinity.common.models.model.ModelWrapper method)</a>
@@ -7535,8 +7601,6 @@ window.runMermaid = runMermaid;</script>
         <li><a href="build_api/trinity.buffer.operators.mappers.html#module-trinity.buffer.operators.mappers">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     trinity.buffer.operators.mappers.pass_rate_calculator
 
@@ -7544,6 +7608,8 @@ window.runMermaid = runMermaid;</script>
         <li><a href="build_api/trinity.buffer.operators.mappers.pass_rate_calculator.html#module-trinity.buffer.operators.mappers.pass_rate_calculator">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     trinity.buffer.operators.mappers.reward_shaping_mapper
 
@@ -7787,6 +7853,13 @@ window.runMermaid = runMermaid;</script>
 
       <ul>
         <li><a href="build_api/trinity.common.models.model.html#module-trinity.common.models.model">module</a>
+</li>
+      </ul></li>
+      <li>
+    trinity.common.models.sglang_model
+
+      <ul>
+        <li><a href="build_api/trinity.common.models.sglang_model.html#module-trinity.common.models.sglang_model">module</a>
 </li>
       </ul></li>
       <li>
@@ -8196,6 +8269,13 @@ window.runMermaid = runMermaid;</script>
 </li>
       </ul></li>
       <li>
+    trinity.perf.report_metrics
+
+      <ul>
+        <li><a href="build_api/trinity.perf.report_metrics.html#module-trinity.perf.report_metrics">module</a>
+</li>
+      </ul></li>
+      <li>
     trinity.perf.report_viewer
 
       <ul>
@@ -8482,6 +8562,10 @@ window.runMermaid = runMermaid;</script>
 </li>
       </ul></li>
       <li><a href="build_api/trinity.explorer.scheduler.html#trinity.explorer.scheduler.RunnerWrapper.update_state">update_state() (trinity.explorer.scheduler.RunnerWrapper method)</a>
+</li>
+      <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangClient.update_weights_from_disk">update_weights_from_disk() (trinity.common.models.sglang_model.SGLangClient method)</a>
+</li>
+      <li><a href="build_api/trinity.common.models.sglang_model.html#trinity.common.models.sglang_model.SGLangClient.update_weights_from_distributed">update_weights_from_distributed() (trinity.common.models.sglang_model.SGLangClient method)</a>
 </li>
       <li><a href="build_api/trinity.trainer.html#trinity.trainer.TrainEngineWrapper.upload_state_dict">upload_state_dict() (trinity.trainer.TrainEngineWrapper method)</a>
 
