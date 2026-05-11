@@ -491,6 +491,7 @@ class SGLangRolloutModel(BaseInferenceModel):
                 weight_version=str(model_version),
                 timeout=timeout,
             )
+            self.model_version = model_version
         elif method == SyncMethod.CHECKPOINT:
             model_path = await self.synchronizer.get_latest_model_path.remote()
             if model_path is not None:
@@ -499,10 +500,10 @@ class SGLangRolloutModel(BaseInferenceModel):
                     weight_version=str(model_version),
                     timeout=timeout,
                 )
+                self.model_version = model_version
         else:
             raise ValueError(f"Unsupported sync method for SGLang: {method}")
-        self.logger.info(f"Synchronized model to version {model_version} using method {method}.")
-        self.model_version = model_version
+        self.logger.info("Synchronization finished.")
         return model_version
 
     def get_model_version(self) -> int:

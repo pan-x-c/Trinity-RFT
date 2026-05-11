@@ -755,7 +755,7 @@ class ExplorerConfig:
 class TrainerConfig:
     name: str = TRAINER_NAME
     trainer_type: str = "verl"
-    trainer_strategy: str = "fsdp"  # "fsdp", "fsdp2" or "megatron"
+    trainer_strategy: str = "fsdp2"  # "fsdp", "fsdp2" or "megatron"
     save_interval: int = 0
     enable_preview: bool = True  # enable rollout preview in wandb
     total_steps: Optional[

@@ -38,7 +38,7 @@ class QueueReader(BufferReader):
             if "StopAsyncIteration" in traceback.format_exc():
                 raise StopIteration() from e
             else:
-                raise e
+                raise
         return exps
 
     async def read_async(self, batch_size: Optional[int] = None, **kwargs) -> List[Experience]:
@@ -51,7 +51,7 @@ class QueueReader(BufferReader):
             if "StopAsyncIteration" in traceback.format_exc():
                 raise StopAsyncIteration() from e
             else:
-                raise e
+                raise
         exps = Experience.deserialize_many(exp_bytes)
         if len(exps) != batch_size:
             raise TimeoutError(

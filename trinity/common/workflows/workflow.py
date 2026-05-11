@@ -343,7 +343,7 @@ class AsyncSimpleWorkflow(BaseSimpleWorkflow):
             response.reward = reward
             response.eid.run = i + self.run_id_base
 
-            self.logger.info(
+            self.logger.debug(
                 f"self.task_desc: {self.task_desc}, messages: {messages}, response: {response.response_text}, reward: {reward}"
             )
         return responses
