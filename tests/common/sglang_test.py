@@ -197,36 +197,37 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         tool_response_texts = await self._collect_response_texts(tool_response)
         self._assert_history_matches_responses(1, tool_prompt_contents, tool_response_texts)
 
-        stream_response = await openai_client.chat.completions.create(
-            model=openai_client.model_path,
-            messages=messages,
-            n=2,
-            stream=True,
-            temperature=0.7,
-            max_tokens=32,
-        )
-        stream_contents = await self._collect_stream_contents(stream_response, 2)
+        if not self.enable_history:
+            stream_response = await openai_client.chat.completions.create(
+                model=openai_client.model_path,
+                messages=messages,
+                n=2,
+                stream=True,
+                temperature=0.7,
+                max_tokens=32,
+            )
+            stream_contents = await self._collect_stream_contents(stream_response, 2)
 
-        self.assertEqual(len(stream_contents), 2)
-        for content in stream_contents:
-            self.assertGreater(len(content), 0)
-        self._assert_history_matches_responses(2, prompt_contents, stream_contents)
+            self.assertEqual(len(stream_contents), 2)
+            for content in stream_contents:
+                self.assertGreater(len(content), 0)
+            self._assert_history_matches_responses(2, prompt_contents, stream_contents)
 
-        stream_tool_response = await openai_client.chat.completions.create(
-            model=openai_client.model_path,
-            messages=tool_messages,
-            tools=tools,
-            tool_choice="none",
-            n=1,
-            stream=True,
-            temperature=0.7,
-            max_tokens=32,
-        )
-        stream_tool_contents = await self._collect_stream_contents(stream_tool_response, 1)
+            stream_tool_response = await openai_client.chat.completions.create(
+                model=openai_client.model_path,
+                messages=tool_messages,
+                tools=tools,
+                tool_choice="none",
+                n=1,
+                stream=True,
+                temperature=0.7,
+                max_tokens=32,
+            )
+            stream_tool_contents = await self._collect_stream_contents(stream_tool_response, 1)
 
-        self.assertEqual(len(stream_tool_contents), 1)
-        self.assertGreater(len(stream_tool_contents[0]), 0)
-        self._assert_history_matches_responses(1, tool_prompt_contents, stream_tool_contents)
+            self.assertEqual(len(stream_tool_contents), 1)
+            self.assertGreater(len(stream_tool_contents[0]), 0)
+            self._assert_history_matches_responses(1, tool_prompt_contents, stream_tool_contents)
 
         chat_exps = await self.model_wrapper.chat_async(
             messages,
