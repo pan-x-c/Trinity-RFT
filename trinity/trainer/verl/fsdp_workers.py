@@ -799,13 +799,15 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                                     else name
                                 )
                                 self.state_dict_meta.append(
-                                    (realname, str(param.dtype), tuple(param.shape))
+                                    (realname, str(param.dtype).split(".")[-1], tuple(param.shape))
                                 )
                             param = None
                         torch.cuda.empty_cache()
                 else:  # fsdp2
                     for name, param in model.named_parameters():
-                        self.state_dict_meta.append((name, str(param.dtype), tuple(param.shape)))
+                        self.state_dict_meta.append(
+                            (name, str(param.dtype).split(".")[-1], tuple(param.shape))
+                        )
 
             if torch.distributed.get_rank() == 0:
                 import ray
