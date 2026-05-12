@@ -78,8 +78,8 @@ class BaseTrainerCase(RayUnittestBase):
 @parameterized_class(
     ("strategy", "engine_type"),
     [
-        ("fsdp2", "vllm"),
-        ("megatron", "sglang"),
+        ("fsdp2", "sglang"),
+        ("megatron", "vllm"),
     ],
 )
 class TestTrainerCountdown(BaseTrainerCase):

@@ -115,7 +115,7 @@ class SGLangClient:
         self,
         state_dict_meta_list: List[Tuple[str, str, Tuple]],
         group_name: str,
-        flash_cache: bool = True,
+        flush_cache: bool = True,
         abort_all_requests: bool = True,
         weight_version: Optional[str] = None,
         timeout: float = 300,
@@ -128,7 +128,7 @@ class SGLangClient:
             "dtypes": dtypes,
             "shapes": shapes,
             "group_name": group_name,
-            "flash_cache": flash_cache,
+            "flush_cache": flush_cache,
             "abort_all_requests": abort_all_requests,
             "weight_version": weight_version,
         }
@@ -482,7 +482,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             )
             self.model_version = model_version
         elif method == SyncMethod.CHECKPOINT:
-            model_path = await self.synchronizer.get_latest_model_path.remote()
+            model_path = await self.synchronizer.get_latest_model_path.remote(use_huggingface=True)
             if model_path is not None:
                 await self.api_client.update_weights_from_disk(
                     model_path=model_path,
