@@ -275,14 +275,14 @@ def create_sglang_explorer_models(
     from trinity.common.models.sglang_model import SGLangRolloutModel
 
     models = []
+    engine_pg = placement_group(
+        [{"GPU": config.tensor_parallel_size} for _ in range(config.engine_num)],
+        strategy="PACK",
+    )
+    ray.get(engine_pg.ready())
     for i in range(config.engine_num):
         model_config = deepcopy(config)
         model_config.engine_id = i
-        engine_pg = placement_group(
-            [{"GPU": model_config.tensor_parallel_size}],
-            strategy="PACK",
-        )
-        ray.get(engine_pg.ready())
         models.append(
             ray.remote(SGLangRolloutModel)
             .options(
@@ -293,7 +293,7 @@ def create_sglang_explorer_models(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=engine_pg,
                     placement_group_capture_child_tasks=True,
-                    placement_group_bundle_index=0,
+                    placement_group_bundle_index=i,
                 ),
             )
             .remote(
