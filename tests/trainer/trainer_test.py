@@ -76,10 +76,10 @@ class BaseTrainerCase(RayUnittestBase):
 
 
 @parameterized_class(
-    ("strategy",),
+    ("strategy", "engine_type"),
     [
-        ("fsdp2",),
-        ("megatron",),
+        ("fsdp2", "vllm"),
+        ("megatron", "sglang"),
     ],
 )
 class TestTrainerCountdown(BaseTrainerCase):
@@ -92,6 +92,7 @@ class TestTrainerCountdown(BaseTrainerCase):
             "original_max_position_embeddings": 16384,
         }
         self.config.model.rope_theta = 10000
+        self.config.explorer.rollout_model.engine_type = self.engine_type
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
         self.config.buffer.explorer_input.taskset.data_selector = DataSelectorConfig(
             selector_type="shuffle", seed=42
