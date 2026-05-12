@@ -291,7 +291,9 @@ class Synchronizer:
                 )
         update_weight_args_list = []
         for name, param in self.model_state_dict.items():
-            update_weight_args_list.append((name, str(param.dtype), tuple(param.shape)))
+            update_weight_args_list.append(
+                (name, str(param.dtype).split(".")[-1], tuple(param.shape))
+            )
         return update_weight_args_list
 
     async def setup_weight_sync_group(
