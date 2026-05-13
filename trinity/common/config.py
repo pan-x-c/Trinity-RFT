@@ -574,7 +574,7 @@ class InferenceModelConfig:
     external_model_config: ExternalModelConfig = field(default_factory=ExternalModelConfig)
 
     # for multi-node setup
-    nnode: int = 1
+    nnodes: int = 1
     # ! DO NOT SET
     node_rank: int = 0
 
