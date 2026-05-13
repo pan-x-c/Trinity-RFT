@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import ray
 import torch
 from packaging.version import parse as parse_version
-from ray.util.placement_group import PlacementGroup, PlacementGroupSchedulingStrategy
+from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
 from transformers import AutoProcessor
 
 from trinity.common.config import InferenceModelConfig
@@ -41,6 +43,8 @@ class vLLMRolloutModel(BaseInferenceModel):
             os.environ["CUDA_VISIBLE_DEVICES"] = config.cuda_visible_devices
         import vllm
         from vllm.sampling_params import RequestOutputKind
+
+        self.logger.info("CUDA_VISIBLE_DEVICES: " + os.environ.get("CUDA_VISIBLE_DEVICES", "Not Set"))
 
         self.vllm_version = get_vllm_version()
         self.use_v1 = config.use_v1
