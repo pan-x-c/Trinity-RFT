@@ -13,7 +13,6 @@ import torch
 from tests.tools import get_template_config, get_unittest_dataset_config
 from trinity.common.config import InferenceModelConfig, load_config
 from trinity.common.constants import SyncMethod
-from trinity.common.models import _BundleAllocator
 from trinity.common.models.model import InferenceModel
 
 CHECKPOINT_ROOT_DIR = os.path.join(os.path.dirname(__file__), "temp_checkpoint_dir")
