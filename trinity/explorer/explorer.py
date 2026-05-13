@@ -148,6 +148,11 @@ class Explorer:
     async def _checkpoint_weights_update(self, step_num: Optional[int] = None) -> int:
         self.logger.info(f"Start to update model weights from checkpoint at step {step_num}.")
         step_num = await self.synchronizer.set_model_state_dict_with_step_num.remote(step_num)
+        if step_num is None or step_num <= self.model_version:
+            self.logger.warning(
+                f"No new checkpoint found for step {step_num}. Current model version: {self.model_version}."
+            )
+            return self.model_version
         await asyncio.gather(
             *[
                 model.sync_model_weights(
@@ -468,10 +473,10 @@ class Explorer:
             self.monitor = None
         handlers = []
         for model in self.models:
-            handlers.append(model.shutdown.remote())
+            handlers.append(model.shutdown())
         for auxiliary_model_list in self.auxiliary_models:
             for model in auxiliary_model_list:
-                handlers.append(model.shutdown.remote())
+                handlers.append(model.shutdown())
         await asyncio.gather(*handlers)
         self.logger.info(
             f"Explorer ({self.config.explorer.name}) shutdown successfully at step {self.explore_step_num}."

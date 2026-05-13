@@ -1,14 +1,18 @@
 """Allocator module for managing inference engines."""
 
 import asyncio
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
 from collections import defaultdict
 from copy import deepcopy
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
 
 import ray
-from ray.util.placement_group import placement_group, placement_group_table, PlacementGroup
-
+from ray.util.placement_group import (
+    PlacementGroup,
+    placement_group,
+    placement_group_table,
+)
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from trinity.common.config import ExplorerConfig, InferenceModelConfig
 from trinity.common.models.model import ModelWrapper
@@ -80,18 +84,31 @@ class Allocator:
         for node_id in range(config.nnodes):
             actor_name = self.get_actor_name(role, engine_id, node_id)
             actor_bundle_lists.append((actor_name, self.bundle_result.actor_bundle_map[actor_name]))
+        model_cls = None
         if config.engine_type.startswith("vllm"):
             from trinity.common.models.vllm_model import vLLMRolloutModel
 
-            return await vLLMRolloutModel.get_wrapper(config, self.pg, actor_bundle_lists)
+            model_cls = vLLMRolloutModel
         elif config.engine_type == "sglang":
             from trinity.common.models.sglang_model import SGLangRolloutModel
 
-            pass
+            model_cls = SGLangRolloutModel
         elif config.engine_type == "tinker":
-            pass
-        else:
-            pass
+            from trinity.common.models.tinker_model import TinkerModel
+
+            config.tensor_parallel_size = 0
+            config.nnodes = 1
+            config.node_rank = 0
+            model_cls = TinkerModel
+        elif config.engine_type == "external":
+            from trinity.common.models.external_model import ExternalModel
+
+            config.tensor_parallel_size = 0
+            config.nnodes = 1
+            config.node_rank = 0
+            model_cls = ExternalModel
+
+        return await get_model_wrapper(model_cls, config, self.pg, actor_bundle_lists)
 
     async def create_all_models(self) -> Tuple[List[ModelWrapper], List[List[ModelWrapper]]]:
         """Create all model actors for the rollout model and auxiliary models based on the configuration."""
@@ -100,7 +117,6 @@ class Allocator:
         await self.pg.ready()
         self.analysis_placement_group(self.pg, self.bundle_result)
         # create rollout_models
-        rollout_models = []
         tasks = []
         for engine_id in range(self.config.rollout_model.engine_num):
             tasks.append(
@@ -131,9 +147,7 @@ class Allocator:
         ]
         return rollout_models, auxiliary_models
 
-    def get_model(
-        self, config: InferenceModelConfig, role: str, engine_id: int
-    ) -> ModelWrapper:
+    def get_model(self, config: InferenceModelConfig, role: str, engine_id: int) -> ModelWrapper:
         """Get the model actor for the given role and engine ID."""
         actor_name = self.get_actor_name(role, engine_id, 0)
         try:
@@ -141,3 +155,48 @@ class Allocator:
         except ValueError:
             self.logger.error("Actor %s not found. Make sure the model is created.", actor_name)
             raise
+
+
+async def get_model_wrapper(
+    actor_cls,
+    config: "InferenceModelConfig",
+    pg: PlacementGroup,
+    actor_bundle_list: List[Tuple[str, int]],
+) -> "ModelWrapper":
+    """Get the Ray actor for the vLLM model.
+
+    Args:
+        config (InferenceModelConfig): The model config.
+        pg (PlacementGroup): The placement group for the actor.
+        engine_id (int): The engine ID for the actor.
+        actor_bundle_list (List[Tuple[str, int]]): The list of actor names and their corresponding bundle IDs.
+    Returns:
+        ModelWrapper: A wrapper for the vLLM model actor.
+    """
+    handlers = []
+    for i, (actor_name, bundle_id) in enumerate(actor_bundle_list):
+        config = deepcopy(config)
+        config.node_rank = i
+        handlers.append(
+            ray.remote(actor_cls)
+            .options(
+                name=actor_name,
+                num_gpus=config.tensor_parallel_size / config.nnodes,
+                namespace=config.ray_namespace,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_capture_child_tasks=True,
+                    placement_group_bundle_index=bundle_id,
+                ),
+            )
+            .remote(config=config)
+        )
+    if len(actor_bundle_list) > 1:
+        # get master address and port from the first handler and set it to all handlers for distributed communication
+        master_addr, master_port = await handlers[0].get_available_address.remote(random_port=True)
+        for handler in handlers:
+            await handler.set_master_addr_port.remote(master_addr, master_port)
+    await asyncio.gather(*[handler.prepare.remote() for handler in handlers])
+    return ModelWrapper(
+        models=handlers, enable_history=config.enable_history, enable_lora=config.enable_lora
+    )

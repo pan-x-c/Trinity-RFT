@@ -308,10 +308,16 @@ class RayClusterConfigValidator(ConfigValidator):
             if model_config.nnodes == 1:
                 continue
 
-            if not model_config.engine_type.startswith("vllm"):
-                raise ValueError(
-                    "`explorer.*.nnodes > 1` is currently only supported for vLLM engines. "
-                    f"Got engine_type={model_config.engine_type!r}."
+            if (
+                not model_config.engine_type.startswith("vllm")
+                and model_config.engine_type != "sglang"
+            ):
+                model_config.nnodes = 1
+                model_config.node_rank = 0
+                self.logger.warning(
+                    "`nnodes > 1` is currently only supported for vLLM and SGLang engines. "
+                    f"Got engine_type={model_config.engine_type!r}. "
+                    "Setting `nnodes` to 1 for this model."
                 )
 
             if model_config.nnodes < 1:

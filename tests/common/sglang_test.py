@@ -9,8 +9,7 @@ from tests.tools import (
     get_model_path,
     get_template_config,
 )
-from trinity.common.models import create_explorer_models
-from trinity.common.models.model import ModelWrapper
+from trinity.common.models.allocator import Allocator
 
 
 async def prepare_engines(engines, auxiliary_engines):
@@ -43,29 +42,32 @@ def assert_experience_tokens_match_text(test_case, tokenizer, exp, prompt_conten
     (
         "tensor_parallel_size",
         "engine_num",
+        "nnodes",
         "enable_history",
     ),
     [
-        (1, 1, True),
-        (1, 2, False),
-        (2, 1, True),
+        (4, 1, 2, True),
+        (1, 2, 1, False),
+        (2, 1, 1, True),
     ],
 )
 class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
-    def setUp(self):
+    async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "sglang"
         self.config.explorer.rollout_model.engine_num = self.engine_num
         self.config.explorer.rollout_model.tensor_parallel_size = self.tensor_parallel_size
+        self.config.explorer.rollout_model.nnodes = self.nnodes
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.explorer.rollout_model.enable_history = self.enable_history
         self.config.explorer.rollout_model.base_port = 13000
         self.config.check_and_update()
-
-        self.engines, self.auxiliary_engines = create_explorer_models(self.config)
-        self.model_wrapper = ModelWrapper(self.engines[0], enable_history=self.enable_history)
+        allocator = Allocator(self.config.explorer)
+        rollout_models, _ = await allocator.create_all_models()
+        self.model_wrapper = rollout_models[0]
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config.model.model_path,
             trust_remote_code=self.config.explorer.rollout_model.trust_remote_code,
@@ -158,7 +160,6 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         return contents
 
     async def test_chat_completions(self):
-        await prepare_engines(self.engines, self.auxiliary_engines)
         await self.model_wrapper.prepare()
 
         self.assertEqual(self.model_wrapper.model_path, self.config.model.model_path)

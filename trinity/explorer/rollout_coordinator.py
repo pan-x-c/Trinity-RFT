@@ -3,9 +3,10 @@
 import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, Literal, Optional, Union
 
 import ray
+from ray.actor import ActorHandle
 
 from trinity.buffer.pipelines.experience_pipeline import ExperiencePipeline
 from trinity.common.config import Config
@@ -58,8 +59,6 @@ class RolloutCoordinator:
         """Create a coordinator with internally managed scheduler and pipeline."""
         self.logger = get_logger(f"{config.explorer.name}_rollout_coordinator", in_ray_actor=True)
         self.config = config
-        # self.rollout_model = rollout_model
-        # self.auxiliary_models = auxiliary_models or []
         self.experience_pipeline = None
         self.scheduler: Optional[Scheduler] = None
         self.pending_batches: Dict[BatchId, BatchState] = {}
@@ -99,8 +98,6 @@ class RolloutCoordinator:
             return
         self.scheduler = Scheduler(
             self.config,
-            # self.rollout_model,
-            # self.auxiliary_models,
         )
         await self.scheduler.start()
 
@@ -215,17 +212,13 @@ class RolloutCoordinator:
         return await self.experience_pipeline.process_serialized_chunks(payloads)
 
     @classmethod
-    def get_actor(
-        cls, config: Config, models: List, auxiliary_models: List
-    ) -> ray.actor.ActorHandle:
+    def get_actor(cls, config: Config) -> ActorHandle["RolloutCoordinator"]:
         """Init rollout coordinator for the task-event-completion path."""
         return (
             ray.remote(RolloutCoordinator)
             .options(namespace=config.ray_namespace)
             .remote(
                 config,
-                models,
-                auxiliary_models,
             )
         )
 

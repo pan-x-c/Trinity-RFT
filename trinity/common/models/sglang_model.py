@@ -436,6 +436,10 @@ class SGLangRolloutModel(BaseInferenceModel):
             context_length=self.config.max_model_len,
             enable_multimodal=self.config.enable_multimodal,
             api_key=SGLANG_API_KEY,
+            nnodes=self.config.nnodes,
+            node_rank=self.config.node_rank,
+            master_addr=self.master_addr,
+            master_port=self.master_port,
             logger=self.logger,
         )
         server_url = f"http://{self.api_server_host}:{self.api_server_port}"
