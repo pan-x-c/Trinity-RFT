@@ -226,12 +226,12 @@ class SGLangRolloutModel(BaseInferenceModel):
             self.config.enable_openai_api = True
         os.environ["SGLANG_GRPC_PORT"] = "12345"  # a dummy port not actually used
         os.environ["SGLANG_ENABLE_GRPC"] = "0"
-        os.environ[
-            "NCCL_P2P_DISABLE"
-        ] = "1"  # disable NCCL P2P to avoid potential issues in certain environments
-        os.environ[
-            "NCCL_SHM_DISABLE"
-        ] = "1"  # disable NCCL SHM to avoid potential issues in certain environments
+        os.environ.setdefault(
+            "NCCL_P2P_DISABLE", "1"
+        )  # default to disabling NCCL P2P, but preserve any explicit process configuration
+        os.environ.setdefault(
+            "NCCL_SHM_DISABLE", "1"
+        )  # default to disabling NCCL SHM, but preserve any explicit process configuration
         self.api_server_host: Optional[str] = None
         self.api_server_port: Optional[int] = None
         self.api_server: Optional[asyncio.Task[None]] = None

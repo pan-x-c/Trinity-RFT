@@ -370,7 +370,7 @@ class Synchronizer:
         """
         async with self._ready_condition:
             if self.model_path and use_huggingface:
-                return self.model_path + "/huggingface"
+                return os.path.join(self.model_path, "huggingface")
             return self.model_path
 
     async def ready_to_nccl_sync(self, module: str, trainer_step: int) -> Union[int, None]:

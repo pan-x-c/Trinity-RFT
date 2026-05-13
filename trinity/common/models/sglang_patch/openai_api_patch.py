@@ -66,9 +66,8 @@ class PatchedOpenAIServingChat(OpenAIServingChat):
         request: ChatCompletionRequest,
         raw_request: Request,
     ):
-        assert hasattr(
-            request, "return_token_ids"
-        ), "You are using an unpatched version of OpenAIServingChat."
+        if not hasattr(request, "return_token_ids"):
+            raise RuntimeError("You are using an unpatched version of OpenAIServingChat.")
         try:
             ret = await self.tokenizer_manager.generate_request(
                 adapted_request, raw_request
@@ -202,7 +201,6 @@ class PatchedOpenAIServingChat(OpenAIServingChat):
             metadata={"weight_version": ret[0]["meta_info"]["weight_version"]},
             sglext=response_sglext,
         )
-        logger.info(f"Generated response: {response.model_dump()}")
         return response
 
     async def _handle_streaming_request(
