@@ -30,6 +30,8 @@ class InferenceModel(ABC):
         self.config = config
         self.logger = get_logger(__name__)
         self._prepared = False
+        self.master_addr: Optional[str] = None
+        self.master_port: Optional[int] = None
 
     async def generate(self, prompt: str, **kwargs) -> Sequence[Experience]:
         """Generate a responses from a prompt in async."""
@@ -109,6 +111,11 @@ class InferenceModel(ABC):
             s.bind(("", 0))
             port = s.getsockname()[1]
         return address, port
+
+    def set_master_addr_port(self, master_addr: str, master_port: int):
+        """For multi node setup, set the master address and port for distributed communication."""
+        self.master_addr = master_addr
+        self.master_port = master_port
 
     def get_api_server_url(self) -> Optional[str]:
         """Get the API server URL if available."""
@@ -653,33 +660,24 @@ class ModelWrapper:
         state_dict_meta: Optional[List] = None,
     ):
         """Initialize the process group for model weight synchronization."""
-        asyncio.gather(
-            *[
-                model.init_process_group.remote(
-                    master_address=master_address,
-                    master_port=master_port,
-                    rank_offset=rank_offset,
-                    world_size=world_size,
-                    group_name=group_name,
-                    explorer_name=explorer_name,
-                    backend="nccl",
-                    timeout=timeout,
-                    state_dict_meta=state_dict_meta,
-                )
-                for model in self.models
-            ]
+
+        await self.model.init_process_group.remote(
+            master_address=master_address,
+            master_port=master_port,
+            rank_offset=rank_offset,
+            world_size=world_size,
+            group_name=group_name,
+            explorer_name=explorer_name,
+            backend="nccl",
+            timeout=timeout,
+            state_dict_meta=state_dict_meta,
         )
 
     async def sync_model_weights(
         self, model_version: int, method: SyncMethod, timeout: int = 1200
     ) -> None:
         """Sync the model weights"""
-        asyncio.gather(
-            *[
-                model.sync_model.remote(model_version, method, timeout=timeout)
-                for model in self.models
-            ]
-        )
+        await self.model.sync_model.remote(model_version, method, timeout=timeout)
 
     def extract_experience_from_history(self, clear_history: bool = True) -> List[Experience]:
         """Extract experiences from the history."""
@@ -701,6 +699,10 @@ class ModelWrapper:
         async with self.state_lock:
             self.workflow_state = {}
             self.history.clear()
+
+    async def shutdown(self) -> None:
+        """Shutdown all underlying model actors cleanly."""
+        await asyncio.gather(*[model.shutdown.remote() for model in self.models])
 
     async def get_workflow_state(self) -> Dict:
         """Get the state of workflow using the model."""

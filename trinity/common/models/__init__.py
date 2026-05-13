@@ -176,8 +176,6 @@ def create_explorer_models(
     Returns:
         Tuple[List, List[List]]: The rollout_models and auxiliary_models.
     """
-    logger = get_logger(__name__)
-
     rollout_engines = []
     if config.explorer.rollout_model.engine_type.startswith("vllm"):
         from trinity.common.models.vllm_model import vLLMRolloutModel
@@ -233,75 +231,6 @@ def create_explorer_models(
         return rollout_engines, auxiliary_engines
     else:
         raise ValueError(f"Unknown engine type: {config.explorer.rollout_model.engine_type}")
-
-    if config.mode == "colocate":
-        rollout_engine = (
-            ray.remote(engine_cls)
-            .options(
-                name=f"{config.explorer.name}_rollout_model_0",
-                num_cpus=0,
-                num_gpus=config.explorer.rollout_model.tensor_parallel_size,
-                namespace=config.ray_namespace,
-            )
-            .remote(
-                config=config.explorer.rollout_model,
-            )
-        )
-        return [rollout_engine], []
-
-    if config.explorer.rollout_model.engine_type == "sglang":
-        rollout_engines = create_sglang_explorer_models(
-            config=config.explorer.rollout_model,
-            actor_name=f"{config.explorer.name}_rollout_model",
-        )
-
-        if config.explorer.rollout_model.enable_history:
-            logger.info(
-                "Model History recording is enabled. Please periodically extract "
-                "history via `extract_experience_from_history` to avoid out-of-memory issues."
-            )
-
-        auxiliary_engines = []
-        for i, model_config in enumerate(config.explorer.auxiliary_models):
-            engines = create_sglang_explorer_models(
-                config=model_config,
-                actor_name=f"{config.explorer.name}_auxiliary_model_{model_config.name or i}",
-            )
-            auxiliary_engines.append(engines)
-
-        return rollout_engines, auxiliary_engines
-
-    allocator = Allocator(
-        rollout_model=config.explorer.rollout_model,
-        auxiliary_models=config.explorer.auxiliary_models,
-    )
-
-    # create rollout models
-    rollout_engines = create_inference_models(
-        config=config.explorer.rollout_model,
-        allocator=allocator,
-        allocation_label="rollout_model",
-        actor_name=f"{config.explorer.name}_rollout_model",
-    )
-
-    if config.explorer.rollout_model.enable_history:
-        logger.info(
-            "Model History recording is enabled. Please periodically extract "
-            "history via `extract_experience_from_history` to avoid out-of-memory issues."
-        )
-
-    # create auxiliary models
-    auxiliary_engines = []
-    for i, model_config in enumerate(config.explorer.auxiliary_models):
-        engines = create_inference_models(
-            config=model_config,
-            allocator=allocator,
-            allocation_label=f"auxiliary_model_{model_config.name or i}",
-            actor_name=f"{config.explorer.name}_auxiliary_model_{model_config.name or i}",
-        )
-        auxiliary_engines.append(engines)
-
-    return rollout_engines, auxiliary_engines
 
 
 def create_inference_models(

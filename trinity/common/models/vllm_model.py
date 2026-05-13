@@ -5,12 +5,8 @@ import os
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
-import ray
 import torch
 from packaging.version import parse as parse_version
-from ray.util.placement_group import PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
 from transformers import AutoProcessor
 
 from trinity.common.config import InferenceModelConfig
@@ -21,7 +17,7 @@ from trinity.common.models.mm_utils import (
     build_multi_modal_data,
     has_multi_modal_content,
 )
-from trinity.common.models.model import BaseInferenceModel, ModelWrapper
+from trinity.common.models.model import BaseInferenceModel
 from trinity.common.models.vllm_patch import get_vllm_version
 
 
@@ -44,7 +40,9 @@ class vLLMRolloutModel(BaseInferenceModel):
         import vllm
         from vllm.sampling_params import RequestOutputKind
 
-        self.logger.info("CUDA_VISIBLE_DEVICES: " + os.environ.get("CUDA_VISIBLE_DEVICES", "Not Set"))
+        self.logger.info(
+            "CUDA_VISIBLE_DEVICES: " + os.environ.get("CUDA_VISIBLE_DEVICES", "Not Set")
+        )
 
         self.vllm_version = get_vllm_version()
         self.use_v1 = config.use_v1
@@ -84,62 +82,9 @@ class vLLMRolloutModel(BaseInferenceModel):
         )
         self.ray_namespace = config.ray_namespace
         self.request_id = 0
-        max_model_len = config.max_model_len
         self.enable_lora = config.enable_lora
         self.default_lora_path = config.lora_kwargs.pop("default_lora_path", None)
-        if self.vllm_version >= parse_version("0.12.0"):
-            rope_params = defaultdict(dict)
-            if config.rope_scaling is not None:
-                rope_params["rope_parameters"] = config.rope_scaling
-            if config.rope_theta is not None:
-                rope_params["rope_parameters"]["rope_theta"] = config.rope_theta
-            if len(rope_params) > 0:
-                rope_kwargs = {"hf_overrides": rope_params}
-            else:
-                rope_kwargs = {}
-            self.logprobs_no_prefix_cache = True
-        else:
-            rope_kwargs = {
-                key: getattr(config, key)
-                for key in ["rope_scaling", "rope_theta"]
-                if getattr(config, key) is not None
-            }
-            self.logprobs_no_prefix_cache = False
-        engine_args = vllm.AsyncEngineArgs(
-            model=config.model_path,
-            enforce_eager=config.enforce_eager,
-            worker_extension_cls="trinity.common.models.vllm_worker.WorkerExtension",
-            tensor_parallel_size=config.tensor_parallel_size,
-            seed=config.seed,
-            distributed_executor_backend="mp",
-            max_model_len=max_model_len,
-            enable_prefix_caching=config.enable_prefix_caching,
-            enable_chunked_prefill=config.enable_chunked_prefill,
-            dtype=config.dtype,
-            trust_remote_code=True,
-            gpu_memory_utilization=config.gpu_memory_utilization,
-            override_generation_config={  # TODO: find a way to unittest this
-                "temperature": config.temperature,
-                "top_p": config.top_p,
-                "top_k": config.top_k,
-                "max_new_tokens": config.max_response_tokens,
-                "repetition_penalty": config.repetition_penalty,
-            },
-            disable_log_stats=True,
-            enable_lora=config.enable_lora,
-            logprobs_mode="processed_logprobs",
-            **rope_kwargs,
-            **config.lora_kwargs,
-        )
-        if self.vllm_version > parse_version("0.10.0"):
-            engine_args.enable_log_requests = config.enable_log_requests
-        else:
-            engine_args.disable_log_requests = not config.enable_log_requests
-        if self.vllm_version >= parse_version("0.11.0"):
-            engine_args.reasoning_parser = config.reasoning_parser
-        if self.vllm_version >= parse_version("0.13.0"):
-            engine_args.async_scheduling = False
-        self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
+        self.logprobs_no_prefix_cache = True
         self.processor = None
         self.state_dict_meta = None
         self.model_version = 0  # TODO: resume the value from the checkpoint
@@ -147,6 +92,8 @@ class vLLMRolloutModel(BaseInferenceModel):
         self.api_server_port = None
         self.api_server = None
         self._prepared = False
+        self.async_llm = None
+        self.headless_executor = None
         self.async_lock = asyncio.Lock()
 
     async def _initialize_tokenizer(self):
@@ -163,15 +110,67 @@ class vLLMRolloutModel(BaseInferenceModel):
         )
         await self._initialize_tokenizer()
 
-    async def prepare(
-        self,
-    ) -> None:
+    async def prepare(self) -> None:
         """Prepare the model for inference."""
+        import vllm
+
         async with self.async_lock:
             if self._prepared:
                 return
-            await self._collective_rpc("apply_patches")
-            await self.run_api_server()
+            rope_params = defaultdict(dict)
+            if self.config.rope_scaling is not None:
+                rope_params["rope_parameters"] = self.config.rope_scaling
+            if self.config.rope_theta is not None:
+                rope_params["rope_parameters"]["rope_theta"] = self.config.rope_theta
+            if len(rope_params) > 0:
+                rope_kwargs = {"hf_overrides": rope_params}
+            else:
+                rope_kwargs = {}
+            engine_args = vllm.AsyncEngineArgs(
+                model=self.config.model_path,
+                enforce_eager=self.config.enforce_eager,
+                worker_extension_cls="trinity.common.models.vllm_worker.WorkerExtension",
+                tensor_parallel_size=self.config.tensor_parallel_size,
+                seed=self.config.seed,
+                distributed_executor_backend="mp",
+                max_model_len=self.config.max_model_len,
+                enable_prefix_caching=self.config.enable_prefix_caching,
+                enable_chunked_prefill=self.config.enable_chunked_prefill,
+                dtype=self.config.dtype,
+                trust_remote_code=True,
+                gpu_memory_utilization=self.config.gpu_memory_utilization,
+                override_generation_config={  # TODO: find a way to unittest this
+                    "temperature": self.config.temperature,
+                    "top_p": self.config.top_p,
+                    "top_k": self.config.top_k,
+                    "max_new_tokens": self.config.max_response_tokens,
+                    "repetition_penalty": self.config.repetition_penalty,
+                },
+                reasoning_parser=self.config.reasoning_parser,
+                disable_log_stats=True,
+                enable_log_requests=self.config.enable_log_requests,
+                enable_lora=self.config.enable_lora,
+                logprobs_mode="processed_logprobs",
+                nnodes=self.config.nnodes,
+                node_rank=self.config.node_rank,
+                async_scheduling=False,
+                **rope_kwargs,
+                **self.config.lora_kwargs,
+            )
+            if self.master_addr is not None and self.master_port is not None:
+                engine_args.master_addr = self.master_addr
+                engine_args.master_port = self.master_port
+            if self.config.node_rank == 0:
+                self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
+                await self._collective_rpc("apply_patches")
+                await self.run_api_server()
+            else:
+                # use run_headless
+                from vllm.v1.executor.multiproc_executor import MultiprocExecutor
+
+                vllm_config = engine_args.create_engine_config(headless=True)
+                self.headless_executor = MultiprocExecutor(vllm_config, monitor_workers=False)
+                self.headless_executor.start_worker_monitor()
             self._prepared = True
 
     async def chat(self, messages: List[Dict], lora_request=None, **kwargs) -> Sequence[Experience]:
@@ -459,7 +458,11 @@ class vLLMRolloutModel(BaseInferenceModel):
             except asyncio.CancelledError:
                 pass
             self.api_server = None
-        if hasattr(self.async_llm, "shutdown"):
+        if self.headless_executor is not None:
+            self.logger.info("Shutting down headless executor")
+            self.headless_executor.shutdown()
+            self.headless_executor = None
+        if self.async_llm is not None:
             self.logger.info("Shutting down vLLM engine")
             self.async_llm.shutdown()
 
@@ -618,41 +621,3 @@ class vLLMRolloutModel(BaseInferenceModel):
 
     async def wake_up(self) -> None:
         await self.async_llm.wake_up()
-
-    @classmethod
-    async def get_wrapper(
-        cls,
-        config: InferenceModelConfig,
-        pg: PlacementGroup,
-        actor_bundle_list: List[Tuple[str, int]],
-    ) -> ModelWrapper:
-        """Get the Ray actor for the vLLM model.
-
-        Args:
-            config (InferenceModelConfig): The model config.
-            pg (PlacementGroup): The placement group for the actor.
-            engine_id (int): The engine ID for the actor.
-            actor_bundle_list (List[Tuple[str, int]]): The list of actor names and their corresponding bundle IDs.
-        Returns:
-            ModelWrapper: A wrapper for the vLLM model actor.
-        """
-        handlers = []
-        for actor_name, bundle_id in actor_bundle_list:
-            handlers.append(
-                ray.remote(cls)
-                .options(
-                    name=actor_name,
-                    num_gpus=config.tensor_parallel_size / config.nnodes,
-                    namespace=config.ray_namespace,
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=pg,
-                        placement_group_capture_child_tasks=True,
-                        placement_group_bundle_index=bundle_id,
-                    ),
-                )
-                .remote(config=config)
-            )
-        await asyncio.gather(*[handler.prepare.remote() for handler in handlers])
-        return ModelWrapper(
-            models=handlers, enable_history=config.enable_history, enable_lora=config.enable_lora
-        )

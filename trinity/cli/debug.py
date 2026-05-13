@@ -1,14 +1,14 @@
-import os
 import asyncio
+import os
 import sys
-from typing import Optional, List, Dict, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
 import typer
 from typing_extensions import Annotated
 
-from trinity.common.constants import DEBUG_NAMESPACE, PLUGIN_DIRS_ENV_VAR
 from trinity.common.config import Config, load_config
+from trinity.common.constants import DEBUG_NAMESPACE, PLUGIN_DIRS_ENV_VAR
 from trinity.utils.log import get_logger
 from trinity.utils.plugin_loader import load_plugins
 
@@ -128,4 +128,3 @@ def debug(
             schema_type="experience",
             port=port,
         )
-

@@ -23,7 +23,7 @@ from trinity.utils.dlc_utils import is_running, setup_ray_cluster, stop_ray_clus
 from trinity.utils.log import get_logger
 from trinity.utils.plugin_loader import load_plugins
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, in_ray_actor=True)
 
 app = typer.Typer(
     help="Trinity CLI - Launch and manage Trinity-RFT processes.",

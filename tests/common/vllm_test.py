@@ -1,3 +1,4 @@
+import asyncio
 import os
 import unittest
 from typing import cast
@@ -47,6 +48,23 @@ def clone_wrapper(wrapper: ModelWrapper, enable_history: bool) -> ModelWrapper:
     )
 
 
+class VLLMTestBase(RayUnittestBaseAsync):
+    async def asyncTearDown(self):
+        wrappers = []
+        for attr in ("engines", "auxiliary_engines"):
+            value = getattr(self, attr, None)
+            if value is None:
+                continue
+            if attr == "engines":
+                wrappers.extend(value)
+            else:
+                for model_list in value:
+                    wrappers.extend(model_list)
+
+        if wrappers:
+            await asyncio.gather(*[wrapper.shutdown() for wrapper in wrappers])
+
+
 @parameterized_class(
     (
         "tensor_parallel_size",
@@ -59,10 +77,10 @@ def clone_wrapper(wrapper: ModelWrapper, enable_history: bool) -> ModelWrapper:
     [
         (2, 2, 1, 1, True, False),
         (1, 2, 1, 1, False, True),
-        (2, 1, 2, 3, True, True),
+        (4, 1, 2, 4, True, True),
     ],
 )
-class ModelWrapperTest(RayUnittestBaseAsync):
+class ModelWrapperTest(VLLMTestBase):
     async def asyncSetUp(self):
         # configure the model
         self.config = get_template_config()
@@ -180,7 +198,7 @@ class ModelWrapperTest(RayUnittestBaseAsync):
         (20, 5, 15),
     ],
 )
-class TestModelLen(RayUnittestBaseAsync):
+class TestModelLen(VLLMTestBase):
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
@@ -282,7 +300,7 @@ class TestModelLen(RayUnittestBaseAsync):
                 _check_experience(exp)
 
 
-class TestModelLenWithoutPromptTruncation(RayUnittestBaseAsync):
+class TestModelLenWithoutPromptTruncation(VLLMTestBase):
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
@@ -330,7 +348,7 @@ class TestModelLenWithoutPromptTruncation(RayUnittestBaseAsync):
         )
 
 
-class TestMessageProcess(RayUnittestBaseAsync):
+class TestMessageProcess(VLLMTestBase):
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
@@ -402,7 +420,7 @@ class TestMessageProcess(RayUnittestBaseAsync):
         self.assertLessEqual(model_len, self.config.model.max_model_len)
 
 
-class TestAPIServer(RayUnittestBaseAsync):
+class TestAPIServer(VLLMTestBase):
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
@@ -601,7 +619,7 @@ The maximum number of steps remaining is 10.
 """
 
 
-class TestLogprobs(RayUnittestBaseAsync):
+class TestLogprobs(VLLMTestBase):
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
@@ -787,7 +805,7 @@ class TestLogprobs(RayUnittestBaseAsync):
         )
 
 
-class TestAsyncAPIServer(RayUnittestBaseAsync):
+class TestAsyncAPIServer(VLLMTestBase):
     engine_type: str = "vllm"
     model_path: str = get_model_path()
 
@@ -1041,7 +1059,7 @@ class TestTokenizer(unittest.TestCase):
         (False, None),
     ],
 )
-class TestAPIServerToolCall(RayUnittestBaseAsync):
+class TestAPIServerToolCall(VLLMTestBase):
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
@@ -1319,7 +1337,7 @@ class TestAPIServerToolCall(RayUnittestBaseAsync):
         )
 
 
-class TestSuperLongGeneration(RayUnittestBaseAsync):
+class TestSuperLongGeneration(VLLMTestBase):
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
@@ -1375,7 +1393,7 @@ class TestSuperLongGeneration(RayUnittestBaseAsync):
         self.assertGreater(response.logprobs.shape[0], 1000)
 
 
-class TestTinkerAPI(RayUnittestBaseAsync):
+class TestTinkerAPI(VLLMTestBase):
     """Test the Tinker API integration with the vLLM engine."""
 
     async def asyncSetUp(self):

@@ -6,7 +6,7 @@ import os
 import shutil
 import socket
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import torch
 
@@ -161,28 +161,6 @@ class TestConfig(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "only supported for vLLM"):
             config.check_and_update()
-
-    def test_bundle_allocator_can_allocate_across_multiple_nodes(self):
-        allocator = _BundleAllocator.__new__(_BundleAllocator)
-        allocator.logger = MagicMock()
-        allocator.node_bundle_list = [[0, 1, 2, 3], [4, 5, 6, 7]]
-        allocator.node_list = ["node-a", "node-b"]
-        allocator.node_offsets = [0, 0]
-
-        bundles = allocator.allocate(4, nnodes=2)
-
-        self.assertEqual(bundles, [0, 1, 4, 5])
-        self.assertEqual(allocator.node_offsets, [2, 2])
-
-    def test_bundle_allocator_rejects_uneven_multinode_allocation(self):
-        allocator = _BundleAllocator.__new__(_BundleAllocator)
-        allocator.logger = MagicMock()
-        allocator.node_bundle_list = [[0, 1, 2, 3], [4, 5, 6, 7]]
-        allocator.node_list = ["node-a", "node-b"]
-        allocator.node_offsets = [0, 0]
-
-        with self.assertRaisesRegex(ValueError, "evenly across"):
-            allocator.allocate(3, nnodes=2)
 
     def test_load_default_config(self):
         config = get_template_config()
