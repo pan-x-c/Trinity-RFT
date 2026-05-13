@@ -7,12 +7,14 @@ import shutil
 import socket
 import unittest
 from unittest.mock import patch
+from unittest.mock import MagicMock
 
 import torch
 
 from tests.tools import get_template_config, get_unittest_dataset_config
 from trinity.common.config import InferenceModelConfig, load_config
 from trinity.common.constants import SyncMethod
+from trinity.common.models import _BundleAllocator
 from trinity.common.models.model import InferenceModel
 
 CHECKPOINT_ROOT_DIR = os.path.join(os.path.dirname(__file__), "temp_checkpoint_dir")
@@ -93,6 +95,94 @@ class TestConfig(unittest.TestCase):
 
         self.assertNotEqual(port, requested_port)
         self.assertGreater(port, 0)
+
+    def test_multinode_vllm_config_is_valid(self):
+        config = get_template_config()
+        config.mode = "explore"
+        config.cluster.node_num = 2
+        config.cluster.gpu_per_node = 4
+        config.explorer.rollout_model.engine_type = "vllm"
+        config.explorer.rollout_model.engine_num = 1
+        config.explorer.rollout_model.tensor_parallel_size = 8
+        config.explorer.rollout_model.nnodes = 2
+
+        config.check_and_update()
+
+        self.assertEqual(config.explorer.rollout_model.nnodes, 2)
+
+    def test_multinode_vllm_requires_tensor_parallel_divisible_by_nnodes(self):
+        config = get_template_config()
+        config.mode = "explore"
+        config.cluster.node_num = 2
+        config.cluster.gpu_per_node = 4
+        config.explorer.rollout_model.engine_type = "vllm"
+        config.explorer.rollout_model.engine_num = 1
+        config.explorer.rollout_model.tensor_parallel_size = 3
+        config.explorer.rollout_model.nnodes = 2
+
+        with self.assertRaisesRegex(ValueError, "must be divisible"):
+            config.check_and_update()
+
+    def test_multinode_vllm_requires_full_node_occupancy(self):
+        config = get_template_config()
+        config.mode = "explore"
+        config.cluster.node_num = 3
+        config.cluster.gpu_per_node = 4
+        config.explorer.rollout_model.engine_type = "vllm"
+        config.explorer.rollout_model.engine_num = 1
+        config.explorer.rollout_model.tensor_parallel_size = 6
+        config.explorer.rollout_model.nnodes = 2
+
+        with self.assertRaisesRegex(ValueError, "integer multiple of cluster.gpu_per_node"):
+            config.check_and_update()
+
+    def test_multinode_vllm_requires_matching_nnodes_for_full_nodes(self):
+        config = get_template_config()
+        config.mode = "explore"
+        config.cluster.node_num = 4
+        config.cluster.gpu_per_node = 4
+        config.explorer.rollout_model.engine_type = "vllm"
+        config.explorer.rollout_model.engine_num = 1
+        config.explorer.rollout_model.tensor_parallel_size = 8
+        config.explorer.rollout_model.nnodes = 4
+
+        with self.assertRaisesRegex(ValueError, "must equal tensor_parallel_size // cluster.gpu_per_node"):
+            config.check_and_update()
+
+    def test_multinode_inference_is_rejected_for_non_vllm_engines(self):
+        config = get_template_config()
+        config.mode = "explore"
+        config.cluster.node_num = 2
+        config.cluster.gpu_per_node = 4
+        config.explorer.rollout_model.engine_type = "sglang"
+        config.explorer.rollout_model.engine_num = 1
+        config.explorer.rollout_model.tensor_parallel_size = 4
+        config.explorer.rollout_model.nnodes = 2
+
+        with self.assertRaisesRegex(ValueError, "only supported for vLLM"):
+            config.check_and_update()
+
+    def test_bundle_allocator_can_allocate_across_multiple_nodes(self):
+        allocator = _BundleAllocator.__new__(_BundleAllocator)
+        allocator.logger = MagicMock()
+        allocator.node_bundle_list = [[0, 1, 2, 3], [4, 5, 6, 7]]
+        allocator.node_list = ["node-a", "node-b"]
+        allocator.node_offsets = [0, 0]
+
+        bundles = allocator.allocate(4, nnodes=2)
+
+        self.assertEqual(bundles, [0, 1, 4, 5])
+        self.assertEqual(allocator.node_offsets, [2, 2])
+
+    def test_bundle_allocator_rejects_uneven_multinode_allocation(self):
+        allocator = _BundleAllocator.__new__(_BundleAllocator)
+        allocator.logger = MagicMock()
+        allocator.node_bundle_list = [[0, 1, 2, 3], [4, 5, 6, 7]]
+        allocator.node_list = ["node-a", "node-b"]
+        allocator.node_offsets = [0, 0]
+
+        with self.assertRaisesRegex(ValueError, "evenly across"):
+            allocator.allocate(3, nnodes=2)
 
     def test_load_default_config(self):
         config = get_template_config()

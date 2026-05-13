@@ -30,22 +30,42 @@ class _BundleAllocator:
             node_bundle_map[node_id].append(bundle_id)
         self.node_bundle_list = [value for value in node_bundle_map.values()]
         self.node_list = [key for key in node_bundle_map.keys()]
-        self.nid = 0
-        self.bid = 0
+        self.node_offsets = [0 for _ in self.node_bundle_list]
 
-    def allocate(self, num: int) -> list:
-        # allocate num bundles from current node
-        if self.bid + num > len(self.node_bundle_list[self.nid]):
+    def _remaining_capacity(self, node_index: int) -> int:
+        return len(self.node_bundle_list[node_index]) - self.node_offsets[node_index]
+
+    def allocate(self, num: int, nnodes: int = 1) -> list:
+        if nnodes < 1:
+            raise ValueError(f"`nnodes` must be >= 1, but got {nnodes}.")
+        if num % nnodes != 0:
+            raise ValueError(f"Cannot allocate {num} bundles evenly across {nnodes} nodes.")
+
+        bundles_per_node = num // nnodes
+        candidate_nodes = []
+        for node_index in range(len(self.node_bundle_list)):
+            if self._remaining_capacity(node_index) >= bundles_per_node:
+                candidate_nodes.append(node_index)
+            if len(candidate_nodes) == nnodes:
+                break
+
+        if len(candidate_nodes) != nnodes:
             raise ValueError(
-                "Bundle allocation error, a tensor parallel group"
-                " is allocated across multiple nodes."
+                "Bundle allocation error, unable to allocate a tensor parallel group across "
+                f"{nnodes} node(s) with {bundles_per_node} GPU(s) per node."
             )
-        bundle_list = self.node_bundle_list[self.nid][self.bid : self.bid + num]
-        self.logger.info(f"Allocate bundles {bundle_list} on node {self.node_list[self.nid]}.")
-        self.bid += num
-        if self.bid == len(self.node_bundle_list[self.nid]):
-            self.bid = 0
-            self.nid += 1
+
+        bundle_list = []
+        allocation_log = []
+        for node_index in candidate_nodes:
+            start = self.node_offsets[node_index]
+            end = start + bundles_per_node
+            node_bundles = self.node_bundle_list[node_index][start:end]
+            self.node_offsets[node_index] = end
+            bundle_list.extend(node_bundles)
+            allocation_log.append((self.node_list[node_index], node_bundles))
+
+        self.logger.info(f"Allocate bundles {allocation_log}.")
         return bundle_list
 
 
@@ -211,7 +231,7 @@ def create_vllm_inference_models(
 
     models = []
     for i in range(config.engine_num):
-        bundles_for_engine = allocator.allocate(config.tensor_parallel_size)
+        bundles_for_engine = allocator.allocate(config.tensor_parallel_size, config.nnodes)
         model_config = deepcopy(config)
         model_config.bundle_indices = ",".join([str(bid) for bid in bundles_for_engine])
         model_config.engine_id = i
