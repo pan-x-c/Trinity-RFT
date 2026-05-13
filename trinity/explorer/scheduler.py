@@ -12,7 +12,6 @@ import numpy as np
 import ray
 
 from trinity.common.config import Config
-from trinity.common.models import InferenceModel
 from trinity.common.workflows import Task
 from trinity.explorer.workflow_runner import Status, WorkflowRunner
 from trinity.utils.log import get_logger
@@ -153,14 +152,14 @@ class RunnerWrapper:
     def __init__(
         self,
         runner_id: int,
-        rollout_model: InferenceModel,
-        auxiliary_models: List[InferenceModel],
+        rollout_model_id: int,
+        auxiliary_model_ids: List[int],
         config: Config,
     ):
         self.logger = get_logger(__name__)
         self.runner_id = runner_id
-        self.rollout_model = rollout_model
-        self.auxiliary_models = auxiliary_models
+        self.rollout_model_id = rollout_model_id
+        self.auxiliary_model_ids = auxiliary_model_ids
         self.config = config
         self.retry_times = config.explorer.max_retry_times
         self.timeout = config.explorer.max_timeout
@@ -181,8 +180,8 @@ class RunnerWrapper:
             )
             .remote(
                 self.config,
-                self.rollout_model,
-                self.auxiliary_models,
+                self.rollout_model_id,
+                self.auxiliary_model_ids,
                 self.runner_id,
             )
         )
@@ -320,13 +319,9 @@ class Scheduler:
     def __init__(
         self,
         config: Config,
-        rollout_model: List[InferenceModel],
-        auxiliary_models: Optional[List[List[InferenceModel]]] = None,
     ):
         self.logger = get_logger(__name__)
         self.config = config
-        self.rollout_model = rollout_model
-        self.auxiliary_models = auxiliary_models or []
         self.namespace = ray.get_runtime_context().namespace
         self.default_timeout = config.explorer.max_timeout * (config.explorer.max_retry_times + 1)
         self.max_retry_times = config.explorer.max_retry_times
@@ -334,7 +329,9 @@ class Scheduler:
         self.default_batch_size = config.buffer.batch_size
         self.running = False
 
-        self.runner_num = len(rollout_model) * config.explorer.runner_per_model
+        self.runner_num = (
+            config.explorer.rollout_model.engine_num * config.explorer.runner_per_model
+        )
         self.runners: Dict[int, RunnerWrapper] = dict()
         self.idle_runners: set[int] = set()  # runner_id of idle runners
         self.busy_runners: Dict[int, RunningTaskState] = dict()  # runner_id -> running state
@@ -371,10 +368,10 @@ class Scheduler:
     ):
         runner = RunnerWrapper(
             runner_id=runner_id,
-            rollout_model=self.rollout_model[runner_id % len(self.rollout_model)],
-            auxiliary_models=[
-                self.auxiliary_models[j][runner_id % len(self.auxiliary_models[j])]
-                for j in range(len(self.auxiliary_models))
+            rollout_model_id=runner_id % self.config.explorer.rollout_model.engine_num,
+            auxiliary_model_ids=[
+                runner_id % self.config.explorer.auxiliary_models[j].engine_num
+                for j in range(len(self.config.explorer.auxiliary_models))
             ],
             config=self.config,
         )

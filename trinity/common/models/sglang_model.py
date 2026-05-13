@@ -462,7 +462,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             self.api_server = None
             self.api_client = None
 
-    async def sync_model(
+    async def sync_model_weights(
         self, model_version: int, method: SyncMethod, timeout: float = 1200
     ) -> int:
         assert (

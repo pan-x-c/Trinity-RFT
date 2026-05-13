@@ -6,8 +6,7 @@ import os
 import shutil
 import socket
 import unittest
-from unittest.mock import patch
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import torch
 
@@ -33,7 +32,7 @@ class DummyInferenceModel(InferenceModel):
     async def convert_messages_to_experience(self, messages, tools=None, temperature=None):
         raise NotImplementedError
 
-    async def sync_model(
+    async def sync_model_weights(
         self, model_version: int, sync_method: SyncMethod, timeout: float = 1200
     ) -> int:
         return model_version
@@ -110,17 +109,17 @@ class TestConfig(unittest.TestCase):
 
         self.assertEqual(config.explorer.rollout_model.nnodes, 2)
 
-    def test_multinode_vllm_requires_tensor_parallel_divisible_by_nnodes(self):
+    def test_multinode_vllm_requires_nnodes_within_cluster_size(self):
         config = get_template_config()
         config.mode = "explore"
         config.cluster.node_num = 2
         config.cluster.gpu_per_node = 4
         config.explorer.rollout_model.engine_type = "vllm"
         config.explorer.rollout_model.engine_num = 1
-        config.explorer.rollout_model.tensor_parallel_size = 3
-        config.explorer.rollout_model.nnodes = 2
+        config.explorer.rollout_model.tensor_parallel_size = 8
+        config.explorer.rollout_model.nnodes = 3
 
-        with self.assertRaisesRegex(ValueError, "must be divisible"):
+        with self.assertRaisesRegex(ValueError, "cannot exceed cluster.node_num"):
             config.check_and_update()
 
     def test_multinode_vllm_requires_full_node_occupancy(self):
@@ -146,7 +145,9 @@ class TestConfig(unittest.TestCase):
         config.explorer.rollout_model.tensor_parallel_size = 8
         config.explorer.rollout_model.nnodes = 4
 
-        with self.assertRaisesRegex(ValueError, "must equal tensor_parallel_size // cluster.gpu_per_node"):
+        with self.assertRaisesRegex(
+            ValueError, "must equal tensor_parallel_size // cluster.gpu_per_node"
+        ):
             config.check_and_update()
 
     def test_multinode_inference_is_rejected_for_non_vllm_engines(self):

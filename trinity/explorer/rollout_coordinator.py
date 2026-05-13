@@ -9,7 +9,6 @@ import ray
 
 from trinity.buffer.pipelines.experience_pipeline import ExperiencePipeline
 from trinity.common.config import Config
-from trinity.common.models import InferenceModel
 from trinity.common.workflows import Task
 from trinity.explorer.scheduler import Scheduler
 from trinity.utils.log import get_logger
@@ -55,14 +54,12 @@ class RolloutCoordinator:
     def __init__(
         self,
         config: Config,
-        rollout_model: List[InferenceModel],
-        auxiliary_models: Optional[List[List[InferenceModel]]] = None,
     ):
         """Create a coordinator with internally managed scheduler and pipeline."""
         self.logger = get_logger(f"{config.explorer.name}_rollout_coordinator", in_ray_actor=True)
         self.config = config
-        self.rollout_model = rollout_model
-        self.auxiliary_models = auxiliary_models or []
+        # self.rollout_model = rollout_model
+        # self.auxiliary_models = auxiliary_models or []
         self.experience_pipeline = None
         self.scheduler: Optional[Scheduler] = None
         self.pending_batches: Dict[BatchId, BatchState] = {}
@@ -102,8 +99,8 @@ class RolloutCoordinator:
             return
         self.scheduler = Scheduler(
             self.config,
-            self.rollout_model,
-            self.auxiliary_models,
+            # self.rollout_model,
+            # self.auxiliary_models,
         )
         await self.scheduler.start()
 

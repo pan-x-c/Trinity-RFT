@@ -1,71 +1,168 @@
-import asyncio
 import os
 from collections import defaultdict
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 import ray
 from ray.util.placement_group import placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-from trinity.common.config import Config, InferenceModelConfig
-from trinity.common.constants import DEBUG_NAMESPACE
-from trinity.common.models.model import InferenceModel, ModelWrapper
+from trinity.common.config import Config, ExplorerConfig, InferenceModelConfig
 from trinity.utils.log import get_logger
 
 
-class _BundleAllocator:
-    """An allocator for bundles."""
+@dataclass
+class InferenceEngineAllocationResult:
+    bundles: List[Dict[str, float]]
+    engine_bundle_map: Dict[str, int]
 
-    def __init__(self, num_gpus: int) -> None:
+
+def allocate_bundles(explorer_config: ExplorerConfig) -> InferenceEngineAllocationResult:
+    rollout_model = explorer_config.rollout_model
+    auxiliary_models = explorer_config.auxiliary_models
+    explorer_name = explorer_config.name
+    model_configs = [
+        (f"{explorer_name}_rollout_model_{rollout_model.name or 0}", rollout_model)
+    ] + [
+        (f"{explorer_name}_auxiliary_model_{model.name or index}", model)
+        for index, model in enumerate(auxiliary_models)
+    ]
+    bundles: List[Dict[str, float]] = []
+    engine_bundle_map: Dict[str, int] = {}
+    bundle_id = 0
+    for label, config in model_configs:
+        gpus_per_bundle = config.tensor_parallel_size // config.nnodes
+        for engine_id in range(config.engine_num):
+            for node_id in range(config.nnodes):
+                bundles.append({"GPU": float(gpus_per_bundle), "CPU": 1})
+                engine_bundle_map[f"{label}_{engine_id}_{node_id}"] = bundle_id
+                bundle_id += 1
+    return InferenceEngineAllocationResult(bundles=bundles, engine_bundle_map=engine_bundle_map)
+
+
+class Allocator:
+    """Allocate placement-group bundles for inference engines."""
+
+    def __init__(
+        self,
+        explorer_config: ExplorerConfig,
+    ) -> None:
+        rollout_model = explorer_config.rollout_model
+        auxiliary_models = explorer_config.auxiliary_models
+        explorer_name = explorer_config.name
         self.logger = get_logger(__name__, in_ray_actor=True)
-        bundles = [{"GPU": 1} for _ in range(num_gpus)]
+        self._engine_bundles: Dict[str, List[List[int]]] = {}
+        self.engine_bundle_map: Dict[str, List[int]] = {}
+        bundles: List[Dict[str, float]] = []
+        self._configs = [
+            (f"{explorer_name}_rollout_model_{rollout_model.name or 0}", rollout_model)
+        ] + [
+            (f"{explorer_name}_auxiliary_model_{model.name or index}", model)
+            for index, model in enumerate(auxiliary_models)
+        ]
+        bundle_id = 0
+        for label, config in self._configs:
+            self._validate_config(config=config, label=label)
+            gpus_per_bundle = config.tensor_parallel_size // config.nnodes
+            for engine_id in range(config.engine_num):
+                for node_id in range(config.nnodes):
+                    bundles.append({"GPU": float(gpus_per_bundle)})
+                    self.logger.info(
+                        "Prepared bundle %d for %s engine %d with %d GPUs.",
+                        bundle_id,
+                        label,
+                        engine_id,
+                        gpus_per_bundle,
+                    )
+                    bundle_id += 1
+                self.engine_bundle_map[f"{label}_{engine_id}"] = list(
+                    range(bundle_id - config.nnodes, bundle_id)
+                )
+
         self.pg = placement_group(bundles, strategy="PACK")
         ray.get(self.pg.ready())
-        # to address https://github.com/ray-project/ray/issues/51117
-        # aggregate bundles belonging to the same node
+
         bundle_node_map = placement_group_table(self.pg)["bundles_to_node_id"]
         node_bundle_map = defaultdict(list)
         for bundle_id, node_id in bundle_node_map.items():
             node_bundle_map[node_id].append(bundle_id)
-        self.node_bundle_list = [value for value in node_bundle_map.values()]
+
+        self.node_bundle_list = [sorted(value) for value in node_bundle_map.values()]
         self.node_list = [key for key in node_bundle_map.keys()]
-        self.node_offsets = [0 for _ in self.node_bundle_list]
+        self._bind_engine_bundles()
 
-    def _remaining_capacity(self, node_index: int) -> int:
-        return len(self.node_bundle_list[node_index]) - self.node_offsets[node_index]
-
-    def allocate(self, num: int, nnodes: int = 1) -> list:
-        if nnodes < 1:
-            raise ValueError(f"`nnodes` must be >= 1, but got {nnodes}.")
-        if num % nnodes != 0:
-            raise ValueError(f"Cannot allocate {num} bundles evenly across {nnodes} nodes.")
-
-        bundles_per_node = num // nnodes
-        candidate_nodes = []
-        for node_index in range(len(self.node_bundle_list)):
-            if self._remaining_capacity(node_index) >= bundles_per_node:
-                candidate_nodes.append(node_index)
-            if len(candidate_nodes) == nnodes:
-                break
-
-        if len(candidate_nodes) != nnodes:
+    @staticmethod
+    def _validate_config(config: InferenceModelConfig, label: str) -> None:
+        if config.engine_num < 1:
+            raise ValueError(f"`{label}.engine_num` must be >= 1, but got {config.engine_num}.")
+        if config.tensor_parallel_size < 1:
             raise ValueError(
-                "Bundle allocation error, unable to allocate a tensor parallel group across "
-                f"{nnodes} node(s) with {bundles_per_node} GPU(s) per node."
+                f"`{label}.tensor_parallel_size` must be >= 1, but got "
+                f"{config.tensor_parallel_size}."
+            )
+        if config.nnodes < 1:
+            raise ValueError(f"`{label}.nnodes` must be >= 1, but got {config.nnodes}.")
+        if config.tensor_parallel_size < config.nnodes:
+            raise ValueError(
+                f"`{label}.tensor_parallel_size` ({config.tensor_parallel_size}) must be >= "
+                f"`{label}.nnodes` ({config.nnodes})."
+            )
+        if config.tensor_parallel_size % config.nnodes != 0:
+            raise ValueError(
+                f"`{label}.tensor_parallel_size` ({config.tensor_parallel_size}) must be "
+                f"divisible by `nnodes` ({config.nnodes})."
             )
 
-        bundle_list = []
-        allocation_log = []
-        for node_index in candidate_nodes:
-            start = self.node_offsets[node_index]
-            end = start + bundles_per_node
-            node_bundles = self.node_bundle_list[node_index][start:end]
-            self.node_offsets[node_index] = end
-            bundle_list.extend(node_bundles)
-            allocation_log.append((self.node_list[node_index], node_bundles))
+    def _bind_engine_bundles(self) -> None:
+        for label, config in self._configs:
+            engine_bundles = []
+            for _ in range(config.engine_num):
+                candidate_nodes = []
+                for node_index in range(len(self.node_bundle_list)):
+                    if self.node_bundle_list[node_index]:
+                        candidate_nodes.append((node_index, self.node_bundle_list[node_index][0]))
+                    if len(candidate_nodes) == config.nnodes:
+                        break
 
-        self.logger.info(f"Allocate bundles {allocation_log}.")
+                if len(candidate_nodes) != config.nnodes:
+                    raise ValueError(
+                        "Bundle allocation error, unable to allocate an engine for "
+                        f"`{label}` with tensor_parallel_size={config.tensor_parallel_size}, "
+                        f"nnodes={config.nnodes}."
+                    )
+
+                bundle_list = []
+                allocation_log = []
+                for node_index, bundle_id in candidate_nodes:
+                    self.node_bundle_list[node_index].remove(bundle_id)
+                    bundle_list.append(bundle_id)
+                    allocation_log.append((self.node_list[node_index], [bundle_id]))
+
+                engine_bundles.append(bundle_list)
+                self.logger.info("Allocate bundles for %s: %s.", label, allocation_log)
+
+            self._engine_bundles[label] = engine_bundles
+
+    def allocate(self, label: str, engine_id: int) -> List[int]:
+        if label not in self._engine_bundles:
+            raise ValueError(f"Unknown allocation label: {label}.")
+        if engine_id < 0 or engine_id >= len(self._engine_bundles[label]):
+            raise ValueError(f"`engine_id` out of range for `{label}`: {engine_id}.")
+
+        config = dict(self._configs)[label]
+        gpus_per_bundle = config.tensor_parallel_size // config.nnodes
+        bundle_list = self._engine_bundles[label][engine_id]
+        if len(bundle_list) != config.nnodes:
+            raise ValueError(
+                f"Allocated {len(bundle_list)} bundles for `{label}` engine {engine_id}, "
+                f"expected {config.nnodes}."
+            )
+        if gpus_per_bundle * len(bundle_list) != config.tensor_parallel_size:
+            raise ValueError(
+                f"Allocated bundles {bundle_list} for `{label}` engine {engine_id} do not "
+                f"match tensor_parallel_size={config.tensor_parallel_size}."
+            )
         return bundle_list
 
 
@@ -143,11 +240,7 @@ def create_explorer_models(
             .options(
                 name=f"{config.explorer.name}_rollout_model_0",
                 num_cpus=0,
-                num_gpus=(
-                    config.explorer.rollout_model.tensor_parallel_size
-                    if config.explorer.rollout_model.engine_type == "sglang"
-                    else 0
-                ),
+                num_gpus=config.explorer.rollout_model.tensor_parallel_size,
                 namespace=config.ray_namespace,
             )
             .remote(
@@ -178,28 +271,16 @@ def create_explorer_models(
 
         return rollout_engines, auxiliary_engines
 
-    num_gpus = (
-        config.explorer.rollout_model.engine_num
-        * config.explorer.rollout_model.tensor_parallel_size
-        + sum(
-            [
-                model.engine_num * model.tensor_parallel_size
-                for model in config.explorer.auxiliary_models
-            ]
-        )
+    allocator = Allocator(
+        rollout_model=config.explorer.rollout_model,
+        auxiliary_models=config.explorer.auxiliary_models,
     )
-
-    allocator = _BundleAllocator(num_gpus=num_gpus)
 
     # create rollout models
-    model_factory = (
-        create_sglang_inference_models
-        if config.explorer.rollout_model.engine_type == "sglang"
-        else create_vllm_inference_models
-    )
-    rollout_engines = model_factory(
+    rollout_engines = create_inference_models(
         config=config.explorer.rollout_model,
         allocator=allocator,
+        allocation_label="rollout_model",
         actor_name=f"{config.explorer.name}_rollout_model",
     )
 
@@ -212,9 +293,10 @@ def create_explorer_models(
     # create auxiliary models
     auxiliary_engines = []
     for i, model_config in enumerate(config.explorer.auxiliary_models):
-        engines = model_factory(
+        engines = create_inference_models(
             config=model_config,
             allocator=allocator,
+            allocation_label=f"auxiliary_model_{model_config.name or i}",
             actor_name=f"{config.explorer.name}_auxiliary_model_{model_config.name or i}",
         )
         auxiliary_engines.append(engines)
@@ -222,29 +304,38 @@ def create_explorer_models(
     return rollout_engines, auxiliary_engines
 
 
-def create_vllm_inference_models(
+def create_inference_models(
     config: InferenceModelConfig,
-    allocator: _BundleAllocator,
+    allocator: Allocator,
+    allocation_label: str,
     actor_name: str,
 ) -> List:
-    from trinity.common.models.vllm_model import vLLMRolloutModel
+    model_cls = None
+    if config.engine_type == "sglang":
+        from trinity.common.models.sglang_model import SGLangRolloutModel
+
+        model_cls = SGLangRolloutModel
+    else:
+        from trinity.common.models.vllm_model import vLLMRolloutModel
+
+        model_cls = vLLMRolloutModel
 
     models = []
     for i in range(config.engine_num):
-        bundles_for_engine = allocator.allocate(config.tensor_parallel_size, config.nnodes)
+        bundles_for_engine = allocator.allocate(allocation_label, i)
         model_config = deepcopy(config)
-        model_config.bundle_indices = ",".join([str(bid) for bid in bundles_for_engine])
         model_config.engine_id = i
         models.append(
-            ray.remote(vLLMRolloutModel)
+            ray.remote(model_cls)
             .options(
                 name=f"{actor_name}_{i}",
                 num_cpus=0,
-                num_gpus=0 if model_config.tensor_parallel_size > 1 else 1,
+                num_gpus=model_config.tensor_parallel_size,
                 namespace=model_config.ray_namespace,
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=allocator.pg,
                     placement_group_capture_child_tasks=True,
+                    # TODO: allocate a specific bundle
                     placement_group_bundle_index=bundles_for_engine[0],
                 ),
             )
@@ -257,16 +348,16 @@ def create_vllm_inference_models(
 
 def create_sglang_inference_models(
     config: InferenceModelConfig,
-    allocator: _BundleAllocator,
+    allocator: Allocator,
+    allocation_label: str,
     actor_name: str,
 ) -> List:
     from trinity.common.models.sglang_model import SGLangRolloutModel
 
     models = []
     for i in range(config.engine_num):
-        bundles_for_engine = allocator.allocate(config.tensor_parallel_size)
+        bundles_for_engine = allocator.allocate(allocation_label, i)
         model_config = deepcopy(config)
-        model_config.bundle_indices = ",".join([str(bid) for bid in bundles_for_engine])
         model_config.engine_id = i
         models.append(
             ray.remote(SGLangRolloutModel)
@@ -279,41 +370,6 @@ def create_sglang_inference_models(
                     placement_group=allocator.pg,
                     placement_group_capture_child_tasks=True,
                     placement_group_bundle_index=bundles_for_engine[0],
-                ),
-            )
-            .remote(
-                config=model_config,
-            )
-        )
-    return models
-
-
-def create_sglang_explorer_models(
-    config: InferenceModelConfig,
-    actor_name: str,
-) -> List:
-    from trinity.common.models.sglang_model import SGLangRolloutModel
-
-    models = []
-    engine_pg = placement_group(
-        [{"GPU": config.tensor_parallel_size} for _ in range(config.engine_num)],
-        strategy="PACK",
-    )
-    ray.get(engine_pg.ready())
-    for i in range(config.engine_num):
-        model_config = deepcopy(config)
-        model_config.engine_id = i
-        models.append(
-            ray.remote(SGLangRolloutModel)
-            .options(
-                name=f"{actor_name}_{i}",
-                num_cpus=0,
-                num_gpus=model_config.tensor_parallel_size,
-                namespace=model_config.ray_namespace,
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=engine_pg,
-                    placement_group_capture_child_tasks=True,
-                    placement_group_bundle_index=i,
                 ),
             )
             .remote(
@@ -356,98 +412,3 @@ def create_external_models(
             )
         )
     return models
-
-
-async def create_debug_explorer_model(config: Config) -> None:
-    """Create explorer inference models for debugging."""
-    logger = get_logger(__name__)
-    logger.info("Creating inference models for debugging...")
-    # only create one engine for each model
-    config.explorer.rollout_model.engine_num = 1
-    for model in config.explorer.auxiliary_models:
-        model.engine_num = 1
-    rollout_models, auxiliary_models = create_explorer_models(config)
-    # make sure models are started
-    prepare_refs = [m.prepare.remote() for m in rollout_models]
-    prepare_refs.extend(m.prepare.remote() for models in auxiliary_models for m in models)
-    await asyncio.gather(*prepare_refs)
-    logger.info(
-        "----------------------------------------------------\n"
-        "Inference models started successfully for debugging.\n"
-        "Press Ctrl+C to exit.\n"
-        "----------------------------------------------------"
-    )
-
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Exiting...")
-
-
-def get_debug_explorer_model(config: Config) -> Tuple[InferenceModel, List[InferenceModel]]:
-    """Get the inference models for debugging.
-    The models must be created by `create_debug_explorer_model` in another process first.
-    """
-    import ray
-
-    try:
-        rollout_model = ray.get_actor(
-            f"{config.explorer.name}_rollout_model_0", namespace=DEBUG_NAMESPACE
-        )
-        auxiliary_models = []
-        for i, model_config in enumerate(config.explorer.auxiliary_models):
-            model = ray.get_actor(
-                f"{config.explorer.name}_auxiliary_model_{model_config.name or i}_0",
-                namespace=DEBUG_NAMESPACE,
-            )
-            auxiliary_models.append(model)
-    except ValueError:
-        raise RuntimeError(
-            "Debug explorer models not found. Please start the models first by running "
-            "`trinity debug --module inference_model --config config_path` in another process."
-        ) from None
-    return rollout_model, auxiliary_models
-
-
-async def get_auxiliary_model_wrappers(config: Config) -> Dict[str | int, List[ModelWrapper]]:
-    """Get auxiliary models.
-
-    Returns:
-        Dict[str| int, List[ModelWrapper]]: A dictionary mapping auxiliary model
-            index to a list of auxiliary model actor handlers.
-    """
-    if not config.explorer.auxiliary_models:
-        # if no auxiliary model is configured
-        # return an empty dict to avoid unnecessary ray calls
-        return {}
-
-    auxiliary_models: Dict[str | int, List[ModelWrapper]] = defaultdict(list)
-    keys: List[str | int] = []
-    fetch_tasks = []
-
-    for i, model_config in enumerate(config.explorer.auxiliary_models):
-        key = model_config.name or i
-        for j in range(model_config.engine_num):
-            keys.append(key)
-            fetch_tasks.append(
-                asyncio.to_thread(
-                    ray.get_actor,
-                    f"{config.explorer.name}_auxiliary_model_{key}_{j}",
-                    namespace=config.ray_namespace,
-                )
-            )
-
-    # Run lookups off the event loop to avoid blocking when many models exist.
-    actors = await asyncio.gather(*fetch_tasks)
-    for key, actor in zip(keys, actors):
-        auxiliary_models[key].append(ModelWrapper(actor))
-
-    # call prepare on all auxiliary models to make sure they are ready before returning
-    prepare_tasks = []
-    for model_wrappers in auxiliary_models.values():
-        for model_wrapper in model_wrappers:
-            prepare_tasks.append(model_wrapper.prepare())
-    await asyncio.gather(*prepare_tasks)
-
-    return dict(auxiliary_models)

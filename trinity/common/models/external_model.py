@@ -154,7 +154,7 @@ class ExternalModel(InferenceModel):
         exp.tools = tools
         return exp
 
-    async def sync_model(
+    async def sync_model_weights(
         self, model_version: int, sync_method: SyncMethod, timeout: float = 1200
     ) -> int:
         # for

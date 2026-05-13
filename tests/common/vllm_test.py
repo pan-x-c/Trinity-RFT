@@ -48,14 +48,15 @@ async def prepare_engines(engines, auxiliary_engines):
     (
         "tensor_parallel_size",
         "engine_num",
+        "nnodes",
         "repeat_times",
         "enable_history",
         "use_async",
     ),
     [
-        (2, 2, 2, True, False),
-        (1, 2, 1, False, True),
-        (2, 1, 3, True, True),
+        (2, 2, 1, 1, True, False),
+        (1, 2, 1, 1, False, True),
+        (4, 1, 2, 3, True, True),
     ],
 )
 class ModelWrapperTest(RayUnittestBaseAsync):
@@ -66,6 +67,7 @@ class ModelWrapperTest(RayUnittestBaseAsync):
         self.config.model.model_path = get_model_path()
         self.config.model.custom_chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.engine_num = self.engine_num
+        self.config.explorer.rollout_model.nnodes = self.nnodes
         self.config.explorer.rollout_model.tensor_parallel_size = self.tensor_parallel_size
         self.config.algorithm.repeat_times = self.repeat_times
         self.config.explorer.rollout_model.enable_history = self.enable_history

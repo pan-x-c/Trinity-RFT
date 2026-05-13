@@ -5,8 +5,10 @@ import os
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+import ray
 import torch
 from packaging.version import parse as parse_version
+from ray.util.placement_group import PlacementGroup, PlacementGroupSchedulingStrategy
 from transformers import AutoProcessor
 
 from trinity.common.config import InferenceModelConfig
@@ -17,7 +19,7 @@ from trinity.common.models.mm_utils import (
     build_multi_modal_data,
     has_multi_modal_content,
 )
-from trinity.common.models.model import BaseInferenceModel
+from trinity.common.models.model import BaseInferenceModel, ModelWrapper
 from trinity.common.models.vllm_patch import get_vllm_version
 
 
@@ -105,7 +107,7 @@ class vLLMRolloutModel(BaseInferenceModel):
             worker_extension_cls="trinity.common.models.vllm_worker.WorkerExtension",
             tensor_parallel_size=config.tensor_parallel_size,
             seed=config.seed,
-            distributed_executor_backend=("uni" if config.tensor_parallel_size == 1 else "ray"),
+            distributed_executor_backend="mp",
             max_model_len=max_model_len,
             enable_prefix_caching=config.enable_prefix_caching,
             enable_chunked_prefill=config.enable_chunked_prefill,
@@ -481,7 +483,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 method, timeout, args, kwargs
             )
 
-    async def sync_model(
+    async def sync_model_weights(
         self, model_version: int, sync_method: SyncMethod, timeout: float = 1200
     ) -> int:
         """Sync model weights to vLLM."""
@@ -517,7 +519,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
-        state_dict_meta: List = None,
+        state_dict_meta: Optional[List] = None,
     ):
         return await self._collective_rpc(
             "init_process_group",
@@ -612,3 +614,41 @@ class vLLMRolloutModel(BaseInferenceModel):
 
     async def wake_up(self) -> None:
         await self.async_llm.wake_up()
+
+    @classmethod
+    async def get_wrapper(
+        cls,
+        config: InferenceModelConfig,
+        pg: PlacementGroup,
+        actor_bundle_list: List[Tuple[str, int]],
+    ) -> ModelWrapper:
+        """Get the Ray actor for the vLLM model.
+
+        Args:
+            config (InferenceModelConfig): The model config.
+            pg (PlacementGroup): The placement group for the actor.
+            engine_id (int): The engine ID for the actor.
+            actor_bundle_list (List[Tuple[str, int]]): The list of actor names and their corresponding bundle IDs.
+        Returns:
+            ModelWrapper: A wrapper for the vLLM model actor.
+        """
+        handlers = []
+        for actor_name, bundle_id in actor_bundle_list:
+            handlers.append(
+                ray.remote(cls)
+                .options(
+                    name=actor_name,
+                    num_gpus=config.tensor_parallel_size / config.nnodes,
+                    namespace=config.ray_namespace,
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pg,
+                        placement_group_capture_child_tasks=True,
+                        placement_group_bundle_index=bundle_id,
+                    ),
+                )
+                .remote(config=config)
+            )
+        await asyncio.gather(*[handler.prepare.remote() for handler in handlers])
+        return ModelWrapper(
+            models=handlers, enable_history=config.enable_history, enable_lora=config.enable_lora
+        )
