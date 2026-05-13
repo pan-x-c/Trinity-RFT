@@ -64,10 +64,15 @@ class InferenceModel(ABC):
     def get_model_version(self) -> int:
         """Get the checkpoint version."""
 
-    def get_available_address(self) -> Tuple[str, int]:
-        """Get the address of the actor."""
+    def get_available_address(self, random_port: bool = False) -> Tuple[str, int]:
+        """Get an available address on the current actor node.
+
+        Args:
+            random_port: Whether to skip the configured ``base_port`` convention and
+                allocate an ephemeral port on the current node directly.
+        """
         address = ray.util.get_node_ip_address()
-        if self.config.base_port is not None:
+        if not random_port and self.config.base_port is not None:
             configured_port = self.config.base_port + self.config.engine_id
             with socket.socket() as s:
                 try:

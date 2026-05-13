@@ -123,7 +123,7 @@ class Explorer:
         refs = []
         world_size = self.config.explorer.rollout_model.tensor_parallel_size
         for model in self.models:
-            master_address, master_port = await model.get_available_address.remote()
+            master_address, master_port = await model.get_available_address.remote(random_port=True)
             self.logger.info(
                 f"Initialize process group for model weight synchronization, "
                 f"master_address={master_address}, master_port={master_port}, "
@@ -216,9 +216,9 @@ class Explorer:
                     # In serving mode, each engine will setup its own process group
                     await self.setup_model_level_weight_sync_group()
                 else:
-                    master_address, master_port = await self.models[
-                        0
-                    ].get_available_address.remote()
+                    master_address, master_port = await self.models[0].get_available_address.remote(
+                        random_port=True
+                    )
                     await self.setup_weight_sync_group(master_address, master_port)
 
             self.rollout_coordinator = RolloutCoordinator.get_actor(
