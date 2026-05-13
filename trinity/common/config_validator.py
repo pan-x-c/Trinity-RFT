@@ -323,18 +323,6 @@ class RayClusterConfigValidator(ConfigValidator):
                     f"({config.cluster.node_num})."
                 )
 
-            if model_config.tensor_parallel_size < model_config.nnodes:
-                raise ValueError(
-                    f"tensor_parallel_size ({model_config.tensor_parallel_size}) must be >= "
-                    f"nnodes ({model_config.nnodes})."
-                )
-
-            if model_config.tensor_parallel_size % model_config.nnodes != 0:
-                raise ValueError(
-                    f"tensor_parallel_size ({model_config.tensor_parallel_size}) must be divisible "
-                    f"by nnodes ({model_config.nnodes})."
-                )
-
             if model_config.tensor_parallel_size % config.cluster.gpu_per_node != 0:
                 raise ValueError(
                     f"tensor_parallel_size ({model_config.tensor_parallel_size}) must be an "

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Un
 import httpx
 import ray
 import torch
+from ray.actor import ActorHandle
 from torch import Tensor
 
 from trinity.common.config import InferenceModelConfig
@@ -28,6 +29,7 @@ class InferenceModel(ABC):
     def __init__(self, config: InferenceModelConfig) -> None:
         self.config = config
         self.logger = get_logger(__name__)
+        self._prepared = False
 
     async def generate(self, prompt: str, **kwargs) -> Sequence[Experience]:
         """Generate a responses from a prompt in async."""
@@ -54,8 +56,27 @@ class InferenceModel(ABC):
         """Prepare the model before inference."""
         pass
 
+    async def ready(self) -> bool:
+        """Check if the model is ready for inference."""
+        return self._prepared
+
+    async def init_process_group(
+        self,
+        master_address: str,
+        master_port: int,
+        rank_offset: int,
+        world_size: int,
+        group_name: str,
+        explorer_name: str,
+        backend: str = "nccl",
+        timeout: int = 1200,
+        state_dict_meta: Optional[List] = None,
+    ):
+        """Initialize the process group for model weight synchronization."""
+        pass
+
     @abstractmethod
-    async def sync_model(
+    async def sync_model_weights(
         self, model_version: int, method: SyncMethod, timeout: float = 1200
     ) -> int:
         """Sync the model with the latest model_version."""
@@ -271,7 +292,8 @@ class ModelWrapper:
 
     def __init__(
         self,
-        model: InferenceModel,
+        model: Optional[ActorHandle[InferenceModel]] = None,
+        models: Optional[List[ActorHandle[InferenceModelConfig]]] = None,
         enable_lora: bool = False,
         enable_history: bool = False,
     ):
@@ -282,7 +304,14 @@ class ModelWrapper:
             enable_lora (bool): Whether to enable LoRA. Default to False.
             enable_history (bool): Whether to enable history recording. Default to False.
         """
-        self.model = model
+        if model is None and models is None:
+            raise ValueError("Either model or models must be provided.")
+        if model is not None:
+            self.model = model
+            self.models = [model]
+        elif models is not None:
+            self.model = models[0]
+            self.models = models
         self.config: InferenceModelConfig = None  # init during prepare
         self._model_name: str = None
         self.api_address: str = None
@@ -458,6 +487,9 @@ class ModelWrapper:
         """Get the generation kwargs for openai client."""
         return self._generate_kwargs
 
+    async def get_available_address_async(self, random_port: bool = False) -> Tuple[str, int]:
+        return await self.model.get_available_address.remote(random_port=random_port)
+
     def get_lora_request(self) -> Any:
         if self.enable_lora:
             return ray.get(self.model.get_lora_request.remote())
@@ -609,9 +641,45 @@ class ModelWrapper:
             data = response.json()
             return data["server_load"]
 
-    async def sync_model_weights(self, model_version: int, method: SyncMethod) -> None:
+    async def init_process_group(
+        self,
+        master_address: str,
+        master_port: int,
+        rank_offset: int,
+        world_size: int,
+        group_name: str,
+        explorer_name: str,
+        timeout: int = 1200,
+        state_dict_meta: Optional[List] = None,
+    ):
+        """Initialize the process group for model weight synchronization."""
+        asyncio.gather(
+            *[
+                model.init_process_group.remote(
+                    master_address=master_address,
+                    master_port=master_port,
+                    rank_offset=rank_offset,
+                    world_size=world_size,
+                    group_name=group_name,
+                    explorer_name=explorer_name,
+                    backend="nccl",
+                    timeout=timeout,
+                    state_dict_meta=state_dict_meta,
+                )
+                for model in self.models
+            ]
+        )
+
+    async def sync_model_weights(
+        self, model_version: int, method: SyncMethod, timeout: int = 1200
+    ) -> None:
         """Sync the model weights"""
-        await self.model.sync_model.remote(model_version, method)
+        asyncio.gather(
+            *[
+                model.sync_model.remote(model_version, method, timeout=timeout)
+                for model in self.models
+            ]
+        )
 
     def extract_experience_from_history(self, clear_history: bool = True) -> List[Experience]:
         """Extract experiences from the history."""
