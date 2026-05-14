@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from logging import Logger
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Coroutine, Dict, List, Optional
 
 import uvicorn
+from fastapi import FastAPI, Response
 from fastapi.dependencies.utils import (
     _should_embed_body_fields,
     get_body_field,
@@ -37,6 +39,7 @@ from trinity.common.models.sglang_patch.openai_api_patch import (
     ChatCompletionResponseChoice as PatchedChatCompletionResponseChoice,
 )
 from trinity.common.models.sglang_patch.openai_api_patch import PatchedOpenAIServingChat
+from trinity.utils.distributed import get_endpoint
 
 
 def _refresh_chat_completion_routes() -> None:
@@ -77,6 +80,114 @@ def _apply_openai_api_monkey_patch() -> None:
     http_server_module.OpenAIServingChat = PatchedOpenAIServingChat
 
     _refresh_chat_completion_routes()
+
+
+def _create_cleanup(
+    server_args: ServerArgs,
+    tokenizer_manager,
+    subprocess_watchdog: Optional[SubprocessWatchdog],
+    logger: Logger,
+) -> Callable[[], Coroutine[None, None, None]]:
+    cleaned_up = False
+
+    async def cleanup() -> None:
+        nonlocal cleaned_up
+        if cleaned_up:
+            return
+        cleaned_up = True
+
+        if subprocess_watchdog is not None:
+            subprocess_watchdog.stop()
+            for process in getattr(subprocess_watchdog, "_processes", []):
+                if process is None or process.pid is None:
+                    continue
+                try:
+                    kill_process_tree(process.pid, wait_timeout=60)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to terminate SGLang child process %s: %s",
+                        process.pid,
+                        exc,
+                    )
+        elif server_args.node_rank > 0:
+            kill_process_tree(os.getpid(), include_parent=False, wait_timeout=60)
+
+        if tokenizer_manager is not None and hasattr(tokenizer_manager, "_subprocess_watchdog"):
+            tokenizer_manager._subprocess_watchdog = None
+
+        import sglang.srt.entrypoints.http_server as http_server_module
+
+        http_server_module._global_state = None
+
+    return cleanup
+
+
+def _create_server_task(
+    server: uvicorn.Server,
+    cleanup: Callable[[], Coroutine[None, None, None]],
+    logger: Logger,
+) -> "asyncio.Task[None]":
+    task = asyncio.create_task(server.serve())
+
+    def _cleanup_task(task: "asyncio.Task[None]") -> None:
+        if task.cancelled():
+            asyncio.create_task(cleanup())
+            return
+        if task.exception() is not None:
+            logger.warning("Embedded SGLang HTTP server exited with error: %s", task.exception())
+        asyncio.create_task(cleanup())
+
+    task.add_done_callback(_cleanup_task)
+    return task
+
+
+def _run_dummy_health_server(
+    server_args: ServerArgs,
+    subprocess_watchdog: Optional[SubprocessWatchdog],
+    logger: Logger,
+) -> "asyncio.Task[None]":
+    dummy_app = FastAPI()
+
+    @dummy_app.get("/ping")
+    async def ping() -> Response:
+        return Response(status_code=200)
+
+    @dummy_app.get("/health")
+    async def health() -> Response:
+        return Response(status_code=200)
+
+    @dummy_app.get("/health_generate")
+    async def health_generate() -> Response:
+        return Response(status_code=200)
+
+    if server_args.enable_metrics:
+        from sglang.srt.utils.common import add_prometheus_middleware, enable_func_timer
+
+        add_prometheus_middleware(dummy_app)
+        enable_func_timer()
+
+    set_uvicorn_logging_configs(server_args)
+    server = uvicorn.Server(
+        uvicorn.Config(
+            dummy_app,
+            host=server_args.host,
+            port=server_args.port,
+            timeout_keep_alive=5,
+            loop="auto",
+            log_level=server_args.log_level_http or server_args.log_level,
+        )
+    )
+    logger.info(
+        "Starting SGLang worker health server on %s:%s for node_rank=%s.",
+        server_args.host,
+        server_args.port,
+        server_args.node_rank,
+    )
+    return _create_server_task(
+        server,
+        _create_cleanup(server_args, None, subprocess_watchdog, logger),
+        logger,
+    )
 
 
 def _setup_and_run_http_server(  # noqa: C901
@@ -134,47 +245,11 @@ def _setup_and_run_http_server(  # noqa: C901
             server_args.ssl_certfile,
             server_args.ssl_keyfile,
         )
-
-    cleaned_up = False
-
-    async def cleanup() -> None:
-        nonlocal cleaned_up
-        if cleaned_up:
-            return
-        cleaned_up = True
-
-        if subprocess_watchdog is not None:
-            subprocess_watchdog.stop()
-            for process in getattr(subprocess_watchdog, "_processes", []):
-                if process is None or process.pid is None:
-                    continue
-                try:
-                    kill_process_tree(process.pid, wait_timeout=60)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to terminate SGLang child process %s: %s",
-                        process.pid,
-                        exc,
-                    )
-        if tokenizer_manager is not None and hasattr(tokenizer_manager, "_subprocess_watchdog"):
-            tokenizer_manager._subprocess_watchdog = None
-
-        import sglang.srt.entrypoints.http_server as http_server_module
-
-        http_server_module._global_state = None
-
-    task = asyncio.create_task(server.serve())
-
-    def _cleanup_task(task: "asyncio.Task[None]") -> None:
-        if task.cancelled():
-            asyncio.create_task(cleanup())
-            return
-        if task.exception() is not None:
-            logger.warning("Embedded SGLang HTTP server exited with error: %s", task.exception())
-        asyncio.create_task(cleanup())
-
-    task.add_done_callback(_cleanup_task)
-    return task
+    return _create_server_task(
+        server,
+        _create_cleanup(server_args, tokenizer_manager, subprocess_watchdog, logger),
+        logger,
+    )
 
 
 def get_api_server(
@@ -189,12 +264,17 @@ def get_api_server(
     context_length: Optional[int],
     enable_multimodal: bool,
     api_key: str,
+    nnodes: int,
+    node_rank: int,
+    master_addr: Optional[str],
+    master_port: Optional[int],
     logger: Logger,
 ) -> "asyncio.Task[None]":
     _apply_openai_api_monkey_patch()
 
-    # TODO: fill in nnodes and node_rank for distributed setups
-    # TODO: fix chat template
+    if model_path is None:
+        raise ValueError("model_path must be provided when launching the SGLang API server.")
+
     server_args = ServerArgs(
         host=host,
         port=port,
@@ -209,8 +289,15 @@ def get_api_server(
         skip_server_warmup=True,
         disable_piecewise_cuda_graph=True,
         api_key=api_key,
+        nnodes=nnodes,
+        node_rank=node_rank,
+        dist_init_addr=(
+            get_endpoint(master_addr, master_port) if master_addr and master_port else None
+        ),
         device="cuda",
     )
+
+    os.environ["SGLANG_BLOCK_NONZERO_RANK_CHILDREN"] = "0"
 
     (
         tokenizer_manager,
@@ -224,6 +311,13 @@ def get_api_server(
         run_scheduler_process_func=Engine.run_scheduler_process_func,
         run_detokenizer_process_func=Engine.run_detokenizer_process_func,
     )
+
+    if server_args.node_rank > 0:
+        return _run_dummy_health_server(
+            server_args=server_args,
+            subprocess_watchdog=subprocess_watchdog,
+            logger=logger,
+        )
 
     config = uvicorn.Config(
         app,
