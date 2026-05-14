@@ -759,8 +759,14 @@
 
 <dl class="py method">
 <dt class="sig sig-object py" id="trinity.common.models.model.InferenceModel.get_available_address">
-<span class="sig-name descname"><span class="pre">get_available_address</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/trinity/common/models/model.html#InferenceModel.get_available_address"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#trinity.common.models.model.InferenceModel.get_available_address" title="Link to this definition">#</a></dt>
-<dd><p>Get the address of the actor.</p>
+<span class="sig-name descname"><span class="pre">get_available_address</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">random_port</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/trinity/common/models/model.html#InferenceModel.get_available_address"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#trinity.common.models.model.InferenceModel.get_available_address" title="Link to this definition">#</a></dt>
+<dd><p>Get an available address on the current actor node.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>random_port</strong> – Whether to skip the configured <code class="docutils literal notranslate"><span class="pre">base_port</span></code> convention and
+allocate an ephemeral port on the current node directly.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">

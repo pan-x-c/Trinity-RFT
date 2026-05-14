@@ -1305,14 +1305,14 @@ window.runMermaid = runMermaid;</script>
     <span class="kn">from</span><span class="w"> </span><span class="nn">trinity.common.models.sglang_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">SGLangRolloutModel</span>
 
     <span class="n">models</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">engine_pg</span> <span class="o">=</span> <span class="n">placement_group</span><span class="p">(</span>
+        <span class="p">[{</span><span class="s2">&quot;GPU&quot;</span><span class="p">:</span> <span class="n">config</span><span class="o">.</span><span class="n">tensor_parallel_size</span><span class="p">}</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">engine_num</span><span class="p">)],</span>
+        <span class="n">strategy</span><span class="o">=</span><span class="s2">&quot;PACK&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ray</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">engine_pg</span><span class="o">.</span><span class="n">ready</span><span class="p">())</span>
     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">engine_num</span><span class="p">):</span>
         <span class="n">model_config</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
         <span class="n">model_config</span><span class="o">.</span><span class="n">engine_id</span> <span class="o">=</span> <span class="n">i</span>
-        <span class="n">engine_pg</span> <span class="o">=</span> <span class="n">placement_group</span><span class="p">(</span>
-            <span class="p">[{</span><span class="s2">&quot;GPU&quot;</span><span class="p">:</span> <span class="n">model_config</span><span class="o">.</span><span class="n">tensor_parallel_size</span><span class="p">}],</span>
-            <span class="n">strategy</span><span class="o">=</span><span class="s2">&quot;PACK&quot;</span><span class="p">,</span>
-        <span class="p">)</span>
-        <span class="n">ray</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">engine_pg</span><span class="o">.</span><span class="n">ready</span><span class="p">())</span>
         <span class="n">models</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
             <span class="n">ray</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span><span class="n">SGLangRolloutModel</span><span class="p">)</span>
             <span class="o">.</span><span class="n">options</span><span class="p">(</span>
@@ -1323,7 +1323,7 @@ window.runMermaid = runMermaid;</script>
                 <span class="n">scheduling_strategy</span><span class="o">=</span><span class="n">PlacementGroupSchedulingStrategy</span><span class="p">(</span>
                     <span class="n">placement_group</span><span class="o">=</span><span class="n">engine_pg</span><span class="p">,</span>
                     <span class="n">placement_group_capture_child_tasks</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-                    <span class="n">placement_group_bundle_index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                    <span class="n">placement_group_bundle_index</span><span class="o">=</span><span class="n">i</span><span class="p">,</span>
                 <span class="p">),</span>
             <span class="p">)</span>
             <span class="o">.</span><span class="n">remote</span><span class="p">(</span>
