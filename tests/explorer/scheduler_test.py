@@ -1072,6 +1072,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         await scheduler.stop()
 
     async def test_over_rollout_sync_cancel_does_not_imply_immediate_runner_reuse(self):
+        self.config.mode = "explore"
         self.config.explorer.over_rollout.ratio = 0.5
         self.config.explorer.over_rollout.wait_after_min = 0.5
         self.config.explorer.over_rollout.return_partial_tasks = True
