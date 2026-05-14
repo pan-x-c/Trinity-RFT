@@ -1,7 +1,5 @@
 """Launch the trainer"""
-import asyncio
 import os
-import sys
 import time
 import traceback
 from dataclasses import dataclass
