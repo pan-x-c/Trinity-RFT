@@ -1,6 +1,7 @@
 import asyncio
 import os
 import unittest
+from copy import deepcopy
 from typing import cast
 
 import ray
@@ -41,9 +42,11 @@ async def create_test_models(config: Config):
 
 
 def clone_wrapper(wrapper: ModelWrapper, enable_history: bool) -> ModelWrapper:
+    config = deepcopy(wrapper.config)
+    config.enable_history = enable_history
     return ModelWrapper(
         models=cast(list, wrapper.models),
-        config=wrapper.config,
+        config=config,
         api_address=wrapper.api_address,
     )
 
@@ -424,6 +427,7 @@ class TestAPIServer(VLLMTestBase):
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.explorer.rollout_model.enable_auto_tool_choice = True
         self.config.explorer.rollout_model.tool_call_parser = "qwen3_coder"
+        self.config.explorer.rollout_model.enable_history = True
 
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = await create_test_models(self.config)

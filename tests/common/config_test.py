@@ -149,17 +149,17 @@ class TestConfig(unittest.TestCase):
         ):
             config.check_and_update()
 
-    def test_multinode_inference_is_rejected_for_non_vllm_engines(self):
+    def test_multinode_inference_is_rejected_for_non_vllm_sglang_engines(self):
         config = get_template_config()
         config.mode = "explore"
         config.cluster.node_num = 2
         config.cluster.gpu_per_node = 4
-        config.explorer.rollout_model.engine_type = "sglang"
+        config.explorer.rollout_model.engine_type = "tinker"
         config.explorer.rollout_model.engine_num = 1
         config.explorer.rollout_model.tensor_parallel_size = 4
         config.explorer.rollout_model.nnodes = 2
 
-        with self.assertRaisesRegex(ValueError, "only supported for vLLM"):
+        with self.assertRaisesRegex(ValueError, "only supported for"):
             config.check_and_update()
 
     def test_load_default_config(self):
