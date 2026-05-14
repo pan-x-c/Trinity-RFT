@@ -627,75 +627,6 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
         await scheduler.stop()
 
-    async def test_wait_all(self):
-        """Test wait all"""
-        scheduler = create_scheduler(self.config)
-        await scheduler.start()
-
-        tasks1 = generate_tasks(4)
-        tasks2 = generate_tasks(3)
-        scheduler.schedule(tasks1, batch_id=0)
-        scheduler.schedule(tasks2, batch_id=1)
-
-        start_time = time.time()
-        await scheduler.wait_all(timeout=10.0)
-        end_time = time.time()
-
-        self.assertLess(end_time - start_time, 5.0)
-
-        self.assertEqual(len(scheduler.pending_tasks), 0)
-        self.assertEqual(len(scheduler.running_tasks), 0)
-
-        status0, exps0 = await collect_results(scheduler, batch_id=0, min_num=4, timeout=1)
-        status1, exps1 = await collect_results(scheduler, batch_id=1, min_num=3, timeout=1)
-        self.assertEqual(len(status0), 4)
-        self.assertEqual(len(status1), 3)
-
-        # test timeout
-        tasks = generate_tasks(2, timeout_num=2, timeout_seconds=10)
-        scheduler.schedule(tasks, batch_id=0)
-
-        start_time = time.time()
-        with self.assertRaises(TimeoutError):
-            await scheduler.wait_all(timeout=3.0)
-        end_time = time.time()
-
-        self.assertGreaterEqual(end_time - start_time, 2.8)
-        self.assertLessEqual(end_time - start_time, 4.0)
-
-        # test empty scenario
-
-        start_time = time.time()
-        await scheduler.wait_all(timeout=5.0)
-        end_time = time.time()
-
-        self.assertLess(end_time - start_time, 1.0)
-        await scheduler.stop()
-
-    async def test_wait_all_timeout_with_multi_batch(self):
-        self.config.explorer.max_timeout = 5
-        self.config.explorer.rollout_model.engine_num = 4
-        self.config.explorer.runner_per_model = 1
-
-        scheduler = create_scheduler(self.config)
-        await scheduler.start()
-
-        tasks = generate_tasks(1, timeout_num=3, timeout_seconds=3)
-        scheduler.schedule(tasks, batch_id=0)
-        tasks = generate_tasks(2, timeout_num=2, timeout_seconds=3)
-        scheduler.schedule(tasks, batch_id=1)
-        tasks = generate_tasks(3, timeout_num=1, timeout_seconds=3)
-        scheduler.schedule(tasks, batch_id=2)
-        start_time = time.time()
-        await scheduler.wait_all()
-        end_time = time.time()
-        self.assertTrue(
-            end_time - start_time > 9,
-            f"wait time should be greater than 9, but got {end_time - start_time}",
-        )
-
-        await scheduler.stop()
-
     async def test_concurrent_operations(self):
         scheduler = create_scheduler(self.config)
         await scheduler.start()
@@ -736,43 +667,6 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         results, exps = await collect_results(scheduler, batch_id=1, min_num=3, timeout=10)
         self.assertEqual(len(results), 3)
         self.assertEqual(len(exps), 3 * 2)
-        await scheduler.stop()
-
-    async def test_scheduler_all_methods(self):
-        scheduler = create_scheduler(self.config)
-        await scheduler.start()
-        tasks = generate_tasks(8)
-        scheduler.schedule(tasks, batch_id=0)
-        self.assertTrue(scheduler.has_step(0))
-        statuses, exps = await collect_results(scheduler, batch_id=0, min_num=8, timeout=20)
-        self.assertEqual(len(statuses), 8)
-        self.assertEqual(len(exps), 8)
-        scheduler.schedule(tasks, batch_id=1)
-        scheduler.schedule(tasks[:4], batch_id=2)
-        self.assertFalse(scheduler.has_step(0))
-        statuses, exps = await collect_results(scheduler, batch_id=0, min_num=8)
-        self.assertFalse(scheduler.has_step(0))
-        self.assertEqual(len(statuses), 0)  # batch_id 0 has no more tasks
-        self.assertEqual(len(exps), 0)
-        self.assertFalse(scheduler.has_step(0))
-        self.assertTrue(scheduler.has_step(1))
-        self.assertTrue(scheduler.has_step(2))
-        await scheduler.wait_all()
-        st = time.time()
-        statuses, exps = await collect_results(scheduler, batch_id=1)
-        et = time.time()
-        self.assertTrue(et - st < 1.0)
-        self.assertEqual(len(statuses), 8)
-        self.assertEqual(len(exps), 8)
-        self.assertFalse(scheduler.has_step(1))
-        self.assertTrue(scheduler.has_step(2))
-        st = time.time()
-        statuses, exps = await collect_results(scheduler, batch_id=2)
-        et = time.time()
-        self.assertTrue(et - st < 1.0)
-        self.assertEqual(len(statuses), 4)
-        self.assertEqual(len(exps), 4)
-        self.assertFalse(scheduler.has_step(2))
         await scheduler.stop()
 
     async def test_split_tasks(self):
@@ -1183,6 +1077,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.config.explorer.over_rollout.return_partial_tasks = True
         self.config.explorer.max_repeat_times_per_runner = 2
         self.config.explorer.runner_per_model = 1
+        self.config.explorer.rollout_model.engine_num = 1
         self.config.synchronizer.sync_style = SyncStyle.EXPLORER_DRIVEN
         self.config.buffer.batch_size = 2
         self.config.check_and_update()

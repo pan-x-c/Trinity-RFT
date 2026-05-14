@@ -150,8 +150,7 @@ class Allocator:
         actor_name = self.get_actor_name(role, engine_id, 0)
         try:
             model_actor = ray.get_actor(actor_name, namespace=config.ray_namespace)
-            api_address = ray.get(model_actor.get_api_server_url.remote())
-            return ModelWrapper(model=model_actor, config=config, api_address=api_address)
+            return ModelWrapper(model=model_actor, config=config)
         except ValueError:
             self.logger.error("Actor %s not found. Make sure the model is created.", actor_name)
             raise

@@ -482,6 +482,7 @@ class MultiTurnWorkflowTest(unittest.IsolatedAsyncioTestCase):
         allocator = Allocator(self.config.explorer)
         rollout_model, _ = await allocator.create_all_models()
         self.model_wrapper = rollout_model[0]
+        await self.model_wrapper.prepare()
 
     async def test_multi_turn_workflow(self):
         task = Task(
@@ -602,6 +603,9 @@ class DummyModelWrapper:
     def __init__(self, model, **kwargs):
         pass
 
+    async def prepare(self):
+        return
+
     def get_openai_client(self):
         return openai.OpenAI(api_key="EMPTY")
 
@@ -694,6 +698,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 auxiliary_model_ids=[0, 1],
                 runner_id=0,
             )
+            await runner.prepare()
             task = Task(
                 workflow=DummyWorkflow,
                 repeat_times=3,
@@ -744,6 +749,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 rollout_model_id=0,
                 runner_id=0,
             )
+            await runner.prepare()
             PartialFailureWorkflow.reset_call_count()
             task = Task(
                 workflow=PartialFailureWorkflow,
@@ -799,6 +805,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 repeat_times=3,
                 raw_task={"fail_call_ids": []},
             )
+            await runner.prepare()
 
             async def mock_execute_single_run(
                 workflow: Workflow,
@@ -871,6 +878,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 rollout_model_id=0,
                 runner_id=1,
             )
+            await runner.prepare()
         task = Task(
             workflow=StateRecordingWorkflow,
             raw_task={},
@@ -915,6 +923,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
             rollout_model_id=0,
             runner_id=0,
         )
+        await runner.prepare()
         tasks = [
             Task(
                 workflow=APIWorkflow,
@@ -1046,7 +1055,11 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
                 runner_id=2,
             )
         )
-
+        await asyncio.gather(
+            sequential_runner.prepare.remote(),
+            async_runner.prepare.remote(),
+            thread_runner.prepare.remote(),
+        )
         task = Task(
             workflow=ConcurrentTestWorkflow,
             repeat_times=4,

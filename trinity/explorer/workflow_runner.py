@@ -109,6 +109,14 @@ class WorkflowRunner:
             f"  > auxiliary models: {[aux_model_config.model_path for aux_model_config in self.config.explorer.auxiliary_models]}"
         )
 
+    async def prepare(self) -> None:
+        """Prepare the runner."""
+        await asyncio.gather(
+            self.model_wrapper.prepare(),
+            *(aux_model.prepare() for aux_model in self.auxiliary_model_wrappers),
+        )
+        self.logger.info(f"WorkflowRunner [{self.name}] is prepared and ready to run tasks.")
+
     def is_alive(self):
         return True
 

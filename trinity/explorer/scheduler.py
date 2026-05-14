@@ -191,6 +191,9 @@ class RunnerWrapper:
         self.state = await self.runner.get_runner_state.remote()
         self.state["running_time"] = time.time() - self.state.get("begin_time", time.time())
 
+    async def prepare(self):
+        await self.runner.prepare.remote()
+
     async def run_with_retry(
         self,
         task: TaskWrapper,
@@ -285,6 +288,7 @@ class RunnerWrapper:
     async def restart_runner(self):
         old_runner = self.runner
         self.runner = self._create_runner()
+        await self.runner.prepare.remote()
         try:
             ray.kill(old_runner)
         except Exception:
@@ -371,6 +375,7 @@ class Scheduler:
             ],
             config=self.config,
         )
+        await runner.prepare()
         self.runners[runner_id] = runner
         self.idle_runners.add(runner_id)
 
@@ -863,51 +868,6 @@ class Scheduler:
             or batch_id in self.pending_tasks
             or batch_id in self.running_tasks
         )
-
-    async def wait_all(
-        self, timeout: Optional[float] = None, clear_timeout_tasks: bool = True
-    ) -> None:
-        """Wait for all tasks to complete without poping results. If timeout reached, raise TimeoutError.
-
-        Args:
-            timeout (`float`): timeout in seconds. Raise `TimeoutError` when no new tasks is completed within timeout.
-            clear_timeout_tasks (`bool`): Whether to clear timeout tasks.
-        """
-        timeout = timeout or self.default_timeout
-        start_time = time.time()
-
-        self.logger.debug("Waiting for all tasks to complete...")
-        last_completed_count = 0
-        while time.time() - start_time < timeout:
-            has_pending = bool(self.pending_tasks)
-            has_running = bool(self.running_tasks)
-
-            if not has_pending and not has_running:
-                self.logger.debug("All tasks completed successfully")
-                return
-
-            completed_count = sum(len(tasks) for tasks in self.completed_tasks.values())
-            if completed_count != last_completed_count:
-                # flush timeout when new tasks are completed
-                start_time = time.time()
-                last_completed_count = completed_count
-
-            await asyncio.sleep(0.1)
-
-        pending_count = sum(len(tasks) for tasks in self.pending_tasks.values())
-        running_count = sum(len(futures) for futures in self.running_tasks.values())
-        error_msg = f"Timeout after {timeout} seconds. Still have {pending_count} pending tasks and {running_count} running tasks."
-        self.logger.error(error_msg)
-
-        if clear_timeout_tasks:
-            batch_ids_to_abort = self.pending_tasks.keys() | self.running_tasks.keys()
-            for batch_id in batch_ids_to_abort:
-                self._clear_timeout_tasks(batch_id)
-            asyncio.gather(
-                *[self._restart_runner(runner_id) for runner_id in self.busy_runners.keys()]
-            )
-
-        raise TimeoutError(error_msg)
 
     def get_key_state(self, key: str) -> Dict:
         """Get the scheduler state.

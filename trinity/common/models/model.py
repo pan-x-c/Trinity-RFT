@@ -351,6 +351,36 @@ class ModelWrapper:
         self.request_count = 0
         self.state_lock = asyncio.Lock()
 
+    async def prepare(self) -> None:
+        """Prepare some necessary information for the model before inference."""
+        if not self.config.enable_openai_api:
+            return
+        if self.api_address is None:
+            if self.model is None:
+                raise ValueError("Cannot get API address from the model.")
+            self.api_address = await self.model.get_api_server_url.remote()
+            if self.api_address is None:
+                raise ValueError(
+                    "Cannot get API address from the model. API server might not be enabled for this model."
+                )
+
+        if self.config.engine_type in {"tinker", "external"}:
+            return
+        max_retries = 30
+        interval = 2  # seconds
+        for i in range(max_retries):
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(self.api_address + "/health", timeout=5)
+                    if response.status_code == 200:
+                        return
+            except Exception as e:
+                self.logger.info(f"API server not ready (attempt {i + 1}/{max_retries}): {e}")
+            await asyncio.sleep(interval)
+        raise RuntimeError(
+            f"API server at {self.api_address} not ready after {max_retries} attempts."
+        )
+
     def _record_history(self, exps: Union[Experience, List[Experience]]) -> None:
         """Record experiences to history."""
         if isinstance(exps, Experience):

@@ -1,3 +1,4 @@
+import asyncio
 import multiprocessing
 import os
 import shutil
@@ -16,6 +17,7 @@ from tests.tools import (
     get_unittest_dataset_config,
 )
 from trinity.cli import launcher
+from trinity.cli.debug import get_debug_models
 from trinity.common.config import (
     AlgorithmConfig,
     BufferConfig,
@@ -27,12 +29,11 @@ from trinity.common.constants import (
     LOG_LEVEL_ENV_VAR,
     LOG_NODE_IP_ENV_VAR,
 )
-from trinity.common.models import get_debug_explorer_model
 
 runner = TyperCliRunner()
 
 
-class TestLauncherMain(unittest.TestCase):
+class TestLauncherMain(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         if multiprocessing.get_start_method(allow_none=True) != "spawn":
             multiprocessing.set_start_method("spawn", force=True)
@@ -267,17 +268,17 @@ class TestLauncherMain(unittest.TestCase):
             )
 
     @mock.patch("trinity.cli.launcher.load_config")
-    def test_debug_mode(self, mock_load):
+    async def test_debug_mode(self, mock_load):
         process = multiprocessing.Process(target=debug_inference_model_process)
         try:
             process.start()
             time.sleep(15)  # wait for the model to be created
             for _ in range(10):
                 try:
-                    get_debug_explorer_model(self.config)
+                    await get_debug_models(self.config)
                     break
                 except Exception:
-                    time.sleep(3)
+                    await asyncio.sleep(3)
             output_file = os.path.join(self.config.checkpoint_job_dir, "debug.html")
             output_dir = os.path.join(self.config.checkpoint_job_dir, "debug_output")
             self.config.buffer.explorer_input.tasksets = [get_unittest_dataset_config("gsm8k")]

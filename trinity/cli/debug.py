@@ -47,6 +47,10 @@ async def get_debug_models(config: Config) -> Tuple[ModelWrapper, List[ModelWrap
         allocator.get_model(auxiliary_model_config, f"auxiliary_{index}", 0)
         for index, auxiliary_model_config in enumerate(config.explorer.auxiliary_models)
     ]
+    await asyncio.gather(
+        rollout_model.prepare(),
+        *[auxiliary_model.prepare() for auxiliary_model in auxiliary_models],
+    )
     return rollout_model, auxiliary_models
 
 
