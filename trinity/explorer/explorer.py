@@ -92,9 +92,26 @@ class Explorer:
         self.explore_start_time = None
         self.logger.info("Finished initializing Explorer.")
 
+    async def _wait_for_models_ready(self) -> None:
+        """Wait until rollout models are created before using them."""
+        if self.models:
+            return
+
+        timeout = max(self.config.synchronizer.sync_timeout, 1)
+        deadline = time.monotonic() + timeout
+        self.logger.info("Waiting for rollout models to finish initialization.")
+        while not self.models:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    "Timed out waiting for rollout models before initializing the weight sync group."
+                )
+            await asyncio.sleep(0.1)
+        self.logger.info("Rollout models are ready. Continue weight sync initialization.")
+
     async def setup_weight_sync_group(
         self, master_address: str, master_port: int, state_dict_meta: List = None
     ):
+        await self._wait_for_models_ready()
         base_offset = 1 if self.use_nccl_sync else 0
         world_size = (
             len(self.models) * self.config.explorer.rollout_model.tensor_parallel_size + base_offset
@@ -104,7 +121,7 @@ class Explorer:
             f"master_address={master_address}, master_port={master_port}, "
             f"world_size={world_size}, rank_offset={base_offset}"
         )
-        # TODO: save state_dict in models
+
         refs = [
             model.init_process_group(
                 master_address=master_address,
@@ -123,6 +140,7 @@ class Explorer:
 
     async def setup_model_level_weight_sync_group(self):
         """Setup process group for each model, only used in serve mode."""
+        await self._wait_for_models_ready()
         refs = []
         world_size = self.config.explorer.rollout_model.tensor_parallel_size
         for model in self.models:
@@ -232,6 +250,7 @@ class Explorer:
                 await self.eval()
 
             await self.synchronizer.set_explorer_status.remote(RunningStatus.RUNNING)
+            self.logger.info("Explorer is ready.")
         except Exception as e:
             self.logger.error(f"Error during explorer preparation: {traceback.format_exc()}")
             await self.shutdown()

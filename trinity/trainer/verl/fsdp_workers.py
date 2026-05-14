@@ -851,6 +851,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                     world_size=world_size,
                     rank=0,
                 )
+                self.logger.info("Trainer init_process_group done, wait for explorer confirmation.")
                 ray.get(setup_ref)
                 self.logger.info("Trainer explorer setup confirmation received.")
 

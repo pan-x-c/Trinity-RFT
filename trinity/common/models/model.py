@@ -698,7 +698,7 @@ class ModelWrapper:
         self, model_version: int, method: SyncMethod, timeout: int = 1200
     ) -> None:
         """Sync the model weights"""
-        await self.model.sync_model.remote(model_version, method, timeout=timeout)
+        await self.model.sync_model_weights.remote(model_version, method, timeout=timeout)
 
     def extract_experience_from_history(self, clear_history: bool = True) -> List[Experience]:
         """Extract experiences from the history."""

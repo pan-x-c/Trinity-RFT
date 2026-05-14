@@ -40,10 +40,6 @@ class vLLMRolloutModel(BaseInferenceModel):
         import vllm
         from vllm.sampling_params import RequestOutputKind
 
-        self.logger.info(
-            "CUDA_VISIBLE_DEVICES: " + os.environ.get("CUDA_VISIBLE_DEVICES", "Not Set")
-        )
-
         self.vllm_version = get_vllm_version()
         self.use_v1 = config.use_v1
         if config.tensor_parallel_size != 1:
@@ -528,6 +524,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         timeout: int = 1200,
         state_dict_meta: Optional[List] = None,
     ):
+        self.logger.info("init_process_group in vLLMRolloutModel is called.")
         return await self._collective_rpc(
             "init_process_group",
             args=(

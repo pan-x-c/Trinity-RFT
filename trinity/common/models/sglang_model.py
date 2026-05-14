@@ -469,10 +469,10 @@ class SGLangRolloutModel(BaseInferenceModel):
     ) -> int:
         assert (
             self.api_client is not None
-        ), "API client must be initialized before calling sync_model"
+        ), "API client must be initialized before calling sync_model_weights"
         assert (
             self.synchronizer is not None
-        ), "Synchronizer must be initialized before calling sync_model"
+        ), "Synchronizer must be initialized before calling sync_model_weights"
         self.logger.info(f"Synchronizing model to version {model_version} using method {method}...")
         if method == SyncMethod.NCCL:
             assert self.state_dict_meta, "state_dict_meta must be initialized for NCCL sync"
