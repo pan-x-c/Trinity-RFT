@@ -108,7 +108,7 @@ class ExperiencePipeline:
             self.auxiliary_model_wrappers[key] = []
             for engine_id in range(auxiliary_model_config.engine_num):
                 self.auxiliary_model_wrappers[key].append(
-                    allocator.get_model(auxiliary_model_config, f"auxiliary_{engine_id}", 0)
+                    allocator.get_model(auxiliary_model_config, f"auxiliary_{i}", engine_id)
                 )
 
         self.auxiliary_models = (

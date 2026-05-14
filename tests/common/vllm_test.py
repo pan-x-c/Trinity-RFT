@@ -813,6 +813,7 @@ class TestAsyncAPIServer(VLLMTestBase):
         self.config.explorer.rollout_model.tensor_parallel_size = 1
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.explorer.rollout_model.enable_history = True
 
         self.config.check_and_update()
 
@@ -1058,6 +1059,7 @@ class TestAPIServerToolCall(VLLMTestBase):
         self.config.explorer.rollout_model.tensor_parallel_size = 1
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.explorer.rollout_model.enable_history = True
         # added for toolcalls
         self.config.explorer.rollout_model.enable_auto_tool_choice = True
         self.config.explorer.rollout_model.tool_call_parser = "hermes"
