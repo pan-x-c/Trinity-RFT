@@ -369,7 +369,6 @@ async def _mock_allocator_create_all_models(self):
             actor_handle = actor_cls.options(
                 name=actor_name,
                 namespace=wrapper_config.ray_namespace,
-                lifetime="detached",
                 num_cpus=0,
             ).remote()
         await actor_handle.prepare.remote()
