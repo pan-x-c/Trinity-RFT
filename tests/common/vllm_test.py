@@ -102,7 +102,7 @@ class ModelWrapperTest(VLLMTestBase):
         self.model_wrapper = self.engines[0]
 
     async def test_generate(self):
-        self.assertEqual(self.model_wrapper.model_path, self.config.model.model_path)
+        self.assertEqual(self.model_wrapper.model_name, self.config.model.model_path)
         prompts = ["Hello, world!", "Hello, my name is"]
         n = self.config.algorithm.repeat_times
         if self.use_async:
@@ -210,6 +210,7 @@ class TestModelLen(VLLMTestBase):
         self.config.model.max_response_tokens = self.max_response_tokens
         self.config.model.enable_prompt_truncation = True
         self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.explorer.rollout_model.enable_history = True
         self.config.check_and_update()
 
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
@@ -309,6 +310,7 @@ class TestModelLenWithoutPromptTruncation(VLLMTestBase):
         self.config.model.max_response_tokens = None
         self.config.model.enable_prompt_truncation = False
         self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.explorer.rollout_model.enable_history = True
         self.config.check_and_update()
 
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
@@ -621,6 +623,7 @@ class TestLogprobs(VLLMTestBase):
         self.config.explorer.rollout_model.tensor_parallel_size = 1
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.explorer.rollout_model.enable_history = True
         self.config.explorer.rollout_model.enable_log_requests = True
 
         self.config.check_and_update()
