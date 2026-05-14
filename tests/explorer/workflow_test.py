@@ -519,7 +519,7 @@ class StateRecordingWorkflow(Workflow):
 class TestWorkflowStateRecording(unittest.IsolatedAsyncioTestCase):
     async def test_workflow_state_recording(self):
         model = MagicMock()
-        model_wrapper = ModelWrapper(model, config=InferenceModelConfig())
+        model_wrapper = ModelWrapper(model, config=InferenceModelConfig(model_path="dummy_model"))
 
         task = Task(
             workflow=StateRecordingWorkflow,
@@ -601,9 +601,6 @@ class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
 class DummyModelWrapper:
     def __init__(self, model, **kwargs):
         pass
-
-    async def prepare(self):
-        return None
 
     def get_openai_client(self):
         return openai.OpenAI(api_key="EMPTY")
@@ -697,8 +694,6 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 auxiliary_model_ids=[0, 1],
                 runner_id=0,
             )
-            await runner.prepare()
-
             task = Task(
                 workflow=DummyWorkflow,
                 repeat_times=3,
@@ -749,8 +744,6 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 rollout_model_id=0,
                 runner_id=0,
             )
-            await runner.prepare()
-
             PartialFailureWorkflow.reset_call_count()
             task = Task(
                 workflow=PartialFailureWorkflow,
@@ -801,8 +794,6 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 rollout_model_id=0,
                 runner_id=0,
             )
-            await runner.prepare()
-
             task = Task(
                 workflow=PartialFailureWorkflow,
                 repeat_times=3,
@@ -872,14 +863,14 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
         model.get_api_key.remote = MagicMock(side_effect=mock_get_api_key_remote)
         model.get_model_config.remote = MagicMock(side_effect=mock_get_model_config_remote)
 
-        with patch_runner_models(ModelWrapper(model, config=InferenceModelConfig())):
+        with patch_runner_models(
+            ModelWrapper(model, config=InferenceModelConfig(model_path="dummy_model"))
+        ):
             runner = WorkflowRunner(
                 config,
                 rollout_model_id=0,
                 runner_id=1,
             )
-        await runner.prepare()
-
         task = Task(
             workflow=StateRecordingWorkflow,
             raw_task={},
@@ -924,7 +915,6 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
             rollout_model_id=0,
             runner_id=0,
         )
-        await runner.prepare()
         tasks = [
             Task(
                 workflow=APIWorkflow,

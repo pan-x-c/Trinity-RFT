@@ -186,9 +186,6 @@ class RunnerWrapper:
             )
         )
 
-    async def prepare(self):
-        await self.runner.prepare.remote()
-
     async def update_state(self) -> None:
         """Get the runner state."""
         self.state = await self.runner.get_runner_state.remote()
@@ -375,7 +372,6 @@ class Scheduler:
             ],
             config=self.config,
         )
-        await runner.prepare()
         self.runners[runner_id] = runner
         self.idle_runners.add(runner_id)
 

@@ -50,8 +50,6 @@ class ExplorerService:
             return
 
         self.running = True
-        await asyncio.gather(*[model.prepare() for model in self.models])
-
         for i, _ in enumerate(self.models):
             self.running_model_ids.append(i)
 

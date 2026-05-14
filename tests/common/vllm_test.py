@@ -99,7 +99,6 @@ class ModelWrapperTest(VLLMTestBase):
         self.model_wrapper = self.engines[0]
 
     async def test_generate(self):
-        await self.model_wrapper.prepare()
         self.assertEqual(self.model_wrapper.model_path, self.config.model.model_path)
         prompts = ["Hello, world!", "Hello, my name is"]
         n = self.config.algorithm.repeat_times
@@ -215,7 +214,6 @@ class TestModelLen(VLLMTestBase):
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model.model_path)
 
     async def test_model_len(self):
-        await self.model_wrapper.prepare()
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "What's the weather like today?"},
@@ -278,8 +276,6 @@ class TestModelLen(VLLMTestBase):
 
         # test prompt truncation branch in generate
         if self.max_prompt_tokens == 5:
-            await self.model_wrapper.prepare()
-
             prompt = "This is a deliberately long prompt for truncation coverage."
             prompt_token_ids = self.tokenizer(prompt, truncation=False, return_tensors="pt")[
                 "input_ids"
@@ -316,7 +312,6 @@ class TestModelLenWithoutPromptTruncation(VLLMTestBase):
         self.model_wrapper = self.engines[0]
 
     async def test_model_len(self):
-        await self.model_wrapper.prepare()
         messages = [
             {"role": "user", "content": "How are you?"},
         ]
@@ -364,8 +359,6 @@ class TestMessageProcess(VLLMTestBase):
 
     async def test_truncation_status(self):
         """Test truncation status for multi-turn conversations."""
-        await self.model_wrapper.prepare()
-
         # Case: "prompt_truncated"
         messages = [
             {"role": "system", "content": "You are helpful."},
@@ -392,7 +385,6 @@ class TestMessageProcess(VLLMTestBase):
         """Test truncation status for multi-turn conversations in workflow."""
         self.config.model.enable_prompt_truncation = False
         self.config.check_and_update()
-        await self.model_wrapper.prepare()
 
         # Case: No truncation
         messages = [
@@ -439,8 +431,6 @@ class TestAPIServer(VLLMTestBase):
         self.model_wrapper_no_history = clone_wrapper(self.model_wrapper, enable_history=False)
 
     async def test_api(self):
-        await self.model_wrapper.prepare()
-        await self.model_wrapper_no_history.prepare()
         openai_client = self.model_wrapper.get_openai_client()
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -521,8 +511,6 @@ class TestAPIServer(VLLMTestBase):
         "Qwen3.5" not in os.getenv(MODEL_PATH_ENV_VAR, ""), "This test is only for Qwen3.5 series"
     )
     async def test_reasoning_content(self):
-        await self.model_wrapper.prepare()
-        await self.model_wrapper_no_history.prepare()
         openai_client = self.model_wrapper.get_openai_client()
         model_id = openai_client.models.list().data[0].id
         # test reasoning content
@@ -636,7 +624,6 @@ class TestLogprobs(VLLMTestBase):
         self.model_wrapper = self.engines[0]
 
     async def test_logprobs_api(self):
-        await self.model_wrapper.prepare()
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": USER_PROMPT},
@@ -831,8 +818,6 @@ class TestAsyncAPIServer(VLLMTestBase):
         self.model_wrapper_no_history = clone_wrapper(self.model_wrapper, enable_history=False)
 
     async def test_api_async(self):
-        await self.model_wrapper.prepare()
-        await self.model_wrapper_no_history.prepare()
         openai_client = self.model_wrapper.get_openai_async_client()
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -1087,8 +1072,6 @@ class TestAPIServerToolCall(VLLMTestBase):
         import json
         import time
 
-        await self.model_wrapper.prepare()
-        await self.model_wrapper_no_history.prepare()
         tokenizer = AutoTokenizer.from_pretrained(get_api_model_path())
         print_debug("\n\n" + "=" * 30 + " Running test_api_tool_calls " + "=" * 30)
         start_time = time.time()
