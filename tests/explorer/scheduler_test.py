@@ -291,15 +291,17 @@ class DummyModel(InferenceModel):
     def get_model_version(self):
         return 0
 
-    def init_process_group(
+    async def init_process_group(
         self,
         master_address: str,
         master_port: int,
         rank_offset: int,
         world_size: int,
         group_name: str,
+        explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
+        state_dict_meta: Optional[List] = None,
     ) -> None:
         pass
 
@@ -335,15 +337,17 @@ class DummyAuxiliaryModel(InferenceModel):
     def get_model_version(self):
         return 0
 
-    def init_process_group(
+    async def init_process_group(
         self,
         master_address: str,
         master_port: int,
         rank_offset: int,
         world_size: int,
         group_name: str,
+        explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
+        state_dict_meta: Optional[List] = None,
     ) -> None:
         pass
 

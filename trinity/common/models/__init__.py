@@ -2,13 +2,13 @@ import os
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import ray
 from ray.util.placement_group import placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-from trinity.common.config import Config, ExplorerConfig, InferenceModelConfig
+from trinity.common.config import ExplorerConfig, InferenceModelConfig
 from trinity.utils.log import get_logger
 
 
@@ -166,71 +166,71 @@ class Allocator:
         return bundle_list
 
 
-def create_explorer_models(
-    config: Config,
-) -> Tuple[List, List[List]]:
-    """Create rollout_models and auxiliary_models.
+# def create_explorer_models(
+#     config: Config,
+# ) -> Tuple[List, List[List]]:
+#     """Create rollout_models and auxiliary_models.
 
-    Args:
-        config: The trinity configuration.
-    Returns:
-        Tuple[List, List[List]]: The rollout_models and auxiliary_models.
-    """
-    rollout_engines = []
-    if config.explorer.rollout_model.engine_type.startswith("vllm"):
-        from trinity.common.models.vllm_model import vLLMRolloutModel
+#     Args:
+#         config: The trinity configuration.
+#     Returns:
+#         Tuple[List, List[List]]: The rollout_models and auxiliary_models.
+#     """
+#     rollout_engines = []
+#     if config.explorer.rollout_model.engine_type.startswith("vllm"):
+#         from trinity.common.models.vllm_model import vLLMRolloutModel
 
-        engine_cls = vLLMRolloutModel
-    elif config.explorer.rollout_model.engine_type == "sglang":
-        from trinity.common.models.sglang_model import SGLangRolloutModel
+#         engine_cls = vLLMRolloutModel
+#     elif config.explorer.rollout_model.engine_type == "sglang":
+#         from trinity.common.models.sglang_model import SGLangRolloutModel
 
-        engine_cls = SGLangRolloutModel
-    elif config.explorer.rollout_model.engine_type == "external":
-        rollout_engines = create_external_models(
-            config=config.explorer.rollout_model,
-            actor_name=f"{config.explorer.name}_rollout_model",
-        )
-        auxiliary_engines = []
-        for i, model_config in enumerate(config.explorer.auxiliary_models):
-            engines = create_external_models(
-                config=model_config,
-                actor_name=f"{config.explorer.name}_auxiliary_model_{model_config.name or i}",
-            )
-            auxiliary_engines.append(engines)
-        return rollout_engines, auxiliary_engines
-    elif config.explorer.rollout_model.engine_type == "tinker":
-        from trinity.common.models.tinker_model import TinkerModel
+#         engine_cls = SGLangRolloutModel
+#     elif config.explorer.rollout_model.engine_type == "external":
+#         rollout_engines = create_external_models(
+#             config=config.explorer.rollout_model,
+#             actor_name=f"{config.explorer.name}_rollout_model",
+#         )
+#         auxiliary_engines = []
+#         for i, model_config in enumerate(config.explorer.auxiliary_models):
+#             engines = create_external_models(
+#                 config=model_config,
+#                 actor_name=f"{config.explorer.name}_auxiliary_model_{model_config.name or i}",
+#             )
+#             auxiliary_engines.append(engines)
+#         return rollout_engines, auxiliary_engines
+#     elif config.explorer.rollout_model.engine_type == "tinker":
+#         from trinity.common.models.tinker_model import TinkerModel
 
-        engine_cls = TinkerModel
-        namespace = config.ray_namespace
-        rollout_engines = [
-            ray.remote(engine_cls)
-            .options(
-                name=f"{config.explorer.name}_rollout_model_{i}",
-                namespace=namespace,
-            )
-            .remote(
-                config=config.explorer.rollout_model,
-            )
-            for i in range(config.explorer.rollout_model.engine_num)
-        ]
-        auxiliary_engines = [
-            [
-                ray.remote(engine_cls)
-                .options(
-                    name=f"{config.explorer.name}_auxiliary_model_{model_config.name or i}_{j}",
-                    namespace=namespace,
-                )
-                .remote(
-                    config=config.explorer.auxiliary_models[i],
-                )
-                for j in range(model_config.engine_num)
-            ]
-            for i, model_config in enumerate(config.explorer.auxiliary_models)
-        ]
-        return rollout_engines, auxiliary_engines
-    else:
-        raise ValueError(f"Unknown engine type: {config.explorer.rollout_model.engine_type}")
+#         engine_cls = TinkerModel
+#         namespace = config.ray_namespace
+#         rollout_engines = [
+#             ray.remote(engine_cls)
+#             .options(
+#                 name=f"{config.explorer.name}_rollout_model_{i}",
+#                 namespace=namespace,
+#             )
+#             .remote(
+#                 config=config.explorer.rollout_model,
+#             )
+#             for i in range(config.explorer.rollout_model.engine_num)
+#         ]
+#         auxiliary_engines = [
+#             [
+#                 ray.remote(engine_cls)
+#                 .options(
+#                     name=f"{config.explorer.name}_auxiliary_model_{model_config.name or i}_{j}",
+#                     namespace=namespace,
+#                 )
+#                 .remote(
+#                     config=config.explorer.auxiliary_models[i],
+#                 )
+#                 for j in range(model_config.engine_num)
+#             ]
+#             for i, model_config in enumerate(config.explorer.auxiliary_models)
+#         ]
+#         return rollout_engines, auxiliary_engines
+#     else:
+#         raise ValueError(f"Unknown engine type: {config.explorer.rollout_model.engine_type}")
 
 
 def create_inference_models(

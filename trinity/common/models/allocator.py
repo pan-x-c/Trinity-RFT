@@ -4,7 +4,7 @@ import asyncio
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Type
+from typing import Dict, List, Tuple
 
 import ray
 from ray.util.placement_group import (
@@ -15,7 +15,7 @@ from ray.util.placement_group import (
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from trinity.common.config import ExplorerConfig, InferenceModelConfig
-from trinity.common.models.model import InferenceModel, ModelWrapper
+from trinity.common.models.model import ModelWrapper
 from trinity.utils.log import get_logger
 
 
@@ -117,7 +117,6 @@ class Allocator:
         await self.pg.ready()
         self.analysis_placement_group(self.pg, self.bundle_result)
         # create rollout_models
-        rollout_models = []
         tasks = []
         for engine_id in range(self.config.rollout_model.engine_num):
             tasks.append(
@@ -159,7 +158,7 @@ class Allocator:
 
 
 async def get_model_wrapper(
-    actor_cls: Type["InferenceModel"],
+    actor_cls,
     config: "InferenceModelConfig",
     pg: PlacementGroup,
     actor_bundle_list: List[Tuple[str, int]],
