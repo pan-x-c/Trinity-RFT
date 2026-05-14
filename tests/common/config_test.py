@@ -73,6 +73,27 @@ class TestConfig(unittest.TestCase):
 
         self.assertGreater(port, 0)
 
+    def test_inference_model_random_port_ignores_base_port(self):
+        requested_port = 9005
+        model = DummyInferenceModel(InferenceModelConfig(base_port=9000, engine_id=5))
+
+        _, port = model.get_available_address(random_port=True)
+
+        self.assertNotEqual(port, requested_port)
+        self.assertGreater(port, 0)
+
+    def test_inference_model_random_port_can_use_port_reserved_by_api_server(self):
+        requested_port = 9006
+        model = DummyInferenceModel(InferenceModelConfig(base_port=9000, engine_id=6))
+
+        with socket.socket() as occupied_socket:
+            occupied_socket.bind(("", requested_port))
+
+            _, port = model.get_available_address(random_port=True)
+
+        self.assertNotEqual(port, requested_port)
+        self.assertGreater(port, 0)
+
     def test_load_default_config(self):
         config = get_template_config()
         config.buffer.batch_size = 8

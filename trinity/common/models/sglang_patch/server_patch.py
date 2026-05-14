@@ -5,6 +5,13 @@ from logging import Logger
 from typing import Callable, Dict, List, Optional
 
 import uvicorn
+from fastapi.dependencies.utils import (
+    _should_embed_body_fields,
+    get_body_field,
+    get_dependant,
+    get_flat_dependant,
+)
+from fastapi.routing import APIRoute, request_response
 from sglang.srt.entrypoints.engine import Engine
 from sglang.srt.entrypoints.http_server import (
     _execute_server_warmup,
@@ -19,6 +26,57 @@ from sglang.srt.entrypoints.http_server import (
 from sglang.srt.server_args import ServerArgs
 from sglang.srt.utils import kill_process_tree
 from sglang.srt.utils.watchdog import SubprocessWatchdog
+
+from trinity.common.models.sglang_patch.openai_api_patch import (
+    ChatCompletionRequest as PatchedChatCompletionRequest,
+)
+from trinity.common.models.sglang_patch.openai_api_patch import (
+    ChatCompletionResponse as PatchedChatCompletionResponse,
+)
+from trinity.common.models.sglang_patch.openai_api_patch import (
+    ChatCompletionResponseChoice as PatchedChatCompletionResponseChoice,
+)
+from trinity.common.models.sglang_patch.openai_api_patch import PatchedOpenAIServingChat
+
+
+def _refresh_chat_completion_routes() -> None:
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        if route.path not in {"/v1/chat/completions", "/invocations"}:
+            continue
+
+        route.endpoint.__annotations__["request"] = PatchedChatCompletionRequest
+        route.dependant = get_dependant(
+            path=route.path_format,
+            call=route.endpoint,
+            scope="function",
+        )
+        flat_dependant = get_flat_dependant(route.dependant)
+        embed_body_fields = _should_embed_body_fields(flat_dependant.body_params)
+        setattr(route, "_flat_dependant", flat_dependant)
+        setattr(route, "_embed_body_fields", embed_body_fields)
+        route.body_field = get_body_field(
+            flat_dependant=flat_dependant,
+            name=route.unique_id,
+            embed_body_fields=embed_body_fields,
+        )
+        route.app = request_response(route.get_route_handler())
+
+
+def _apply_openai_api_monkey_patch() -> None:
+    import sglang.srt.entrypoints.http_server as http_server_module
+    import sglang.srt.entrypoints.openai.protocol as protocol_module
+    import sglang.srt.entrypoints.openai.serving_chat as serving_chat_module
+
+    protocol_module.ChatCompletionRequest = PatchedChatCompletionRequest
+    serving_chat_module.ChatCompletionRequest = PatchedChatCompletionRequest
+    serving_chat_module.ChatCompletionResponse = PatchedChatCompletionResponse
+    serving_chat_module.ChatCompletionResponseChoice = PatchedChatCompletionResponseChoice
+    http_server_module.ChatCompletionRequest = PatchedChatCompletionRequest
+    http_server_module.OpenAIServingChat = PatchedOpenAIServingChat
+
+    _refresh_chat_completion_routes()
 
 
 def _setup_and_run_http_server(  # noqa: C901
@@ -120,17 +178,39 @@ def _setup_and_run_http_server(  # noqa: C901
 
 
 def get_api_server(
-    server_args: ServerArgs,
+    host: str,
+    port: int,
+    model_path: Optional[str],
+    tensor_parallel_size: int,
+    dtype: str,
+    served_model_name: Optional[str],
+    mem_fraction_static: float,
+    trust_remote_code: bool,
+    context_length: Optional[int],
+    enable_multimodal: bool,
+    api_key: str,
     logger: Logger,
 ) -> "asyncio.Task[None]":
-    if server_args.enable_http2:
-        raise NotImplementedError("Embedded SGLang server does not support HTTP/2 yet.")
-    if server_args.tokenizer_worker_num != 1:
-        raise NotImplementedError(
-            "Embedded SGLang server currently supports tokenizer_worker_num == 1 only."
-        )
-    if server_args.enable_ssl_refresh:
-        raise NotImplementedError("Embedded SGLang server does not support SSL refresh yet.")
+    _apply_openai_api_monkey_patch()
+
+    # TODO: fill in nnodes and node_rank for distributed setups
+    # TODO: fix chat template
+    server_args = ServerArgs(
+        host=host,
+        port=port,
+        model_path=model_path,
+        tp_size=tensor_parallel_size,
+        dtype=dtype,
+        served_model_name=served_model_name,
+        mem_fraction_static=mem_fraction_static,
+        trust_remote_code=trust_remote_code,
+        context_length=context_length,
+        enable_multimodal=enable_multimodal,
+        skip_server_warmup=True,
+        disable_piecewise_cuda_graph=True,
+        api_key=api_key,
+        device="cuda",
+    )
 
     (
         tokenizer_manager,
