@@ -35,10 +35,13 @@ async def create_debug_models(config: Config) -> None:
             await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("Shutting down debug models...")
+        # wait for all models to shutdown
+        models = rollout_models + [model for sublist in auxiliary_models for model in sublist]
+        await asyncio.gather(*[model.shutdown() for model in models])
         ray.shutdown()
 
 
-async def get_debug_models(config: Config) -> Tuple[ModelWrapper, List[ModelWrapper]]:
+async def get_debug_models(config: Config) -> Tuple["ModelWrapper", List["ModelWrapper"]]:
     from trinity.common.models.allocator import Allocator
 
     allocator = Allocator(config.explorer)
@@ -116,8 +119,10 @@ def debug(
     elif module == "workflow":
         from trinity.explorer.workflow_runner import DebugWorkflowRunner
 
-        rollout_model, auxiliary_models = asyncio.run(get_debug_models(cfg))
         runner = DebugWorkflowRunner(cfg, output_dir, enable_profiling, disable_overwrite)
+        logger.info("Preparing debug workflow runner...")
+        asyncio.run(runner.prepare())
+        logger.info("Running debug workflow runner...")
         asyncio.run(runner.debug())
 
     elif module == "viewer":

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """The Workflow Runner Module."""
+
 import asyncio
 import os
 import time
@@ -146,9 +147,11 @@ class WorkflowRunner:
 
     def _create_isolated_workflow_instance(self, task: Task) -> Workflow:
         return task.to_workflow(
-            self.model_wrapper.clone_with_isolated_history()
-            if self.config.explorer.rollout_model.enable_history
-            else self.model_wrapper,
+            (
+                self.model_wrapper.clone_with_isolated_history()
+                if self.config.explorer.rollout_model.enable_history
+                else self.model_wrapper
+            ),
             self.auxiliary_model_wrappers,
         )
 
@@ -467,7 +470,12 @@ class DebugWorkflowRunner(WorkflowRunner):
                 output_dir = f"{output_dir}_{suffix}"
         os.environ[LOG_DIR_ENV_VAR] = os.path.join(output_dir, "log")
         os.environ[LOG_LEVEL_ENV_VAR] = "DEBUG"
-        super().__init__(config, 0)
+        super().__init__(
+            config=config,
+            rollout_model_id=0,
+            auxiliary_model_ids=[0] * len(config.explorer.auxiliary_models),
+            runner_id=0,
+        )
         self.taskset = get_buffer_reader(config.buffer.explorer_input.tasksets[0])
         self.output_dir = output_dir
         self.enable_profiling = enable_profiling

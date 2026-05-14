@@ -18,13 +18,9 @@ from tests.tools import (
 )
 from trinity.cli import launcher
 from trinity.cli.debug import get_debug_models
-from trinity.common.config import (
-    AlgorithmConfig,
-    BufferConfig,
-    StageConfig,
-    TrainerInput,
-)
+from trinity.common.config import AlgorithmConfig, BufferConfig, StageConfig
 from trinity.common.constants import (
+    DEBUG_NAMESPACE,
     LOG_DIR_ENV_VAR,
     LOG_LEVEL_ENV_VAR,
     LOG_NODE_IP_ENV_VAR,
@@ -267,23 +263,24 @@ class TestLauncherMain(unittest.IsolatedAsyncioTestCase):
                 "/path/to/hf/checkpoint",
             )
 
-    @mock.patch("trinity.cli.launcher.load_config")
+    @mock.patch("trinity.cli.debug.load_config")
     async def test_debug_mode(self, mock_load):
         process = multiprocessing.Process(target=debug_inference_model_process)
+        self.config.ray_namespace = DEBUG_NAMESPACE
+        self.config.check_and_update()
         try:
             process.start()
-            time.sleep(15)  # wait for the model to be created
-            for _ in range(10):
-                try:
-                    await get_debug_models(self.config)
-                    break
-                except Exception:
-                    await asyncio.sleep(3)
+            await asyncio.sleep(30)
+            # for _ in range(20):
+            #     try:
+            #         await get_debug_models(self.config)
+            #         break
+            #     except Exception:
+            #         await asyncio.sleep(3)
             output_file = os.path.join(self.config.checkpoint_job_dir, "debug.html")
             output_dir = os.path.join(self.config.checkpoint_job_dir, "debug_output")
             self.config.buffer.explorer_input.tasksets = [get_unittest_dataset_config("gsm8k")]
             mock_load.return_value = self.config
-
             # First run: workflow with profiling enabled
             result = runner.invoke(
                 launcher.app,
@@ -463,7 +460,7 @@ def debug_inference_model_process():
     config.checkpoint_root_dir = get_checkpoint_path()
     config.model.model_path = get_model_path()
     config.check_and_update()
-    with mock.patch("trinity.cli.launcher.load_config", return_value=config):
+    with mock.patch("trinity.cli.debug.load_config", return_value=config):
         runner.invoke(
             launcher.app,
             [

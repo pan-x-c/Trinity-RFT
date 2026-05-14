@@ -106,6 +106,9 @@ class Allocator:
         else:
             raise ValueError(f"Unsupported engine type: {config.engine_type}")
 
+        self.logger.info(
+            f"Creating inference_model {self.get_actor_name(role, engine_id, 0)} in {config.ray_namespace}."
+        )
         return await get_model_wrapper(model_cls, config, self.pg, actor_bundle_lists)
 
     async def create_all_models(self) -> Tuple[List[ModelWrapper], List[List[ModelWrapper]]]:
@@ -152,7 +155,11 @@ class Allocator:
             model_actor = ray.get_actor(actor_name, namespace=config.ray_namespace)
             return ModelWrapper(model=model_actor, config=config)
         except ValueError:
-            self.logger.error("Actor %s not found. Make sure the model is created.", actor_name)
+            self.logger.error(
+                "Actor %s not found in %s. Make sure the model is created.",
+                actor_name,
+                config.ray_namespace,
+            )
             raise
 
 
