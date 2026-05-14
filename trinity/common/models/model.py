@@ -301,46 +301,35 @@ class ModelWrapper:
         self,
         model: Optional[ActorHandle[InferenceModel]] = None,
         models: Optional[List[ActorHandle[InferenceModelConfig]]] = None,
-        enable_lora: bool = False,
-        enable_history: bool = False,
+        config: Optional[InferenceModelConfig] = None,
+        api_address: Optional[str] = None,
     ):
         """Initialize the ModelWrapper.
 
         Args:
             model (InferenceModel): The inference model Ray actor.
-            enable_lora (bool): Whether to enable LoRA. Default to False.
-            enable_history (bool): Whether to enable history recording. Default to False.
+            models (List[InferenceModel]): A list of inference model Ray actors for ensemble. The first model will be used as the main model for generation and other models will be used for auxiliary purposes such as logprobs calculation. If `model` is provided, `models` will be ignored.
+            config (InferenceModelConfig): The configuration for the inference model.
+            api_address (str, optional): The API address for the model. Required if `enable_openai_api` is True in the config.
         """
-        if model is None and models is None:
+        if model is None and models is None and config.engine_type != "external":
             raise ValueError("Either model or models must be provided.")
+        if config is None:
+            raise ValueError("Model config must be provided.")
         if model is not None:
             self.model = model
             self.models = [model]
-        elif models is not None:
+        elif models is not None and len(models) > 0:
             self.model = models[0]
             self.models = models
-        self.config: InferenceModelConfig = None  # init during prepare
-        self._model_name: str = None
-        self.api_address: str = None
-        # TODO: pass the env var name instead of the key directly
-        self._api_key: str = None
-        self.openai_client: openai.OpenAI = None
-        self.openai_async_client: openai.AsyncOpenAI = None
-        self.logger = get_logger(__name__)
-        self.enable_lora = enable_lora
-        self.enable_history = enable_history
-        self.history = []
-        self.status = RunningStatus.RUNNING
-        self.workflow_state: Dict = {}
-        self.request_count = 0
-        self.state_lock = asyncio.Lock()
-
-    async def prepare(self) -> None:
-        """Prepare the model wrapper."""
-        self.config = await self.model.get_model_config.remote()
-        self._model_name = self.config.name
-        self._api_key = await self.model.get_api_key.remote()
-        self._engine_type = self.config.engine_type
+        else:
+            self.model = None
+            self.models = []
+        self.config: InferenceModelConfig = config
+        self._model_name: str = config.model_path
+        if self._model_name is None:
+            raise ValueError("model_path must be provided in the config.")
+        self._engine_type = config.engine_type
         self._generate_kwargs = {
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,
@@ -350,26 +339,20 @@ class ModelWrapper:
             self._generate_kwargs["extra_body"] = {
                 "chat_template_kwargs": {"enable_thinking": self.config.enable_thinking}
             }
-        self.api_address = await self.model.get_api_server_url.remote()
-        if self.api_address is None:
-            self.logger.info("API server is not enabled for inference model.")
-            return
-        if self._engine_type in {"tinker", "external"}:
-            return
-        max_retries = 30
-        interval = 2  # seconds
-        for i in range(max_retries):
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(self.api_address + "/health", timeout=5)
-                    if response.status_code == 200:
-                        return
-            except Exception as e:
-                self.logger.info(f"API server not ready (attempt {i + 1}/{max_retries}): {e}")
-            await asyncio.sleep(interval)
-        raise RuntimeError(
-            f"API server at {self.api_address} not ready after {max_retries} attempts."
-        )
+        self.api_address: Optional[str] = api_address
+        if self.config.enable_openai_api and self.api_address is None:
+            raise ValueError("server_address must be provided when enable_openai_api is True.")
+        self._api_key: str = self.config.api_key
+        self.openai_client: openai.OpenAI = None
+        self.openai_async_client: openai.AsyncOpenAI = None
+        self.logger = get_logger(__name__)
+        self.enable_lora = config.enable_lora
+        self.enable_history = config.enable_history
+        self.history = []
+        self.status = RunningStatus.RUNNING
+        self.workflow_state: Dict = {}
+        self.request_count = 0
+        self.state_lock = asyncio.Lock()
 
     def _record_history(self, exps: Union[Experience, List[Experience]]) -> None:
         """Record experiences to history."""
@@ -467,7 +450,10 @@ class ModelWrapper:
         - For 'vllm' engine: returns the model path from the configuration (`config.model_path`)
         - For 'tinker' engine: returns the path to the most recent sampler weights
         """
-        return ray.get(self.model.get_model_path.remote())
+        if self.model:
+            return ray.get(self.model.get_model_path.remote())
+        else:
+            return self._model_name
 
     @property
     async def model_path_async(self) -> str:
@@ -477,7 +463,10 @@ class ModelWrapper:
         - For 'vllm' engine: returns the model path from the configuration (`config.model_path`)
         - For 'tinker' engine: returns the path to the most recent sampler weights
         """
-        return await self.model.get_model_path.remote()
+        if self.model:
+            return await self.model.get_model_path.remote()
+        else:
+            return self._model_name
 
     @property
     def model_name(self) -> Optional[str]:

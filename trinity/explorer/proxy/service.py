@@ -23,7 +23,7 @@ class ExplorerService:
         self.port = port
         self.listen_address = listen_address
         self.running = False
-        self.models: List[ModelWrapper] = [ModelWrapper(model) for model in explorer.models]
+        self.models: List[ModelWrapper] = explorer.models
         self.min_running_model_num = explorer.config.explorer.min_running_model_num
         self.check_interval = explorer.config.explorer.service_status_check_interval
         self.max_timeout = explorer.config.explorer.max_timeout

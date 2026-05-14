@@ -1,6 +1,7 @@
 """Allocator module for managing inference engines."""
 
 import asyncio
+import os
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
@@ -101,12 +102,9 @@ class Allocator:
             config.node_rank = 0
             model_cls = TinkerModel
         elif config.engine_type == "external":
-            from trinity.common.models.external_model import ExternalModel
-
-            config.tensor_parallel_size = 0
-            config.nnodes = 1
-            config.node_rank = 0
-            model_cls = ExternalModel
+            return await get_external_model_wrapper(config=config)
+        else:
+            raise ValueError(f"Unsupported engine type: {config.engine_type}")
 
         return await get_model_wrapper(model_cls, config, self.pg, actor_bundle_lists)
 
@@ -162,7 +160,7 @@ async def get_model_wrapper(
     config: "InferenceModelConfig",
     pg: PlacementGroup,
     actor_bundle_list: List[Tuple[str, int]],
-) -> "ModelWrapper":
+) -> ModelWrapper:
     """Get the Ray actor for the vLLM model.
 
     Args:
@@ -197,6 +195,17 @@ async def get_model_wrapper(
         for handler in handlers:
             await handler.set_master_addr_port.remote(master_addr, master_port)
     await asyncio.gather(*[handler.prepare.remote() for handler in handlers])
-    return ModelWrapper(
-        models=handlers, enable_history=config.enable_history, enable_lora=config.enable_lora
-    )
+    server_address = await handlers[0].get_api_server_url.remote()
+    return ModelWrapper(models=handlers, config=config, api_address=server_address)
+
+
+async def get_external_model_wrapper(config: InferenceModelConfig) -> ModelWrapper:
+    """Get the ModelWrapper for the external model."""
+    if config.engine_type != "external":
+        raise ValueError("This function is only for creating external model wrapper.")
+    api_address = os.environ.get(config.external_model_config.base_url_env)
+    api_address = api_address.rstrip("/") if api_address else None
+    api_key = os.environ.get(config.external_model_config.api_key_env, "EMPTY")
+    config.api_key = api_key
+    config.enable_openai_api = True
+    return ModelWrapper(models=[], config=config, api_address=api_address)

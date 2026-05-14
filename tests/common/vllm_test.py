@@ -43,8 +43,8 @@ async def create_test_models(config: Config):
 def clone_wrapper(wrapper: ModelWrapper, enable_history: bool) -> ModelWrapper:
     return ModelWrapper(
         models=cast(list, wrapper.models),
-        enable_history=enable_history,
-        enable_lora=wrapper.enable_lora,
+        config=wrapper.config,
+        api_address=wrapper.api_address,
     )
 
 

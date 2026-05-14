@@ -479,10 +479,9 @@ class MultiTurnWorkflowTest(unittest.IsolatedAsyncioTestCase):
         self.config.algorithm.repeat_times = 2  # self.repeat_times
         self.config.explorer.rollout_model.enable_history = True  # self.enable_history
         self.config.check_and_update()
-        allocator = Allocator(self.config)
+        allocator = Allocator(self.config.explorer)
         rollout_model, _ = await allocator.create_all_models()
-        self.model_wrapper = ModelWrapper(rollout_model[0], enable_history=True)
-        await self.model_wrapper.prepare()
+        self.model_wrapper = rollout_model[0]
 
     async def test_multi_turn_workflow(self):
         task = Task(
@@ -520,7 +519,7 @@ class StateRecordingWorkflow(Workflow):
 class TestWorkflowStateRecording(unittest.IsolatedAsyncioTestCase):
     async def test_workflow_state_recording(self):
         model = MagicMock()
-        model_wrapper = ModelWrapper(model)
+        model_wrapper = ModelWrapper(model, config=InferenceModelConfig())
 
         task = Task(
             workflow=StateRecordingWorkflow,
@@ -873,7 +872,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
         model.get_api_key.remote = MagicMock(side_effect=mock_get_api_key_remote)
         model.get_model_config.remote = MagicMock(side_effect=mock_get_model_config_remote)
 
-        with patch_runner_models(ModelWrapper(model)):
+        with patch_runner_models(ModelWrapper(model, config=InferenceModelConfig())):
             runner = WorkflowRunner(
                 config,
                 rollout_model_id=0,

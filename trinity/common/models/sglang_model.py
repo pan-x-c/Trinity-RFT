@@ -16,8 +16,6 @@ from trinity.common.experience import Experience
 from trinity.common.models.model import BaseInferenceModel
 from trinity.manager.synchronizer import Synchronizer
 
-SGLANG_API_KEY = "EMPTY"  # SGLang API server does not actually check the API key, so we can use a dummy value here.
-
 
 class SGLangClient:
     """A simple http client to interact with the SGLang API server."""
@@ -435,7 +433,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             trust_remote_code=self.config.trust_remote_code,
             context_length=self.config.max_model_len,
             enable_multimodal=self.config.enable_multimodal,
-            api_key=SGLANG_API_KEY,
+            api_key=self.config.api_key,
             nnodes=self.config.nnodes,
             node_rank=self.config.node_rank,
             master_addr=self.master_addr,
@@ -445,7 +443,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         server_url = f"http://{self.api_server_host}:{self.api_server_port}"
         self.api_client = SGLangClient(
             server_url=server_url,
-            api_key=SGLANG_API_KEY,
+            api_key=self.config.api_key,
             logger=self.logger,
         )
         await self._wait_until_server_ready(server_url)
