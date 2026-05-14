@@ -326,8 +326,7 @@ class ModelWrapper:
             self.model = None
             self.models = []
         self.config: InferenceModelConfig = config
-        self._model_name: str = config.model_path
-        if self._model_name is None:
+        if self.config.model_path is None:
             raise ValueError("model_path must be provided in the config.")
         self._engine_type = config.engine_type
         self._generate_kwargs = {
@@ -340,8 +339,6 @@ class ModelWrapper:
                 "chat_template_kwargs": {"enable_thinking": self.config.enable_thinking}
             }
         self.api_address: Optional[str] = api_address
-        if self.config.enable_openai_api and self.api_address is None:
-            raise ValueError("server_address must be provided when enable_openai_api is True.")
         self._api_key: str = self.config.api_key
         self.openai_client: openai.OpenAI = None
         self.openai_async_client: openai.AsyncOpenAI = None
@@ -442,36 +439,28 @@ class ModelWrapper:
         """Get the version of the model."""
         return await self.model.get_model_version.remote()
 
-    @property
-    def model_path(self) -> str:
+    def fetch_model_path(self) -> str:
         """
         Returns the path to the model files based on the current engine type.
 
         - For 'vllm' engine: returns the model path from the configuration (`config.model_path`)
         - For 'tinker' engine: returns the path to the most recent sampler weights
         """
-        if self.model:
-            return ray.get(self.model.get_model_path.remote())
-        else:
-            return self._model_name
+        return ray.get(self.model.get_model_path.remote())
 
-    @property
-    async def model_path_async(self) -> str:
+    async def fetch_model_path_async(self) -> str:
         """
         Returns the path to the model files based on the current engine type.
 
         - For 'vllm' engine: returns the model path from the configuration (`config.model_path`)
         - For 'tinker' engine: returns the path to the most recent sampler weights
         """
-        if self.model:
-            return await self.model.get_model_path.remote()
-        else:
-            return self._model_name
+        return await self.model.get_model_path.remote()
 
     @property
-    def model_name(self) -> Optional[str]:
+    def model_name(self) -> str:
         """Get the name of the model."""
-        return self._model_name
+        return self.config.model_path  # type: ignore [return-value]
 
     @property
     def model_config(self) -> InferenceModelConfig:
@@ -509,13 +498,22 @@ class ModelWrapper:
         """
         import openai
 
+        if not self.config.enable_openai_api:
+            raise ValueError(
+                "OpenAI API is not enabled for this model. OpenAI client is unavailable."
+            )
+
         if self.openai_client is not None:
             setattr(self.openai_client, "model_path", self.model_path)
             return self.openai_client
         if not self.api_address:
-            raise ValueError(
-                "API server is not enabled for this model. OpenAI client is unavailable."
-            )
+            if self.model is None:
+                raise ValueError("Cannot get API address from the model.")
+            self.api_address = ray.get(self.model.get_api_server_url.remote())
+            if self.api_address is None:
+                raise ValueError(
+                    "Cannot get API address from the model. API server might not be enabled for this model."
+                )
         self.openai_client = openai.OpenAI(
             base_url=f"{self.api_address}/v1",
             api_key=self._api_key,
@@ -559,7 +557,7 @@ class ModelWrapper:
                 return response
 
             self.openai_client.chat.completions.create = record_chat_completions
-        setattr(self.openai_client, "model_path", self.model_path)
+        setattr(self.openai_client, "model_path", self.config.model_path)
         return self.openai_client
 
     def get_openai_async_client(self) -> "openai.AsyncOpenAI":
@@ -571,12 +569,16 @@ class ModelWrapper:
         import openai
 
         if self.openai_async_client is not None:
-            setattr(self.openai_async_client, "model_path", self.model_path)
+            setattr(self.openai_async_client, "model_path", self.config.model_path)
             return self.openai_async_client
         if not self.api_address:
-            raise ValueError(
-                "API server is not enabled for this model. OpenAI async client is unavailable."
-            )
+            if self.model is None:
+                raise ValueError("Cannot get API address from the model.")
+            self.api_address = ray.get(self.model.get_api_server_url.remote())
+            if self.api_address is None:
+                raise ValueError(
+                    "Cannot get API address from the model. API server might not be enabled for this model."
+                )
         # first make sure that we have the sync openai client
         self.openai_async_client = openai.AsyncOpenAI(
             base_url=f"{self.api_address}/v1",
@@ -623,7 +625,7 @@ class ModelWrapper:
 
             self.openai_async_client.chat.completions.create = record_chat_completions
         # get model_path from the sync openai client to avoid async call here
-        setattr(self.openai_async_client, "model_path", self.model_path)
+        setattr(self.openai_async_client, "model_path", self.config.model_path)
         return self.openai_async_client
 
     async def get_current_load(self) -> int:

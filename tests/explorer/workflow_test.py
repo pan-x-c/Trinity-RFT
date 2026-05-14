@@ -909,7 +909,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
         config.explorer.rollout_model.enable_history = True
         config.check_and_update()
         allocator = Allocator(config.explorer)
-        _, _ = await allocator.create_all_models()
+        rollout_model, auxiliary_models = await allocator.create_all_models()
         runner = WorkflowRunner(
             config,
             rollout_model_id=0,
@@ -944,6 +944,8 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(exps), 2)
         exps = runner.model_wrapper.extract_experience_from_history(clear_history=False)
         self.assertEqual(len(exps), 0)
+        self.assertEqual(len(rollout_model), 1)
+        await rollout_model[0].shutdown()
 
     def tearDown(self):
         ray.shutdown(_exiting_interpreter=True)
@@ -992,7 +994,7 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
 
     async def test_concurrent_workflow_runner(self):
         allocator = Allocator(self.config.explorer)
-        _, __ = await allocator.create_all_models()
+        rollout_model, _ = await allocator.create_all_models()
 
         self.config.explorer.concurrent_mode = "sequential"
         sequential_runner = (
@@ -1043,11 +1045,6 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
                 rollout_model_id=0,
                 runner_id=2,
             )
-        )
-        await asyncio.gather(
-            sequential_runner.prepare.remote(),
-            async_runner.prepare.remote(),
-            thread_runner.prepare.remote(),
         )
 
         task = Task(
@@ -1130,6 +1127,7 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
             assert "[WARNING MESSAGE]" in thread_logs
             warning_count = thread_logs.count("[WARNING MESSAGE]")
             assert warning_count == 5
+        await rollout_model[0].shutdown()
 
     def tearDown(self):
         shutil.rmtree(self.config.log.save_dir, ignore_errors=True)

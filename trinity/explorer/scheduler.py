@@ -285,7 +285,6 @@ class RunnerWrapper:
     async def restart_runner(self):
         old_runner = self.runner
         self.runner = self._create_runner()
-        await self.runner.prepare.remote()
         try:
             ray.kill(old_runner)
         except Exception:
