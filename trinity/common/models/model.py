@@ -300,7 +300,7 @@ class ModelWrapper:
     def __init__(
         self,
         model: Optional[ActorHandle[InferenceModel]] = None,
-        models: Optional[List[ActorHandle[InferenceModelConfig]]] = None,
+        models: Optional[List[ActorHandle[InferenceModel]]] = None,
         config: Optional[InferenceModelConfig] = None,
         api_address: Optional[str] = None,
     ):
@@ -312,10 +312,10 @@ class ModelWrapper:
             config (InferenceModelConfig): The configuration for the inference model.
             api_address (str, optional): The API address for the model. Required if `enable_openai_api` is True in the config.
         """
-        if model is None and models is None and config.engine_type != "external":
-            raise ValueError("Either model or models must be provided.")
         if config is None:
             raise ValueError("Model config must be provided.")
+        if model is None and models is None and config.engine_type != "external":
+            raise ValueError("Either model or models must be provided.")
         if model is not None:
             self.model = model
             self.models = [model]
@@ -534,7 +534,7 @@ class ModelWrapper:
             )
 
         if self.openai_client is not None:
-            setattr(self.openai_client, "model_path", self.model_path)
+            setattr(self.openai_client, "model_path", self.config.model_path)
             return self.openai_client
         if not self.api_address:
             if self.model is None:

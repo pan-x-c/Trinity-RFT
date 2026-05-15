@@ -65,7 +65,7 @@ class Allocator:
             bundles=bundles, actor_bundle_map=engine_bundle_map, bundle_actor_map=bundle_engine_map
         )
 
-    def analysis_placement_group(self, pg: PlacementGroup, bundle_result: BundleResult):
+    def analyze_placement_group(self, pg: PlacementGroup, bundle_result: BundleResult):
         bundle_node_map = placement_group_table(pg)["bundles_to_node_id"]
         node_bundle_map = defaultdict(list)
         for bundle_id, node_id in bundle_node_map.items():
@@ -116,7 +116,7 @@ class Allocator:
         self.bundle_result = self.allocate_bundles()
         self.pg = placement_group(self.bundle_result.bundles, strategy="PACK")
         await self.pg.ready()
-        self.analysis_placement_group(self.pg, self.bundle_result)
+        self.analyze_placement_group(self.pg, self.bundle_result)
         # create rollout_models
         tasks = []
         for engine_id in range(self.config.rollout_model.engine_num):
@@ -181,21 +181,21 @@ async def get_model_wrapper(
     """
     handlers = []
     for i, (actor_name, bundle_id) in enumerate(actor_bundle_list):
-        config = deepcopy(config)
-        config.node_rank = i
+        engine_config = deepcopy(config)
+        engine_config.node_rank = i
         handlers.append(
             ray.remote(actor_cls)
             .options(
                 name=actor_name,
-                num_gpus=config.tensor_parallel_size / config.nnodes,
-                namespace=config.ray_namespace,
+                num_gpus=engine_config.tensor_parallel_size / engine_config.nnodes,
+                namespace=engine_config.ray_namespace,
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=pg,
                     placement_group_capture_child_tasks=True,
                     placement_group_bundle_index=bundle_id,
                 ),
             )
-            .remote(config=config)
+            .remote(config=engine_config)
         )
     if len(actor_bundle_list) > 1:
         # get master address and port from the first handler and set it to all handlers for distributed communication
