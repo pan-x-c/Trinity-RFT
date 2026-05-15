@@ -723,7 +723,12 @@ class ModelWrapper:
 
     async def shutdown(self) -> None:
         """Shutdown all underlying model actors cleanly."""
-        await asyncio.gather(*[model.shutdown.remote() for model in self.models])
+        try:
+            await asyncio.gather(*[model.shutdown.remote() for model in self.models])
+        except Exception as e:
+            self.logger.error(
+                f"Error during model {self.config.model_path}[{self.config.engine_id}:{self.config.node_rank}] shutdown: {e}"
+            )
 
     async def get_workflow_state(self) -> Dict:
         """Get the state of workflow using the model."""

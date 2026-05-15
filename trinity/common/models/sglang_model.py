@@ -129,14 +129,12 @@ class SGLangClient:
             "flush_cache": flush_cache,
             "abort_all_requests": abort_all_requests,
             "weight_version": weight_version,
+            "torch_empty_cache": True,
         }
         response = await self._server_call(
             "POST", "/update_weights_from_distributed", payload, timeout=timeout
         )
         success = response.get("success", False)
-        self.logger.info(
-            "Response from update_weights_from_distributed: %s", response.get("message", "")
-        )
         if not success:
             self.logger.error(
                 f"Failed to update weights from distributed in SGLang API server: {response.get('message')}"
@@ -254,9 +252,14 @@ class SGLangRolloutModel(BaseInferenceModel):
         timeout: int = 1200,
         state_dict_meta: Optional[List[Tuple[str, str, Tuple]]] = None,
     ):
-        assert (
-            self.api_client is not None
-        ), "API client must be initialized before calling init_process_group"
+        if self.config.node_rank != 0:
+            self.logger.warning(
+                "init_process_group should only be called on the main node (node_rank=0). "
+                f"Current node_rank={self.config.node_rank}, skipping initialization and returning."
+            )
+            return
+        if self.api_client is None:
+            raise RuntimeError("API client must be initialized before calling init_process_group")
         if not self.synchronizer:
             self.synchronizer = Synchronizer.get_actor(namespace=self.config.ray_namespace)
         self.logger.info(
@@ -451,22 +454,35 @@ class SGLangRolloutModel(BaseInferenceModel):
 
     async def shutdown(self) -> None:
         if self.api_server is not None:
-            if self._has_weight_update_group:
-                await self.api_client.destroy_weights_update_group(group_name=self.group_name)
-            self.api_server.cancel()
             try:
+                if (
+                    self.config.node_rank == 0
+                    and self._has_weight_update_group
+                    and self.api_client is not None
+                ):
+                    await self.api_client.destroy_weights_update_group(group_name=self.group_name)
+                self.api_server.cancel()
                 await self.api_server
             except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                self.logger.error("Error while shutting down SGLang API server: %s", e)
             reason = self._get_api_server_exit_reason()
             if reason not in {None, "cancelled"}:
                 self.logger.warning("Embedded SGLang HTTP server exited with error: %s", reason)
             self.api_server = None
             self.api_client = None
+            self._has_weight_update_group = False
 
     async def sync_model_weights(
         self, model_version: int, method: SyncMethod, timeout: float = 1200
     ) -> int:
+        if self.config.node_rank != 0:
+            self.logger.warning(
+                "sync_model_weights should only be called on the main node (node_rank=0). "
+                f"Current node_rank={self.config.node_rank}, skipping sync and returning version {model_version}."
+            )
+            return model_version
         assert (
             self.api_client is not None
         ), "API client must be initialized before calling sync_model_weights"

@@ -870,11 +870,10 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                                 )
                         param = None
             else:  # fsdp2
-                for name, param in self.actor_module_fsdp.named_parameters():
+                for _, param in self.actor_module_fsdp.named_parameters():
                     full_param = param.full_tensor().detach().to(device=get_device_id())
                     if torch.distributed.get_rank() == 0:
                         torch.distributed.broadcast(full_param, 0, group=self._model_update_group)
-                    del full_param
             if torch.distributed.get_rank() == 0:
                 torch.cuda.synchronize()
 

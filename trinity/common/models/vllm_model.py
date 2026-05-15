@@ -490,6 +490,12 @@ class vLLMRolloutModel(BaseInferenceModel):
         self, model_version: int, sync_method: SyncMethod, timeout: float = 1200
     ) -> int:
         """Sync model weights to vLLM."""
+        if self.config.node_rank != 0:
+            self.logger.warning(
+                "sync_model_weights should only be called on the main node (node_rank=0). "
+                f"Current node_rank={self.config.node_rank}, skipping sync and returning version {model_version}."
+            )
+            return model_version
         if self.enable_lora:
             # Revise the lora path; no need to sync weights manually.
             self.default_lora_path = self.default_lora_path.replace(
@@ -524,7 +530,12 @@ class vLLMRolloutModel(BaseInferenceModel):
         timeout: int = 1200,
         state_dict_meta: Optional[List] = None,
     ):
-        self.logger.info("init_process_group in vLLMRolloutModel is called.")
+        if self.config.node_rank != 0:
+            self.logger.warning(
+                "init_process_group should only be called on the main node (node_rank=0). "
+                f"Current node_rank={self.config.node_rank}, skipping initialization and returning."
+            )
+            return
         return await self._collective_rpc(
             "init_process_group",
             args=(
