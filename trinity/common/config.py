@@ -562,6 +562,7 @@ class InferenceModelConfig:
     enable_openai_api: bool = False
     enable_log_requests: bool = False  # whether to enable request logging in vLLM API server
     base_port: Optional[int] = None
+    api_key: str = "EMPTY"
 
     # For tool calls in OpenAI API
     enable_auto_tool_choice: bool = False

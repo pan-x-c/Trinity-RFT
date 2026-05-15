@@ -259,6 +259,11 @@ class TestTrainerGSM8K(BaseTrainerCase):
         }
         # self.config.algorithm.repeat_times = 8  # TODO: used for real testing
         # self.config.buffer.batch_size = 96  # TODO: used for real testing
+        # FOR MULTI-NODE TESTING, PLEASE MAKE SURE YOU HAVE 3 NODES
+        # self.config.explorer.rollout_model.nnodes = 2
+        # self.config.explorer.rollout_model.engine_num = 1
+        # self.config.explorer.rollout_model.tensor_parallel_size = 4
+        # self.config.cluster.node_num = 3
         self.config.explorer.rollout_model.engine_type = self.engine_type
         self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
