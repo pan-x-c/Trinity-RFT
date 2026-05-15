@@ -1,9 +1,8 @@
 import asyncio
-import threading
 import time
 import unittest
+import uuid
 from collections import defaultdict
-from copy import deepcopy
 from typing import Dict, List, Optional, Sequence
 from unittest.mock import AsyncMock, patch
 
@@ -358,64 +357,43 @@ class DummyAuxiliaryModel(InferenceModel):
         return "http://localhost:12345"
 
 
-async def _mock_allocator_create_all_models(self):
-    async def ensure_wrapper(model_config, role, engine_id, actor_cls):
-        wrapper_config = deepcopy(model_config)
-        wrapper_config.engine_id = engine_id
-        actor_name = self.get_actor_name(role, engine_id, 0)
+def _create_named_model_actors(config) -> List:
+    allocator = Allocator(config.explorer)
+    actor_handles = []
+
+    def create_role_models(model_config, role, actor_cls) -> None:
+        for engine_id in range(model_config.engine_num):
+            actor_name = allocator.get_actor_name(role, engine_id, 0)
+            actor_handles.append(
+                actor_cls.options(
+                    name=actor_name,
+                    namespace=model_config.ray_namespace,
+                    num_cpus=0,
+                ).remote()
+            )
+
+    create_role_models(config.explorer.rollout_model, "rollout", DummyModel)
+    for index, auxiliary_config in enumerate(config.explorer.auxiliary_models):
+        create_role_models(auxiliary_config, f"auxiliary_{index}", DummyAuxiliaryModel)
+
+    for actor_handle in actor_handles:
+        ray.get(actor_handle.prepare.remote())
+        ray.get(actor_handle.get_api_server_url.remote())
+
+    return actor_handles
+
+
+def _cleanup_named_model_actors(actor_handles: Optional[List]) -> None:
+    if not actor_handles:
+        return
+    for actor_handle in reversed(actor_handles):
         try:
-            actor_handle = ray.get_actor(actor_name, namespace=wrapper_config.ray_namespace)
-        except ValueError:
-            actor_handle = actor_cls.options(
-                name=actor_name,
-                namespace=wrapper_config.ray_namespace,
-                num_cpus=0,
-            ).remote()
-        await actor_handle.prepare.remote()
-        api_address = await actor_handle.get_api_server_url.remote()
-        return ModelWrapper(model=actor_handle, config=wrapper_config, api_address=api_address)
-
-    rollout_models = [
-        await ensure_wrapper(self.config.rollout_model, "rollout", engine_id, DummyModel)
-        for engine_id in range(self.config.rollout_model.engine_num)
-    ]
-    auxiliary_models = []
-    for index, auxiliary_config in enumerate(self.config.auxiliary_models):
-        auxiliary_models.append(
-            [
-                await ensure_wrapper(
-                    auxiliary_config,
-                    f"auxiliary_{index}",
-                    engine_id,
-                    DummyAuxiliaryModel,
-                )
-                for engine_id in range(auxiliary_config.engine_num)
-            ]
-        )
-    return rollout_models, auxiliary_models
-
-
-def _ensure_named_model_actors(config) -> None:
-    errors = []
-
-    def _create_models():
-        try:
-            with patch.object(
-                Allocator, "create_all_models", new=_mock_allocator_create_all_models
-            ):
-                asyncio.run(Allocator(config.explorer).create_all_models())
-        except Exception as exc:  # pragma: no cover - surfaced to caller immediately
-            errors.append(exc)
-
-    worker = threading.Thread(target=_create_models, daemon=True)
-    worker.start()
-    worker.join()
-    if errors:
-        raise errors[0]
+            ray.kill(actor_handle)
+        except Exception:
+            pass
 
 
 def create_scheduler(config) -> Scheduler:
-    _ensure_named_model_actors(config)
     return Scheduler(config)
 
 
@@ -423,6 +401,11 @@ def _align_model_namespaces(config) -> None:
     config.explorer.rollout_model.ray_namespace = config.ray_namespace
     for auxiliary_config in config.explorer.auxiliary_models:
         auxiliary_config.ray_namespace = config.ray_namespace
+
+
+def _assign_test_namespace(config) -> None:
+    config.ray_namespace = f"scheduler-test-{uuid.uuid4().hex}"
+    _align_model_namespaces(config)
 
 
 def _configure_dummy_models(config) -> None:
@@ -503,7 +486,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         ray.init(ignore_reinit_error=True)
         DummyAsyncPartialSnapshotWorkflow._run_index_by_key.clear()
         self.config = get_template_config()
-        _align_model_namespaces(self.config)
+        _assign_test_namespace(self.config)
         _configure_dummy_models(self.config)
         self.config.explorer.max_retry_times = 1
         self.config.explorer.max_timeout = 5
@@ -521,6 +504,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         self.config.buffer.trainer_input.experience_buffer.max_read_timeout = 1
         self.config.algorithm.repeat_times = 1
         self.config.check_and_update()
+        self.model_actors = _create_named_model_actors(self.config)
 
     async def test_get_payload_results(self):
         scheduler = create_scheduler(self.config)
@@ -1345,22 +1329,39 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self):
         try:
+            _cleanup_named_model_actors(getattr(self, "model_actors", None))
+        except Exception:
+            pass
+        try:
             ray.shutdown()
         except Exception:
             pass
 
 
 class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
-    async def test_runner_state_collection(self):
+    def setUp(self):
         ray.init(ignore_reinit_error=True)
-        config = get_template_config()
-        _align_model_namespaces(config)
-        _configure_dummy_models(config)
-        config.explorer.runner_per_model = 2
-        config.explorer.runner_state_report_interval = 0.5
-        config.explorer.max_repeat_times_per_runner = 2
-        config.check_and_update()
-        scheduler = create_scheduler(config)
+        self.config = get_template_config()
+        _assign_test_namespace(self.config)
+        _configure_dummy_models(self.config)
+        self.config.explorer.runner_per_model = 2
+        self.config.explorer.runner_state_report_interval = 1
+        self.config.explorer.max_repeat_times_per_runner = 2
+        self.config.check_and_update()
+        self.model_actors = _create_named_model_actors(self.config)
+
+    def tearDown(self):
+        try:
+            _cleanup_named_model_actors(getattr(self, "model_actors", None))
+        except Exception:
+            pass
+        try:
+            ray.shutdown()
+        except Exception:
+            pass
+
+    async def test_runner_state_collection(self):
+        scheduler = create_scheduler(self.config)
         # 4 runner in side the scheduler
         await scheduler.start()
 
@@ -1405,3 +1406,4 @@ class TestRunnerStateCollection(unittest.IsolatedAsyncioTestCase):
             monitor_routine(),
             collect_results(scheduler, batch_id=0),
         )
+        await scheduler.stop()
