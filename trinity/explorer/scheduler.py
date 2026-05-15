@@ -98,52 +98,95 @@ def bootstrap_metric(
 
 
 def calculate_task_level_metrics(metrics: List[Dict], is_eval: bool) -> Dict[str, float]:
-    """Calculate task level metrics (mean) from multiple runs of the same task.
+    """Calculate task level metrics from multiple runs of the same task.
+
+    Aggregation respects the ``:agg`` suffix in metric keys (e.g. ``total_tokens:sum``).
+    Keys without a suffix default to mean aggregation.
+
+    For train tasks, the result preserves key format (with suffix) for downstream batch
+    aggregation. For eval tasks, MEAN keys get bootstrap statistics (best@N, worst@N).
 
     Args:
         metrics (`List[Dict]`): A list of metric dictionaries from multiple runs of the same task.
         is_eval (`bool`): Whether this is an evaluation task.
 
     Returns:
-        `Dict[str, float]`: A dictionary of aggregated metrics, where each metric is averaged over all runs.
+        `Dict[str, float]`: A dictionary of aggregated metrics.
     """
+    from trinity.utils.metrics import AggType, parse_metric_key
+
     if not metrics:
         return {}
-    aggregated_metrics: Dict[str, List[float]] = defaultdict(list)
+
+    # Group values by (canonical_key, agg_type)
+    grouped: Dict[str, tuple] = {}  # canonical_key -> (agg_type, [values])
     for m in metrics:
         for key, value in m.items():
-            if isinstance(value, (int, float)):
-                aggregated_metrics[key].append(value)
-    if is_eval:
-        result = {}
-        for key, values in aggregated_metrics.items():
-            if "time/task_execution" in key or "time/run_execution" in key:
-                result[key] = sum(values) / len(values)
+            if not isinstance(value, (int, float)):
                 continue
+            name, agg = parse_metric_key(key)
+            canonical_key = f"{name}:{agg.value}" if agg != AggType.MEAN else name
+            if canonical_key not in grouped:
+                grouped[canonical_key] = (agg, [])
+            grouped[canonical_key][1].append(float(value))
 
-            n_values = len(values)
-            result[f"{key}/mean@{n_values}"] = np.mean(values)
-            result[f"{key}/std@{n_values}"] = np.std(values)
-
-            if n_values > 1:
-                ns = []
-                n = 2
-                while n < n_values:
-                    ns.append(n)
-                    n *= 2
-                ns.append(n_values)
-
-                for n in ns:
-                    [(bon_mean, bon_std), (won_mean, won_std)] = bootstrap_metric(
-                        data=values, subset_size=n, reduce_fns=[np.max, np.min], seed=42
-                    )
-                    result[f"{key}/best@{n}"] = bon_mean
-                    result[f"{key}/worst@{n}"] = won_mean
+    if not is_eval:
+        # Train path: aggregate and preserve key format for downstream batch aggregation
+        result = {}
+        for key, (agg, values) in grouped.items():
+            if agg == AggType.MEAN:
+                result[key] = sum(values) / len(values)
+            elif agg == AggType.SUM:
+                result[key] = sum(values)
+            elif agg == AggType.MAX:
+                result[key] = max(values)
+            elif agg == AggType.MIN:
+                result[key] = min(values)
+            elif agg == AggType.LAST:
+                result[key] = values[-1]
         return result
-    else:
-        return {
-            key: sum(values) / len(values) for key, values in aggregated_metrics.items() if values
-        }
+
+    # Eval path: produce bootstrap statistics for MEAN keys
+    result = {}
+    for key, (agg, values) in grouped.items():
+        name, _ = parse_metric_key(key)
+
+        if agg != AggType.MEAN:
+            # Non-mean metrics: aggregate directly
+            if agg == AggType.SUM:
+                result[f"{name}:sum"] = sum(values)
+            elif agg == AggType.MAX:
+                result[f"{name}:max"] = max(values)
+            elif agg == AggType.MIN:
+                result[f"{name}:min"] = min(values)
+            elif agg == AggType.LAST:
+                result[f"{name}:last"] = values[-1]
+            continue
+
+        # MEAN metrics: time metrics get simple average, others get bootstrap stats
+        if "time/task_execution" in name or "time/run_execution" in name:
+            result[key] = sum(values) / len(values)
+            continue
+
+        n_values = len(values)
+        result[f"{key}/mean@{n_values}"] = np.mean(values)
+        result[f"{key}/std@{n_values}"] = np.std(values)
+
+        if n_values > 1:
+            ns = []
+            n = 2
+            while n < n_values:
+                ns.append(n)
+                n *= 2
+            ns.append(n_values)
+
+            for n in ns:
+                [(bon_mean, bon_std), (won_mean, won_std)] = bootstrap_metric(
+                    data=values, subset_size=n, reduce_fns=[np.max, np.min], seed=42
+                )
+                result[f"{key}/best@{n}"] = bon_mean
+                result[f"{key}/worst@{n}"] = won_mean
+    return result
 
 
 class RunnerWrapper:
