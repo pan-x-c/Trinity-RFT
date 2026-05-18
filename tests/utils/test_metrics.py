@@ -11,93 +11,83 @@ from trinity.utils.metrics import (
 )
 
 
-class TestParseMetricKey:
-    def test_plain_key(self):
+class TestMetricsUtils:
+    def test_parse_key(self):
         name, agg = parse_metric_key("reward")
+        # no suffix
         assert name == "reward"
         assert agg == AggType.MEAN
-
-    def test_sum_suffix(self):
+        # sum
         name, agg = parse_metric_key("experience_count:sum")
         assert name == "experience_count"
         assert agg == AggType.SUM
-
-    def test_max_suffix(self):
+        # max
         name, agg = parse_metric_key("latency:max")
         assert name == "latency"
         assert agg == AggType.MAX
-
-    def test_min_suffix(self):
+        # min
         name, agg = parse_metric_key("latency:min")
         assert name == "latency"
         assert agg == AggType.MIN
-
-    def test_last_suffix(self):
+        # last
         name, agg = parse_metric_key("model_version:last")
         assert name == "model_version"
         assert agg == AggType.LAST
-
-    def test_mean_suffix_explicit(self):
+        # mean
         name, agg = parse_metric_key("reward:mean")
         assert name == "reward"
         assert agg == AggType.MEAN
-
-    def test_unknown_suffix_treated_as_full_key(self):
+        # unknown suffix defaults to mean
         name, agg = parse_metric_key("some:unknown_suffix")
         assert name == "some:unknown_suffix"
         assert agg == AggType.MEAN
-
-    def test_slashed_key_with_suffix(self):
+        # with slash
         name, agg = parse_metric_key("time/task_execution:sum")
         assert name == "time/task_execution"
         assert agg == AggType.SUM
-
-    def test_key_with_multiple_colons(self):
+        # multiple colons, only last one is suffix
         name, agg = parse_metric_key("ns:metric_name:sum")
         assert name == "ns:metric_name"
         assert agg == AggType.SUM
 
-
-class TestAggregateMetrics:
-    def test_empty_input(self):
+    def test_aggregate(self):
+        # empty
         assert aggregate_metrics([]) == {}
-
-    def test_single_dict_mean_default(self):
+        # single dict with no suffix
         result = aggregate_metrics([{"reward": 1.0}], prefix="rollout")
         assert result == {
             "rollout/reward/mean": 1.0,
             "rollout/reward/max": 1.0,
             "rollout/reward/min": 1.0,
         }
-
-    def test_multiple_dicts_mean(self):
+        # multiple dicts with no suffix should compute mean, max, min
         dicts = [{"reward": 1.0}, {"reward": 3.0}]
         result = aggregate_metrics(dicts, prefix="rollout")
         assert result["rollout/reward/mean"] == 2.0
         assert result["rollout/reward/max"] == 3.0
         assert result["rollout/reward/min"] == 1.0
 
-    def test_sum_aggregation(self):
+        # keys with :sum suffix should be summed
         dicts = [{"tokens:sum": 100.0}, {"tokens:sum": 200.0}]
         result = aggregate_metrics(dicts, prefix="rollout")
         assert result == {"rollout/tokens/sum": 300.0}
 
-    def test_max_aggregation(self):
+        # keys with :max suffix should take max
         dicts = [{"latency:max": 5.0}, {"latency:max": 10.0}]
         result = aggregate_metrics(dicts, prefix="rollout")
         assert result == {"rollout/latency/max": 10.0}
 
-    def test_min_aggregation(self):
+        # keys with :min suffix should take min
         dicts = [{"latency:min": 5.0}, {"latency:min": 2.0}]
         result = aggregate_metrics(dicts, prefix="rollout")
         assert result == {"rollout/latency/min": 2.0}
 
-    def test_last_aggregation(self):
+        # keys with :last suffix should take last value
         dicts = [{"model_version:last": 1.0}, {"model_version:last": 3.0}]
         result = aggregate_metrics(dicts, prefix="rollout")
         assert result == {"rollout/model_version": 3.0}
 
-    def test_mixed_agg_types(self):
+        # mixed keys
         dicts = [
             {"reward": 1.0, "tokens:sum": 100.0, "version:last": 1.0},
             {"reward": 3.0, "tokens:sum": 200.0, "version:last": 2.0},
@@ -107,83 +97,72 @@ class TestAggregateMetrics:
         assert result["r/tokens/sum"] == 300.0
         assert result["r/version"] == 2.0
 
-    def test_no_prefix(self):
+        # no prefix
         dicts = [{"reward": 2.0}]
         result = aggregate_metrics(dicts, prefix="")
         assert result == {"reward/mean": 2.0, "reward/max": 2.0, "reward/min": 2.0}
 
-    def test_custom_output_stats(self):
+        # custom default_output_stats
         dicts = [{"reward": 1.0}, {"reward": 3.0}]
         result = aggregate_metrics(dicts, prefix="p", default_output_stats=["mean", "std"])
         assert "p/reward/mean" in result
         assert "p/reward/std" in result
         assert "p/reward/max" not in result
 
-    def test_non_numeric_values_ignored(self):
+        # ignore non-numeric keys
         dicts = [{"reward": 1.0, "name": "hello"}]
         result = aggregate_metrics(dicts, prefix="p")
         assert "p/name/mean" not in result
         assert "p/reward/mean" in result
 
-
-class TestAggregateEvalMetrics:
-    def test_empty_input(self):
+    def test_aggregate_eval_metrics(self):
+        # empty
         assert aggregate_eval_metrics([]) == {}
-
-    def test_simple_mean_no_detailed(self):
+        # simple stats
         dicts = [{"accuracy": 0.8}, {"accuracy": 0.9}]
         result = aggregate_eval_metrics(dicts, prefix="eval/gsm8k", detailed_stats=False)
         assert result == {"eval/gsm8k/accuracy": pytest.approx(0.85)}
-
-    def test_detailed_stats(self):
+        # detail stats
         dicts = [{"accuracy": 0.8}, {"accuracy": 0.9}]
         result = aggregate_eval_metrics(dicts, prefix="eval/gsm8k", detailed_stats=True)
         assert "eval/gsm8k/accuracy/mean" in result
         assert "eval/gsm8k/accuracy/std" in result
         assert result["eval/gsm8k/accuracy/mean"] == pytest.approx(0.85)
-
-    def test_sum_in_eval(self):
+        # sum
         dicts = [{"tokens:sum": 100.0}, {"tokens:sum": 200.0}]
         result = aggregate_eval_metrics(dicts, prefix="eval/test", detailed_stats=False)
         assert result == {"eval/test/tokens/sum": 300.0}
-
-    def test_last_in_eval(self):
+        # last
         dicts = [{"version:last": 1.0}, {"version:last": 5.0}]
         result = aggregate_eval_metrics(dicts, prefix="eval/test", detailed_stats=False)
         assert result == {"eval/test/version": 5.0}
 
-
-class TestAggregateRunLevelMetrics:
-    def test_empty_input(self):
+    def test_run_level_metrics(self):
+        # empty
         assert aggregate_run_level_metrics([]) == {}
 
-    def test_mean_keys_averaged(self):
+        # no suffix should compute mean
         dicts = [{"reward": 1.0}, {"reward": 3.0}]
         result = aggregate_run_level_metrics(dicts)
         assert result == {"reward": 2.0}
-
-    def test_sum_keys_summed(self):
+        # sum
         dicts = [{"tokens:sum": 100.0}, {"tokens:sum": 200.0}]
         result = aggregate_run_level_metrics(dicts)
         assert result == {"tokens:sum": 300.0}
-
-    def test_max_keys(self):
+        # max
         dicts = [{"latency:max": 5.0}, {"latency:max": 10.0}]
         result = aggregate_run_level_metrics(dicts)
         assert result == {"latency:max": 10.0}
-
-    def test_last_keys(self):
+        # last
         dicts = [{"version:last": 1.0}, {"version:last": 2.0}]
         result = aggregate_run_level_metrics(dicts)
         assert result == {"version:last": 2.0}
-
-    def test_preserves_suffix_for_downstream(self):
+        # suffix should be preserved in output keys
         dicts = [{"reward": 1.0, "total_steps:sum": 5.0}]
         result = aggregate_run_level_metrics(dicts)
         assert "reward" in result
         assert "total_steps:sum" in result
-
-    def test_mixed(self):
+        # mix of keys
         dicts = [
             {"reward": 1.0, "steps:sum": 3.0, "peak:max": 10.0},
             {"reward": 3.0, "steps:sum": 4.0, "peak:max": 8.0},
@@ -193,11 +172,8 @@ class TestAggregateRunLevelMetrics:
         assert result["steps:sum"] == 7.0
         assert result["peak:max"] == 10.0
 
-
-class TestBackwardCompatibility:
-    """Ensure existing plain-float metric dicts work unchanged."""
-
-    def test_workflow_metrics_unchanged(self):
+    def test_backward_compatibility(self):
+        # workflow metrics
         exp_metrics = [
             {"reward": 0.5, "actual_env_steps": 3.0, "time/run_execution": 1.2},
             {"reward": 0.8, "actual_env_steps": 5.0, "time/run_execution": 1.5},
@@ -208,7 +184,7 @@ class TestBackwardCompatibility:
         assert run_result["actual_env_steps"] == pytest.approx(4.0)
         assert run_result["time/run_execution"] == pytest.approx(1.35)
 
-    def test_batch_level_aggregation_unchanged(self):
+        # batch level metrics
         task_metrics = [
             {"reward": 0.5, "time/run_execution": 1.2},
             {"reward": 0.8, "time/run_execution": 1.5},
@@ -219,7 +195,7 @@ class TestBackwardCompatibility:
         assert "rollout/reward/min" in result
         assert result["rollout/reward/mean"] == pytest.approx(0.65)
 
-    def test_eval_metrics_unchanged(self):
+        # eval metrics
         task_metrics = [{"accuracy": 0.9}, {"accuracy": 0.7}]
         result = aggregate_eval_metrics(task_metrics, prefix="eval/gsm8k", detailed_stats=False)
         assert result == {"eval/gsm8k/accuracy": pytest.approx(0.8)}
