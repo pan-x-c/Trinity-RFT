@@ -97,7 +97,9 @@ def bootstrap_metric(
     return [(np.mean(lst), np.std(lst)) for lst in bootstrap_metric_lsts]
 
 
-def calculate_task_level_metrics(metrics: List[Dict], is_eval: bool) -> Dict[str, float]:
+def calculate_task_level_metrics(  # noqa: C901
+    metrics: List[Dict], is_eval: bool
+) -> Dict[str, float]:
     """Calculate task level metrics from multiple runs of the same task.
 
     Aggregation respects the ``:agg`` suffix in metric keys (e.g. ``total_tokens:sum``).
