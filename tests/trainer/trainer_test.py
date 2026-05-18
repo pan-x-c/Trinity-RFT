@@ -26,6 +26,7 @@ from tests.tools import (
     get_checkpoint_path,
     get_lora_config,
     get_model_path,
+    get_api_model_path,
     get_template_config,
     get_unittest_dataset_config,
     get_vision_language_model_path,
@@ -244,13 +245,14 @@ class TestStepAheadAsyncRL(BaseTrainerCase):
     [
         ("megatron", False, "vllm"),
         ("fsdp2", False, "vllm"),
-        ("fsdp2", True, "sglang"),
+        ("megatron", True, "sglang"),
     ],
 )
 class TestTrainerGSM8K(BaseTrainerCase):
     def test_trainer(self):
         """Test GSM8K."""
         # test both mode
+        self.config.model.model_path = get_api_model_path()
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.repeat_times = 4
         self.config.algorithm.advantage_fn = "grpo"
@@ -273,6 +275,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
             self.config.trainer.use_remove_padding = False
         self.config.check_and_update()
         from pprint import pprint
+
         pprint(self.config.trainer.trainer_config)
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         actor_rollout_ref = self.config.trainer.trainer_config.actor_rollout_ref
