@@ -2,9 +2,8 @@
 
 import os
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Union
+from typing import Dict, List
 
-import numpy as np
 import pandas as pd
 
 try:
@@ -37,37 +36,6 @@ MONITOR = Registry(
         "swanlab": "trinity.utils.monitor.SwanlabMonitor",
     },
 )
-
-
-def gather_metrics(
-    metric_list: List[Dict], prefix: str, output_stats: List[str] = ["mean", "max", "min"]
-) -> Dict:
-    from trinity.utils.metrics import aggregate_metrics
-
-    if not metric_list:
-        return {}
-    try:
-        return aggregate_metrics(metric_list, prefix=prefix, default_output_stats=output_stats)
-    except Exception as e:
-        raise ValueError(f"Failed to gather metrics: {e}") from e
-
-
-def gather_eval_metrics(
-    metric_list: List[Dict],
-    prefix: str,
-    output_stats: List[str] = ["mean", "max", "min", "std"],
-    detailed_stats: bool = False,
-) -> Dict:
-    from trinity.utils.metrics import aggregate_eval_metrics
-
-    if not metric_list:
-        return {}
-    try:
-        return aggregate_eval_metrics(
-            metric_list, prefix=prefix, output_stats=output_stats, detailed_stats=detailed_stats
-        )
-    except Exception as e:
-        raise ValueError(f"Failed to gather eval metrics: {e}") from e
 
 
 class Monitor(ABC):
