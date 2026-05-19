@@ -224,12 +224,6 @@ class SGLangRolloutModel(BaseInferenceModel):
             self.config.enable_openai_api = True
         os.environ["SGLANG_GRPC_PORT"] = "12345"  # a dummy port not actually used
         os.environ["SGLANG_ENABLE_GRPC"] = "0"
-        os.environ.setdefault(
-            "NCCL_P2P_DISABLE", "1"
-        )  # default to disabling NCCL P2P, but preserve any explicit process configuration
-        os.environ.setdefault(
-            "NCCL_SHM_DISABLE", "1"
-        )  # default to disabling NCCL SHM, but preserve any explicit process configuration
         self.api_server_host: Optional[str] = None
         self.api_server_port: Optional[int] = None
         self.api_server: Optional[asyncio.Task[None]] = None
@@ -397,12 +391,6 @@ class SGLangRolloutModel(BaseInferenceModel):
 
             routed_experts = None
             routed_experts_value = meta_info.get("routed_experts", None)
-            if self.config.enable_return_routed_experts and routed_experts_value is None:
-                self.logger.warning(
-                    "enable_return_routed_experts is True but no routed_experts found in response meta_info [{}].".format(
-                        meta_info.keys()
-                    )
-                )
             if self.config.enable_return_routed_experts and routed_experts_value is not None:
                 if isinstance(routed_experts_value, str):
                     routed_experts = self._extract_routed_experts(
