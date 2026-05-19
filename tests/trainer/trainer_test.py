@@ -272,6 +272,9 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.trainer.trainer_strategy = self.strategy
         if self.strategy == "megatron":
+            # Megatron not support packing for now, so we need to set the following configs
+            # to make sure the input is not packed.
+            # Remove after we support packing in Megatron.
             self.config.trainer.use_dynamic_bsz = False
             self.config.trainer.use_remove_padding = False
         self.config.check_and_update()
