@@ -294,6 +294,7 @@ def get_api_server(
         dist_init_addr=(
             get_endpoint(master_addr, master_port) if master_addr and master_port else None
         ),
+        # Aliyun DSW / DLC requires this setting to avoid NCCL error
         enable_symm_mem=True,
         device="cuda",
     )
