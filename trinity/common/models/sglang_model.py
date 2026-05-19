@@ -52,7 +52,7 @@ class SGLangClient:
                 response.raise_for_status()
                 return response.json()
             except Exception:
-                self.logger.error(
+                self.logger.debug(
                     f"Error during {method} request to SGLang API server at {url}:\n{traceback.format_exc()}"
                 )
                 return {"error": traceback.format_exc()}
@@ -101,7 +101,7 @@ class SGLangClient:
 
     async def destroy_weights_update_group(self, group_name: str) -> bool:
         payload = {"group_name": group_name}
-        response = await self._server_call("POST", "/destroy_weights_update_group", payload)
+        response = await self._server_call("POST", "/destroy_weights_update_group", payload, timeout=5)
         success = response.get("success", False)
         if not success:
             self.logger.error(
@@ -222,12 +222,6 @@ class SGLangRolloutModel(BaseInferenceModel):
             self.config.enable_openai_api = True
         os.environ["SGLANG_GRPC_PORT"] = "12345"  # a dummy port not actually used
         os.environ["SGLANG_ENABLE_GRPC"] = "0"
-        os.environ.setdefault(
-            "NCCL_P2P_DISABLE", "1"
-        )  # default to disabling NCCL P2P, but preserve any explicit process configuration
-        os.environ.setdefault(
-            "NCCL_SHM_DISABLE", "1"
-        )  # default to disabling NCCL SHM, but preserve any explicit process configuration
         self.api_server_host: Optional[str] = None
         self.api_server_port: Optional[int] = None
         self.api_server: Optional[asyncio.Task[None]] = None

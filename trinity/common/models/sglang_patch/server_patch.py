@@ -294,6 +294,7 @@ def get_api_server(
         dist_init_addr=(
             get_endpoint(master_addr, master_port) if master_addr and master_port else None
         ),
+        enable_symm_mem=True,
         device="cuda",
     )
 
