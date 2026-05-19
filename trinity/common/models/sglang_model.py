@@ -101,7 +101,9 @@ class SGLangClient:
 
     async def destroy_weights_update_group(self, group_name: str) -> bool:
         payload = {"group_name": group_name}
-        response = await self._server_call("POST", "/destroy_weights_update_group", payload, timeout=5)
+        response = await self._server_call(
+            "POST", "/destroy_weights_update_group", payload, timeout=5
+        )
         success = response.get("success", False)
         if not success:
             self.logger.error(
