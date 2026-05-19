@@ -241,7 +241,7 @@ class TestStepAheadAsyncRL(BaseTrainerCase):
 
 
 @parameterized_class(
-    ("fsdp_strategy", "offloading", "engine_type"),
+    ("strategy", "offloading", "engine_type"),
     [
         ("megatron", False, "vllm"),
         ("fsdp2", False, "vllm"),
@@ -269,8 +269,8 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.explorer.rollout_model.engine_type = self.engine_type
         self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
-        self.config.trainer.trainer_strategy = self.fsdp_strategy
-        if self.fsdp_strategy == "megatron":
+        self.config.trainer.trainer_strategy = self.strategy
+        if self.strategy == "megatron":
             self.config.trainer.use_dynamic_bsz = False
             self.config.trainer.use_remove_padding = False
         self.config.check_and_update()
@@ -280,7 +280,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         actor_rollout_ref = self.config.trainer.trainer_config.actor_rollout_ref
         actor_rollout_ref.actor.optim.lr = 1e-5
-        if self.fsdp_strategy == "fsdp":
+        if self.strategy == "fsdp":
             actor_rollout_ref.actor.fsdp_config.param_offload = self.offloading
             actor_rollout_ref.actor.fsdp_config.optimizer_offload = self.offloading
             actor_rollout_ref.ref.fsdp_config.param_offload = self.offloading
