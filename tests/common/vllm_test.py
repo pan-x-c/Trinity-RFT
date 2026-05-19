@@ -125,9 +125,13 @@ class ModelWrapperTest(VLLMTestBase):
         self.config.model.model_path = (
             get_model_path() if not self.enable_return_routed_experts else get_moe_model_path()
         )
-        self.text_config = _get_text_config(self.config.model.model_path)
-        self.expected_routed_experts_layers = _count_moe_layers(self.text_config)
-        self.expected_routed_experts_topk = int(self.text_config.num_experts_per_tok)
+        if self.enable_return_routed_experts:
+            self.text_config = _get_text_config(self.config.model.model_path)
+            self.expected_routed_experts_layers = _count_moe_layers(self.text_config)
+            self.expected_routed_experts_topk = int(self.text_config.num_experts_per_tok)
+        else:
+            self.expected_routed_experts_layers = 0
+            self.expected_routed_experts_topk = 0
         self.config.model.custom_chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.engine_num = self.engine_num
         self.config.explorer.rollout_model.nnodes = self.nnodes

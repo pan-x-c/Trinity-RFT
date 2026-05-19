@@ -77,9 +77,13 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         self.config.model.model_path = (
             get_moe_model_path() if self.enable_return_routed_experts else get_model_path()
         )
-        self.text_config = _get_text_config(self.config.model.model_path)
-        self.expected_routed_experts_layers = int(self.text_config.num_hidden_layers)
-        self.expected_routed_experts_topk = int(self.text_config.num_experts_per_tok)
+        if self.enable_return_routed_experts:
+            self.text_config = _get_text_config(self.config.model.model_path)
+            self.expected_routed_experts_layers = int(self.text_config.num_hidden_layers)
+            self.expected_routed_experts_topk = int(self.text_config.num_experts_per_tok)
+        else:
+            self.expected_routed_experts_layers = 0
+            self.expected_routed_experts_topk = 0
         self.config.explorer.rollout_model.engine_type = "sglang"
         self.config.explorer.rollout_model.engine_num = self.engine_num
         self.config.explorer.rollout_model.tensor_parallel_size = self.tensor_parallel_size
@@ -115,7 +119,23 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         for exp, response_text in zip(exps, response_texts):
             self.assertEqual(exp.response_text, response_text)
             self._assert_experience_matches_text(exp, prompt_contents, response_text)
+            if self.enable_return_routed_experts:
+                _assert_routed_experts_shape(
+                    self,
+                    exp,
+                    self.expected_routed_experts_layers,
+                    self.expected_routed_experts_topk,
+                )
         return exps
+
+    def _assert_openai_response_routed_experts(self, response):
+        if not self.enable_return_routed_experts:
+            return
+        self.assertTrue(hasattr(response, "sglext"))
+        self.assertIsNotNone(response.sglext)
+        self.assertTrue(hasattr(response.sglext, "routed_experts"))
+        self.assertIsInstance(response.sglext.routed_experts, str)
+        self.assertGreater(len(response.sglext.routed_experts), 0)
 
     def _get_tool_call_case(self):
         tool_messages = [
@@ -204,6 +224,7 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         )
 
         self.assertEqual(len(response.choices), 2)
+        self._assert_openai_response_routed_experts(response)
         response_texts = await self._collect_response_texts(response)
         self._assert_history_matches_responses(2, prompt_contents, response_texts)
 
@@ -218,6 +239,7 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         )
 
         self.assertEqual(len(tool_response.choices), 1)
+        self._assert_openai_response_routed_experts(tool_response)
         tool_response_texts = await self._collect_response_texts(tool_response)
         self._assert_history_matches_responses(1, tool_prompt_contents, tool_response_texts)
 

@@ -7,13 +7,16 @@ from logging import Logger
 from typing import Any, List, Literal, Optional, Sequence, Tuple
 
 import httpx
-import pybase64
 import torch
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoTokenizer
 
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME, SyncMethod
 from trinity.common.experience import Experience
+from trinity.common.models.experience_extraction import (
+    decode_sglang_routed_experts,
+    get_sglang_routed_experts_layout,
+)
 from trinity.common.models.model import BaseInferenceModel
 from trinity.manager.synchronizer import Synchronizer
 
@@ -318,30 +321,26 @@ class SGLangRolloutModel(BaseInferenceModel):
         if self._routed_experts_layout is None:
             model_path = self.config.model_path
             assert model_path is not None, "model_path must be set to decode routed_experts."
-            hf_config = AutoConfig.from_pretrained(
+            layout = get_sglang_routed_experts_layout(
                 model_path,
                 trust_remote_code=self.config.trust_remote_code,
             )
-            text_config = getattr(hf_config, "text_config", hf_config)
-            self._routed_experts_layout = (
-                int(text_config.num_hidden_layers),
-                int(text_config.num_experts_per_tok),
-            )
+            assert (
+                layout is not None
+            ), "Model config must expose num_hidden_layers and num_experts_per_tok."
+            self._routed_experts_layout = layout
         return self._routed_experts_layout
 
     def _extract_routed_experts(self, routed_experts_str: str, total_tokens: int) -> torch.Tensor:
-        decoded = pybase64.b64decode_as_bytearray(routed_experts_str)
-        routed_experts = torch.frombuffer(decoded, dtype=torch.int32)
-        num_layers, topk = self._get_routed_experts_layout()
-        seq_length = max(total_tokens - 1, 0)
-        expected_numel = seq_length * num_layers * topk
-        if routed_experts.numel() != expected_numel:
-            raise ValueError(
-                "Unexpected routed_experts size from SGLang: "
-                f"expected {expected_numel} elements for shape ({seq_length}, {num_layers}, {topk}), "
-                f"got {routed_experts.numel()}"
-            )
-        return routed_experts.reshape(seq_length, num_layers, topk).to(torch.uint8)
+        routed_experts = decode_sglang_routed_experts(
+            routed_experts_str,
+            total_tokens,
+            model_path=self.config.model_path,
+            trust_remote_code=self.config.trust_remote_code,
+            layout=self._get_routed_experts_layout(),
+        )
+        assert routed_experts is not None
+        return routed_experts
 
     async def generate(self, prompt: str, lora_request=None, **kwargs) -> Sequence[Experience]:
         assert self.api_client is not None, "API client must be initialized before calling generate"
