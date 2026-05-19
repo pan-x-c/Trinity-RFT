@@ -278,9 +278,6 @@ class TestTrainerGSM8K(BaseTrainerCase):
             self.config.trainer.use_dynamic_bsz = False
             self.config.trainer.use_remove_padding = False
         self.config.check_and_update()
-        from pprint import pprint
-
-        pprint(self.config.trainer.trainer_config)
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         actor_rollout_ref = self.config.trainer.trainer_config.actor_rollout_ref
         actor_rollout_ref.actor.optim.lr = 1e-5
