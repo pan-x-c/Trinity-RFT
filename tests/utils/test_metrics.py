@@ -7,6 +7,7 @@ from trinity.utils.metrics import (
     aggregate_eval_metrics,
     aggregate_metrics,
     aggregate_run_level_metrics,
+    calculate_task_level_metrics,
     parse_metric_key,
 )
 
@@ -85,7 +86,7 @@ class TestMetricsUtils:
         # keys with :last suffix should take last value
         dicts = [{"model_version:last": 1.0}, {"model_version:last": 3.0}]
         result = aggregate_metrics(dicts, prefix="rollout")
-        assert result == {"rollout/model_version": 3.0}
+        assert result == {"rollout/model_version/last": 3.0}
 
         # mixed keys
         dicts = [
@@ -95,7 +96,7 @@ class TestMetricsUtils:
         result = aggregate_metrics(dicts, prefix="r")
         assert result["r/reward/mean"] == 2.0
         assert result["r/tokens/sum"] == 300.0
-        assert result["r/version"] == 2.0
+        assert result["r/version/last"] == 2.0
 
         # no prefix
         dicts = [{"reward": 2.0}]
@@ -135,7 +136,7 @@ class TestMetricsUtils:
         # last
         dicts = [{"version:last": 1.0}, {"version:last": 5.0}]
         result = aggregate_eval_metrics(dicts, prefix="eval/test", detailed_stats=False)
-        assert result == {"eval/test/version": 5.0}
+        assert result == {"eval/test/version/last": 5.0}
 
     def test_run_level_metrics(self):
         # empty
@@ -199,3 +200,33 @@ class TestMetricsUtils:
         task_metrics = [{"accuracy": 0.9}, {"accuracy": 0.7}]
         result = aggregate_eval_metrics(task_metrics, prefix="eval/gsm8k", detailed_stats=False)
         assert result == {"eval/gsm8k/accuracy": pytest.approx(0.8)}
+
+    def test_calculate_task_level_metrics(self):
+        # train level
+        metrics = [
+            {"reward": 1.0, "tokens:sum": 3.0, "version:last": 1.0},
+            {"reward": 3.0, "tokens:sum": 4.0, "version:last": 2.0},
+        ]
+
+        result = calculate_task_level_metrics(metrics, is_eval=False)
+
+        assert result == {
+            "reward": 2.0,
+            "tokens:sum": 7.0,
+            "version:last": 2.0,
+        }
+        # eval level
+        metrics = [
+            {"accuracy": 0.2, "tokens:sum": 3.0, "version:last": 1.0, "time/run_execution": 1.0},
+            {"accuracy": 0.8, "tokens:sum": 4.0, "version:last": 2.0, "time/run_execution": 3.0},
+        ]
+
+        result = calculate_task_level_metrics(metrics, is_eval=True)
+
+        assert result["accuracy/mean@2"] == pytest.approx(0.5)
+        assert result["accuracy/std@2"] == pytest.approx(0.3)
+        assert "accuracy/best@2" in result
+        assert "accuracy/worst@2" in result
+        assert result["tokens:sum"] == 7.0
+        assert result["version:last"] == 2.0
+        assert result["time/run_execution"] == pytest.approx(2.0)
