@@ -28,7 +28,7 @@ Supported aggregation types:
 | `:sum` | Sum | `rollout/total_tokens/sum` |
 | `:max` | Maximum | `rollout/latency/max` |
 | `:min` | Minimum | `rollout/latency/min` |
-| `:last` | Last observed value | `rollout/model_version` |
+| `:last` | Last observed value | `rollout/model_version/last` |
 
 Keys without a suffix default to **mean** aggregation, which preserves full backward compatibility with existing workflows and operators.
 
