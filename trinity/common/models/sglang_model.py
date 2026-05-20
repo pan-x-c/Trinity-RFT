@@ -15,7 +15,7 @@ from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME, SyncMethod
 from trinity.common.experience import Experience
 from trinity.common.models.experience_extraction import (
     decode_sglang_routed_experts,
-    get_sglang_routed_experts_layout,
+    get_routed_experts_layout,
 )
 from trinity.common.models.model import BaseInferenceModel
 from trinity.manager.synchronizer import Synchronizer
@@ -321,7 +321,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         if self._routed_experts_layout is None:
             model_path = self.config.model_path
             assert model_path is not None, "model_path must be set to decode routed_experts."
-            layout = get_sglang_routed_experts_layout(
+            layout = get_routed_experts_layout(
                 model_path,
                 trust_remote_code=self.config.trust_remote_code,
             )
@@ -335,8 +335,6 @@ class SGLangRolloutModel(BaseInferenceModel):
         routed_experts = decode_sglang_routed_experts(
             routed_experts_str,
             total_tokens,
-            model_path=self.config.model_path,
-            trust_remote_code=self.config.trust_remote_code,
             layout=self._get_routed_experts_layout(),
         )
         assert routed_experts is not None

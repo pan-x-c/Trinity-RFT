@@ -1,4 +1,3 @@
-from functools import lru_cache
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pybase64
@@ -9,8 +8,7 @@ from transformers import AutoConfig
 from trinity.common.experience import Experience
 
 
-@lru_cache(maxsize=None)
-def get_sglang_routed_experts_layout(
+def get_routed_experts_layout(
     model_path: str, trust_remote_code: bool = True
 ) -> Optional[Tuple[int, int]]:
     hf_config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
@@ -25,10 +23,7 @@ def get_sglang_routed_experts_layout(
 def decode_sglang_routed_experts(
     routed_experts_value: Any,
     total_tokens: int,
-    *,
-    model_path: Optional[str] = None,
-    trust_remote_code: bool = True,
-    layout: Optional[Tuple[int, int]] = None,
+    layout: Tuple[int, int],
 ) -> Optional[Tensor]:
     if routed_experts_value is None:
         return None
@@ -36,13 +31,6 @@ def decode_sglang_routed_experts(
         return routed_experts_value.to(torch.uint8)
     if not isinstance(routed_experts_value, str):
         return torch.tensor(routed_experts_value, dtype=torch.uint8)
-
-    if layout is None:
-        if model_path is None:
-            raise ValueError("model_path must be provided to decode routed_experts.")
-        layout = get_sglang_routed_experts_layout(model_path, trust_remote_code=trust_remote_code)
-    if layout is None:
-        return None
 
     decoded = pybase64.b64decode_as_bytearray(routed_experts_value)
     routed_experts = torch.frombuffer(decoded, dtype=torch.int32)
@@ -58,11 +46,11 @@ def decode_sglang_routed_experts(
     return routed_experts.reshape(seq_length, num_layers, topk).to(torch.uint8)
 
 
-def convert_api_output_to_experience(output) -> List[Experience]:
-    """Convert non-stream/stream API outputs to a list of experiences."""
-    if hasattr(output, "choices"):
-        return _convert_completion_output_to_experience(output)
-    return _convert_stream_chunks_to_experience(output)
+def convert_api_output_to_experience(
+    output, routed_experts_layout: Optional[Tuple[int, int]] = None
+) -> List[Experience]:
+    """Convert a non-stream API output to a list of experiences."""
+    return _convert_completion_output_to_experience(output, routed_experts_layout)
 
 
 class HistoryRecordingStream:
@@ -136,13 +124,15 @@ class HistoryRecordingStream:
             return
         self._recorded = True
         if self._chunks:
-            self._history.extend(convert_api_output_to_experience(self._chunks))
+            self._history.extend(_convert_stream_chunks_to_experience(self._chunks))
 
     def __getattr__(self, name: str):
         return getattr(self._stream, name)
 
 
-def _convert_completion_output_to_experience(output) -> List[Experience]:
+def _convert_completion_output_to_experience(
+    output, routed_experts_layout: Optional[Tuple[int, int]] = None
+) -> List[Experience]:
     return [
         Experience(
             tokens=torch.cat(
@@ -157,6 +147,7 @@ def _convert_completion_output_to_experience(output) -> List[Experience]:
             routed_experts=_extract_completion_routed_experts(
                 output,
                 total_tokens=len(output.prompt_token_ids) + len(choice.token_ids),
+                routed_experts_layout=routed_experts_layout,
             ),
         )
         for choice in output.choices
@@ -224,18 +215,21 @@ def _convert_stream_chunks_to_experience(chunks: Sequence[Any]) -> List[Experien
     return exps
 
 
-def _extract_completion_routed_experts(output, total_tokens: int) -> Optional[Tensor]:
-    sglext = getattr(output, "sglext", None)
-    routed_experts_value = getattr(sglext, "routed_experts", None)
-    model_name = getattr(output, "model", None)
-    if routed_experts_value is None or not isinstance(model_name, str) or len(model_name) == 0:
+def _extract_completion_routed_experts(
+    output,
+    total_tokens: int,
+    routed_experts_layout: Optional[Tuple[int, int]] = None,
+) -> Optional[Tensor]:
+    if routed_experts_layout is None:
         return None
+    if not hasattr(output, "sglext") or "routed_experts" not in output.sglext:
+        return None
+    routed_experts_value = output.sglext.get("routed_experts", None)
     try:
         return decode_sglang_routed_experts(
             routed_experts_value,
             total_tokens,
-            model_path=model_name,
-            trust_remote_code=True,
+            layout=routed_experts_layout,
         )
     except ValueError:
         return None

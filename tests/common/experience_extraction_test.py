@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest import TestCase, mock
+from unittest import TestCase
 
 import pybase64
 import torch
@@ -21,7 +21,7 @@ class TestExperienceExtraction(TestCase):
         output = SimpleNamespace(
             model="mock-moe-model",
             prompt_token_ids=[10, 11],
-            sglext=SimpleNamespace(routed_experts=routed_experts_b64),
+            sglext={"routed_experts": routed_experts_b64},
             choices=[
                 SimpleNamespace(
                     token_ids=[12, 13],
@@ -33,11 +33,7 @@ class TestExperienceExtraction(TestCase):
             ],
         )
 
-        with mock.patch(
-            "trinity.common.models.experience_extraction.get_sglang_routed_experts_layout",
-            return_value=(2, 2),
-        ):
-            experiences = convert_api_output_to_experience(output)
+        experiences = convert_api_output_to_experience(output, routed_experts_layout=(2, 2))
 
         self.assertEqual(len(experiences), 1)
         exp = experiences[0]
@@ -53,7 +49,7 @@ class TestExperienceExtraction(TestCase):
         output = SimpleNamespace(
             model="mock-moe-model",
             prompt_token_ids=[10, 11],
-            sglext=SimpleNamespace(routed_experts="aW52YWxpZA=="),
+            sglext={"routed_experts": "aW52YWxpZA=="},
             choices=[
                 SimpleNamespace(
                     token_ids=[12, 13],
@@ -63,11 +59,7 @@ class TestExperienceExtraction(TestCase):
             ],
         )
 
-        with mock.patch(
-            "trinity.common.models.experience_extraction.get_sglang_routed_experts_layout",
-            return_value=(2, 2),
-        ):
-            experiences = convert_api_output_to_experience(output)
+        experiences = convert_api_output_to_experience(output, routed_experts_layout=(2, 2))
 
         self.assertEqual(len(experiences), 1)
         self.assertIsNone(experiences[0].routed_experts)

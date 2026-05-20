@@ -133,9 +133,9 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
             return
         self.assertTrue(hasattr(response, "sglext"))
         self.assertIsNotNone(response.sglext)
-        self.assertTrue(hasattr(response.sglext, "routed_experts"))
-        self.assertIsInstance(response.sglext.routed_experts, str)
-        self.assertGreater(len(response.sglext.routed_experts), 0)
+        self.assertTrue("routed_experts" in response.sglext)
+        self.assertIsInstance(response.sglext["routed_experts"], str)
+        self.assertGreater(len(response.sglext["routed_experts"]), 0)
 
     def _get_tool_call_case(self):
         tool_messages = [
@@ -218,15 +218,15 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         response = await openai_client.chat.completions.create(
             model=openai_client.model_path,
             messages=messages,
-            n=2,
+            n=1,
             temperature=0.7,
             max_tokens=32,
         )
 
-        self.assertEqual(len(response.choices), 2)
+        self.assertEqual(len(response.choices), 1)
         self._assert_openai_response_routed_experts(response)
         response_texts = await self._collect_response_texts(response)
-        self._assert_history_matches_responses(2, prompt_contents, response_texts)
+        self._assert_history_matches_responses(1, prompt_contents, response_texts)
 
         tool_messages, tool_prompt_contents, tools = self._get_tool_call_case()
         tool_response = await openai_client.chat.completions.create(

@@ -19,6 +19,7 @@ from trinity.common.experience import Experience
 from trinity.common.models.experience_extraction import (
     HistoryRecordingStream,
     convert_api_output_to_experience,
+    get_routed_experts_layout,
 )
 from trinity.common.models.utils import get_action_mask_method
 from trinity.utils.log import get_logger
@@ -355,11 +356,21 @@ class ModelWrapper:
         self.workflow_state: Dict = {}
         self.request_count = 0
         self.state_lock = asyncio.Lock()
+        self._routed_experts_layout: Optional[Tuple[int, int]] = None
 
     async def prepare(self) -> None:
         """Prepare some necessary information for the model before inference."""
         if not self.config.enable_openai_api:
             return
+        if (
+            self.config.enable_return_routed_experts
+            and self.config.engine_type == "sglang"
+            and self._routed_experts_layout is None
+        ):
+            self._routed_experts_layout = get_routed_experts_layout(
+                self.model_path,
+                trust_remote_code=self.config.trust_remote_code,
+            )
         if self.api_address is None:
             if self.model is None:
                 raise ValueError("Cannot get API address from the model.")
@@ -394,6 +405,26 @@ class ModelWrapper:
             self.history.extend(exps)
         else:
             raise TypeError("Expected Experience or List[Experience], got {}".format(type(exps)))
+
+    def _assert_openai_routed_experts_request_supported(
+        self, extra_body: Dict[str, Any], kwargs: Dict[str, Any]
+    ) -> None:
+        """Currently, only SGLang OpenAI API supports returning routed_experts, and it only returns
+        at the response level when n=1. This function asserts that the current request is compatible
+        with these requirements if routed_experts is requested."""
+        requested_routed_experts = self.config.enable_return_routed_experts or bool(
+            extra_body.get("return_routed_experts", False)
+        )
+        if requested_routed_experts:
+            if self.config.engine_type != "sglang":
+                raise ValueError("Routed experts can only be returned from SGLang engine.")
+            if kwargs.get("stream", False):
+                raise ValueError("Routed experts cannot be returned for streaming requests.")
+            if kwargs.get("n", 1) != 1:
+                raise ValueError(
+                    "SGLang OpenAI API returns routed_experts at response level only; "
+                    "set n=1 when requesting routed_experts."
+                )
 
     @_history_recorder
     def generate(self, prompts: List[str], **kwargs) -> List[Experience]:
@@ -571,10 +602,17 @@ class ModelWrapper:
                     chat_template_kwargs["enable_thinking"] = self.config.enable_thinking
                     extra_body["chat_template_kwargs"] = chat_template_kwargs
                 extra_body["return_token_ids"] = True
+                if self.config.enable_return_routed_experts:
+                    extra_body["return_routed_experts"] = True
+                self._assert_openai_routed_experts_request_supported(extra_body, kwargs)
                 response = ori_create(*args, extra_body=extra_body, logprobs=logprobs, **kwargs)
                 if kwargs.get("stream", False):
                     return HistoryRecordingStream(response, self.history, is_async=False)
-                self.history.extend(convert_api_output_to_experience(response))
+                self.history.extend(
+                    convert_api_output_to_experience(
+                        response, routed_experts_layout=self._routed_experts_layout
+                    )
+                )
                 return response
 
             self.openai_client.chat.completions.create = record_chat_completions
@@ -636,12 +674,19 @@ class ModelWrapper:
                     chat_template_kwargs["enable_thinking"] = self.config.enable_thinking
                     extra_body["chat_template_kwargs"] = chat_template_kwargs
                 extra_body["return_token_ids"] = True
+                if self.config.enable_return_routed_experts:
+                    extra_body["return_routed_experts"] = True
+                self._assert_openai_routed_experts_request_supported(extra_body, kwargs)
                 response = await ori_create(
                     *args, extra_body=extra_body, logprobs=logprobs, **kwargs
                 )
                 if kwargs.get("stream", False):
                     return HistoryRecordingStream(response, self.history, is_async=True)
-                self.history.extend(convert_api_output_to_experience(response))
+                self.history.extend(
+                    convert_api_output_to_experience(
+                        response, routed_experts_layout=self._routed_experts_layout
+                    )
+                )
                 return response
 
             self.openai_async_client.chat.completions.create = record_chat_completions
