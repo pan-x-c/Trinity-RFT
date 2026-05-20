@@ -13,6 +13,10 @@ from transformers import AutoTokenizer
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME, SyncMethod
 from trinity.common.experience import Experience
+from trinity.common.models.experience_extraction import (
+    decode_sglang_routed_experts,
+    get_routed_experts_layout,
+)
 from trinity.common.models.model import BaseInferenceModel
 from trinity.manager.synchronizer import Synchronizer
 
@@ -185,6 +189,7 @@ class SGLangClient:
         payload: dict[str, Any] = {
             "sampling_params": sampling_params,
             "return_logprob": kwargs.get("return_logprob", False),
+            "return_routed_experts": kwargs.get("return_routed_experts", False),
             "top_logprobs_num": kwargs.get("top_logprobs_num", 0),
             "return_text_in_logprobs": False,
             "input_ids": input_ids,
@@ -235,6 +240,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         self._has_weight_update_group = False
         self.async_lock = asyncio.Lock()
         self.group_name = ROLLOUT_WEIGHT_SYNC_GROUP_NAME
+        self._routed_experts_layout: Optional[Tuple[int, int]] = None
 
     async def init_process_group(
         self,
@@ -292,6 +298,8 @@ class SGLangRolloutModel(BaseInferenceModel):
         async with self.async_lock:
             if self._prepared:
                 return
+            if self.config.enable_return_routed_experts:
+                self._get_routed_experts_layout()
             await self.run_api_server()
             self._prepared = True
 
@@ -310,6 +318,29 @@ class SGLangRolloutModel(BaseInferenceModel):
                 normalized_message["content"] = "".join(text_parts)
             normalized_messages.append(normalized_message)
         return normalized_messages
+
+    def _get_routed_experts_layout(self) -> Tuple[int, int]:
+        if self._routed_experts_layout is None:
+            model_path = self.config.model_path
+            assert model_path is not None, "model_path must be set to decode routed_experts."
+            layout = get_routed_experts_layout(
+                model_path,
+                trust_remote_code=self.config.trust_remote_code,
+            )
+            assert (
+                layout is not None
+            ), "Model config must expose num_hidden_layers and num_experts_per_tok."
+            self._routed_experts_layout = layout
+        return self._routed_experts_layout
+
+    def _extract_routed_experts(self, routed_experts_str: str, total_tokens: int) -> torch.Tensor:
+        routed_experts = decode_sglang_routed_experts(
+            routed_experts_str,
+            total_tokens,
+            layout=self._get_routed_experts_layout(),
+        )
+        assert routed_experts is not None
+        return routed_experts
 
     async def generate(self, prompt: str, lora_request=None, **kwargs) -> Sequence[Experience]:
         assert self.api_client is not None, "API client must be initialized before calling generate"
@@ -335,6 +366,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             stop=kwargs.get("stop"),
             ignore_eos=kwargs.get("ignore_eos", self.config.ignore_eos),
             return_logprob=return_logprob,
+            return_routed_experts=self.config.enable_return_routed_experts,
             timeout=kwargs.get("timeout", 300),
         )
 
@@ -356,6 +388,17 @@ class SGLangRolloutModel(BaseInferenceModel):
             else:
                 response_logprobs = torch.tensor([], dtype=torch.float32)
 
+            routed_experts = None
+            routed_experts_value = meta_info.get("routed_experts", None)
+            if self.config.enable_return_routed_experts and routed_experts_value is not None:
+                if isinstance(routed_experts_value, str):
+                    routed_experts = self._extract_routed_experts(
+                        routed_experts_value,
+                        total_tokens=len(prompt_token_ids) + len(response_token_ids),
+                    )
+                else:
+                    routed_experts = torch.tensor(routed_experts_value, dtype=torch.uint8)
+
             experiences.append(
                 Experience(
                     tokens=torch.tensor(prompt_token_ids + response_token_ids, dtype=torch.int32),
@@ -363,6 +406,7 @@ class SGLangRolloutModel(BaseInferenceModel):
                     prompt_length=prompt_length,
                     prompt_text=prompt_text,
                     response_text=response_text,
+                    routed_experts=routed_experts,
                 )
             )
         return experiences
@@ -437,6 +481,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             node_rank=self.config.node_rank,
             master_addr=self.master_addr,
             master_port=self.master_port,
+            enable_return_routed_experts=self.config.enable_return_routed_experts,
             logger=self.logger,
         )
         server_url = f"http://{self.api_server_host}:{self.api_server_port}"
