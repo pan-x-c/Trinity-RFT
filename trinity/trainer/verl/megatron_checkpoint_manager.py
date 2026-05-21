@@ -83,6 +83,39 @@ class MegatronCheckpointManager(OldMegatronCheckpointManager):
             return
         super().register_checkpoint(new_path, max_ckpt_to_keep)
 
+    def _infer_max_position_embeddings(self, hf_config) -> Optional[int]:
+        rope_scaling = getattr(hf_config, "rope_scaling", None)
+        if not isinstance(rope_scaling, dict):
+            return None
+        if rope_scaling.get("rope_type") != "yarn":
+            return None
+
+        original_max_position_embeddings = rope_scaling.get("original_max_position_embeddings")
+        if original_max_position_embeddings is None:
+            return None
+
+        factor = rope_scaling.get("factor", 1.0)
+        try:
+            return int(float(original_max_position_embeddings) * float(factor))
+        except (TypeError, ValueError):
+            return None
+
+    def _patch_hf_config_for_save(self, hf_config) -> None:
+        if hf_config is None or hasattr(hf_config, "max_position_embeddings"):
+            return
+
+        max_position_embeddings = self._infer_max_position_embeddings(hf_config)
+        if max_position_embeddings is None:
+            return
+
+        setattr(hf_config, "max_position_embeddings", max_position_embeddings)
+
+    def _patch_save_configs(self) -> None:
+        self._patch_hf_config_for_save(getattr(self, "hf_config", None))
+        bridge_hf_config = getattr(getattr(self, "bridge", None), "hf_config", None)
+        if bridge_hf_config is not self.hf_config:
+            self._patch_hf_config_for_save(bridge_hf_config)
+
     def _save_state_dict(self, local_path, global_step, max_ckpt_to_keep=None) -> bool:
         """
         Save the model state dict to the specified local path.
@@ -191,6 +224,7 @@ class MegatronCheckpointManager(OldMegatronCheckpointManager):
                     logger=logger,
                 )
                 hf_ckpt_path = get_hf_model_checkpoint_path(local_path)
+                self._patch_save_configs()
                 if self.vanilla_bridge:
                     extended_args = {}
                     mbridge_config = getattr(self.checkpoint_config, "mbridge_config", None) or {}
@@ -258,6 +292,7 @@ class MegatronCheckpointManager(OldMegatronCheckpointManager):
                 if self.processing_class is not None:
                     self.processing_class.save_pretrained(hf_config_tokenizer_path)
                 # Save huggingface config
+                self._patch_save_configs()
                 self.hf_config.save_pretrained(hf_config_tokenizer_path)
                 if hasattr(self.hf_config, "name_or_path") and self.hf_config.name_or_path:
                     try:
@@ -350,6 +385,7 @@ class MegatronCheckpointManager(OldMegatronCheckpointManager):
             # wait for everyone to dump to local
             if self.bridge is not None:
                 hf_model_ckpt_path = get_hf_model_checkpoint_path(local_path)
+                self._patch_save_configs()
                 if self.vanilla_bridge:
                     extended_args = {}
                     mbridge_config = getattr(self.checkpoint_config, "mbridge_config", None) or {}
