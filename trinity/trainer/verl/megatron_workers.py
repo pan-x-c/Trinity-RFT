@@ -1369,8 +1369,12 @@ class CriticWorker(MegatronWorker, DistProfilerExtension):
 
         metrics["critic/lr"] = get_megatron_last_lr(self.critic_optimizer)
         self.critic_optimizer_scheduler.step(1)
-        if isinstance(metrics["critic/grad_norm"], list) and any(torch.is_tensor(grad) for grad in metrics["critic/grad_norm"]):
-            metrics["critic/grad_norm"] = [v.item() if torch.is_tensor(v) else v for v in metrics["critic/grad_norm"]]
+        if isinstance(metrics["critic/grad_norm"], list) and any(
+            torch.is_tensor(grad) for grad in metrics["critic/grad_norm"]
+        ):
+            metrics["critic/grad_norm"] = [
+                v.item() if torch.is_tensor(v) else v for v in metrics["critic/grad_norm"]
+            ]
         output = DataProto(batch=None, meta_info={"metrics": metrics})
 
         if self._is_offload_param:
