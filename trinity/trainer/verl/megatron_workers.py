@@ -1039,9 +1039,7 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def async_calls_finalize_fn_exec(self, blocking=False):
-        from megatron.core.dist_checkpointing.strategies.base import async_calls
-
-        async_calls.maybe_finalize_async_calls(blocking=blocking)
+        self.checkpoint_mananager.finalize_async_calls(blocking=blocking)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def start_profile(self, **kwargs) -> None:
@@ -1419,9 +1417,7 @@ class CriticWorker(MegatronWorker, DistProfilerExtension):
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def async_calls_finalize_fn_exec(self, blocking=False):
-        from megatron.core.dist_checkpointing.strategies.base import async_calls
-
-        async_calls.maybe_finalize_async_calls(blocking=blocking)
+        self.checkpoint_mananager.finalize_async_calls(blocking=blocking)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def wait_on_save_thread(self) -> None:

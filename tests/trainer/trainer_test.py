@@ -155,8 +155,18 @@ class TestTrainerCountdown(BaseTrainerCase):
         convert_command(self.config.checkpoint_job_dir)
         hf_dir_step_4 = os.listdir(os.path.join(checkpoint_step_4, "actor", "huggingface"))
         hf_dir_step_8 = os.listdir(os.path.join(checkpoint_step_8, "actor", "huggingface"))
-        self.assertIn("model.safetensors", hf_dir_step_4)
-        self.assertIn("model.safetensors", hf_dir_step_8)
+        self.assertTrue(
+            any(
+                file.startswith("model.safetensors") and file.endswith(".safetensors")
+                for file in hf_dir_step_4
+            )
+        )
+        self.assertTrue(
+            any(
+                file.startswith("model.safetensors") and file.endswith(".safetensors")
+                for file in hf_dir_step_8
+            )
+        )
         self.assertEqual(step_num, 8)
         ray.init(ignore_reinit_error=True, namespace=self.config.ray_namespace)
         # test bench mode
