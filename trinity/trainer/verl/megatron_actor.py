@@ -21,6 +21,7 @@ Note that our model doesn't have to be `MegatronModule` because we don't share e
 Modified from https://github.com/volcengine/verl/blob/v0.7.1/verl/workers/actor/megatron_actor.py
 """
 
+import os
 from functools import partial
 from typing import Iterable, Tuple
 
@@ -62,6 +63,7 @@ class MegatronPPOActor(OldMegatronPPOActor):
         *args,
         **kwargs,
     ):
+        os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
         super().__init__(*args, **kwargs)
         self.policy_loss_fn = None
         self.kl_loss_fn = None

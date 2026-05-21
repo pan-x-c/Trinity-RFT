@@ -87,6 +87,7 @@ class TestTrainerCountdown(BaseTrainerCase):
     def test_trainer(self):
         """Test the both and bench mode."""
         # test both mode
+        self.config.model.model_path = get_api_model_path()
         self.config.model.rope_scaling = {
             "rope_type": "yarn",
             "factor": 2.0,
