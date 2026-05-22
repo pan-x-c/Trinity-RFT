@@ -23,7 +23,6 @@ from tests.tools import (
     RayUnittestBaseAsync,
     TensorBoardParser,
     get_alternative_vision_language_model_path,
-    get_api_model_path,
     get_checkpoint_path,
     get_lora_config,
     get_model_path,
@@ -87,7 +86,6 @@ class TestTrainerCountdown(BaseTrainerCase):
     def test_trainer(self):
         """Test the both and bench mode."""
         # test both mode
-        self.config.model.model_path = get_api_model_path()
         self.config.model.rope_scaling = {
             "rope_type": "yarn",
             "factor": 2.0,
@@ -264,7 +262,6 @@ class TestTrainerGSM8K(BaseTrainerCase):
     def test_trainer(self):
         """Test GSM8K."""
         # test both mode
-        self.config.model.model_path = get_api_model_path()
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.repeat_times = 4
         self.config.algorithm.advantage_fn = "grpo"
