@@ -23,6 +23,7 @@ from tests.tools import (
     RayUnittestBaseAsync,
     TensorBoardParser,
     get_alternative_vision_language_model_path,
+    get_api_model_path,
     get_checkpoint_path,
     get_lora_config,
     get_model_path,
@@ -92,6 +93,9 @@ class TestTrainerCountdown(BaseTrainerCase):
             "original_max_position_embeddings": 16384,
         }
         self.config.model.rope_theta = 10000
+        self.config.model.model_path = (
+            get_api_model_path() if self.strategy == "megatron" else get_model_path()
+        )
         self.config.explorer.rollout_model.engine_type = self.engine_type
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
         self.config.buffer.explorer_input.taskset.data_selector = DataSelectorConfig(
@@ -268,6 +272,8 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.algorithm.advantage_fn_args = {
             "epsilon": 1e-6,
         }
+        if self.offloading:
+            self.config.model.model_path = get_api_model_path()
         # self.config.algorithm.repeat_times = 8  # TODO: used for real testing
         # self.config.buffer.batch_size = 96  # TODO: used for real testing
         # FOR MULTI-NODE TESTING, PLEASE MAKE SURE YOU HAVE 3 NODES

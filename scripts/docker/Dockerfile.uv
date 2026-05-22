@@ -50,7 +50,7 @@ RUN . /opt/venv/bin/activate && \
 
 # Install Transformer Engine
 RUN . /opt/venv/bin/activate && \
-    git clone --branch v2.15 --depth 1 --recursive https://github.com/NVIDIA/TransformerEngine.git /tmp/TransformerEngine && \
+    git clone --branch v2.14.1 --depth 1 --recursive https://github.com/NVIDIA/TransformerEngine.git /tmp/TransformerEngine && \
     MAX_JOBS=${BUILD_JOBS} \
     CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS} \
     NVTE_BUILD_THREADS_PER_JOB=${NVTE_BUILD_THREADS_PER_JOB} \
