@@ -93,9 +93,6 @@ class TestTrainerCountdown(BaseTrainerCase):
             "original_max_position_embeddings": 16384,
         }
         self.config.model.rope_theta = 10000
-        self.config.model.model_path = (
-            get_api_model_path() if self.strategy == "megatron" else get_model_path()
-        )
         self.config.explorer.rollout_model.engine_type = self.engine_type
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
         self.config.buffer.explorer_input.taskset.data_selector = DataSelectorConfig(
