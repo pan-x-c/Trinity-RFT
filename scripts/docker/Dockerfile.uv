@@ -72,12 +72,7 @@ RUN . /opt/venv/bin/activate && MAX_JOBS=${BUILD_JOBS} \
     git+https://github.com/NVIDIA/apex.git
 
 # Install SGLang
-RUN RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-RUN . /opt/venv/bin/activate && . /usr/local/cargo/env && \
-    git clone -b v0.5.11 https://github.com/sgl-project/sglang.git /tmp/sglang && \
-    uv pip install /tmp/sglang/python && \
-    rm -rf /tmp/sglang && \
+RUN . /opt/venv/bin/activate && uv pip install sglang==0.5.12 --prerelease=allow && \
     uv pip install transformers==5.8.1
 
 # Set Env variables
