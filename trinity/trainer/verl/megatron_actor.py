@@ -68,6 +68,7 @@ class MegatronPPOActor(OldMegatronPPOActor):
         self.policy_loss_fn = None
         self.kl_loss_fn = None
         self.entropy_loss_fn = None
+        self.calculate_entropy = False
 
     def set_algorithm(self, algorithm_config: AlgorithmConfig):
         self.loss_agg_mode = algorithm_config.loss_agg_mode
@@ -78,6 +79,7 @@ class MegatronPPOActor(OldMegatronPPOActor):
         self.entropy_loss_fn = ENTROPY_LOSS_FN.get(algorithm_config.entropy_loss_fn)(
             **algorithm_config.entropy_loss_fn_args
         )
+        self.calculate_entropy = self.entropy_loss_fn.enable()
 
     def forward_backward_batch(  # noqa: C901
         self,
@@ -514,7 +516,6 @@ class MegatronPPOActor(OldMegatronPPOActor):
                 # if use distributed optimizer, zero grad buffer will be handled by optimizer
                 chunk.zero_grad_buffer()
 
-            calculate_entropy = self.entropy_loss_fn.enable() if self.entropy_loss_fn is not None else False
             if data.meta_info.get("micro_batch_size", None) is not None:
                 micro_batch_size = data.meta_info["micro_batch_size"]
             else:
@@ -527,7 +528,7 @@ class MegatronPPOActor(OldMegatronPPOActor):
                 )
             metric_micro_batch = self.forward_backward_batch(
                 data,
-                calculate_entropy=calculate_entropy,
+                calculate_entropy=self.calculate_entropy,
                 use_dynamic_bsz=self.config.use_dynamic_bsz,
                 micro_batch_size=micro_batch_size,
                 max_token_len=max_token_len,
