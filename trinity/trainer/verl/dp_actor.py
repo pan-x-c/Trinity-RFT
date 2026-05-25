@@ -105,6 +105,7 @@ class DataParallelPPOActor(DPActor):
         self.entropy_loss_fn = ENTROPY_LOSS_FN.get(algorithm_config.entropy_loss_fn)(
             **algorithm_config.entropy_loss_fn_args
         )
+        self.calculate_entropy = algorithm_config.entropy_loss_fn != "none"
 
     def _forward_micro_batch(  # noqa: C901
         self,
@@ -516,16 +517,13 @@ class DataParallelPPOActor(DPActor):
                     loss_mode = self.config.policy_loss.get("loss_mode", "vanilla")
 
                     # all return: (bsz, response_length)
-                    calculate_entropy = (
-                        self.entropy_loss_fn.enable() if self.entropy_loss_fn is not None else False
-                    )
                     outputs = self._forward_micro_batch(
                         micro_batch=model_inputs,
                         temperature=temperature,
-                        calculate_entropy=calculate_entropy,
+                        calculate_entropy=self.calculate_entropy,
                     )
                     log_prob = outputs["log_probs"]
-                    entropy = outputs["entropys"] if calculate_entropy else None
+                    entropy = outputs["entropys"] if self.calculate_entropy else None
 
                     pg_loss, pg_loss_metrics = self.policy_loss_fn(  # type: ignore
                         logprob=log_prob, **model_inputs
