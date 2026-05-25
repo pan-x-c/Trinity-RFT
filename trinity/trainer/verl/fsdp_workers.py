@@ -820,7 +820,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                                     (realname, str(param.dtype).split(".")[-1], tuple(param.shape))
                                 )
                             param = None
-                        torch.cuda.empty_cache()
+                        get_torch_device().empty_cache()
                 else:  # fsdp2
                     for name, param in model.named_parameters():
                         self.state_dict_meta.append(
