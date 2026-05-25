@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 
@@ -11,8 +11,10 @@ class EntropyLossFn(ABC):
     Entropy loss function.
     """
 
-    def __init__(self, entropy_coef: float):
+    def __init__(self, entropy_coef: float, enable_entropy: Optional[bool] = None):
         self.entropy_coef = entropy_coef
+        # enable entropy calculation if entropy_coef > 0.0, or explicitly set by enable_entropy
+        self._enable_entropy = enable_entropy or self.entropy_coef > 0.0
 
     @abstractmethod
     def __call__(
@@ -39,12 +41,12 @@ class EntropyLossFn(ABC):
         """
         return {"entropy_coef": 0.0}
 
-    def enable(self) -> bool:
+    def enable_entropy(self) -> bool:
         """
         Returns:
             bool: Whether the entropy loss is enabled.
         """
-        return self.entropy_coef > 0.0
+        return self._enable_entropy
 
 
 class DefaultEntropyLossFn(EntropyLossFn):
@@ -52,8 +54,8 @@ class DefaultEntropyLossFn(EntropyLossFn):
     Basic entropy loss function.
     """
 
-    def __init__(self, entropy_coef: float):
-        super().__init__(entropy_coef)
+    def __init__(self, entropy_coef: float, enable_entropy: Optional[bool] = None):
+        super().__init__(entropy_coef, enable_entropy)
 
     def __call__(
         self,
@@ -71,8 +73,8 @@ class MixEntropyLossFn(EntropyLossFn):
     Basic entropy loss function for mix algorithm.
     """
 
-    def __init__(self, entropy_coef: float):
-        super().__init__(entropy_coef)
+    def __init__(self, entropy_coef: float, enable_entropy: Optional[bool] = None):
+        super().__init__(entropy_coef, enable_entropy)
 
     def __call__(
         self,
@@ -98,8 +100,8 @@ class DummyEntropyLossFn(EntropyLossFn):
     Dummy entropy loss function.
     """
 
-    def __init__(self, entropy_coef: float):
-        super().__init__(entropy_coef)
+    def __init__(self, entropy_coef: float, enable_entropy: Optional[bool] = None):
+        super().__init__(entropy_coef, enable_entropy)
 
     def __call__(
         self,
