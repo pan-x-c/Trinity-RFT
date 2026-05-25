@@ -305,6 +305,12 @@ class TestTrainerGSM8K(BaseTrainerCase):
         actor_metrics = parser.metric_list("actor")
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 4)
+        entropy_loss_metrics = parser.metric_list("actor/entropy_loss")
+        if self.entropy_loss_fn == "none":
+            self.assertEqual(len(entropy_loss_metrics), 0)
+        else:
+            self.assertGreater(len(entropy_loss_metrics), 0)
+            self.assertEqual(parser.metric_max_step(entropy_loss_metrics[0]), 4)
         response_metrics = parser.metric_list("response_length")
         self.assertGreater(len(response_metrics), 0)
         self.assertEqual(parser.metric_max_step(response_metrics[0]), 4)
