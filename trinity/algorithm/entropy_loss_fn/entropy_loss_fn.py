@@ -46,6 +46,7 @@ class EntropyLossFn(ABC):
         """
         return self.entropy_coef > 0.0
 
+
 class DefaultEntropyLossFn(EntropyLossFn):
     """
     Basic entropy loss function.

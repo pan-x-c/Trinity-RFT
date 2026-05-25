@@ -49,7 +49,6 @@ from verl.workers.megatron_workers import MegatronPPOActor as OldMegatronPPOActo
 from verl.workers.megatron_workers import logger
 
 from trinity.algorithm import ENTROPY_LOSS_FN, KL_FN, POLICY_LOSS_FN
-from trinity.algorithm.entropy_loss_fn.entropy_loss_fn import DummyEntropyLossFn
 from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import AlgorithmConfig
 
@@ -111,7 +110,9 @@ class _VocabParallelLogProbsAndEntropy(torch.autograd.Function):
         # normalized_logits / exp_logits / softmax as separate large tensors.
         logits.exp_()
         sum_exp_logits = logits.sum(dim=-1)
-        torch.distributed.all_reduce(sum_exp_logits, op=torch.distributed.ReduceOp.SUM, group=tp_group)
+        torch.distributed.all_reduce(
+            sum_exp_logits, op=torch.distributed.ReduceOp.SUM, group=tp_group
+        )
 
         log_sum_exp = sum_exp_logits.log()
         logits.div_(sum_exp_logits.unsqueeze(dim=-1))
@@ -156,9 +157,9 @@ class _VocabParallelLogProbsAndEntropy(torch.autograd.Function):
         if grad_log_probs is not None:
             grad_2d = grad_input.view(-1, ctx.partition_vocab_size)
             arange_1d = torch.arange(grad_2d.size(0), device=grad_2d.device)
-            grad_2d[arange_1d, masked_target_1d] += (
-                grad_log_probs.reshape(-1) * (~target_mask).view(-1).to(grad_input.dtype)
-            )
+            grad_2d[arange_1d, masked_target_1d] += grad_log_probs.reshape(-1) * (
+                ~target_mask
+            ).view(-1).to(grad_input.dtype)
 
         return grad_input, None
 

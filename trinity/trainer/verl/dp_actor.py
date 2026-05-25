@@ -41,7 +41,6 @@ from verl.utils.ulysses import (
 from verl.workers.actor.dp_actor import DataParallelPPOActor as DPActor
 
 from trinity.algorithm import ENTROPY_LOSS_FN, KL_FN, POLICY_LOSS_FN
-from trinity.algorithm.entropy_loss_fn.entropy_loss_fn import DummyEntropyLossFn
 from trinity.algorithm.kl_fn.kl_fn import DummyKLFn
 from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import AlgorithmConfig
@@ -517,7 +516,9 @@ class DataParallelPPOActor(DPActor):
                     loss_mode = self.config.policy_loss.get("loss_mode", "vanilla")
 
                     # all return: (bsz, response_length)
-                    calculate_entropy = self.entropy_loss_fn.enable() if self.entropy_loss_fn is not None else False
+                    calculate_entropy = (
+                        self.entropy_loss_fn.enable() if self.entropy_loss_fn is not None else False
+                    )
                     outputs = self._forward_micro_batch(
                         micro_batch=model_inputs,
                         temperature=temperature,
