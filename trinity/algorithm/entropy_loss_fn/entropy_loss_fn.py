@@ -11,6 +11,9 @@ class EntropyLossFn(ABC):
     Entropy loss function.
     """
 
+    def __init__(self, entropy_coef: float):
+        self.entropy_coef = entropy_coef
+
     @abstractmethod
     def __call__(
         self,
@@ -36,6 +39,12 @@ class EntropyLossFn(ABC):
         """
         return {"entropy_coef": 0.0}
 
+    def enable(self) -> bool:
+        """
+        Returns:
+            bool: Whether the entropy loss is enabled.
+        """
+        return self.entropy_coef > 0.0
 
 class DefaultEntropyLossFn(EntropyLossFn):
     """
@@ -43,7 +52,7 @@ class DefaultEntropyLossFn(EntropyLossFn):
     """
 
     def __init__(self, entropy_coef: float):
-        self.entropy_coef = entropy_coef
+        super().__init__(entropy_coef)
 
     def __call__(
         self,
@@ -62,7 +71,7 @@ class MixEntropyLossFn(EntropyLossFn):
     """
 
     def __init__(self, entropy_coef: float):
-        self.entropy_coef = entropy_coef
+        super().__init__(entropy_coef)
 
     def __call__(
         self,
@@ -89,7 +98,7 @@ class DummyEntropyLossFn(EntropyLossFn):
     """
 
     def __init__(self, entropy_coef: float):
-        self.entropy_coef = entropy_coef
+        super().__init__(entropy_coef)
 
     def __call__(
         self,

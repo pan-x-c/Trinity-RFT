@@ -517,7 +517,7 @@ class DataParallelPPOActor(DPActor):
                     loss_mode = self.config.policy_loss.get("loss_mode", "vanilla")
 
                     # all return: (bsz, response_length)
-                    calculate_entropy = self.entropy_loss_fn != DummyEntropyLossFn
+                    calculate_entropy = self.entropy_loss_fn.enable() if self.entropy_loss_fn is not None else False
                     outputs = self._forward_micro_batch(
                         micro_batch=model_inputs,
                         temperature=temperature,

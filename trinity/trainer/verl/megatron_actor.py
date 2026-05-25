@@ -514,7 +514,7 @@ class MegatronPPOActor(OldMegatronPPOActor):
                 # if use distributed optimizer, zero grad buffer will be handled by optimizer
                 chunk.zero_grad_buffer()
 
-            calculate_entropy = self.entropy_loss_fn != DummyEntropyLossFn
+            calculate_entropy = self.entropy_loss_fn.enable() if self.entropy_loss_fn is not None else False
             if data.meta_info.get("micro_batch_size", None) is not None:
                 micro_batch_size = data.meta_info["micro_batch_size"]
             else:
