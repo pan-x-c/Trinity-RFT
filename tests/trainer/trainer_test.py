@@ -155,8 +155,18 @@ class TestTrainerCountdown(BaseTrainerCase):
         convert_command(self.config.checkpoint_job_dir)
         hf_dir_step_4 = os.listdir(os.path.join(checkpoint_step_4, "actor", "huggingface"))
         hf_dir_step_8 = os.listdir(os.path.join(checkpoint_step_8, "actor", "huggingface"))
-        self.assertIn("model.safetensors", hf_dir_step_4)
-        self.assertIn("model.safetensors", hf_dir_step_8)
+        self.assertTrue(
+            any(
+                file.startswith("model.safetensors") and file.endswith(".safetensors")
+                for file in hf_dir_step_4
+            )
+        )
+        self.assertTrue(
+            any(
+                file.startswith("model.safetensors") and file.endswith(".safetensors")
+                for file in hf_dir_step_8
+            )
+        )
         self.assertEqual(step_num, 8)
         ray.init(ignore_reinit_error=True, namespace=self.config.ray_namespace)
         # test bench mode
@@ -253,13 +263,14 @@ class TestTrainerGSM8K(BaseTrainerCase):
     def test_trainer(self):
         """Test GSM8K."""
         # test both mode
-        self.config.model.model_path = get_api_model_path()
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.repeat_times = 4
         self.config.algorithm.advantage_fn = "grpo"
         self.config.algorithm.advantage_fn_args = {
             "epsilon": 1e-6,
         }
+        if self.offloading:
+            self.config.model.model_path = get_api_model_path()
         # self.config.algorithm.repeat_times = 8  # TODO: used for real testing
         # self.config.buffer.batch_size = 96  # TODO: used for real testing
         # FOR MULTI-NODE TESTING, PLEASE MAKE SURE YOU HAVE 3 NODES
@@ -271,12 +282,8 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.trainer.trainer_strategy = self.strategy
-        if self.strategy == "megatron":
-            # Megatron not support packing for now, so we need to set the following configs
-            # to make sure the input is not packed.
-            # Remove after we support packing in Megatron.
-            self.config.trainer.use_dynamic_bsz = False
-            self.config.trainer.use_remove_padding = False
+        self.config.model.max_response_tokens = 512
+        self.config.model.max_model_len = 2048
         self.config.check_and_update()
         self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
         actor_rollout_ref = self.config.trainer.trainer_config.actor_rollout_ref
@@ -824,13 +831,14 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         )
 
         megatron_dist_ckpt_items = {
-            "__0_1.distcp",
+            "__0_0.distcp",
             "__1_0.distcp",
             "common.pt",
             ".metadata",
             "metadata.json",
-            "__1_1.distcp",
-            "__0_0.distcp",
+            # for Megatron < 0.18
+            # "__0_1.distcp",
+            # "__1_1.distcp",
         }
         start_time = time.time()
         while not stop_event.is_set() and time.time() - start_time < 60 * 10:

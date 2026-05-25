@@ -21,6 +21,7 @@ Note that our model doesn't have to be `MegatronModule` because we don't share e
 Modified from https://github.com/volcengine/verl/blob/v0.7.1/verl/workers/actor/megatron_actor.py
 """
 
+import os
 from functools import partial
 from typing import Iterable, Tuple
 
@@ -62,6 +63,7 @@ class MegatronPPOActor(OldMegatronPPOActor):
         *args,
         **kwargs,
     ):
+        os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
         super().__init__(*args, **kwargs)
         self.policy_loss_fn = None
         self.kl_loss_fn = None
@@ -543,7 +545,7 @@ class MegatronPPOActor(OldMegatronPPOActor):
                 )  # append the metric from this micro-batch to global metrics.
 
             update_successful, grad_norm, num_zeros_in_grad = self.actor_optimizer.step()
-            data = {"actor/grad_norm": grad_norm}
+            data = {"actor/grad_norm": grad_norm.detach().item()}
             append_to_dict(metrics, data)
 
             if update_successful:
