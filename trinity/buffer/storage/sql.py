@@ -1,5 +1,6 @@
 """SQL database storage"""
 
+import os
 import time
 from abc import abstractmethod
 from typing import Dict, List, Optional
@@ -13,6 +14,7 @@ from trinity.buffer.schema import FORMATTER, init_engine
 from trinity.buffer.schema.formatter import TaskFormatter
 from trinity.buffer.utils import run_with_retry_session
 from trinity.common.config import StorageConfig
+from trinity.common.constants import MAX_EXP_BYTES_ENV_VAR
 from trinity.common.experience import Experience
 from trinity.common.rewards import REWARD_FUNCTIONS
 from trinity.common.workflows import WORKFLOWS, Task
@@ -98,6 +100,9 @@ class SQLExperienceStorage(SQLStorage):
         self.max_timeout = config.max_read_timeout
         self.batch_size = config.batch_size
         self.enable_replay = config.replay_buffer is not None and config.replay_buffer.enable
+        self.max_experience_bytes = int(
+            os.getenv(MAX_EXP_BYTES_ENV_VAR, 1024 * 1024 * 32)  # default 32MB
+        )
         # TODO: optimize the following logic
         if config.schema_type == "experience":
             # NOTE: consistent with the old version of experience buffer
@@ -108,7 +113,22 @@ class SQLExperienceStorage(SQLStorage):
 
     def write(self, data: List[Experience]) -> None:
         def operation(session):
-            experience_models = [self.table_model_cls.from_experience(exp) for exp in data]
+            experience_models = []
+            for exp in data:
+                exp_model = self.table_model_cls.from_experience(exp)
+                # TODO: this is a temporary solution to avoid OOM when loading large experience into memory,
+                # we need a better way to handle this in the future
+                if (
+                    self.max_experience_bytes > 0
+                    and exp_model.experience_bytes is not None
+                    and len(exp_model.experience_bytes) > self.max_experience_bytes
+                ):
+                    self.logger.warning(
+                        f"Experience {exp_model.id} size {exp_model.experience_bytes} bytes exceeds the "
+                        f"max_experience_bytes {self.max_experience_bytes} bytes, it may cause OOM when loading into memory."
+                    )
+                    continue
+                experience_models.append(exp_model)
             session.add_all(experience_models)
 
         run_with_retry_session(
