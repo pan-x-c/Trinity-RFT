@@ -251,12 +251,12 @@ class TestStepAheadAsyncRL(BaseTrainerCase):
 
 
 @parameterized_class(
-    ("strategy", "offloading", "engine_type", "entropy_coef"),
+    ("strategy", "offloading", "engine_type", "entropy_loss_fn"),
     [
-        ("megatron", False, "vllm", 0.0),
-        ("fsdp2", False, "vllm", 0.0),
-        ("megatron", True, "sglang", 0.001),
-        ("fsdp2", True, "sglang", 0.001),
+        ("megatron", False, "vllm", "none"),
+        ("fsdp2", False, "vllm", "none"),
+        ("megatron", True, "sglang", "default"),
+        ("fsdp2", True, "sglang", "default"),
     ],
 )
 class TestTrainerGSM8K(BaseTrainerCase):
@@ -269,9 +269,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.algorithm.advantage_fn_args = {
             "epsilon": 1e-6,
         }
-        self.config.algorithm.entropy_loss_fn_args = {
-            "entropy_coef": self.entropy_coef,
-        }
+        self.config.algorithm.entropy_loss_fn = self.entropy_loss_fn
         if self.offloading:
             self.config.model.model_path = get_api_model_path()
         # self.config.algorithm.repeat_times = 8  # TODO: used for real testing

@@ -193,7 +193,7 @@ class MegatronPPOActor(OldMegatronPPOActor):
         self.entropy_loss_fn = ENTROPY_LOSS_FN.get(algorithm_config.entropy_loss_fn)(
             **algorithm_config.entropy_loss_fn_args
         )
-        self.calculate_entropy = self.entropy_loss_fn.enable_entropy()
+        self.calculate_entropy = algorithm_config.entropy_loss_fn != "none"
 
     def forward_backward_batch(  # noqa: C901
         self,
