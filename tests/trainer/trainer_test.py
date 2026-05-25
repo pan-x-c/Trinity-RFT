@@ -829,13 +829,14 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         )
 
         megatron_dist_ckpt_items = {
-            "__0_1.distcp",
+            "__0_0.distcp",
             "__1_0.distcp",
             "common.pt",
             ".metadata",
             "metadata.json",
-            "__1_1.distcp",
-            "__0_0.distcp",
+            # for Megatron < 0.18
+            # "__0_1.distcp",
+            # "__1_1.distcp",
         }
         start_time = time.time()
         while not stop_event.is_set() and time.time() - start_time < 60 * 10:
