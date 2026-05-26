@@ -412,7 +412,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 )
                 topk_logprobs = np.full(
                     (len(prompt_token_ids), topk_prompt_logprobs),
-                    -99999.0,
+                    -99999.0,  # align with tinker's TopkPromptLogprobs
                     dtype=np.float32,
                 )
 
