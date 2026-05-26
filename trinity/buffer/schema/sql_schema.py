@@ -168,9 +168,7 @@ _SCHEMA_BLOB_MAP = {
 }
 
 
-def init_engine(
-    db_url: str, table_name: str, schema_type: Optional[str]
-) -> Tuple:
+def init_engine(db_url: str, table_name: str, schema_type: Optional[str]) -> Tuple:
     """Get the sqlalchemy engine.
 
     Returns:

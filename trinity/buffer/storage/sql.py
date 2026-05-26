@@ -50,7 +50,7 @@ class SQLStorage:
     def _init_tables(self, config: StorageConfig) -> None:
         """Initialize engine and table classes. Subclasses may override."""
         result = init_engine(
-            db_url=config.path,
+            db_url=config.path,  # type: ignore
             table_name=config.name,
             schema_type=config.schema_type,
         )
@@ -146,11 +146,7 @@ class SQLExperienceStorage(SQLStorage):
 
     def _fetch_blobs(self, session, ids: List[int]) -> Dict[int, bytes]:
         """Batch fetch blob bytes by meta ids."""
-        blobs = (
-            session.query(self.blob_model_cls)
-            .filter(self.blob_model_cls.id.in_(ids))
-            .all()
-        )
+        blobs = session.query(self.blob_model_cls).filter(self.blob_model_cls.id.in_(ids)).all()
         return {b.id: b.experience_bytes for b in blobs}
 
     def _assemble_experiences(self, meta_rows, blob_map: Dict[int, bytes]) -> List[Experience]:
@@ -240,9 +236,7 @@ class SQLExperienceStorage(SQLStorage):
                     return len(meta_rows), False, []
 
                 ids = [row.id for row in meta_rows]
-                session.query(self.table_model_cls).filter(
-                    self.table_model_cls.id.in_(ids)
-                ).update(
+                session.query(self.table_model_cls).filter(self.table_model_cls.id.in_(ids)).update(
                     {self.table_model_cls.consumed: self.table_model_cls.consumed + 1},
                     synchronize_session=False,
                 )

@@ -77,11 +77,7 @@ class HistoryRecorder:
                 record.consumed += 1
 
             ids = [record.id for record in records]
-            blobs = (
-                db.query(self.blob_cls)
-                .filter(self.blob_cls.id.in_(ids))
-                .all()
-            )
+            blobs = db.query(self.blob_cls).filter(self.blob_cls.id.in_(ids)).all()
             blob_map = {b.id: b.experience_bytes for b in blobs}
 
             updated_experiences = []

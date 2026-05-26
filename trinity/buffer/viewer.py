@@ -60,11 +60,7 @@ class SQLExperienceViewer:
             if not meta_rows:
                 return []
             ids = [row.id for row in meta_rows]
-            blobs = (
-                session.query(self.blob_cls)
-                .filter(self.blob_cls.id.in_(ids))
-                .all()
-            )
+            blobs = session.query(self.blob_cls).filter(self.blob_cls.id.in_(ids)).all()
             blob_map = {b.id: b.experience_bytes for b in blobs}
             exps = []
             for row in meta_rows:
@@ -232,9 +228,7 @@ def render_experience(exp: Experience, tokenizer: Any) -> None:
 
         for token in token_view.response_tokens:
             bg_color = get_color_for_action_mask(int(token.is_action))
-            token_display = (
-                token.token_text.replace(" ", "␣").replace("\n", "↵").replace("\t", "⇥")
-            )
+            token_display = token.token_text.replace(" ", "␣").replace("\n", "↵").replace("\t", "⇥")
             token_display = html_escape(token_display)
             logprob_text = f"{token.logprob:.4f}" if token.logprob is not None else "N/A"
 
@@ -276,7 +270,7 @@ def get_viewer(db_url: str, table_name: str, schema_type: str) -> SQLExperienceV
     return SQLExperienceViewer(config)
 
 
-def main():
+def main():  # noqa: [C901]
     args = parse_args()
 
     viewer = get_viewer(args.db_url, args.table, args.schema)
@@ -379,9 +373,7 @@ def main():
     st.markdown("---")
 
     # Row 1: Previous | [current_page] / total_pages | Next
-    col_prev, col_page_input, col_slash, col_total, col_next = st.columns(
-        [1, 1, 0.3, 0.7, 1]
-    )
+    col_prev, col_page_input, col_slash, col_total, col_next = st.columns([1, 1, 0.3, 0.7, 1])
     with col_prev:
         if st.button("Previous", disabled=(st.session_state.page <= 1)):
             st.session_state.page -= 1
@@ -401,7 +393,7 @@ def main():
             st.rerun()
     with col_slash:
         st.markdown(
-            f"<div style='text-align:center;line-height:38px;'>/</div>",
+            "<div style='text-align:center;line-height:38px;'>/</div>",
             unsafe_allow_html=True,
         )
     with col_total:
