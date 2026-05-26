@@ -13,11 +13,7 @@ from transformers import AutoProcessor
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
-from trinity.common.models.mm_utils import (
-    build_mm_input_for_training,
-    build_multi_modal_data,
-    has_multi_modal_content,
-)
+from trinity.common.models.mm_utils import vLLMMultiModalRender
 from trinity.common.models.model import BaseInferenceModel
 from trinity.common.models.vllm_patch import get_vllm_version
 
@@ -83,6 +79,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         self.default_lora_path = config.lora_kwargs.pop("default_lora_path", None)
         self.logprobs_no_prefix_cache = True
         self.processor = None
+        self.mm_render = None
         self.state_dict_meta = None
         self.model_version = 0  # TODO: resume the value from the checkpoint
         self.api_server_host = None
@@ -181,8 +178,12 @@ class vLLMRolloutModel(BaseInferenceModel):
         Returns:
             A list of experiences.
         """
-        is_mm_message = has_multi_modal_content(messages)
-        if is_mm_message:
+        if self.mm_render is None:
+            self.mm_render = vLLMMultiModalRender(
+                model_path=self.config.model_path,  # type: ignore
+            )
+        prompt_messages, multi_modal_data = await self.mm_render.process_messages_async(messages)
+        if multi_modal_data is not None:
             if self.processor is None:
                 await self._initialize_processor()
             tokenizer_or_processor = self.processor
@@ -191,12 +192,11 @@ class vLLMRolloutModel(BaseInferenceModel):
                 await self._initialize_tokenizer()
             tokenizer_or_processor = self.tokenizer
 
-        prompt = self.apply_chat_template(tokenizer_or_processor, messages)
-        if is_mm_message:
-            multi_modal_data = build_multi_modal_data(self.processor, messages)
+        prompt = self.apply_chat_template(tokenizer_or_processor, prompt_messages)
+        if multi_modal_data is not None:
             prompt = {
                 "prompt": prompt,
-                "multi_modal_data": multi_modal_data,
+                "multi_modal_data": multi_modal_data or {},
             }
         return await self.generate(prompt=prompt, lora_request=lora_request, **kwargs)
 
@@ -247,9 +247,15 @@ class vLLMRolloutModel(BaseInferenceModel):
             }  # is_valid is True: returned_seq is token_ids
             multi_modal_inputs = None
         else:  # multi modal
-            multi_modal_inputs = build_mm_input_for_training(self.processor, **prompt)
-            multi_modal_inputs.pop("input_ids", None)
-            multi_modal_inputs.pop("attention_mask", None)
+            if self.processor is None:
+                await self._initialize_processor()
+            if self.mm_render is None:
+                self.mm_render = vLLMMultiModalRender(
+                    model_path=self.config.model_path,  # type: ignore
+                )
+            multi_modal_inputs = self.mm_render.build_mm_input_for_training(
+                messages=prompt["prompt"], multi_modal_data=prompt.get("multi_modal_data", {})
+            )
 
         output = await self._generate_internal(prompt=prompt, lora_request=lora_request, **kwargs)
         experiences = [
@@ -454,11 +460,7 @@ class vLLMRolloutModel(BaseInferenceModel):
     async def _generate_internal(self, prompt: Any, lora_request=None, **kwargs) -> Any:
         # Send the request to the LLM engine.
         self.request_id += 1
-        generate_kwargs = (
-            {"tokenization_kwargs": self.tokenization_kwargs}
-            if self.vllm_version > parse_version("0.16.0")
-            else {}
-        )
+        generate_kwargs = {"tokenization_kwargs": self.tokenization_kwargs}
         stream = self.async_llm.generate(
             request_id=str(self.request_id),
             prompt=prompt,
