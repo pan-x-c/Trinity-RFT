@@ -407,7 +407,9 @@ class vLLMRolloutModel(BaseInferenceModel):
         if include_prompt_logprobs:
             prompt_logprobs_np = np.full(len(prompt_token_ids), np.nan, dtype=np.float32)
             if topk_prompt_logprobs > 0:
-                topk_token_ids = np.zeros((len(prompt_token_ids), topk_prompt_logprobs), dtype=np.int32)
+                topk_token_ids = np.zeros(
+                    (len(prompt_token_ids), topk_prompt_logprobs), dtype=np.int32
+                )
                 topk_logprobs = np.full(
                     (len(prompt_token_ids), topk_prompt_logprobs),
                     -99999.0,
