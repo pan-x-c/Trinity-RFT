@@ -14,6 +14,9 @@ SQL_SCHEMA: Registry = Registry(
     "sql_schema",
     {
         "task": "trinity.buffer.schema.sql_schema.TaskModel",
+        "experience": "trinity.buffer.schema.sql_schema.ExperienceModel",
+        "sft": "trinity.buffer.schema.sql_schema.SFTDataModel",
+        "dpo": "trinity.buffer.schema.sql_schema.DPODataModel",
     },
 )
 

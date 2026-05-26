@@ -77,8 +77,8 @@ class ExperienceModel(Base):  # type: ignore
         )
 
 
-class ExperienceBlobModel(Base):  # type: ignore
-    """SQLAlchemy model for Experience binary data."""
+class BlobModel(Base):  # type: ignore
+    """Unified blob storage model for all experience types."""
 
     __abstract__ = True
 
@@ -111,15 +111,6 @@ class SFTDataModel(Base):  # type: ignore
         )
 
 
-class SFTBlobModel(Base):  # type: ignore
-    """SQLAlchemy model for SFT binary data."""
-
-    __abstract__ = True
-
-    id = Column(Integer, primary_key=True)
-    experience_bytes = Column(LargeBinary, nullable=False)
-
-
 # ============================================================
 # DPO Models (meta + blob split)
 # ============================================================
@@ -147,26 +138,9 @@ class DPODataModel(Base):  # type: ignore
         )
 
 
-class DPOBlobModel(Base):  # type: ignore
-    """SQLAlchemy model for DPO binary data."""
-
-    __abstract__ = True
-
-    id = Column(Integer, primary_key=True)
-    experience_bytes = Column(LargeBinary, nullable=False)
-
-
 # ============================================================
 # Engine initialization
 # ============================================================
-
-# Mapping from schema type to (meta_class, blob_class)
-_SCHEMA_BLOB_MAP = {
-    "experience": (ExperienceModel, ExperienceBlobModel),
-    "sft": (SFTDataModel, SFTBlobModel),
-    "dpo": (DPODataModel, DPOBlobModel),
-}
-
 
 def init_engine(db_url: str, table_name: str, schema_type: Optional[str]) -> Tuple:
     """Get the sqlalchemy engine.
@@ -175,16 +149,17 @@ def init_engine(db_url: str, table_name: str, schema_type: Optional[str]) -> Tup
         For task schema: (engine, table_cls)
         For experience/sft/dpo schema: (engine, meta_cls, blob_cls)
     """
+    from trinity.buffer.schema import SQL_SCHEMA
+
     logger = get_logger(__name__)
     engine = create_engine(db_url, poolclass=NullPool)
 
     if schema_type is None:
         schema_type = "task"
 
-    if schema_type == "task":
-        from trinity.buffer.schema import SQL_SCHEMA
+    base_class = SQL_SCHEMA.get(schema_type)
 
-        base_class = SQL_SCHEMA.get(schema_type)
+    if schema_type == "task":
         table_attrs = {
             "__tablename__": table_name,
             "__abstract__": False,
@@ -201,17 +176,12 @@ def init_engine(db_url: str, table_name: str, schema_type: Optional[str]) -> Tup
         return engine, table_cls
 
     # For experience/sft/dpo: create both meta and blob tables
-    if schema_type not in _SCHEMA_BLOB_MAP:
-        raise ValueError(f"Unknown schema_type: {schema_type}")
-
-    meta_base_class, blob_base_class = _SCHEMA_BLOB_MAP[schema_type]
-
     meta_attrs = {
         "__tablename__": table_name,
         "__abstract__": False,
         "__table_args__": {"keep_existing": True},
     }
-    meta_cls = type(f"{table_name}_meta", (meta_base_class,), meta_attrs)
+    meta_cls = type(f"{table_name}_meta", (base_class,), meta_attrs)
 
     blob_table_name = f"{table_name}_blob"
     blob_attrs = {
@@ -219,7 +189,7 @@ def init_engine(db_url: str, table_name: str, schema_type: Optional[str]) -> Tup
         "__abstract__": False,
         "__table_args__": {"keep_existing": True},
     }
-    blob_cls = type(f"{table_name}_blob", (blob_base_class,), blob_attrs)
+    blob_cls = type(f"{table_name}_blob", (BlobModel,), blob_attrs)
 
     try:
         Base.metadata.create_all(engine, checkfirst=True)
