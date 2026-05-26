@@ -142,6 +142,7 @@ class DPODataModel(Base):  # type: ignore
 # Engine initialization
 # ============================================================
 
+
 def init_engine(db_url: str, table_name: str, schema_type: Optional[str]) -> Tuple:
     """Get the sqlalchemy engine.
 
