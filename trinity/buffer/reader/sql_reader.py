@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import ray
 
 from trinity.buffer.buffer_reader import BufferReader
-from trinity.buffer.storage.sql import SQLStorage
+from trinity.buffer.storage.sql import SQLExperienceStorage, SQLStorage, SQLTaskStorage
 from trinity.common.config import StorageConfig
 from trinity.common.constants import StorageType
 
@@ -29,15 +29,10 @@ class SQLReader(BufferReader):
 
     async def _get_async_storage(self):
         if self._async_storage is None:
-            from trinity.buffer.storage.async_sql import (
-                AsyncSQLExperienceStorage,
-                AsyncSQLTaskStorage,
-            )
-
             if self._config.schema_type is None:
-                self._async_storage = AsyncSQLTaskStorage(self._config)
+                self._async_storage = SQLTaskStorage(self._config)
             else:
-                self._async_storage = AsyncSQLExperienceStorage(self._config)
+                self._async_storage = SQLExperienceStorage(self._config)
             await self._async_storage.init()
         return self._async_storage
 

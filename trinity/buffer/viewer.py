@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 from transformers import AutoTokenizer
 
-from trinity.buffer.storage.sql import SQLExperienceStorage
+from trinity.buffer.storage.sql import SyncSQLExperienceStorage
 from trinity.common.config import StorageConfig
 from trinity.common.experience import Experience
 from trinity.common.experience_visualizer import build_experience_token_view
@@ -14,7 +14,7 @@ from trinity.common.experience_visualizer import build_experience_token_view
 
 class SQLExperienceViewer:
     def __init__(self, config: StorageConfig) -> None:
-        self.storage = SQLExperienceStorage(config)
+        self.storage = SyncSQLExperienceStorage(config)
 
     def get_experiences(
         self, offset: int, limit: int = 10, filters: Optional[Dict] = None

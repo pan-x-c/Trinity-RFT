@@ -9,7 +9,7 @@ from tests.tools import (
     get_unittest_dataset_config,
 )
 from trinity.buffer import get_buffer_reader
-from trinity.buffer.storage.sql import SQLTaskStorage
+from trinity.buffer.storage.sql import SyncSQLTaskStorage
 from trinity.common.constants import StorageType
 
 db_path = os.path.join(os.path.dirname(__file__), "test.db")
@@ -42,7 +42,7 @@ class TaskStorageTest(RayUnittestBase):
                 config.buffer.explorer_input.taskset.path, split="train"
             )
             config.buffer.explorer_input.taskset.path = f"sqlite:///{db_path}"
-            SQLTaskStorage.load_from_dataset(
+            SyncSQLTaskStorage.load_from_dataset(
                 dataset, config.buffer.explorer_input.taskset.to_storage_config()
             )
         reader = get_buffer_reader(config.buffer.explorer_input.taskset)
