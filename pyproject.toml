@@ -69,7 +69,7 @@ data = [
     # "aiomysql",
 ]
 agent = [
-    "agentscope[tuner]>=1.0.19"
+    "agentscope[tuner]>=1.0.19,<2.0.0"
 ]
 openjudge = [
     "py-openjudge>=0.2.2"
