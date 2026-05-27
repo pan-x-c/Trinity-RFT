@@ -4,80 +4,25 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
-from sqlalchemy import and_
-from sqlalchemy.orm import sessionmaker
 from transformers import AutoTokenizer
 
-from trinity.buffer.schema import init_engine
+from trinity.buffer.storage.sql import SQLExperienceStorage
 from trinity.common.config import StorageConfig
 from trinity.common.experience import Experience
 from trinity.common.experience_visualizer import build_experience_token_view
-from trinity.utils.log import get_logger
 
 
 class SQLExperienceViewer:
     def __init__(self, config: StorageConfig) -> None:
-        self.logger = get_logger(f"sql_{config.name}", in_ray_actor=True)
-        if not config.path:
-            raise ValueError("`path` is required for SQL storage type.")
-        self.engine, self.meta_cls, self.blob_cls = init_engine(
-            db_url=config.path,
-            table_name=config.name,
-            schema_type=config.schema_type,
-        )
-        self.session = sessionmaker(bind=self.engine)
-
-    def _build_filters(self, filters: Optional[Dict] = None):
-        """Build SQLAlchemy filter conditions from filter dict."""
-        conditions = []
-        if not filters:
-            return conditions
-
-        if filters.get("reward_min") is not None:
-            conditions.append(self.meta_cls.reward >= filters["reward_min"])
-        if filters.get("reward_max") is not None:
-            conditions.append(self.meta_cls.reward <= filters["reward_max"])
-        if filters.get("model_version_min") is not None:
-            conditions.append(self.meta_cls.model_version >= filters["model_version_min"])
-        if filters.get("model_version_max") is not None:
-            conditions.append(self.meta_cls.model_version <= filters["model_version_max"])
-        if filters.get("task_id"):
-            conditions.append(self.meta_cls.task_id == filters["task_id"])
-
-        return conditions
+        self.storage = SQLExperienceStorage(config)
 
     def get_experiences(
         self, offset: int, limit: int = 10, filters: Optional[Dict] = None
     ) -> List[Experience]:
-        self.logger.info("Viewing experiences from offset %s with limit %s.", offset, limit)
-        with self.session() as session:
-            query = session.query(self.meta_cls)
-            conditions = self._build_filters(filters)
-            if conditions:
-                query = query.filter(and_(*conditions))
-            query = query.offset(offset).limit(limit)
-            meta_rows = query.all()
-            if not meta_rows:
-                return []
-            ids = [row.id for row in meta_rows]
-            blobs = session.query(self.blob_cls).filter(self.blob_cls.id.in_(ids)).all()
-            blob_map = {b.id: b.experience_bytes for b in blobs}
-            exps = []
-            for row in meta_rows:
-                blob_bytes = blob_map.get(row.id)
-                if blob_bytes is None:
-                    continue
-                exps.append(row.to_experience(blob_bytes))
-        return exps
+        return self.storage.query(offset=offset, limit=limit, filters=filters)
 
     def total_experiences(self, filters: Optional[Dict] = None) -> int:
-        with self.session() as session:
-            query = session.query(self.meta_cls)
-            conditions = self._build_filters(filters)
-            if conditions:
-                query = query.filter(and_(*conditions))
-            count = query.count()
-        return count
+        return self.storage.count(filters=filters)
 
     @staticmethod
     def run_viewer(
@@ -267,6 +212,7 @@ def get_viewer(db_url: str, table_name: str, schema_type: str) -> SQLExperienceV
     config.path = db_url
     config.schema_type = schema_type
     config.storage_type = "sql"
+    config.wrap_in_ray = False
     return SQLExperienceViewer(config)
 
 

@@ -265,6 +265,62 @@ class SQLExperienceStorage(SQLStorage):
             time.sleep(1)
         return exp_list
 
+    def _build_filter_conditions(self, filters: Optional[Dict] = None):
+        """Build SQLAlchemy filter conditions from a filter dict."""
+        from sqlalchemy import and_
+
+        conditions = []
+        if not filters:
+            return conditions
+        if filters.get("reward_min") is not None:
+            conditions.append(self.table_model_cls.reward >= filters["reward_min"])
+        if filters.get("reward_max") is not None:
+            conditions.append(self.table_model_cls.reward <= filters["reward_max"])
+        if filters.get("model_version_min") is not None:
+            conditions.append(self.table_model_cls.model_version >= filters["model_version_min"])
+        if filters.get("model_version_max") is not None:
+            conditions.append(self.table_model_cls.model_version <= filters["model_version_max"])
+        if filters.get("task_id"):
+            conditions.append(self.table_model_cls.task_id == filters["task_id"])
+        return conditions
+
+    def count(self, filters: Optional[Dict] = None) -> int:
+        """Count experiences matching the given filters."""
+        from sqlalchemy import and_
+
+        def operation(session):
+            query = session.query(self.table_model_cls)
+            conditions = self._build_filter_conditions(filters)
+            if conditions:
+                query = query.filter(and_(*conditions))
+            return query.count()
+
+        return run_with_retry_session(
+            self.session, operation, self.max_retry_times, self.max_retry_interval
+        )
+
+    def query(
+        self, offset: int = 0, limit: int = 10, filters: Optional[Dict] = None
+    ) -> List[Experience]:
+        """Query experiences with pagination and filters."""
+        from sqlalchemy import and_
+
+        def operation(session):
+            q = session.query(self.table_model_cls)
+            conditions = self._build_filter_conditions(filters)
+            if conditions:
+                q = q.filter(and_(*conditions))
+            meta_rows = q.offset(offset).limit(limit).all()
+            if not meta_rows:
+                return []
+            ids = [row.id for row in meta_rows]
+            blob_map = self._fetch_blobs(session, ids)
+            return self._assemble_experiences(meta_rows, blob_map)
+
+        return run_with_retry_session(
+            self.session, operation, self.max_retry_times, self.max_retry_interval
+        )
+
     def read(self, batch_size: Optional[int] = None, **kwargs) -> List[Experience]:
         if self.stopped:
             raise StopIteration()
