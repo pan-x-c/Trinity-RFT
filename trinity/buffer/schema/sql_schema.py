@@ -10,13 +10,11 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     String,
-    create_engine,
     func,
 )
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.pool import NullPool
 
 from trinity.common.experience import Experience
 from trinity.utils.log import get_logger
@@ -143,67 +141,6 @@ class DPODataModel(Base):  # type: ignore
 # Engine initialization
 # ============================================================
 
-
-def init_engine(db_url: str, table_name: str, schema_type: Optional[str]) -> Tuple:
-    """Get the sqlalchemy engine.
-
-    Returns:
-        For task schema: (engine, table_cls)
-        For experience/sft/dpo schema: (engine, meta_cls, blob_cls)
-    """
-    from trinity.buffer.schema import SQL_SCHEMA
-
-    logger = get_logger(__name__)
-    engine = create_engine(db_url, poolclass=NullPool)
-
-    if schema_type is None:
-        schema_type = "task"
-
-    base_class = SQL_SCHEMA.get(schema_type)
-
-    if schema_type == "task":
-        table_attrs = {
-            "__tablename__": table_name,
-            "__abstract__": False,
-            "__table_args__": {"keep_existing": True},
-        }
-        table_cls = type(table_name, (base_class,), table_attrs)
-
-        try:
-            Base.metadata.create_all(engine, checkfirst=True)
-            logger.info(f"Created table {table_name} for schema type {schema_type}.")
-        except OperationalError:
-            logger.warning(f"Failed to create table {table_name}, assuming it already exists.")
-
-        return engine, table_cls
-
-    # For experience/sft/dpo: create both meta and blob tables
-    meta_attrs = {
-        "__tablename__": table_name,
-        "__abstract__": False,
-        "__table_args__": {"keep_existing": True},
-    }
-    meta_cls = type(f"{table_name}_meta", (base_class,), meta_attrs)
-
-    blob_table_name = f"{table_name}_blob"
-    blob_attrs = {
-        "__tablename__": blob_table_name,
-        "__abstract__": False,
-        "__table_args__": {"keep_existing": True},
-    }
-    blob_cls = type(f"{table_name}_blob", (BlobModel,), blob_attrs)
-
-    try:
-        Base.metadata.create_all(engine, checkfirst=True)
-        logger.info(
-            f"Created tables {table_name} and {blob_table_name} for schema type {schema_type}."
-        )
-    except OperationalError:
-        logger.warning(
-            f"Failed to create tables {table_name}/{blob_table_name}, assuming they already exist."
-        )
-
-    return engine, meta_cls, blob_cls
 
 
 def _create_table_classes(table_name: str, schema_type: str):
