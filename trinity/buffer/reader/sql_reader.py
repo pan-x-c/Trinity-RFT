@@ -1,5 +1,6 @@
 """Reader of the SQL buffer."""
 
+import traceback
 from typing import Dict, List, Optional
 
 from trinity.buffer.buffer_reader import BufferReader
@@ -41,6 +42,10 @@ class SQLReader(BufferReader):
                 return await self.storage.read.remote(batch_size, **kwargs)
             except (StopIteration, StopAsyncIteration):
                 raise StopAsyncIteration()
+            except Exception as e:
+                if "StopAsyncIteration" in traceback.format_exc():
+                    raise StopAsyncIteration() from e
+                raise
         else:
             storage = await self._get_async_storage()
             return await storage.read(batch_size, **kwargs)

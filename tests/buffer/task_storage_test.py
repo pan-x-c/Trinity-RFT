@@ -1,10 +1,13 @@
 import os
-import unittest
 
 import datasets
 from parameterized import parameterized
 
-from tests.tools import get_template_config, get_unittest_dataset_config
+from tests.tools import (
+    RayUnittestBaseAsync,
+    get_template_config,
+    get_unittest_dataset_config,
+)
 from trinity.buffer import get_buffer_reader
 from trinity.buffer.storage.sql import SQLTaskStorage
 from trinity.common.constants import StorageType
@@ -12,7 +15,7 @@ from trinity.common.constants import StorageType
 db_path = os.path.join(os.path.dirname(__file__), "test.db")
 
 
-class TaskStorageTest(unittest.IsolatedAsyncioTestCase):
+class TaskStorageTest(RayUnittestBaseAsync):
     @parameterized.expand(
         [
             (StorageType.FILE.value, True, 2),
