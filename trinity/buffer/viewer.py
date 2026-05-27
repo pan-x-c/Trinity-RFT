@@ -24,6 +24,14 @@ class _SyncViewerStorage:
     def _run(self, coro):
         return self._loop.run_until_complete(coro)
 
+    def close(self):
+        if self._loop and not self._loop.is_closed():
+            self._loop.run_until_complete(self._async.engine.dispose())
+            self._loop.close()
+
+    def __del__(self):
+        self.close()
+
     def query(self, offset: int = 0, limit: int = 10, filters=None) -> List[Experience]:
         return self._run(self._async.query(offset, limit, filters))
 
