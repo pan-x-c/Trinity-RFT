@@ -62,7 +62,11 @@ sglang = [
     "sglang>=0.5.11,<=0.5.12",
 ]
 data = [
-    "py-data-juicer>=1.4.3"
+    "py-data-juicer>=1.4.3",
+    # if you want to use trinity with PostgreSQL, please install asyncpg
+    # "asyncpg",
+    # if you want to use trinity with MySQL, please install aiomysql
+    # "aiomysql",
 ]
 agent = [
     "agentscope[tuner]>=1.0.19"
@@ -95,9 +99,6 @@ megatron = [
     # "mbridge @ git+https://github.com/ISEEKYAN/mbridge.git@90c4633a6cdcfe5d29723d7b145d32f6f5e73303",
     # or Megatron bridge, which is not tested
     # "megatron-bridge==0.3.1",
-]
-asyncpg = [
-    "asyncpg",
 ]
 tinker = [
     "tinker>=0.20.0; python_version >= '3.11'",
