@@ -17,12 +17,37 @@ class SQLReader(BufferReader):
         assert config.storage_type == StorageType.SQL.value
         self.wrap_in_ray = config.wrap_in_ray
         self.read_batch_size = config.batch_size
-        self.storage = SQLStorage.get_wrapper(config)
+        self._storage = None
+        self._async_storage = None
+        self._config = config
+
+    @property
+    def storage(self):
+        if self._storage is None:
+            self._storage = SQLStorage.get_wrapper(self._config)
+        return self._storage
+
+    async def _get_async_storage(self):
+        if self._async_storage is None:
+            from trinity.buffer.storage.async_sql import (
+                AsyncSQLExperienceStorage,
+                AsyncSQLTaskStorage,
+            )
+
+            if self._config.schema_type is None:
+                self._async_storage = AsyncSQLTaskStorage(self._config)
+            else:
+                self._async_storage = AsyncSQLExperienceStorage(self._config)
+            await self._async_storage.init()
+        return self._async_storage
 
     def read(self, batch_size: Optional[int] = None, **kwargs) -> List:
         batch_size = self.read_batch_size if batch_size is None else batch_size
         if self.wrap_in_ray:
-            return ray.get(self.storage.read.remote(batch_size, **kwargs))
+            try:
+                return ray.get(self.storage.read.remote(batch_size, **kwargs))
+            except (StopIteration, StopAsyncIteration):
+                raise StopIteration()
         else:
             return self.storage.read(batch_size, **kwargs)
 
@@ -31,15 +56,14 @@ class SQLReader(BufferReader):
         if self.wrap_in_ray:
             try:
                 return await self.storage.read.remote(batch_size, **kwargs)
-            except StopIteration:
-                raise StopAsyncIteration
+            except (StopIteration, StopAsyncIteration):
+                raise StopAsyncIteration()
         else:
-            return self.storage.read(batch_size, **kwargs)
+            storage = await self._get_async_storage()
+            return await storage.read(batch_size, **kwargs)
 
     def state_dict(self) -> Dict:
-        # SQL Not supporting state dict yet
         return {"current_index": 0}
 
     def load_state_dict(self, state_dict):
-        # SQL Not supporting state dict yet
         return None
