@@ -2,16 +2,7 @@
 
 from typing import Dict, Optional, Tuple
 
-from sqlalchemy import (
-    JSON,
-    Column,
-    DateTime,
-    Float,
-    Integer,
-    LargeBinary,
-    String,
-    func,
-)
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, LargeBinary, String, func
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import declarative_base
@@ -140,7 +131,6 @@ class DPODataModel(Base):  # type: ignore
 # ============================================================
 # Engine initialization
 # ============================================================
-
 
 
 def _create_table_classes(table_name: str, schema_type: str):
