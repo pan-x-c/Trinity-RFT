@@ -267,8 +267,6 @@ class SQLExperienceStorage(SQLStorage):
 
     def _build_filter_conditions(self, filters: Optional[Dict] = None):
         """Build SQLAlchemy filter conditions from a filter dict."""
-        from sqlalchemy import and_
-
         conditions = []
         if not filters:
             return conditions
