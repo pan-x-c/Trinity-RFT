@@ -200,6 +200,14 @@ class TestExperience(unittest.TestCase):
         self.assertEqual(restored[1].reward, exp2.reward)
         self.assertEqual(restored[1].prompt_length, exp2.prompt_length)
 
+        # test serialize / deserialize with duplicate experiences
+        data = Experience.serialize_many([exp1, exp1, exp2])
+        restored = Experience.deserialize_many(data)
+        self.assertEqual(len(restored), 3)
+        self.assertTrue(torch.equal(restored[0].tokens, exp1.tokens))
+        self.assertTrue(torch.equal(restored[1].tokens, exp1.tokens))
+        self.assertTrue(torch.equal(restored[2].tokens, exp2.tokens))
+
     def test_serialize_many_with_shared_multimodal_tensor(self):
         shared_pixel_values = torch.randn(2, 3)
         shared_image_grid_thw = torch.tensor([1, 2, 3], dtype=torch.int64)
