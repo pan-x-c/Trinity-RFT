@@ -3,11 +3,8 @@
 Primary classes (async, used by Ray actors and production hot paths):
     SQLExperienceStorage, SQLTaskStorage
 
-Sync wrappers (for offline tools like viewer, benchmarks, load_from_dataset):
-    SyncSQLExperienceStorage, SyncSQLTaskStorage
-
 Factory:
-    SQLStorage.get_wrapper(config) — returns Ray actor (async) or local sync instance.
+    SQLStorage.get_wrapper(config) — returns Ray actor handle.
 """
 
 import asyncio
@@ -17,9 +14,8 @@ from typing import Dict, List, Optional
 
 import ray
 from datasets import Dataset
-from sqlalchemy import and_, asc, create_engine, desc, func, select, update
+from sqlalchemy import and_, asc, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.pool import NullPool
 
 from trinity.buffer.schema import FORMATTER
 from trinity.buffer.schema.sql_schema import init_async_engine
@@ -429,154 +425,26 @@ class SQLTaskStorage:
 
 
 # ---------------------------------------------------------------------------
-# Sync wrappers (for viewer, benchmarks, load_from_dataset in sync context)
-# ---------------------------------------------------------------------------
-
-
-class _SyncBridge:
-    """Mixin providing a dedicated event loop for sync-to-async bridging."""
-
-    def _run(self, coro):
-        return self._loop.run_until_complete(coro)
-
-    def _init_loop(self):
-        self._loop = asyncio.new_event_loop()
-
-
-class SyncSQLExperienceStorage(_SyncBridge):
-    """Sync wrapper around SQLExperienceStorage for offline tools (viewer, benchmarks)."""
-
-    def __init__(self, config: StorageConfig) -> None:
-        self._init_loop()
-        self._async = SQLExperienceStorage(config)
-        self._run(self._async.init())
-        self.engine = create_engine(config.path, poolclass=NullPool)
-        self.table_model_cls = self._async.table_model_cls
-        self.blob_model_cls = self._async.blob_model_cls
-        self.batch_size = self._async.batch_size
-
-    @property
-    def max_experience_bytes(self):
-        return self._async.max_experience_bytes
-
-    @max_experience_bytes.setter
-    def max_experience_bytes(self, value):
-        self._async.max_experience_bytes = value
-
-    def write(self, data: List[Experience]) -> None:
-        self._run(self._async.write(data))
-
-    def read(self, batch_size: Optional[int] = None, **kwargs) -> List[Experience]:
-        try:
-            return self._run(self._async.read(batch_size, **kwargs))
-        except StopAsyncIteration:
-            raise StopIteration()
-
-    def count(self, filters: Optional[Dict] = None) -> int:
-        return self._run(self._async.count(filters))
-
-    def query(
-        self, offset: int = 0, limit: int = 10, filters: Optional[Dict] = None
-    ) -> List[Experience]:
-        return self._run(self._async.query(offset, limit, filters))
-
-    def acquire(self) -> int:
-        return self._async.acquire()
-
-    def release(self) -> int:
-        return self._async.release()
-
-    @classmethod
-    def load_from_dataset(
-        cls, dataset: Dataset, config: StorageConfig
-    ) -> "SyncSQLExperienceStorage":
-        storage = cls(config)
-        loop = storage._loop
-        async_storage = storage._async
-        formatter = FORMATTER.get(config.schema_type)(
-            tokenizer_path=config.tokenizer_path, format_config=config.format
-        )
-        batch_size = storage.batch_size
-        batch = []
-        for item in dataset:
-            batch.append(formatter.format(item))
-            if len(batch) >= batch_size:
-                loop.run_until_complete(async_storage.write(batch))
-                batch.clear()
-        if batch:
-            loop.run_until_complete(async_storage.write(batch))
-        return storage
-
-
-class SyncSQLTaskStorage(_SyncBridge):
-    """Sync wrapper around SQLTaskStorage for offline tools."""
-
-    def __init__(self, config: StorageConfig) -> None:
-        self._init_loop()
-        self._async = SQLTaskStorage(config)
-        self._run(self._async.init())
-        self.engine = create_engine(config.path, poolclass=NullPool)
-        self.table_model_cls = self._async.table_model_cls
-        self.batch_size = self._async.batch_size
-
-    def write(self, data: List[Dict]) -> None:
-        self._run(self._async.write(data))
-
-    def read(self, batch_size: Optional[int] = None) -> List[Task]:
-        try:
-            return self._run(self._async.read(batch_size))
-        except StopAsyncIteration:
-            raise StopIteration()
-
-    def acquire(self) -> int:
-        return self._async.acquire()
-
-    def release(self) -> int:
-        return self._async.release()
-
-    @classmethod
-    def load_from_dataset(cls, dataset: Dataset, config: StorageConfig) -> "SyncSQLTaskStorage":
-        storage = cls(config)
-        loop = storage._loop
-        async_storage = storage._async
-        batch_size = config.batch_size
-        batch = []
-        for item in dataset:
-            batch.append(item)
-            if len(batch) >= batch_size:
-                loop.run_until_complete(async_storage.write(batch))
-                batch.clear()
-        if batch:
-            loop.run_until_complete(async_storage.write(batch))
-        return storage
-
-
-# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
 
 class SQLStorage:
-    """Factory for creating SQL storage instances, optionally wrapped in Ray actors."""
+    """Factory for creating SQL storage Ray actors."""
 
     @classmethod
     def get_wrapper(cls, config: StorageConfig):
         if config.schema_type is None:
-            sync_cls = SyncSQLTaskStorage
             async_cls = SQLTaskStorage
         else:
-            sync_cls = SyncSQLExperienceStorage
             async_cls = SQLExperienceStorage
-        if config.wrap_in_ray:
-            return (
-                ray.remote(async_cls)
-                .options(
-                    name=f"sql-{config.name}",
-                    namespace=config.ray_namespace or ray.get_runtime_context().namespace,
-                    get_if_exists=True,
-                    max_concurrency=5,
-                )
-                .remote(config)
+        return (
+            ray.remote(async_cls)
+            .options(
+                name=f"sql-{config.name}",
+                namespace=config.ray_namespace or ray.get_runtime_context().namespace,
+                get_if_exists=True,
+                max_concurrency=5,
             )
-        else:
-            return sync_cls(config)
+            .remote(config)
+        )

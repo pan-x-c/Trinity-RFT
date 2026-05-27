@@ -1,13 +1,11 @@
-"""Tests for SQL buffer storage (async primary + sync wrappers + Ray actors)."""
+"""Tests for SQL buffer storage (async primary + Ray actors)."""
 
 import os
 import unittest
 from copy import deepcopy
 
-import ray
 import torch
 from parameterized import parameterized
-from sqlalchemy.orm import sessionmaker
 
 from tests.tools import RayUnittestBaseAsync
 from trinity.buffer import get_buffer_reader
@@ -15,7 +13,6 @@ from trinity.buffer.reader.sql_reader import SQLReader
 from trinity.buffer.storage.sql import (
     SQLExperienceStorage,
     SQLTaskStorage,
-    SyncSQLExperienceStorage,
 )
 from trinity.buffer.utils import to_async_url
 from trinity.buffer.writer.sql_writer import SQLWriter
@@ -166,6 +163,81 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(StopAsyncIteration):
             await storage.read(batch_size=10)
 
+    async def test_meta_blob_consistency(self):
+        """Meta and blob tables must have identical row counts and matching ids."""
+        config = self._make_config(schema_type="experience")
+        storage = SQLExperienceStorage(config)
+        await storage.init()
+
+        exps = self._make_experiences(10)
+        await storage.write(exps)
+
+        from sqlalchemy import select
+
+        async with storage.session() as session:
+            meta_result = await session.execute(select(storage.table_model_cls))
+            meta_ids = sorted(r.id for r in meta_result.scalars().all())
+            blob_result = await session.execute(select(storage.blob_model_cls))
+            blob_ids = sorted(r.id for r in blob_result.scalars().all())
+
+        self.assertEqual(len(meta_ids), 10)
+        self.assertEqual(meta_ids, blob_ids)
+
+    async def test_count_and_query_with_filters(self):
+        """count() and query() correctly apply reward/model_version/task_id filters."""
+        config = self._make_config(schema_type="experience")
+        storage = SQLExperienceStorage(config)
+        await storage.init()
+
+        exps = self._make_experiences(30)
+        await storage.write(exps)
+
+        total = await storage.count()
+        self.assertEqual(total, 30)
+
+        count_reward = await storage.count(filters={"reward_min": 0.5, "reward_max": 1.0})
+        self.assertEqual(count_reward, 15)
+
+        count_mv = await storage.count(filters={"model_version_min": 1, "model_version_max": 1})
+        self.assertEqual(count_mv, 10)
+
+        results = await storage.query(offset=0, limit=5, filters={"reward_min": 0.5})
+        self.assertEqual(len(results), 5)
+        for exp in results:
+            self.assertGreaterEqual(exp.reward, 0.5)
+
+    async def test_oversized_blob_skipped_consistently(self):
+        """Experiences exceeding max_experience_bytes must not leave orphaned meta rows."""
+        config = self._make_config(schema_type="experience")
+        storage = SQLExperienceStorage(config)
+        await storage.init()
+
+        small_exps = self._make_experiences(2, token_length=16)
+        large_exps = self._make_experiences(3, token_length=2048)
+
+        small_size = len(small_exps[0].serialize())
+        large_size = len(large_exps[0].serialize())
+        storage.max_experience_bytes = (small_size + large_size) // 2
+
+        await storage.write(large_exps + small_exps)
+
+        from sqlalchemy import func, select
+
+        async with storage.session() as session:
+            meta_count = (
+                await session.execute(
+                    select(func.count()).select_from(storage.table_model_cls)
+                )
+            ).scalar()
+            blob_count = (
+                await session.execute(
+                    select(func.count()).select_from(storage.blob_model_cls)
+                )
+            ).scalar()
+
+        self.assertEqual(meta_count, blob_count)
+        self.assertEqual(meta_count, 2)
+
     def setUp(self) -> None:
         if os.path.exists(db_path):
             os.remove(db_path)
@@ -242,8 +314,8 @@ class TestReaderWriterAsync(unittest.IsolatedAsyncioTestCase):
         config.max_read_timeout = 3
         return config
 
-    async def test_writer_reader_async_roundtrip(self):
-        """Writer.write_async and Reader.read_async should work end-to-end."""
+    async def test_writer_reader_roundtrip(self):
+        """Writer.write and Reader.read should work end-to-end."""
         config = self._make_config()
         writer = SQLWriter(config)
         reader = SQLReader(config)
@@ -261,114 +333,15 @@ class TestReaderWriterAsync(unittest.IsolatedAsyncioTestCase):
             for i in range(8)
         ]
 
-        await writer.write_async(exps)
+        await writer.write(exps)
 
-        result = await reader.read_async(batch_size=4)
+        result = await reader.read(batch_size=4)
         self.assertEqual(len(result), 4)
 
-        result2 = await reader.read_async(batch_size=4)
+        result2 = await reader.read(batch_size=4)
         self.assertEqual(len(result2), 4)
 
         await writer.release()
-
-    def setUp(self) -> None:
-        if os.path.exists(db_path):
-            os.remove(db_path)
-
-    def tearDown(self) -> None:
-        if os.path.exists(db_path):
-            os.remove(db_path)
-
-
-# ---------------------------------------------------------------------------
-# Unit tests: sync wrappers (meta/blob split table verification)
-# ---------------------------------------------------------------------------
-
-
-class TestSyncSQLSplitTable(unittest.TestCase):
-    """Tests for the meta/blob split table architecture via sync wrapper."""
-
-    def _make_storage(self) -> SyncSQLExperienceStorage:
-        config = StorageConfig()
-        config.name = "test_split"
-        config.path = f"sqlite:///{db_path}"
-        config.schema_type = "experience"
-        config.storage_type = "sql"
-        config.wrap_in_ray = False
-        config.batch_size = 10
-        config.max_read_timeout = 5
-        return SyncSQLExperienceStorage(config)
-
-    def _make_experiences(self, num: int, token_length: int = 32) -> list:
-        return [
-            Experience(
-                tokens=torch.randint(0, 1000, (token_length,), dtype=torch.int32),
-                prompt_length=token_length // 4,
-                reward=float(i) / num,
-                logprobs=torch.randn(token_length - token_length // 4),
-                info={"model_version": i % 3},
-            )
-            for i in range(num)
-        ]
-
-    def test_meta_blob_consistency(self):
-        """Meta and blob tables must have identical row counts and matching ids."""
-        storage = self._make_storage()
-        exps = self._make_experiences(10)
-        storage.write(exps)
-
-        session = sessionmaker(bind=storage.engine)
-        with session() as s:
-            meta_ids = sorted(r.id for r in s.query(storage.table_model_cls).all())
-            blob_ids = sorted(r.id for r in s.query(storage.blob_model_cls).all())
-
-        self.assertEqual(len(meta_ids), 10)
-        self.assertEqual(meta_ids, blob_ids)
-
-    def test_count_and_query_with_filters(self):
-        """count() and query() correctly apply reward/model_version/task_id filters."""
-        storage = self._make_storage()
-        exps = self._make_experiences(30)
-        storage.write(exps)
-
-        total = storage.count()
-        self.assertEqual(total, 30)
-
-        # Reward filter: [0.5, 1.0] should match i/30 >= 0.5 → i >= 15
-        count_reward = storage.count(filters={"reward_min": 0.5, "reward_max": 1.0})
-        self.assertEqual(count_reward, 15)
-
-        # Model version filter: only version 1 → i%3==1, that's indices 1,4,7,...,28 = 10 items
-        count_mv = storage.count(filters={"model_version_min": 1, "model_version_max": 1})
-        self.assertEqual(count_mv, 10)
-
-        # Query with limit
-        results = storage.query(offset=0, limit=5, filters={"reward_min": 0.5})
-        self.assertEqual(len(results), 5)
-        for exp in results:
-            self.assertGreaterEqual(exp.reward, 0.5)
-
-    def test_oversized_blob_skipped_consistently(self):
-        """Experiences exceeding max_experience_bytes must not leave orphaned meta rows."""
-        storage = self._make_storage()
-
-        small_exps = self._make_experiences(2, token_length=16)
-        large_exps = self._make_experiences(3, token_length=2048)
-
-        small_size = len(small_exps[0].serialize())
-        large_size = len(large_exps[0].serialize())
-        storage.max_experience_bytes = (small_size + large_size) // 2
-
-        storage.write(large_exps + small_exps)
-
-        session = sessionmaker(bind=storage.engine)
-        with session() as s:
-            meta_count = s.query(storage.table_model_cls).count()
-            blob_count = s.query(storage.blob_model_cls).count()
-
-        # Only small exps should be written; meta and blob counts must match
-        self.assertEqual(meta_count, blob_count)
-        self.assertEqual(meta_count, 2)
 
     def setUp(self) -> None:
         if os.path.exists(db_path):
@@ -423,13 +396,13 @@ class TestSQLBufferRay(RayUnittestBaseAsync):
         ]
         self.assertEqual(await sql_writer.acquire(), 1)
         for _ in range(total_num // put_batch_size):
-            await sql_writer.write_async(exps)
+            await sql_writer.write(exps)
         for _ in range(total_num // read_batch_size):
-            exps = sql_reader.read()
+            exps = await sql_reader.read()
             self.assertEqual(len(exps), read_batch_size)
 
         # dynamic read/write
-        sql_writer.write(
+        await sql_writer.write(
             [
                 Experience(
                     tokens=torch.tensor([float(j) for j in range(i + 1)]),
@@ -441,19 +414,22 @@ class TestSQLBufferRay(RayUnittestBaseAsync):
                 for i in range(1, put_batch_size * 2 + 1)
             ]
         )
-        exps = sql_reader.read(batch_size=put_batch_size * 2)
+        exps = await sql_reader.read(batch_size=put_batch_size * 2)
         self.assertEqual(len(exps), put_batch_size * 2)
         for exp in exps:
             self.assertTrue(exp.info["model_version"] > put_batch_size)
         if enable_replay:
-            exps = sql_reader.read(batch_size=(put_batch_size * 2 + total_num))
+            exps = await sql_reader.read(batch_size=(put_batch_size * 2 + total_num))
             self.assertEqual(len(exps), (put_batch_size * 2 + total_num))
-            with self.assertRaises(StopIteration):
-                exps = sql_reader.read(batch_size=(put_batch_size * 3 + total_num))
+            with self.assertRaises(StopAsyncIteration):
+                await sql_reader.read(batch_size=(put_batch_size * 3 + total_num))
+        import ray
+
         db_wrapper = ray.get_actor("sql-test_buffer")
         self.assertIsNotNone(db_wrapper)
         self.assertEqual(await sql_writer.release(), 0)
-        self.assertRaises(StopIteration, sql_reader.read)
+        with self.assertRaises(StopAsyncIteration):
+            await sql_reader.read()
 
     async def test_sql_task_buffer_read_write(self) -> None:
         total_samples = 8
@@ -466,22 +442,23 @@ class TestSQLBufferRay(RayUnittestBaseAsync):
             default_workflow_type="math_workflow",
         )
         sql_writer = SQLWriter(config.to_storage_config())
-        tasks = [
-            {"question": f"question_{i}", "answer": f"answer_{i}"} for i in range(total_samples)
-        ]
+        sql_reader = SQLReader(config.to_storage_config())
         self.assertEqual(await sql_writer.acquire(), 1)
-        sql_writer.write(tasks)
-        sql_reader = get_buffer_reader(config.to_storage_config())
+        await sql_writer.write(
+            [{"question": f"question_{i}", "answer": f"answer_{i}"} for i in range(total_samples)]
+        )
         read_tasks = []
-        try:
-            while True:
-                cur_tasks = sql_reader.read()
+        while True:
+            try:
+                cur_tasks = await sql_reader.read()
                 read_tasks.extend(cur_tasks)
-        except StopIteration:
-            pass
+            except StopAsyncIteration:
+                break
         self.assertEqual(len(read_tasks), total_samples)
         self.assertIn("question", read_tasks[0].raw_task)
         self.assertIn("answer", read_tasks[0].raw_task)
+        import ray
+
         db_wrapper = ray.get_actor("sql-test_task_buffer")
         self.assertIsNotNone(db_wrapper)
         self.assertEqual(await sql_writer.release(), 0)

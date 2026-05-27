@@ -86,7 +86,7 @@ class TestFileBuffer(unittest.IsolatedAsyncioTestCase):
                 {"prompt": "hi"},
             ]
         )
-        await writer.write_async(
+        await writer.write(
             [
                 {"prompt": "My name is"},
                 {"prompt": "What is your name?"},

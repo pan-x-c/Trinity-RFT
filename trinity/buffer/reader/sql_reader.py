@@ -2,8 +2,6 @@
 
 from typing import Dict, List, Optional
 
-import ray
-
 from trinity.buffer.buffer_reader import BufferReader
 from trinity.buffer.storage.sql import SQLExperienceStorage, SQLStorage, SQLTaskStorage
 from trinity.common.config import StorageConfig
@@ -36,17 +34,7 @@ class SQLReader(BufferReader):
             await self._async_storage.init()
         return self._async_storage
 
-    def read(self, batch_size: Optional[int] = None, **kwargs) -> List:
-        batch_size = self.read_batch_size if batch_size is None else batch_size
-        if self.wrap_in_ray:
-            try:
-                return ray.get(self.storage.read.remote(batch_size, **kwargs))
-            except (StopIteration, StopAsyncIteration):
-                raise StopIteration()
-        else:
-            return self.storage.read(batch_size, **kwargs)
-
-    async def read_async(self, batch_size: Optional[int] = None, **kwargs) -> List:
+    async def read(self, batch_size: Optional[int] = None, **kwargs) -> List:
         batch_size = self.read_batch_size if batch_size is None else batch_size
         if self.wrap_in_ray:
             try:
