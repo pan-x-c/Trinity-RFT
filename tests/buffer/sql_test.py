@@ -90,7 +90,7 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
         """Write experiences and read them back in FIFO order."""
         config = self._make_config(schema_type="sft")
         storage = SQLExperienceStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         exps = self._make_experiences(8)
         await storage.write(exps)
@@ -105,7 +105,7 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
         """Write experiences and read them back in priority order."""
         config = self._make_config(schema_type="experience")
         storage = SQLExperienceStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         exps = self._make_experiences(8)
         await storage.write(exps)
@@ -117,7 +117,7 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
         """After release, read should raise StopAsyncIteration."""
         config = self._make_config(schema_type="sft")
         storage = SQLExperienceStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         exps = self._make_experiences(4)
         await storage.write(exps)
@@ -132,7 +132,7 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
         """Experiences exceeding max_experience_bytes should be skipped."""
         config = self._make_config(schema_type="sft")
         storage = SQLExperienceStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         small_exps = self._make_experiences(2, token_length=16)
         large_exps = self._make_experiences(3, token_length=2048)
@@ -151,7 +151,7 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
         config = self._make_config(schema_type="sft")
         config.max_read_timeout = 1
         storage = SQLExperienceStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         exps = self._make_experiences(2)
         await storage.write(exps)
@@ -163,7 +163,7 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
         """Meta and blob tables must have identical row counts and matching ids."""
         config = self._make_config(schema_type="experience")
         storage = SQLExperienceStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         exps = self._make_experiences(10)
         await storage.write(exps)
@@ -183,7 +183,7 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
         """count() and query() correctly apply reward/model_version/task_id filters."""
         config = self._make_config(schema_type="experience")
         storage = SQLExperienceStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         exps = self._make_experiences(30)
         await storage.write(exps)
@@ -206,7 +206,7 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
         """Experiences exceeding max_experience_bytes must not leave orphaned meta rows."""
         config = self._make_config(schema_type="experience")
         storage = SQLExperienceStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         small_exps = self._make_experiences(2, token_length=16)
         large_exps = self._make_experiences(3, token_length=2048)
@@ -258,7 +258,7 @@ class TestSQLTaskStorageAsync(unittest.IsolatedAsyncioTestCase):
         """Write tasks and read them back."""
         config = self._make_config()
         storage = SQLTaskStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         tasks = [{"question": f"q_{i}", "answer": f"a_{i}"} for i in range(8)]
         await storage.write(tasks)
@@ -273,7 +273,7 @@ class TestSQLTaskStorageAsync(unittest.IsolatedAsyncioTestCase):
         """Read should raise StopAsyncIteration when no data available."""
         config = self._make_config()
         storage = SQLTaskStorage(config)
-        await storage.init()
+        await storage.prepare()
 
         with self.assertRaises(StopAsyncIteration):
             await storage.read(batch_size=4)

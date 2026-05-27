@@ -54,8 +54,8 @@ class SQLExperienceStorage:
         else:
             self._read_method = self._read_fifo
 
-    async def init(self) -> None:
-        """Initialize async engine and create tables. Must be called before use."""
+    async def prepare(self) -> None:
+        """Initialize async engine and create tables."""
         if self._initialized:
             return
         result = await init_async_engine(
@@ -66,12 +66,8 @@ class SQLExperienceStorage:
         self._initialized = True
         self.logger.info(f"SQL storage initialized at {self.config.path}")
 
-    async def _ensure_init(self) -> None:
-        if not self._initialized:
-            await self.init()
-
     async def write(self, data: List[Experience]) -> None:
-        await self._ensure_init()
+        await self.prepare()
 
         async def operation(session: AsyncSession):
             for exp in data:
@@ -225,7 +221,7 @@ class SQLExperienceStorage:
         return exp_list
 
     async def read(self, batch_size: Optional[int] = None, **kwargs) -> List[Experience]:
-        await self._ensure_init()
+        await self.prepare()
         if self.stopped:
             raise StopAsyncIteration()
         batch_size = self.batch_size if batch_size is None else batch_size
@@ -248,7 +244,7 @@ class SQLExperienceStorage:
         return conditions
 
     async def count(self, filters: Optional[Dict] = None) -> int:
-        await self._ensure_init()
+        await self.prepare()
 
         async def operation(session: AsyncSession):
             stmt = select(func.count()).select_from(self.table_model_cls)
@@ -265,7 +261,7 @@ class SQLExperienceStorage:
     async def query(
         self, offset: int = 0, limit: int = 10, filters: Optional[Dict] = None
     ) -> List[Experience]:
-        await self._ensure_init()
+        await self.prepare()
 
         async def operation(session: AsyncSession):
             stmt = select(self.table_model_cls)
@@ -290,7 +286,7 @@ class SQLExperienceStorage:
         cls, dataset: Dataset, config: StorageConfig
     ) -> "SQLExperienceStorage":
         storage = cls(config)
-        await storage.init()
+        await storage.prepare()
         formatter = FORMATTER.get(config.schema_type)(
             tokenizer_path=config.tokenizer_path, format_config=config.format
         )
@@ -336,8 +332,8 @@ class SQLTaskStorage:
         else:
             self.total_samples = float("inf")
 
-    async def init(self) -> None:
-        """Initialize async engine and create tables. Must be called before use."""
+    async def prepare(self) -> None:
+        """Initialize async engine and create tables."""
         if self._initialized:
             return
         from trinity.buffer.schema.formatter import TaskFormatter
@@ -353,12 +349,8 @@ class SQLTaskStorage:
         self._initialized = True
         self.logger.info(f"SQL task storage initialized at {self.config.path}")
 
-    async def _ensure_init(self) -> None:
-        if not self._initialized:
-            await self.init()
-
     async def write(self, data: List[Dict]) -> None:
-        await self._ensure_init()
+        await self.prepare()
 
         async def operation(session: AsyncSession):
             tasks = [self.table_model_cls.from_dict(item) for item in data]
@@ -369,7 +361,7 @@ class SQLTaskStorage:
         )
 
     async def read(self, batch_size: Optional[int] = None) -> List[Task]:
-        await self._ensure_init()
+        await self.prepare()
         if self.stopped:
             raise StopAsyncIteration()
         if self.offset > self.total_samples:
@@ -401,7 +393,7 @@ class SQLTaskStorage:
     @classmethod
     async def load_from_dataset(cls, dataset: Dataset, config: StorageConfig) -> "SQLTaskStorage":
         storage = cls(config)
-        await storage.init()
+        await storage.prepare()
         batch_size = config.batch_size
         batch = []
         for item in dataset:

@@ -19,7 +19,7 @@ class _SyncViewerStorage:
     def __init__(self, config: StorageConfig) -> None:
         self._loop = asyncio.new_event_loop()
         self._async = SQLExperienceStorage(config)
-        self._loop.run_until_complete(self._async.init())
+        self._loop.run_until_complete(self._async.prepare())
 
     def _run(self, coro):
         return self._loop.run_until_complete(coro)

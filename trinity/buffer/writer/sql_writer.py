@@ -28,7 +28,7 @@ class SQLWriter(BufferWriter):
                 self._async_storage = SQLTaskStorage(self._config)
             else:
                 self._async_storage = SQLExperienceStorage(self._config)
-            await self._async_storage.init()
+            await self._async_storage.prepare()
         return self._async_storage
 
     async def write(self, data):

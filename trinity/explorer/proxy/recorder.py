@@ -18,7 +18,7 @@ class HistoryRecorder:
         self._table_name = table_name
         self._initialized = False
 
-    async def _ensure_init(self) -> None:
+    async def prepare(self) -> None:
         if self._initialized:
             return
         engine, self.meta_cls, self.blob_cls = await init_async_engine(
@@ -32,7 +32,7 @@ class HistoryRecorder:
 
     async def record_history(self, experiences: List[Experience]) -> None:
         """Save experiences to the database."""
-        await self._ensure_init()
+        await self.prepare()
 
         async def operation(session: AsyncSession):
             for exp in experiences:
@@ -51,7 +51,7 @@ class HistoryRecorder:
 
         Only experiences that have not been consumed (consumed == 0) will be returned.
         """
-        await self._ensure_init()
+        await self.prepare()
 
         meta_cls = self.meta_cls
         blob_cls = self.blob_cls
