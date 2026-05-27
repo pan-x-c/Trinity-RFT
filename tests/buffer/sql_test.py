@@ -8,12 +8,8 @@ import torch
 from parameterized import parameterized
 
 from tests.tools import RayUnittestBaseAsync
-from trinity.buffer import get_buffer_reader
 from trinity.buffer.reader.sql_reader import SQLReader
-from trinity.buffer.storage.sql import (
-    SQLExperienceStorage,
-    SQLTaskStorage,
-)
+from trinity.buffer.storage.sql import SQLExperienceStorage, SQLTaskStorage
 from trinity.buffer.utils import to_async_url
 from trinity.buffer.writer.sql_writer import SQLWriter
 from trinity.common.config import (
@@ -225,14 +221,10 @@ class TestSQLExperienceStorageAsync(unittest.IsolatedAsyncioTestCase):
 
         async with storage.session() as session:
             meta_count = (
-                await session.execute(
-                    select(func.count()).select_from(storage.table_model_cls)
-                )
+                await session.execute(select(func.count()).select_from(storage.table_model_cls))
             ).scalar()
             blob_count = (
-                await session.execute(
-                    select(func.count()).select_from(storage.blob_model_cls)
-                )
+                await session.execute(select(func.count()).select_from(storage.blob_model_cls))
             ).scalar()
 
         self.assertEqual(meta_count, blob_count)
