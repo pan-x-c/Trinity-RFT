@@ -205,13 +205,14 @@ class TestSQLSplitTable(unittest.TestCase):
     def test_oversized_blob_skipped_consistently(self):
         """Experiences exceeding max_experience_bytes must not leave orphaned meta rows."""
         storage = self._make_storage()
-        # Force a very low limit
-        storage.max_experience_bytes = 100
 
-        # token_length=512 will produce a blob >> 100 bytes
-        large_exps = self._make_experiences(3, token_length=512)
-        # token_length=4 will produce a tiny blob
-        small_exps = self._make_experiences(2, token_length=8)
+        small_exps = self._make_experiences(2, token_length=16)
+        large_exps = self._make_experiences(3, token_length=2048)
+
+        # Set threshold between small and large serialized sizes
+        small_size = len(small_exps[0].serialize())
+        large_size = len(large_exps[0].serialize())
+        storage.max_experience_bytes = (small_size + large_size) // 2
 
         storage.write(large_exps + small_exps)
 
