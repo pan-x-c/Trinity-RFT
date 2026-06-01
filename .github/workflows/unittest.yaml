@@ -152,7 +152,6 @@ jobs:
         report-path: trinity-${{ github.run_id }}/report.json
         summary: true
         summary-report: true
-        collapse-large-reports: true
         pull-request: false
         issue: ${{ github.event.issue.number }}
       env:
