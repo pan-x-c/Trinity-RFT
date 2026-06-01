@@ -10,7 +10,6 @@ The loss function signature expected by veRL's engine:
 """
 import torch
 from tensordict import TensorDict
-
 from verl.workers.utils.padding import no_padding_2_padding
 
 from trinity.algorithm import ENTROPY_LOSS_FN, KL_FN, POLICY_LOSS_FN

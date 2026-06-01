@@ -22,7 +22,11 @@ import transformers
 from accelerate import init_empty_weights
 from omegaconf import OmegaConf
 from verl import DataProto
-from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup, ResourcePoolManager
+from verl.single_controller.ray import (
+    RayClassWithInitArgs,
+    RayWorkerGroup,
+    ResourcePoolManager,
+)
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer.ppo.core_algos import agg_loss
 from verl.trainer.ppo.metric_utils import (
@@ -31,7 +35,8 @@ from verl.trainer.ppo.metric_utils import (
     compute_variance_proxy_metrics,
 )
 from verl.trainer.ppo.utils import Role, need_critic, need_reference_policy
-from verl.utils import hf_processor, hf_tokenizer, tensordict_utils as tu
+from verl.utils import hf_processor, hf_tokenizer
+from verl.utils import tensordict_utils as tu
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.config import omega_conf_to_dataclass
 from verl.utils.debug import marked_timer
@@ -217,7 +222,9 @@ class VerlPPOTrainerWrapper(TrainEngineWrapper):
 
         trust_remote_code = self.config.data.get("trust_remote_code", False)
         self.tokenizer = hf_tokenizer(local_path, trust_remote_code=trust_remote_code)
-        self.processor = hf_processor(local_path, trust_remote_code=trust_remote_code, use_fast=True)
+        self.processor = hf_processor(
+            local_path, trust_remote_code=trust_remote_code, use_fast=True
+        )
 
         hf_config = transformers.AutoConfig.from_pretrained(
             local_path, trust_remote_code=trust_remote_code
@@ -318,7 +325,7 @@ class VerlPPOTrainerWrapper(TrainEngineWrapper):
 
             from verl.workers.config import CriticConfig
 
-            critic_cfg = omega_conf_to_dataclass(self.config.critic)
+            critic_cfg: CriticConfig = omega_conf_to_dataclass(self.config.critic)
             orig_critic_cfg = critic_cfg
             engine_config: EngineConfig = orig_critic_cfg.engine
             engine_config.infer_max_token_len_per_gpu = critic_cfg.ppo_infer_max_token_len_per_gpu
@@ -431,10 +438,12 @@ class VerlPPOTrainerWrapper(TrainEngineWrapper):
                         loss_agg_mode=actor_config.loss_agg_mode,
                         loss_scale_factor=actor_config.loss_scale_factor,
                     )
-                    metrics.update({
-                        "actor/entropy": entropy_agg.detach().item(),
-                        "perf/mfu/actor_infer": old_log_prob_mfu,
-                    })
+                    metrics.update(
+                        {
+                            "actor/entropy": entropy_agg.detach().item(),
+                            "perf/mfu/actor_infer": old_log_prob_mfu,
+                        }
+                    )
                     old_log_prob.batch.pop("entropys")
                     batch = batch.union(old_log_prob)
                     if "rollout_log_probs" in batch.batch.keys():
@@ -547,9 +556,7 @@ class VerlPPOTrainerWrapper(TrainEngineWrapper):
         actor_local_path = os.path.join(
             self.config.trainer.default_local_dir, f"global_step_{self.global_steps}", "actor"
         )
-        self.actor_rollout_wg.save_checkpoint(
-            actor_local_path, global_step=self.global_steps
-        )
+        self.actor_rollout_wg.save_checkpoint(actor_local_path, global_step=self.global_steps)
         await self.checkpoint_monitor.monitor_step.remote(self.global_steps, is_state_dict=True)
 
     # ------------------------------------------------------------------

@@ -47,9 +47,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         if self.actor is not None and hasattr(self.actor, "engine"):
             model = getattr(self.actor.engine, "model", None)
             if model is not None:
-                ulysses_sp_size = self.config.actor.get(
-                    "ulysses_sequence_parallel_size", 1
-                )
+                ulysses_sp_size = self.config.actor.get("ulysses_sequence_parallel_size", 1)
                 use_remove_padding = self.config.model.get("use_remove_padding", False)
                 use_fused_kernels = self.config.model.get("use_fused_kernels", False)
                 fused_kernel_options = self.config.model.get("fused_kernel_options", None)
