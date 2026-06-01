@@ -34,9 +34,12 @@ Required settings in `docker/env`:
 - `TRINITY_MOUNT_DIR`: Host directory mounted to `/mnt` inside the containers.
 - `TRINITY_NODE1_GPU_0`, `TRINITY_NODE1_GPU_1`: GPU indices for `trinity-node-1`.
 - `TRINITY_NODE2_GPU_0`, `TRINITY_NODE2_GPU_1`: GPU indices for `trinity-node-2`.
-- `TRINITY_HF_ENDPOINT`: Hugging Face mirror or endpoint.
-- `TRINITY_PYPI_INDEX_URL`: Python package index used inside containers.
 - `TRINITY_RAY_DASHBOARD_PORT`: Host port mapped to the Ray dashboard.
+
+Optional settings in `docker/env`:
+
+- `TRINITY_HF_ENDPOINT`: Hugging Face mirror or endpoint. Leave it empty to use the container default.
+- `TRINITY_PYPI_INDEX_URL`: Python package index used inside containers. Leave it empty to use the container default.
 
 ## Start And Check The Environment
 
