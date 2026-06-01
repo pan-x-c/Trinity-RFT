@@ -417,18 +417,16 @@ class ModelWrapper:
     def _assert_openai_routed_experts_request_supported(
         self, extra_body: Dict[str, Any], kwargs: Dict[str, Any]
     ) -> None:
-        """Currently, only SGLang OpenAI API supports returning routed_experts, and it only returns
-        at the response level when n=1. This function asserts that the current request is compatible
-        with these requirements if routed_experts is requested."""
+        """Validate routed_experts constraints for OpenAI-compatible backends."""
         requested_routed_experts = self.config.enable_return_routed_experts or bool(
             extra_body.get("return_routed_experts", False)
         )
         if requested_routed_experts:
-            if self.config.engine_type != "sglang":
-                raise ValueError("Routed experts can only be returned from SGLang engine.")
+            if self.config.engine_type not in {"sglang", "vllm"}:
+                raise ValueError("Routed experts can only be returned from SGLang or vLLM.")
             if kwargs.get("stream", False):
                 raise ValueError("Routed experts cannot be returned for streaming requests.")
-            if kwargs.get("n", 1) != 1:
+            if self.config.engine_type == "sglang" and kwargs.get("n", 1) != 1:
                 raise ValueError(
                     "SGLang OpenAI API returns routed_experts at response level only; "
                     "set n=1 when requesting routed_experts."
