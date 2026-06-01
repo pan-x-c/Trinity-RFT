@@ -595,7 +595,7 @@ class InferenceModelConfig:
     enable_lora: bool = False
     enable_runtime_lora_updating: bool = False
     lora_modules: Optional[List[Dict]] = None
-    lora_kwargs: Optional[dict] = field(default_factory=dict)
+    lora_kwargs: Dict = field(default_factory=dict)
 
     # ! DO NOT SET, rope config
     rope_scaling: Optional[dict] = None
