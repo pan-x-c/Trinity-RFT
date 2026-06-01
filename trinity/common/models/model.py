@@ -37,7 +37,6 @@ class InferenceModel(ABC):
         self.config = config
         self.ray_actor_name = config.ray_actor_name
         self.logger = get_logger(self.ray_actor_name or __name__, in_ray_actor=True)
-        builtins.print = lambda *args, **kwargs: self.logger.info(" ".join(map(str, args)))
         self._prepared = False
         self.master_addr: Optional[str] = None
         self.master_port: Optional[int] = None
