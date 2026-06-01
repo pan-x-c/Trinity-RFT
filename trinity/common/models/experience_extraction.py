@@ -251,15 +251,15 @@ def _extract_completion_routed_experts(
     total_tokens: int,
     routed_experts_layout: Optional[Tuple[int, int]] = None,
 ) -> Optional[Tensor]:
-    if routed_experts_layout is None:
-        return None
-
     routed_experts_value = getattr(choice, "routed_experts", None)
     if routed_experts_value is not None:
         try:
             return decode_vllm_routed_experts(routed_experts_value)
         except (ValueError, OSError):
             return None
+
+    if routed_experts_layout is None:
+        return None
 
     if not hasattr(output, "sglext") or "routed_experts" not in output.sglext:
         return None

@@ -299,8 +299,12 @@ class ModelWrapperTest(VLLMTestBase):
                 self.assertEqual(history_exp.response_text, choice.message.content)
                 self.assertGreater(history_exp.prompt_length, 0)
                 self.assertGreater(len(history_exp.tokens), history_exp.prompt_length)
+                prompt_text = tokenizer.decode(
+                    history_exp.tokens[: history_exp.prompt_length].tolist(),
+                    skip_special_tokens=False,
+                )
                 for prompt_content in prompt_contents:
-                    self.assertIn(prompt_content, history_exp.prompt_text)
+                    self.assertIn(prompt_content, prompt_text)
                 _assert_routed_experts_shape(
                     self,
                     history_exp,
