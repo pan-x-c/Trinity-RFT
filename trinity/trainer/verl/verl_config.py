@@ -104,6 +104,9 @@ class Optim:
 @dataclass
 class CheckpointConfig:
     _target_: str = "verl.trainer.config.CheckpointConfig"
+    save_contents: List[str] = field(default_factory=lambda: ["model", "optimizer", "extra"])
+    load_contents: List[str] = field(default_factory=lambda: ["model", "optimizer", "extra"])
+    async_save: bool = False
     mbridge_config: Dict[str, Any] = field(
         default_factory=lambda: dict(distributed_filesystem=True, memory_efficient=True)
     )
