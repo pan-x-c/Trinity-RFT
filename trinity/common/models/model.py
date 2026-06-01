@@ -2,7 +2,6 @@
 """Base Model Class"""
 
 import asyncio
-import builtins
 import copy
 import socket
 from abc import ABC, abstractmethod

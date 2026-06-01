@@ -49,13 +49,9 @@ def decode_sglang_routed_experts(
     return routed_experts.reshape(seq_length, num_layers, topk).to(torch.uint8)
 
 
-def decode_vllm_routed_experts(routed_experts_value: Any) -> Optional[Tensor]:
+def decode_vllm_routed_experts(routed_experts_value: str | None) -> Optional[Tensor]:
     if routed_experts_value is None:
         return None
-    if isinstance(routed_experts_value, torch.Tensor):
-        return routed_experts_value.to(torch.uint8)
-    if not isinstance(routed_experts_value, str):
-        return torch.tensor(routed_experts_value, dtype=torch.uint8)
 
     decoded = pybase64.b64decode_as_bytearray(routed_experts_value)
     routed_experts = np.load(io.BytesIO(decoded), allow_pickle=False)
