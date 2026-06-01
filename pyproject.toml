@@ -55,6 +55,7 @@ trinity = "trinity.cli.launcher:main"
 
 [project.optional-dependencies]
 vllm = [
+    # for routed_experts support, please install vllm 0.22.0 or above
     "vllm>=0.19.1,<=0.22.0",
 ]
 sglang = [
