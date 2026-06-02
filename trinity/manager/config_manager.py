@@ -383,7 +383,7 @@ class ConfigManager:
 
         if st.session_state["training_strategy"] == "fsdp":
             distribution_config = {
-                "fsdp_config": {
+                "engine": {
                     "fsdp_size": -1,
                     "wrap_policy": {"min_num_params": 0},
                     "param_offload": st.session_state["param_offload"],
@@ -393,7 +393,7 @@ class ConfigManager:
             }
         elif st.session_state["training_strategy"] == "fsdp2":
             distribution_config = {
-                "fsdp_config": {
+                "engine": {
                     "fsdp_size": -1,
                     "offload_policy": st.session_state["offload_policy"],
                     "reshard_after_forward": st.session_state["reshard_after_forward"],

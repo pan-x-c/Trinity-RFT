@@ -288,13 +288,13 @@ class TestTrainerGSM8K(BaseTrainerCase):
         actor_rollout_ref = self.config.trainer.trainer_config.actor_rollout_ref
         actor_rollout_ref.actor.optim.lr = 1e-5
         if self.strategy == "fsdp":
-            actor_rollout_ref.actor.fsdp_config.param_offload = self.offloading
-            actor_rollout_ref.actor.fsdp_config.optimizer_offload = self.offloading
-            actor_rollout_ref.ref.fsdp_config.param_offload = self.offloading
-            actor_rollout_ref.ref.fsdp_config.optimizer_offload = self.offloading
+            actor_rollout_ref.actor.engine.param_offload = self.offloading
+            actor_rollout_ref.actor.engine.optimizer_offload = self.offloading
+            actor_rollout_ref.ref.engine.param_offload = self.offloading
+            actor_rollout_ref.ref.engine.optimizer_offload = self.offloading
         else:  # fsdp2
-            actor_rollout_ref.actor.fsdp_config.offload_policy = self.offloading
-            actor_rollout_ref.ref.fsdp_config.offload_policy = self.offloading
+            actor_rollout_ref.actor.engine.offload_policy = self.offloading
+            actor_rollout_ref.ref.engine.offload_policy = self.offloading
         both(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
         rollout_metrics = parser.metric_list("rollout")

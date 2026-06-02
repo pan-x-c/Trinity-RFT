@@ -1491,7 +1491,7 @@ class GPUMemoryValidator(ConfigValidator):
             ) = self._calc_params_memory_and_dtype_coeff(
                 params_num,
                 fsdp_strategy=config.trainer.trainer_strategy,
-                fsdp_config=actor_config.fsdp_config,
+                fsdp_config=actor_config.engine,
             )
             # calculate critic memory
             if verl_config.critic.enable:
@@ -1531,7 +1531,7 @@ class GPUMemoryValidator(ConfigValidator):
                 hf_config=hf_config,
                 num_tokens=actor_config.ppo_max_token_len_per_gpu,  # type: ignore
                 strategy=config.trainer.trainer_strategy,
-                fsdp_config=actor_config.fsdp_config,
+                fsdp_config=actor_config.engine,
                 gradient_checkpointing=actor_model_config.enable_gradient_checkpointing,
                 world_size=world_size,
                 logits_memory_type=logits_memory_type,

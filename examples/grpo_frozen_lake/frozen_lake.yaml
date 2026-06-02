@@ -73,11 +73,11 @@ trainer:
         use_remove_padding: true
         enable_gradient_checkpointing: true
       actor:
-        fsdp_config:
+        engine:
           param_offload: true
           optimizer_offload: true
       ref:
-        fsdp_config:
+        engine:
           param_offload: true
 synchronizer:
   sync_method: nccl

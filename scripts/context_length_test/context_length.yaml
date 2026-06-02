@@ -94,14 +94,14 @@ trainer:
       actor:
         entropy_from_logits_with_chunking: ${oc.env:ENTROPY_SAVING,false}
         entropy_checkpointing: ${oc.env:ENTROPY_SAVING,false}
-        fsdp_config:
+        engine:
           param_offload: ${oc.env:OFFLOAD,false}
           optimizer_offload: ${oc.env:OFFLOAD,false}
           offload_policy: ${oc.env:OFFLOAD,false}
       ref:
         entropy_from_logits_with_chunking: ${oc.env:ENTROPY_SAVING,false}
         entropy_checkpointing: ${oc.env:ENTROPY_SAVING,false}
-        fsdp_config:
+        engine:
           param_offload: ${oc.env:OFFLOAD,false}
           optimizer_offload: ${oc.env:OFFLOAD,false}
           offload_policy: ${oc.env:OFFLOAD,false}
