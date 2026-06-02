@@ -21,7 +21,7 @@ from trinity.utils.log import get_logger
 from trinity.utils.lora_utils import create_dummy_lora
 
 if TYPE_CHECKING:
-    from trinity.trainer.verl.verl_config import FSDPConfig
+    from omegaconf import DictConfig as FSDPConfig  # engine config is a plain DictConfig now
 
 
 class ConfigValidator(ABC):
@@ -1234,23 +1234,14 @@ class TrainerConfigValidator(ConfigValidator):
                 )
                 config.trainer.ulysses_sequence_parallel_size = 1
 
-            if config.trainer.trainer_config:
-                from trinity.trainer.verl.verl_config import veRLConfig
-
-                trainer_config_schema = OmegaConf.structured(veRLConfig)
-                trainer_config = OmegaConf.merge(
-                    trainer_config_schema, config.trainer.trainer_config
-                )
-                config.trainer.trainer_config = OmegaConf.to_object(trainer_config)
-            elif config.trainer.trainer_config_path:
+            if config.trainer.trainer_config_path:
                 raise ValueError(
                     "`trainer_config_path` is deprecated; please use `trainer_config` instead."
                 )
-            else:
-                from trinity.trainer.verl.verl_config import veRLConfig
-
-                self.logger.info("`trainer_config` is not provided, using default trainer config.")
-                config.trainer.trainer_config = veRLConfig()
+            # trainer_config is now just a user overlay dict (or empty);
+            # the actual veRL config is built at runtime by build_verl_config()
+            if not config.trainer.trainer_config:
+                config.trainer.trainer_config = {}
             if config.trainer.max_token_len_per_gpu is None:
                 config.trainer.max_token_len_per_gpu = math.ceil(
                     2 * config.model.max_model_len / config.trainer.ulysses_sequence_parallel_size  # type: ignore [operator]
@@ -1260,7 +1251,6 @@ class TrainerConfigValidator(ConfigValidator):
                     f"Invalid trainer.save_hf_checkpoint: {config.trainer.save_hf_checkpoint}, "
                     "must be one of 'last', 'always', or 'never'."
                 )
-            config.trainer.trainer_config.synchronize_config(config)
         elif config.trainer.trainer_type == "tinker":
             config.trainer.trainer_config = None
         else:
@@ -1465,7 +1455,9 @@ class GPUMemoryValidator(ConfigValidator):
         Raises:
             ValueError: If estimated memory usage exceeds safe limits and suggestions are not bypassed.
         """
-        from trinity.trainer.verl.verl_config import veRLConfig
+        from omegaconf import OmegaConf
+
+        from trinity.trainer.verl.verl_config import build_verl_config
 
         self.pytorch_env_flag = (
             os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "") == "expandable_segments:True"
@@ -1478,11 +1470,10 @@ class GPUMemoryValidator(ConfigValidator):
                 model_path, config.model.trust_remote_code
             )
 
-            verl_config: veRLConfig = config.trainer.trainer_config
+            verl_config = OmegaConf.create(build_verl_config(config))
             world_size = config.cluster.trainer_gpu_num
 
-            # calculate actor memory, and ref is always being offloaded
-            actor_config = verl_config.actor_rollout_ref.actor
+            actor_engine = verl_config.actor_rollout_ref.actor.engine
             (
                 actor_running_memory,
                 actor_idle_memory,
@@ -1491,7 +1482,7 @@ class GPUMemoryValidator(ConfigValidator):
             ) = self._calc_params_memory_and_dtype_coeff(
                 params_num,
                 fsdp_strategy=config.trainer.trainer_strategy,
-                fsdp_config=actor_config.engine,
+                fsdp_config=actor_engine,
             )
             # calculate critic memory
             if verl_config.critic.enable:
@@ -1512,27 +1503,23 @@ class GPUMemoryValidator(ConfigValidator):
                 ) = self._calc_params_memory_and_dtype_coeff(
                     critic_params_num,
                     fsdp_strategy=config.trainer.trainer_strategy,
-                    fsdp_config=verl_config.critic.model.fsdp_config,
+                    fsdp_config=verl_config.critic.engine,
                 )
             else:
                 critic_running_memory = critic_idle_memory = 0
 
-            actor_model_config = verl_config.actor_rollout_ref.model
-            if actor_model_config.use_fused_kernels and actor_model_config.fused_kernel_options:
-                logits_memory_type = "fusion"
+            if config.algorithm.entropy_loss_fn != "none":
+                logits_memory_type = "normal-with-entropy"
             else:
-                if config.algorithm.entropy_loss_fn != "none":
-                    logits_memory_type = "normal-with-entropy"
-                else:
-                    logits_memory_type = "normal-without-entropy"
+                logits_memory_type = "normal-without-entropy"
             self._check_max_memory_in_fsdp_training(
                 module_name="actor",
                 model_path=model_path,
                 hf_config=hf_config,
-                num_tokens=actor_config.ppo_max_token_len_per_gpu,  # type: ignore
+                num_tokens=verl_config.actor_rollout_ref.actor.ppo_max_token_len_per_gpu,
                 strategy=config.trainer.trainer_strategy,
-                fsdp_config=actor_config.engine,
-                gradient_checkpointing=actor_model_config.enable_gradient_checkpointing,
+                fsdp_config=actor_engine,
+                gradient_checkpointing=True,
                 world_size=world_size,
                 logits_memory_type=logits_memory_type,
                 dtype_coeff=actor_dtype_coeff,
@@ -1540,17 +1527,16 @@ class GPUMemoryValidator(ConfigValidator):
                 optim_step_memory=actor_optim_step_memory,
             )
             if verl_config.critic.enable:
-                critic_model = verl_config.critic.model
                 self._check_max_memory_in_fsdp_training(
                     module_name="critic",
                     model_path=critic_model_path,
                     hf_config=critic_hf_config,
-                    num_tokens=verl_config.critic.ppo_max_token_len_per_gpu,  # type: ignore
+                    num_tokens=verl_config.critic.ppo_max_token_len_per_gpu,
                     strategy=config.trainer.trainer_strategy,
-                    fsdp_config=critic_model.fsdp_config,
-                    gradient_checkpointing=critic_model.enable_gradient_checkpointing,
+                    fsdp_config=verl_config.critic.engine,
+                    gradient_checkpointing=True,
                     world_size=world_size,
-                    logits_memory_type="none",  # no logits in critic
+                    logits_memory_type="none",
                     dtype_coeff=critic_dtype_coeff,
                     params_memory=(critic_running_memory + actor_idle_memory),
                     optim_step_memory=critic_optim_step_memory,
