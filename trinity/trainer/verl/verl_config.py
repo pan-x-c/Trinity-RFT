@@ -18,7 +18,6 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
-from omegaconf import OmegaConf
 from verl.workers.config import (
     McoreEngineConfig,
     MtpConfig,
@@ -400,7 +399,7 @@ class veRLConfig:
             return
         sp = engine_config.ulysses_sequence_parallel_size
         required_min = config.model.max_model_len
-        if config.model.max_model_len is None:
+        if required_min is None:
             raise ValueError(
                 "config.model.max_model_len must be set to adjust token length based on SP size."
             )

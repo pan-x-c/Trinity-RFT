@@ -14,12 +14,14 @@ Run pytest inside a Trinity Docker container.
 Options:
   -m, --module <name>    Test module under tests/. Default: ${DEFAULT_MODULE}
   -k, --keyword <expr>   Pytest -k expression used to filter tests
+  -q, --quiet            Run pytest in quiet mode
   -h, --help             Show this help message and exit
 
 Examples:
   bash docker/run.sh
   bash docker/run.sh --module buffer
   bash docker/run.sh --module common --keyword test_config
+  bash docker/run.sh --module common --keyword test_config --quiet
 EOF
 }
 
@@ -39,6 +41,7 @@ require_arg() {
 
 module_name="$DEFAULT_MODULE"
 keyword_expr=""
+quiet_mode=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -51,6 +54,10 @@ while [[ $# -gt 0 ]]; do
             require_arg "$1" "$2"
             keyword_expr="$2"
             shift 2
+            ;;
+        -q|--quiet)
+            quiet_mode=1
+            shift
             ;;
         -h|--help)
             print_help
@@ -91,7 +98,13 @@ if [[ -z "$running_id" ]]; then
     fail "Container '${SERVICE_NAME}' exists but is not running. Start it before running tests."
 fi
 
-pytest_args=(pytest "tests/${module_name}" -v -s)
+pytest_args=(pytest "tests/${module_name}" -s)
+if [[ "$quiet_mode" -eq 1 ]]; then
+    pytest_args+=(-q)
+else
+    pytest_args+=(-v)
+fi
+
 if [[ -n "$keyword_expr" ]]; then
     pytest_args+=(-k "$keyword_expr")
 fi
