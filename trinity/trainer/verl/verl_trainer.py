@@ -60,6 +60,7 @@ from trinity.common.constants import SaveStrategy
 from trinity.common.experience import Experience
 from trinity.trainer.trainer import TrainEngineWrapper
 from trinity.trainer.verl.utils import compute_data_metrics, to_data_proto
+from trinity.trainer.verl.verl_config import build_verl_config
 from trinity.trainer.verl.workers import TrinityActorRolloutRefWorker
 from trinity.utils.log import get_logger
 
@@ -215,8 +216,7 @@ class VerlPPOTrainerWrapper(TrainEngineWrapper):
         self.logger.info(
             f"Initializing verl Trainer with {global_config.trainer.trainer_strategy} backend"
         )
-        train_config = global_config.trainer
-        self.config = OmegaConf.structured(train_config.trainer_config)
+        self.config = OmegaConf.create(build_verl_config(global_config))
 
         local_path = copy_local_path_from_hdfs(self.config.actor_rollout_ref.model.path)
 
