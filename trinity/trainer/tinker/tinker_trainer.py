@@ -351,7 +351,7 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
         with open(self.local_latest_checkpointed_iteration, "w") as f:
             f.write(str(self.train_step_num))
 
-    def sync_weight(self) -> None:
+    def sync_weight_nccl(self) -> None:
         """Sync the model weight."""
         raise NotImplementedError("Tinker trainer does not support NCCL sync")
 

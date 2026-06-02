@@ -21,7 +21,7 @@ classifiers = [
 ]
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "verl==0.7.1",
+    "verl>=0.7.1",
     "ray[default]>=2.50.0",
     "tensordict",
     "wandb",

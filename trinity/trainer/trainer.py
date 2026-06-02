@@ -255,19 +255,19 @@ class TrainEngineWrapper(ABC):
     async def save_checkpoint(
         self, block_until_saved: bool = False, save_as_hf: bool = False
     ) -> None:
-        """Save the checkpoint."""
+        """Save the whole checkpoint (Including model, optimizer, and other states)."""
 
     @abstractmethod
-    def sync_weight(self) -> None:
-        """Sync the model weight."""
+    def sync_weight_nccl(self) -> None:
+        """Sync the model weight by NCCL. (For `NCCL` sync method)"""
 
     @abstractmethod
     async def upload_state_dict(self) -> None:
-        """Upload the state dict to Synchronizer."""
+        """Upload the state dict to Synchronizer. (For `MEMORY` sync method)"""
 
     @abstractmethod
     async def save_state_dict(self) -> None:
-        """Only save the model state dict for Synchronizer."""
+        """Only save the model state dict for Synchronizer.  (For `CHECKPOINT` sync method)"""
 
 
 def get_trainer_wrapper(config: Config) -> TrainEngineWrapper:
