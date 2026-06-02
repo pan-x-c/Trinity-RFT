@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from trinity.common.config import Config
+
+
+@dataclass
+class ProfilerConfig:
+    steps: Optional[int] = None
+    tools: str = "nsys"
 
 
 @dataclass
@@ -30,12 +36,7 @@ class TrainerConfig:
 @dataclass
 class ActorConfig:
     use_kl_loss: bool = False
-
-
-@dataclass
-class ProfilerConfig:
-    steps: Optional[int] = None
-    tools: str = "nsys"
+    calculate_sum_pi_squared: bool = False
 
 
 @dataclass

@@ -641,6 +641,8 @@ class AlgorithmConfig:
     loss_agg_mode: Optional[str] = None
     # rollout router replay, only for MoE models
     enable_router_replay: bool = False
+    # bypass old logprobs computation by using rollout logprobs directly
+    bypass_old_logprobs: bool = True
 
 
 @dataclass
@@ -786,6 +788,8 @@ class TrainerConfig:
     use_dynamic_bsz: bool = True
     use_remove_padding: bool = True
     balance_batch: bool = True
+    # number of warmup steps for critic model, if > 0, only update critic model for the first `critic_warmup` steps
+    critic_warmup: int = 0
     # if None, automatically set to ceil(2 * model.max_model_len / ulysses_sequence_parallel_size)
     max_token_len_per_gpu: Optional[int] = None
     ulysses_sequence_parallel_size: int = 1  # sp size
@@ -793,7 +797,7 @@ class TrainerConfig:
     # TODO: extract more train-related params from underlying trainer engine
 
     save_strategy: SaveStrategy = SaveStrategy.UNRESTRICTED
-    max_checkpoints_to_keep: Optional[int] = None
+    max_checkpoints_to_keep: int = 0  # 0 means keep all checkpoints
     # ! DO NOT SET
     trust_remote_code: bool = False
     trainer_config: Any = field(default_factory=dict)

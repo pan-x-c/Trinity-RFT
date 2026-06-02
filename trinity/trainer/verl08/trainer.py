@@ -63,6 +63,7 @@ from trinity.trainer.trainer import TrainEngineWrapper
 from trinity.trainer.verl08.config import VERLConfig, build_verl_config
 from trinity.trainer.verl08.utils import to_data_proto
 from trinity.trainer.verl08.workers import TrinityActorRolloutRefWorker
+from trinity.trainer.verl.utils import compute_data_metrics
 from trinity.utils.log import get_logger
 
 
@@ -303,57 +304,36 @@ class VERLTrainer(TrainEngineWrapper):
             with marked_timer("old_log_prob", timing_raw, color="blue"):
                 batch = self._compute_old_log_prob(batch, metrics)
 
-            if self.algorithm.use_reference:
+            if self.use_reference_policy:
                 with marked_timer(str(Role.RefPolicy), timing_raw, color="olive"):
-                    ref_log_prob = self._compute_ref_log_prob(batch)
-                    batch = batch.union(ref_log_prob)
+                    batch = self._compute_ref_log_prob(batch)
 
-            if self.algorithm.use_critic:
+            if self.use_critic:
                 with marked_timer("values", timing_raw):
-                    values_dp = self._compute_values(batch)
-                    batch = batch.union(values_dp)
+                    batch = self._compute_values(batch)
 
             if self.algorithm.compute_advantage_in_trainer:
                 with marked_timer("adv", timing_raw):
                     batch, kl_metrics = self.kl_fn.apply_kl_penalty_to_reward(batch)
-                    metrics.update(prefix_metrics(kl_metrics, prefix="critic"))
-                    batch, _ = self.advantage_fn(batch)
+                    metrics.update(prefix_metrics(kl_metrics, prefix="actor"))
+                    batch, metrics = self.advantage_fn(batch)
+                    metrics.update(prefix_metrics(metrics, prefix="actor"))
             else:
                 if "token_level_scores" in batch.batch.keys():
                     assert "token_level_rewards" not in batch.batch.keys()
                     batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
 
-            # Rollout correction (decoupled mode)
-            if (
-                rollout_corr_config is not None
-                and "rollout_log_probs" in batch.batch
-                and not bypass_recomputing_logprobs
-            ):
-                from verl.trainer.ppo.rollout_corr_helper import (
-                    compute_rollout_correction_and_add_to_batch,
-                )
-
-                batch, is_metrics = compute_rollout_correction_and_add_to_batch(
-                    batch, rollout_corr_config
-                )
-                metrics.update(is_metrics)
+            # TODO: add Rollout correction
 
             # Update critic
             if self.algorithm.use_critic:
                 with marked_timer("update_critic", timing_raw, color="pink"):
-                    critic_output = self._update_critic(batch)
-                critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
-                metrics.update(critic_output_metrics)
+                    batch = self._update_critic(batch, metrics)
 
             # Update actor
-            if (
-                not self.algorithm.use_critic
-                or self.config.trainer.critic_warmup <= self.global_steps
-            ):
+            if self.global_config.trainer.critic_warmup <= self.global_steps:
                 with marked_timer("update_actor", timing_raw, color="red"):
-                    actor_output = self._update_actor(batch)
-                actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
-                metrics.update(actor_output_metrics)
+                    batch = self._update_actor(batch, metrics)
 
         # Collect metrics
         metrics.update(compute_data_metrics(batch=batch))
@@ -372,15 +352,15 @@ class VERLTrainer(TrainEngineWrapper):
         self, block_until_saved: bool = False, save_as_hf: bool = False
     ) -> None:
         local_global_step_folder = os.path.join(
-            self.config.trainer.default_local_dir, f"global_step_{self.global_steps}"
+            self.global_config.checkpoint_job_dir, f"global_step_{self.global_steps}"
         )
         os.makedirs(local_global_step_folder, exist_ok=True)
         with open(os.path.join(local_global_step_folder, ".full_checkpoint"), "w") as f:
             f.write("")
 
         actor_local_path = os.path.join(local_global_step_folder, "actor")
-        max_actor_ckpt_to_keep = self.config.trainer.get("max_actor_ckpt_to_keep", None)
-        max_critic_ckpt_to_keep = self.config.trainer.get("max_critic_ckpt_to_keep", None)
+        max_actor_ckpt_to_keep = self.global_config.trainer.max_checkpoints_to_keep
+        max_critic_ckpt_to_keep = self.global_config.trainer.max_checkpoints_to_keep
 
         self.actor_rollout_wg.save_checkpoint(
             actor_local_path,
@@ -406,7 +386,7 @@ class VERLTrainer(TrainEngineWrapper):
 
     async def save_state_dict(self):
         actor_local_path = os.path.join(
-            self.config.trainer.default_local_dir, f"global_step_{self.global_steps}", "actor"
+            self.global_config.checkpoint_job_dir, f"global_step_{self.global_steps}", "actor"
         )
         self.actor_rollout_wg.save_checkpoint(actor_local_path, global_step=self.global_steps)
         await self.checkpoint_monitor.monitor_step.remote(self.global_steps, is_state_dict=True)
@@ -457,6 +437,9 @@ class VERLTrainer(TrainEngineWrapper):
         metadata = {"calculate_entropy": False, "compute_loss": False}
         if self.ref_in_actor:
             metadata["no_lora_adapter"] = True
+        metadata["temperature"] = batch.meta_info.get(
+            "temperature", self.global_config.model.temperature
+        )
         tu.assign_non_tensor(batch_td, **metadata)
         if self.ref_in_actor:
             output = self.actor_rollout_wg.compute_log_prob(batch_td)
@@ -464,36 +447,75 @@ class VERLTrainer(TrainEngineWrapper):
             output = self.ref_policy_wg.compute_ref_log_prob(batch_td)
         log_probs = tu.get(output, "log_probs")
         log_probs = no_padding_2_padding(log_probs, batch_td)
-        ref_log_prob = tu.get_tensordict({"ref_log_prob": log_probs.float()})
-        return DataProto.from_tensordict(ref_log_prob)
+        batch.batch["ref_log_prob"] = log_probs.float()
+        return batch
 
     def _compute_old_log_prob(self, batch: DataProto, metrics: Dict) -> DataProto:
+        if self.global_config.algorithm.bypass_old_logprobs:
+            if "rollout_log_probs" not in batch.batch:
+                raise KeyError("bypass_mode requires rollout_log_probs in batch")
+            batch.batch["old_log_probs"] = batch.batch["rollout_log_probs"]
+            return batch
+
         batch_td = batch.to_tensordict()
         batch_td = left_right_2_no_padding(batch_td)
-        calculate_sum_pi_squared = self.config.actor_rollout_ref.actor.get(
-            "calculate_sum_pi_squared", False
-        )
+        calculate_sum_pi_squared = self.config.actor_rollout_ref.actor.calculate_sum_pi_squared
         tu.assign_non_tensor(
             batch_td,
             calculate_entropy=True,
             calculate_sum_pi_squared=calculate_sum_pi_squared,
             compute_loss=False,
+            temperature=batch.meta_info.get("temperature", self.global_config.model.temperature),
         )
         output = self.actor_rollout_wg.compute_log_prob(batch_td)
         entropy = tu.get(output, "entropy")
         log_probs = tu.get(output, "log_probs")
+        routed_experts = tu.get(output, "routed_experts")
         sum_pi_squared = tu.get(output, "sum_pi_squared") if calculate_sum_pi_squared else None
 
-        old_log_prob_mfu = tu.get(output, "metrics").get("mfu", 0.0)
-        entropy = no_padding_2_padding(entropy, batch_td)
-        log_probs = no_padding_2_padding(log_probs, batch_td)
+        output_metrics = tu.get(output, "metrics")
+        old_log_prob_mfu = output_metrics.get("mfu") if output_metrics is not None else None
+
+        entropy = no_padding_2_padding(entropy, batch_td).float()
+        log_probs = no_padding_2_padding(log_probs, batch_td).float()
         if sum_pi_squared is not None:
-            sum_pi_squared = no_padding_2_padding(sum_pi_squared, batch_td)
-        result = {"old_log_probs": log_probs.float(), "entropys": entropy.float()}
+            sum_pi_squared = no_padding_2_padding(sum_pi_squared, batch_td).float()
+
+        batch.batch["old_log_probs"] = log_probs
+        batch.batch["entropy"] = entropy
+        # for backward compatibility, remove the above line in the future
+        batch.batch["entropys"] = entropy
+
+        if routed_experts is not None:
+            if "routed_experts" in batch.batch:
+                raise ValueError(
+                    "Detected conflicting router replay configuration: "
+                    "router_replay.mode='R2' and enable_rollout_routing_replay=True "
+                    "cannot be enabled simultaneously. "
+                    "The enable_rollout_routing_replay option is only used in R3 mode; "
+                    "it should not be set when using R2 mode."
+                )
+            batch.batch["routed_experts"] = routed_experts
         if sum_pi_squared is not None:
-            result["sum_pi_squared"] = sum_pi_squared.float()
-        old_log_prob = tu.get_tensordict(result)
-        return DataProto.from_tensordict(old_log_prob), old_log_prob_mfu
+            batch.batch["sum_pi_squared"] = sum_pi_squared
+
+        response_masks = batch.batch["response_mask"]
+        entropy_agg = agg_loss(
+            loss_mat=entropy,
+            loss_mask=response_masks,
+            loss_agg_mode=self.global_config.algorithm.loss_agg_mode or "token-mean",
+            loss_scale_factor=None,  # Keep None for now
+        )
+        metrics["actor/entropy"] = entropy_agg.detach().item()
+        if old_log_prob_mfu is not None:
+            metrics["perf/mfu/actor_infer"] = old_log_prob_mfu
+
+        if "rollout_log_probs" in batch.batch:
+            from verl.utils.debug.metrics import calculate_debug_metrics
+
+            metrics.update(calculate_debug_metrics(batch))
+
+        return batch
 
     def _compute_values(self, batch: DataProto) -> DataProto:
         batch_td = batch.to_tensordict()
@@ -503,10 +525,10 @@ class VERLTrainer(TrainEngineWrapper):
         output = output.get()
         values = tu.get(output, "values")
         values = no_padding_2_padding(values, batch_td)
-        values = tu.get_tensordict({"values": values.float()})
-        return DataProto.from_tensordict(values)
+        batch.batch["values"] = values.float()
+        return batch
 
-    def _update_actor(self, batch: DataProto) -> DataProto:
+    def _update_actor(self, batch: DataProto, metrics: Dict) -> DataProto:
         batch_td = batch.to_tensordict()
         batch_td = left_right_2_no_padding(batch_td)
         calculate_entropy = self.algorithm_config.entropy_loss_fn != "none"
@@ -522,6 +544,7 @@ class VERLTrainer(TrainEngineWrapper):
             epochs=ppo_epochs,
             seed=seed,
             dataloader_kwargs={"shuffle": shuffle},
+            temperature=batch.meta_info.get("temperature", self.global_config.model.temperature),
             compute_loss=True,
         )
         actor_output = self.actor_rollout_wg.update_actor(batch_td)
@@ -529,9 +552,10 @@ class VERLTrainer(TrainEngineWrapper):
         actor_output = rename_dict(actor_output, "actor/")
         if "actor/mfu" in actor_output:
             actor_output["perf/mfu/actor"] = actor_output.pop("actor/mfu")
-        return DataProto.from_single_dict(data={}, meta_info={"metrics": actor_output})
+        metrics.update(reduce_metrics(actor_output))
+        return batch
 
-    def _update_critic(self, batch: DataProto) -> DataProto:
+    def _update_critic(self, batch: DataProto, metrics: Dict) -> DataProto:
         batch_td = batch.to_tensordict()
         batch_td = left_right_2_no_padding(batch_td)
         ppo_mini_batch_size = self.config.critic.ppo_mini_batch_size
@@ -552,7 +576,8 @@ class VERLTrainer(TrainEngineWrapper):
         output = rename_dict(output, "critic/")
         if "critic/mfu" in output:
             output["perf/mfu/critic"] = output.pop("critic/mfu")
-        return DataProto.from_single_dict(data={}, meta_info={"metrics": output})
+        metrics.update(reduce_metrics(output))
+        return batch
 
     def _load_checkpoint(self):
         if self.config.trainer.resume_mode == "disable":

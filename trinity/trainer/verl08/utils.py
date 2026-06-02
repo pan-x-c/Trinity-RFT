@@ -181,3 +181,78 @@ def to_data_proto(  # noqa: C901
         "model_versions": np.array([exp.info.get("model_version", 0) for exp in experiences])
     }
     return DataProto.from_single_dict(batch_dict, meta_info=meta_info)
+
+
+def compute_data_metrics(batch: DataProto) -> dict:
+    """
+    Computes various metrics from a batch of data for PPO training.
+    Modified from verl.trainer.ppo.metric_utils.compute_data_metrics
+
+    This function calculates metrics related to scores, rewards, advantages, returns, values,
+    and sequence lengths from a batch of data. It provides statistical information (mean, max, min)
+    for each metric category.
+
+    Args:
+        batch: A DataProto object containing batch data with token-level scores, rewards, advantages, etc.
+
+    Returns:
+        A dictionary of metrics including:
+            - critic/score/mean, max, min: Statistics about sequence scores
+            - critic/rewards/mean, max, min: Statistics about sequence rewards
+            - critic/advantages/mean, max, min: Statistics about advantages
+            - critic/returns/mean, max, min: Statistics about returns
+            - critic/values/mean, max, min: Statistics about critic values
+            - critic/vf_explained_var: Explained variance of the value function
+    """
+    metrics = {}
+
+    if "token_level_rewards" in batch.batch and "token_level_scores" in batch.batch:
+        sequence_score = batch.batch["token_level_scores"].sum(-1)
+        sequence_reward = batch.batch["token_level_rewards"].sum(-1)
+        metrics.update(
+            {
+                # score
+                "critic/score/mean": torch.mean(sequence_score).detach().item(),
+                "critic/score/max": torch.max(sequence_score).detach().item(),
+                "critic/score/min": torch.min(sequence_score).detach().item(),
+                # reward
+                "critic/rewards/mean": torch.mean(sequence_reward).detach().item(),
+                "critic/rewards/max": torch.max(sequence_reward).detach().item(),
+                "critic/rewards/min": torch.min(sequence_reward).detach().item(),
+            }
+        )
+
+    max_response_length = batch.batch["responses"].shape[-1]
+    response_mask = batch.batch["attention_mask"][:, -max_response_length:].bool()
+
+    if "advantages" in batch.batch:
+        # adv
+        advantages = batch.batch["advantages"]
+        if response_mask.numel() > 0:
+            valid_adv = torch.masked_select(advantages, response_mask)
+        else:
+            valid_adv = torch.zeros(1)
+        metrics.update(
+            {
+                # adv
+                "critic/advantages/mean": torch.mean(valid_adv).detach().item(),
+                "critic/advantages/max": torch.max(valid_adv).detach().item(),
+                "critic/advantages/min": torch.min(valid_adv).detach().item(),
+            }
+        )
+    if "returns" in batch.batch:
+        # returns
+        returns = batch.batch["returns"]
+        if response_mask.numel() > 0:
+            valid_returns = torch.masked_select(returns, response_mask)
+        else:
+            valid_returns = torch.zeros(1)
+        metrics.update(
+            {
+                "critic/returns/mean": torch.mean(valid_returns).detach().item(),
+                "critic/returns/max": torch.max(valid_returns).detach().item(),
+                "critic/returns/min": torch.min(valid_returns).detach().item(),
+            }
+        )
+
+    return metrics
