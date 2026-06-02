@@ -72,24 +72,6 @@ class FSDPEngineConfig:
     entropy_checkpointing: bool = False
 
 
-@dataclass
-class _McoreEngineConfig:
-    """Megatron engine config stub. Full Megatron support is not yet implemented
-    in this refactor (FSDP-first), but these fields must be present because
-    config_manager / user YAML may set them."""
-
-    _target_: str = "verl.workers.config.McoreEngineConfig"
-    use_dynamic_bsz: bool = False
-    use_remove_padding: bool = True
-    vanilla_mbridge: bool = True
-    tensor_model_parallel_size: int = 1
-    pipeline_model_parallel_size: int = 1
-    virtual_pipeline_model_parallel_size: Optional[int] = None
-    expert_model_parallel_size: int = 1
-    expert_tensor_parallel_size: Optional[int] = None
-    context_parallel_size: int = 1
-    sequence_parallel: bool = True
-    use_distributed_optimizer: bool = True
 
 
 @dataclass
@@ -206,13 +188,9 @@ class Actor:
     shuffle: bool = False
     freeze_vision_tower: bool = False
     use_prefix_grouper: bool = False
-    calculate_sum_pi_squared: bool = False
-    grad_clip: Optional[float] = None
-    fix_actor_microbatch_loss_scale: Optional[bool] = None
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     optim: Optim = field(default_factory=Optim)
     engine: FSDPEngineConfig = field(default_factory=FSDPEngineConfig)
-    megatron: _McoreEngineConfig = field(default_factory=_McoreEngineConfig)
     policy_loss: PolicyLossConfig = field(default_factory=PolicyLossConfig)
     profiler: dict = field(default_factory=dict)
     router_replay: RouterReplayConfig = field(default_factory=RouterReplayConfig)
@@ -237,7 +215,6 @@ class Ref:
     log_prob_max_token_len_per_gpu: Optional[int] = None
     checkpoint: RefCheckpointConfig = field(default_factory=RefCheckpointConfig)
     optim: Optional[Optim] = None
-    megatron: _McoreEngineConfig = field(default_factory=_McoreEngineConfig)
     profiler: dict = field(default_factory=dict)
     router_replay: RouterReplayConfig = field(default_factory=RouterReplayConfig)
     rollout_n: int = 1
@@ -294,12 +271,10 @@ class Critic:
     forward_max_token_len_per_gpu: Optional[int] = None
     ppo_epochs: int = 1
     shuffle: bool = False
-    grad_clip: Optional[float] = None
     cliprange_value: float = 0.0
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     rollout_n: int = 1
     loss_agg_mode: str = "token-mean"
-    megatron: _McoreEngineConfig = field(default_factory=_McoreEngineConfig)
     data_loader_seed: int = 42
     nccl_timeout: float = 600
     ray_namespace: str = ""
@@ -497,9 +472,9 @@ class veRLConfig:
         actor.ppo_mini_batch_size = config.buffer.train_batch_size
         actor.rollout_n = config.algorithm.repeat_times
         actor.optim.total_training_steps = self.trainer.total_training_steps
+        if config.trainer.grad_clip is not None:
+            actor.optim.clip_grad = config.trainer.grad_clip
         for attr, trainer_attr in [
-            ("grad_clip", "grad_clip"),
-            ("fix_actor_microbatch_loss_scale", "fix_actor_microbatch_loss_scale"),
             ("ppo_max_token_len_per_gpu", "max_token_len_per_gpu"),
             ("strategy", "trainer_strategy"),
         ]:
@@ -573,8 +548,9 @@ class veRLConfig:
         critic.ppo_mini_batch_size = config.buffer.train_batch_size
         critic.rollout_n = config.algorithm.repeat_times
         critic.optim.total_training_steps = self.trainer.total_training_steps
+        if config.trainer.grad_clip is not None:
+            critic.optim.clip_grad = config.trainer.grad_clip
         for attr, trainer_attr in [
-            ("grad_clip", "grad_clip"),
             ("strategy", "trainer_strategy"),
             ("ppo_max_token_len_per_gpu", "max_token_len_per_gpu"),
         ]:
@@ -659,15 +635,9 @@ class veRLConfig:
         # --- use_dynamic_bsz / use_remove_padding propagation ---
         use_dynamic_bsz = config.trainer.use_dynamic_bsz
         actor.use_dynamic_bsz = use_dynamic_bsz
-        actor.megatron.use_dynamic_bsz = use_dynamic_bsz
-        ref.megatron.use_dynamic_bsz = use_dynamic_bsz
         critic.use_dynamic_bsz = use_dynamic_bsz
-        critic.megatron.use_dynamic_bsz = use_dynamic_bsz
 
         use_remove_padding = config.trainer.use_remove_padding
         actor_model.use_remove_padding = use_remove_padding
-        actor.megatron.use_remove_padding = use_remove_padding
-        ref.megatron.use_remove_padding = use_remove_padding
-        critic.megatron.use_remove_padding = use_remove_padding
 
         self.enable_preview = config.trainer.enable_preview

@@ -7,7 +7,7 @@ engine-based training worker.
 """
 from typing import Optional
 
-from omegaconf import DictConfig, open_dict
+from omegaconf import DictConfig, OmegaConf
 from verl.single_controller.base.decorator import Dispatch, register
 from verl.workers.engine_workers import ActorRolloutRefWorker
 
@@ -15,8 +15,8 @@ from trinity.common.config import AlgorithmConfig
 from trinity.trainer.verl.losses import build_trinity_loss
 
 
-def _strip_empty_targets(cfg: DictConfig) -> None:
-    """Recursively remove _target_='' from a DictConfig.
+def _strip_empty_targets(d: dict) -> None:
+    """Recursively remove _target_='' from a plain dict (in-place).
 
     veRL's BaseConfig sets _target_='' on all subclasses. When hydra
     instantiate encounters a nested dict with _target_='', it raises
@@ -24,13 +24,22 @@ def _strip_empty_targets(cfg: DictConfig) -> None:
     makes hydra skip instantiation for those sub-configs and pass them
     as plain dicts — which is fine since BaseConfig supports dict-like access.
     """
-    with open_dict(cfg):
-        for key in list(cfg.keys()):
-            val = cfg[key]
-            if isinstance(val, DictConfig):
-                if val.get("_target_", None) == "":
-                    del val["_target_"]
-                _strip_empty_targets(val)
+    for key in list(d.keys()):
+        val = d[key]
+        if isinstance(val, dict):
+            if val.get("_target_") == "":
+                del val["_target_"]
+            _strip_empty_targets(val)
+
+
+def _adapt_actor_config(actor: dict) -> None:
+    """Remove any Trinity-only fields that veRL's ActorConfig doesn't accept.
+
+    These may still appear if old YAML configs are loaded.
+    """
+    for key in ("grad_clip", "fix_actor_microbatch_loss_scale",
+                "calculate_sum_pi_squared", "megatron"):
+        actor.pop(key, None)
 
 
 class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
@@ -59,10 +68,21 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """
         from trinity.trainer.verl.monkey_patch import apply_monkey_patch
 
-        # Strip empty _target_ fields recursively before super().init_model()
-        # so hydra doesn't try to instantiate nested configs with _target_=""
-        # (veRL's BaseConfig sets _target_="" which causes ImportError: Empty path)
-        _strip_empty_targets(self.config)
+        # Convert struct DictConfig → plain dict → non-struct DictConfig,
+        # then strip empty _target_ fields and adapt Trinity-only fields.
+        # This is necessary because:
+        # 1. veRL's BaseConfig sets _target_="" on all subclasses
+        # 2. hydra instantiate recursively processes nested _target_ and crashes on ""
+        # 3. Trinity's config has fields that veRL's dataclasses don't accept
+        container = OmegaConf.to_container(self.config, resolve=True)
+        _strip_empty_targets(container)
+        if "actor" in container.get("actor_rollout_ref", {}):
+            _adapt_actor_config(container["actor_rollout_ref"]["actor"])
+        if "ref" in container.get("actor_rollout_ref", {}):
+            # ref also goes through ActorConfig instantiation
+            ref = container["actor_rollout_ref"]["ref"]
+            ref.pop("megatron", None)
+        self.config = OmegaConf.create(container)
 
         super().init_model()
 
