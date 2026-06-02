@@ -19,10 +19,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
 from verl.workers.config import (
-    McoreEngineConfig,
-    MtpConfig,
-    PolicyLossConfig,
-    RouterReplayConfig,
+    MtpConfig as _MtpConfigBase,
+    PolicyLossConfig as _PolicyLossConfigBase,
+    RouterReplayConfig as _RouterReplayConfigBase,
 )
 
 from trinity.algorithm import ALGORITHM_TYPE
@@ -47,7 +46,13 @@ class Data:
 
 @dataclass
 class FSDPEngineConfig:
-    """Maps to verl.workers.config.FSDPEngineConfig via _target_."""
+    """OmegaConf-compatible schema for verl.workers.config.FSDPEngineConfig.
+
+    Declared from scratch (not inheriting) because veRL's BaseConfig uses
+    loose typing (e.g. `int = None`) that OmegaConf.structured() rejects.
+    Only fields Trinity actually reads/writes are listed here; hydra
+    instantiate will fill the rest from veRL's defaults via _target_.
+    """
 
     _target_: str = "verl.workers.config.FSDPEngineConfig"
     strategy: str = "fsdp"
@@ -68,12 +73,23 @@ class FSDPEngineConfig:
 
 
 @dataclass
-class _McoreEngineConfig(McoreEngineConfig):
+class _McoreEngineConfig:
+    """Megatron engine config stub. Full Megatron support is not yet implemented
+    in this refactor (FSDP-first), but these fields must be present because
+    config_manager / user YAML may set them."""
+
+    _target_: str = "verl.workers.config.McoreEngineConfig"
+    use_dynamic_bsz: bool = False
+    use_remove_padding: bool = True
     vanilla_mbridge: bool = True
-    max_token_len_per_gpu: Optional[int] = None
-    micro_batch_size_per_gpu: Optional[int] = None
-    infer_max_token_len_per_gpu: Optional[int] = None
-    infer_micro_batch_size_per_gpu: Optional[int] = None
+    tensor_model_parallel_size: int = 1
+    pipeline_model_parallel_size: int = 1
+    virtual_pipeline_model_parallel_size: Optional[int] = None
+    expert_model_parallel_size: int = 1
+    expert_tensor_parallel_size: Optional[int] = None
+    context_parallel_size: int = 1
+    sequence_parallel: bool = True
+    use_distributed_optimizer: bool = True
 
 
 @dataclass
@@ -102,6 +118,8 @@ class Optim:
 
 @dataclass
 class CheckpointConfig:
+    """OmegaConf-compatible schema for verl.trainer.config.CheckpointConfig."""
+
     _target_: str = "verl.trainer.config.CheckpointConfig"
     save_contents: List[str] = field(default_factory=lambda: ["model", "optimizer", "extra"])
     load_contents: List[str] = field(default_factory=lambda: ["model", "optimizer", "extra"])
@@ -112,14 +130,36 @@ class CheckpointConfig:
 
 
 @dataclass
-class RefCheckpointConfig(CheckpointConfig):
-    load_contents: List[str] = field(default_factory=lambda: ["model"])
+class RefCheckpointConfig:
+    _target_: str = "verl.trainer.config.CheckpointConfig"
     save_contents: List[str] = field(default_factory=lambda: ["model"])
+    load_contents: List[str] = field(default_factory=lambda: ["model"])
+    async_save: bool = False
+    mbridge_config: Dict[str, Any] = field(
+        default_factory=lambda: dict(distributed_filesystem=True, memory_efficient=True)
+    )
 
 
 # ---------------------------------------------------------------------------
 # Model config
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class MtpConfig(_MtpConfigBase):
+    """MtpConfig with _target_ for hydra instantiation (veRL's BaseConfig defaults to "")."""
+
+    _target_: str = "verl.workers.config.MtpConfig"
+
+
+@dataclass
+class PolicyLossConfig(_PolicyLossConfigBase):
+    _target_: str = "verl.workers.config.PolicyLossConfig"
+
+
+@dataclass
+class RouterReplayConfig(_RouterReplayConfigBase):
+    _target_: str = "verl.workers.config.RouterReplayConfig"
 
 
 @dataclass
