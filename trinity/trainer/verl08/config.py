@@ -32,14 +32,13 @@ from __future__ import annotations
 
 import sys
 from dataclasses import is_dataclass
-from typing import Any, Dict, List, Optional, Union, get_origin, get_args
+from typing import List, Optional, Union, get_args, get_origin
 
 from omegaconf import DictConfig, OmegaConf
 
 from trinity.algorithm import ALGORITHM_TYPE
 from trinity.common.config import Config
 from trinity.common.config import OptimizerConfig as TrinityOptimizerConfig
-from trinity.common.constants import EXPLORER_NAME
 from trinity.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -59,7 +58,11 @@ def _resolve_dc_type(type_hint):
     from verl.base_config import BaseConfig
 
     # Direct dataclass type
-    if is_dataclass(type_hint) and isinstance(type_hint, type) and issubclass(type_hint, BaseConfig):
+    if (
+        is_dataclass(type_hint)
+        and isinstance(type_hint, type)
+        and issubclass(type_hint, BaseConfig)
+    ):
         return type_hint
 
     # Handle Optional[T] / Union[T, None]
@@ -139,8 +142,6 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
     """
     cfg = global_config
     strategy = cfg.trainer.trainer_strategy  # "fsdp", "fsdp2", or "megatron"
-    is_fsdp = strategy.startswith("fsdp")
-    is_megatron = strategy.startswith("megatron")
 
     total_training_steps = cfg.trainer.total_steps or sys.maxsize
     algorithm = ALGORITHM_TYPE.get(cfg.algorithm.algorithm_type)
@@ -209,7 +210,7 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
 
 def _build_model_config(cfg: Config) -> dict:
     """Build HFModelConfig-compatible dict with `_target_`."""
-    from verl.workers.config.model import HFModelConfig, MtpConfig
+    from verl.workers.config.model import HFModelConfig
 
     model = {
         "path": cfg.model.model_path,
@@ -245,9 +246,9 @@ def _build_model_config(cfg: Config) -> dict:
 
     # Rope config
     if cfg.model.rope_scaling is not None:
-        model["override_config"]["rope_scaling"] = cfg.model.rope_scaling
+        model["override_config"]["rope_scaling"] = cfg.model.rope_scaling  # type: ignore
     if cfg.model.rope_theta is not None:
-        model["override_config"]["rope_theta"] = cfg.model.rope_theta
+        model["override_config"]["rope_theta"] = cfg.model.rope_theta  # type: ignore
 
     _inject_targets(model, HFModelConfig)
     return model
@@ -255,15 +256,9 @@ def _build_model_config(cfg: Config) -> dict:
 
 def _build_actor_config(cfg: Config, strategy: str, total_training_steps: int) -> dict:
     """Build ActorConfig-compatible dict with `_target_`."""
-    from verl.workers.config.actor import (
-        FSDPActorConfig,
-        McoreActorConfig,
-        PolicyLossConfig,
-        RouterReplayConfig,
-    )
+    from verl.workers.config.actor import FSDPActorConfig, McoreActorConfig
     from verl.workers.config.engine import FSDPEngineConfig, McoreEngineConfig
     from verl.workers.config.optimizer import FSDPOptimizerConfig, McoreOptimizerConfig
-    from verl.trainer.config import CheckpointConfig
 
     is_fsdp = strategy.startswith("fsdp")
     is_megatron = strategy.startswith("megatron")
@@ -337,13 +332,8 @@ def _build_actor_config(cfg: Config, strategy: str, total_training_steps: int) -
 
 def _build_ref_config(cfg: Config, strategy: str) -> dict:
     """Build ref-config dict with `_target_` (subset of actor config)."""
-    from verl.workers.config.actor import (
-        FSDPActorConfig,
-        McoreActorConfig,
-        RouterReplayConfig,
-    )
+    from verl.workers.config.actor import FSDPActorConfig, McoreActorConfig
     from verl.workers.config.engine import FSDPEngineConfig, McoreEngineConfig
-    from verl.trainer.config import CheckpointConfig
 
     is_fsdp = strategy.startswith("fsdp")
     is_megatron = strategy.startswith("megatron")
@@ -366,9 +356,7 @@ def _build_ref_config(cfg: Config, strategy: str) -> dict:
         "use_prefix_grouper": False,
         "profiler": _build_profiler_config(),
         "router_replay": {"mode": "disabled"},
-        "checkpoint": _build_checkpoint_config(
-            save_contents=["model"], load_contents=["model"]
-        ),
+        "checkpoint": _build_checkpoint_config(save_contents=["model"], load_contents=["model"]),
     }
 
     # Strategy-specific fields
@@ -390,12 +378,7 @@ def _build_ref_config(cfg: Config, strategy: str) -> dict:
 
 def _build_rollout_config(cfg: Config) -> dict:
     """Build RolloutConfig-compatible dict with `_target_`."""
-    from verl.workers.config.rollout import (
-        RolloutConfig,
-        SamplingConfig,
-        MultiTurnConfig,
-        CheckpointEngineConfig,
-    )
+    from verl.workers.config.rollout import RolloutConfig
 
     # Get temperature from taskset or default
     temperature = 1.0
@@ -448,9 +431,7 @@ def _build_critic_config(
       wire up `engine` automatically.
     """
     from verl.workers.config.critic import FSDPCriticConfig, McoreCriticConfig
-    from verl.workers.config.engine import FSDPEngineConfig, McoreEngineConfig
     from verl.workers.config.optimizer import FSDPOptimizerConfig, McoreOptimizerConfig
-    from verl.trainer.config import CheckpointConfig
 
     is_fsdp = strategy.startswith("fsdp")
     is_megatron = strategy.startswith("megatron")
@@ -524,9 +505,9 @@ def _build_critic_model_config(cfg: Config) -> dict:
 
     # Rope config for critic
     if cfg.model.rope_scaling is not None:
-        model_config["override_config"]["rope_scaling"] = cfg.model.rope_scaling
+        model_config["override_config"]["rope_scaling"] = cfg.model.rope_scaling  # type: ignore
     if cfg.model.rope_theta is not None:
-        model_config["override_config"]["rope_theta"] = cfg.model.rope_theta
+        model_config["override_config"]["rope_theta"] = cfg.model.rope_theta  # type: ignore
 
     return model_config
 

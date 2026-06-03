@@ -31,7 +31,7 @@ model:
   max_prompt_tokens: 2048
   max_model_len: ${oc.env:MAX_MODEL_LEN,4096}
   rope_scaling:
-    rope_type: yarn
+    type: yarn
     factor: ${oc.decode:${oc.env:FACTOR}}  # Recommended value = MAX_MODEL_LEN / 40960
     original_max_position_embeddings: 40960
 ```

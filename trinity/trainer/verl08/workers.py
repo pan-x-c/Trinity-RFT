@@ -114,8 +114,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
         # All ranks must iterate the generator — full_tensor() is an FSDP collective.
         state_dict_meta_list = [
-            (name, str(param.dtype).split(".")[-1], param.shape)
-            for name, param in per_tensor_param
+            (name, str(param.dtype).split(".")[-1], param.shape) for name, param in per_tensor_param
         ]
         if torch.distributed.get_rank() == 0:
             self._state_dict_meta_list = state_dict_meta_list

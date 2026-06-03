@@ -262,7 +262,8 @@ class VERLTrainer(TrainEngineWrapper):
 
         # TODO: use a global resource manager for both explorer and trainer
         resource_pool_spec = {
-            self.GLOBAL_POOL_ID: [self.global_config.cluster.trainer_gpu_num_per_node] * self.global_config.cluster.trainer_node_num
+            self.GLOBAL_POOL_ID: [self.global_config.cluster.trainer_gpu_num_per_node]
+            * self.global_config.cluster.trainer_node_num
         }
         # Trinity do not need reward / distillation model workers, so we only create one global pool for actor and critic
         self.resource_pool_manager = ResourcePoolManager(
@@ -328,16 +329,28 @@ class VERLTrainer(TrainEngineWrapper):
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.Critic)
 
             from verl.workers.config import CriticConfig
-            from verl.workers.config.critic import FSDPCriticConfig, McoreCriticConfig
 
             critic_cfg: CriticConfig = omega_conf_to_dataclass(self.config.critic)
 
-            # Build HFModelConfig for critic from our model_config dict.
-            # model_config does NOT have _target_ in the DictConfig (to avoid
-            # triggering HFModelConfig.__post_init__ heavy I/O during Hydra
-            # instantiation), so we create the HFModelConfig manually here.
-            model_cfg_dict = OmegaConf.to_container(self.config.critic.model_config, resolve=True)
-            critic_model_config = HFModelConfig(**model_cfg_dict)
+            # Build HFModelConfig for critic manually.
+            # model_config is NOT a dataclass field in CriticConfig (only in
+            # _mutable_fields), so it cannot be in the DictConfig passed to
+            # omega_conf_to_dataclass. We construct it here from global_config.
+            gcfg = self.global_config
+            critic_model_path = gcfg.model.critic_model_path or gcfg.model.model_path
+            override_config = {}
+            if gcfg.model.rope_scaling is not None:
+                override_config["rope_scaling"] = gcfg.model.rope_scaling
+            if gcfg.model.rope_theta is not None:
+                override_config["rope_theta"] = gcfg.model.rope_theta
+            critic_model_config = HFModelConfig(
+                path=critic_model_path,
+                use_shm=False,
+                trust_remote_code=gcfg.model.trust_remote_code,
+                enable_gradient_checkpointing=True,
+                use_remove_padding=gcfg.trainer.use_remove_padding,
+                override_config=override_config,
+            )
             critic_engine_config = critic_cfg.engine
             critic_optim_config = critic_cfg.optim
             critic_checkpoint_config = critic_cfg.checkpoint
@@ -772,11 +785,7 @@ class VERLTrainer(TrainEngineWrapper):
         self.logger.info(f"Setting global step to {self.global_steps}")
 
         actor_path = os.path.join(global_step_folder, "actor")
-        self.actor_rollout_wg.load_checkpoint(
-            actor_path, del_local_after_load=False
-        )
+        self.actor_rollout_wg.load_checkpoint(actor_path, del_local_after_load=False)
         if self.use_critic:
             critic_path = os.path.join(global_step_folder, "critic")
-            self.critic_wg.load_checkpoint(
-                critic_path, del_local_after_load=False
-            )
+            self.critic_wg.load_checkpoint(critic_path, del_local_after_load=False)

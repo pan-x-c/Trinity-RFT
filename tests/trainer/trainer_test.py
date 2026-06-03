@@ -18,18 +18,6 @@ from unittest import mock
 import ray
 from parameterized import parameterized_class
 
-# ---------------------------------------------------------------------------
-# Global toggle: switch between verl and verl08 trainer backend.
-# Set TRINITY_TRAINER_TYPE=verl08 to run tests with the new engine-based
-# trainer.  Defaults to "verl" (the legacy worker-per-strategy trainer).
-# ---------------------------------------------------------------------------
-TRAINER_TYPE = os.environ.get("TRINITY_TRAINER_TYPE", "verl08")  # "verl" or "verl08"
-
-
-def _is_verl08() -> bool:
-    """Return True when the test run targets the verl08 trainer backend."""
-    return TRAINER_TYPE == "verl08"
-
 from tests.tools import (
     RayUnittestBase,
     RayUnittestBaseAsync,
@@ -68,6 +56,18 @@ from trinity.explorer.proxy.client import TrinityClient
 from trinity.manager.state_manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
 from trinity.trainer.tinker.tinker_trainer import TinkerTrainerWrapper
+
+# ---------------------------------------------------------------------------
+# Global toggle: switch between verl and verl08 trainer backend.
+# Set TRINITY_TRAINER_TYPE=verl08 to run tests with the new engine-based
+# trainer.  Defaults to "verl" (the legacy worker-per-strategy trainer).
+# ---------------------------------------------------------------------------
+TRAINER_TYPE = os.environ.get("TRINITY_TRAINER_TYPE", "verl08")  # "verl" or "verl08"
+
+
+def _is_verl08() -> bool:
+    """Return True when the test run targets the verl08 trainer backend."""
+    return TRAINER_TYPE == "verl08"
 
 
 class BaseTrainerCase(RayUnittestBase):
@@ -150,7 +150,7 @@ class TestTrainerCountdown(BaseTrainerCase):
         """Test the both and bench mode."""
         # test both mode
         self.config.model.rope_scaling = {
-            "rope_type": "yarn",
+            "type": "yarn",
             "factor": 2.0,
             "original_max_position_embeddings": 16384,
         }

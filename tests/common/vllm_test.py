@@ -1482,7 +1482,7 @@ class TestSuperLongGeneration(VLLMTestBase):
         self.config.model.max_prompt_tokens = 61440
         self.config.model.max_response_tokens = 20480
         self.config.model.rope_scaling = {
-            "rope_type": "yarn",
+            "type": "yarn",
             "factor": 2.0,
             "original_max_position_embeddings": 40960,
         }
