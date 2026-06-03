@@ -338,41 +338,21 @@ class VERLTrainer(TrainEngineWrapper):
             # omega_conf_to_dataclass. We construct it here from global_config.
             gcfg = self.global_config
             critic_model_path = gcfg.model.critic_model_path or gcfg.model.model_path
+            # Only scalar overrides go through override_config. rope_scaling
+            # (a nested dict) is not supported by veRL's update_model_config
+            # and is not needed for training — the model's config.json is
+            # authoritative. It is primarily relevant for Explorer/vLLM.
             override_config = {}
-            if gcfg.model.rope_scaling is not None:
-                override_config["rope_scaling"] = gcfg.model.rope_scaling
             if gcfg.model.rope_theta is not None:
                 override_config["rope_theta"] = gcfg.model.rope_theta
-
-            # Temporarily patch update_model_config to handle dict-valued HF
-            # config attributes (e.g. rope_scaling). See workers.py for details.
-            import verl.utils.model as _verl_model
-
-            _orig_update = _verl_model.update_model_config
-
-            def _fixed_update(module_config, override_config_kwargs):
-                for key, val in override_config_kwargs.items():
-                    if isinstance(val, dict):
-                        target = getattr(module_config, key, None)
-                        if isinstance(target, dict):
-                            setattr(module_config, key, val)
-                        else:
-                            _fixed_update(target, val)
-                    else:
-                        setattr(module_config, key, val)
-
-            _verl_model.update_model_config = _fixed_update
-            try:
-                critic_model_config = HFModelConfig(
-                    path=critic_model_path,
-                    use_shm=False,
-                    trust_remote_code=gcfg.model.trust_remote_code,
-                    enable_gradient_checkpointing=True,
-                    use_remove_padding=gcfg.trainer.use_remove_padding,
-                    override_config=override_config,
-                )
-            finally:
-                _verl_model.update_model_config = _orig_update
+            critic_model_config = HFModelConfig(
+                path=critic_model_path,
+                use_shm=False,
+                trust_remote_code=gcfg.model.trust_remote_code,
+                enable_gradient_checkpointing=True,
+                use_remove_padding=gcfg.trainer.use_remove_padding,
+                override_config=override_config,
+            )
             critic_engine_config = critic_cfg.engine
             critic_optim_config = critic_cfg.optim
             critic_checkpoint_config = critic_cfg.checkpoint

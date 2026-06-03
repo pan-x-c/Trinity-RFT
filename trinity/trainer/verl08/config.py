@@ -244,9 +244,10 @@ def _build_model_config(cfg: Config) -> dict:
         if not lora_config.is_dummy:
             model["lora_adapter_path"] = lora_config.path
 
-    # Rope config
-    if cfg.model.rope_scaling is not None:
-        model["override_config"]["rope_scaling"] = cfg.model.rope_scaling  # type: ignore
+    # Rope config — only scalar overrides go through override_config.
+    # rope_scaling (a nested dict) is NOT supported by veRL's update_model_config
+    # and is not needed for training (the model's config.json is authoritative).
+    # It is primarily relevant for the Explorer/vLLM inference side.
     if cfg.model.rope_theta is not None:
         model["override_config"]["rope_theta"] = cfg.model.rope_theta  # type: ignore
 
