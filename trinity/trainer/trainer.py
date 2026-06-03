@@ -173,7 +173,7 @@ class Trainer:
                 if result is None:
                     self.logger.error("Trainer sync_weights failed.")
                 else:
-                    self.engine.sync_weight()
+                    self.engine.sync_weight_nccl()
             elif self.sync_method == SyncMethod.CHECKPOINT:
                 await self.engine.save_state_dict()
             elif self.sync_method == SyncMethod.MEMORY:
@@ -276,6 +276,10 @@ def get_trainer_wrapper(config: Config) -> TrainEngineWrapper:
         from trinity.trainer.verl.verl_trainer import VerlPPOTrainerWrapper
 
         return VerlPPOTrainerWrapper(config)
+    elif config.trainer.trainer_type == "verl08":
+        from trinity.trainer.verl08.trainer import VERLTrainer
+
+        return VERLTrainer(config)
     elif config.trainer.trainer_type == "tinker":
         from trinity.trainer.tinker.tinker_trainer import TinkerTrainerWrapper
 

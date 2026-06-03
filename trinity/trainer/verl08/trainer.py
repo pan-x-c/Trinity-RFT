@@ -49,6 +49,7 @@ from verl.utils.seqlen_balancing import (
     get_seqlen_balanced_partitions,
     log_seqlen_unbalance,
 )
+from verl.workers.config.model import HFModelConfig
 from verl.workers.engine_workers import TrainingWorker, TrainingWorkerConfig
 from verl.workers.utils.losses import value_loss
 from verl.workers.utils.padding import left_right_2_no_padding, no_padding_2_padding
@@ -60,9 +61,8 @@ from trinity.common.constants import SaveStrategy
 from trinity.common.experience import Experience
 from trinity.trainer.trainer import TrainEngineWrapper
 from trinity.trainer.verl08.config import build_verl_config
-from trinity.trainer.verl08.utils import to_data_proto
+from trinity.trainer.verl08.utils import compute_data_metrics, to_data_proto
 from trinity.trainer.verl08.workers import TrinityActorRolloutRefWorker
-from trinity.trainer.verl.utils import compute_data_metrics
 from trinity.utils.log import get_logger
 
 
@@ -242,11 +242,9 @@ class VERLTrainer(TrainEngineWrapper):
         self.role_worker_mapping: Dict[Role, ActorHandle] = {}
 
         # Add Actor
-        lora_rank = self.config.actor_rollout_ref.model.lora_rank
+        lora_rank = self.config.model.lora_rank
         # if lora is enabled, use ref in actor
-        self.ref_in_actor = (
-            lora_rank > 0 or self.config.actor_rollout_ref.model.lora_adapter_path is not None
-        )
+        self.ref_in_actor = lora_rank > 0 or self.config.model.lora_adapter_path is not None
         self.use_reference_policy = self.algorithm.use_reference
         self.use_critic = self.algorithm.use_critic
         role = (
@@ -276,7 +274,7 @@ class VERLTrainer(TrainEngineWrapper):
         # ----------------
         local_path = copy_to_local(
             global_config.model.model_path,
-            use_shm=self.config.actor_rollout_ref.model.use_shm,
+            use_shm=self.config.model.use_shm,
         )
         trust_remote_code = global_config.model.trust_remote_code
         self.tokenizer = hf_tokenizer(local_path, trust_remote_code=trust_remote_code)
@@ -293,13 +291,6 @@ class VERLTrainer(TrainEngineWrapper):
 
         # Training steps config
         self.total_training_steps = global_config.trainer.total_steps or sys.maxsize
-        # TODO: check how to set total_training_steps
-        # if OmegaConf.select(self.config, "actor_rollout_ref.actor.optim") is not None:
-        #     self.config.actor_rollout_ref.actor.optim.total_training_steps = (
-        #         self.total_training_steps
-        #     )
-        # if OmegaConf.select(self.config, "critic.optim") is not None:
-        #     self.config.critic.optim.total_training_steps = self.total_training_steps
         # we only support cuda for now
         self.device_name = "cuda"
         self.checkpoint_monitor = CheckpointMonitor.get_actor(
@@ -327,7 +318,7 @@ class VERLTrainer(TrainEngineWrapper):
         actor_rollout_resource_pool = self.resource_pool_manager.get_resource_pool(actor_role)
         actor_rollout_cls = RayClassWithInitArgs(
             cls=self.role_worker_mapping[actor_role],
-            config=self.config.actor_rollout_ref,
+            config=self.config,
             role=str(actor_role),
         )
         self.resource_pool_to_cls[actor_rollout_resource_pool][str(actor_role)] = actor_rollout_cls
@@ -337,20 +328,28 @@ class VERLTrainer(TrainEngineWrapper):
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.Critic)
 
             from verl.workers.config import CriticConfig
+            from verl.workers.config.critic import FSDPCriticConfig, McoreCriticConfig
 
-            # TODO: fix omega_conf_to_dataclass
             critic_cfg: CriticConfig = omega_conf_to_dataclass(self.config.critic)
-            critic_cfg.engine.infer_max_token_len_per_gpu = (
+
+            # Build HFModelConfig for critic from our model_config dict
+            critic_model_config = HFModelConfig(**self.config.critic.model_config)
+            critic_engine_config = critic_cfg.engine
+            critic_optim_config = critic_cfg.optim
+            critic_checkpoint_config = critic_cfg.checkpoint
+
+            # Set engine infer/training token length from critic config
+            critic_engine_config.infer_max_token_len_per_gpu = (
                 critic_cfg.ppo_infer_max_token_len_per_gpu
             )
-            critic_cfg.engine.max_token_len_per_gpu = critic_cfg.ppo_infer_max_token_len_per_gpu
+            critic_engine_config.max_token_len_per_gpu = critic_cfg.ppo_infer_max_token_len_per_gpu
 
             critic_worker_cfg = TrainingWorkerConfig(
                 model_type="value_model",
-                model_config=critic_cfg.model_config,
-                engine_config=critic_cfg.engine,
-                optimizer_config=critic_cfg.optim,
-                checkpoint_config=critic_cfg.checkpoint,
+                model_config=critic_model_config,
+                engine_config=critic_engine_config,
+                optimizer_config=critic_optim_config,
+                checkpoint_config=critic_checkpoint_config,
             )
 
             critic_cls = RayClassWithInitArgs(
@@ -405,13 +404,10 @@ class VERLTrainer(TrainEngineWrapper):
         if self.use_reference_policy:
             self.ref_policy_wg = all_wg[str(Role.ActorRolloutRef)]
 
-        # Initialize checkpoint engine
-        # TODO: refactor checkpoint manager to make it compatible with Trinity
-        # self.checkpoint_manager = CheckPointEngineManager(
-        #     config=checkpoint_engine_config,
-        #     trainer=self.actor_rollout_wg,
-        # )
-        self.logger.info("checkpoint manager initialized")
+        # Checkpoint saving is handled by worker-level save_checkpoint / save_state_dict
+        # methods (delegating to strategy-specific helpers in fsdp_engine/megatron_engine).
+        # No separate CheckPointEngineManager is needed in the current architecture.
+        self.logger.info("workers initialized")
         # Trinity do not need reward model / distillation model / agent loop, so we do not initialize them here
 
     # ------------------------------------------------------------------
@@ -423,6 +419,7 @@ class VERLTrainer(TrainEngineWrapper):
         return self.global_steps
 
     async def prepare(self):
+        self.actor_rollout_wg.setup_weight_sync_group()
         self.actor_rollout_wg.set_algorithm(self.algorithm_config)
         self.global_steps = 0
         self._load_checkpoint()
@@ -445,8 +442,48 @@ class VERLTrainer(TrainEngineWrapper):
                 batch.batch["attention_mask"], dim=-1
             ).tolist()
 
-            with marked_timer("old_log_prob", timing_raw, color="blue"):
-                batch = self._compute_old_log_prob(batch, metrics)
+            # Extract images_seqlens for multi-modal MFU computation
+            images_seqlens_all = []
+            for multi_modal_input in batch.non_tensor_batch.get("multi_modal_inputs", []):
+                if "image_grid_thw" not in multi_modal_input:
+                    continue
+                images_seqlens = multi_modal_input.get("images_seqlens", None)
+                if images_seqlens is None:
+                    continue
+                images_seqlens_all.extend(images_seqlens.tolist())
+            if images_seqlens_all:
+                batch.meta_info["images_seqlens"] = images_seqlens_all
+
+            # Operating Mode Selection:
+            # - Bypass mode: Sets old_log_probs = rollout_log_probs (2 policies: π_rollout, π_θ)
+            # - Decoupled mode: Recomputes old_log_probs as proximal anchor (3 policies: π_rollout, π_old, π_θ)
+            #   Note: π_old computed once per data batch, serves as stable reference during mini-batch updates
+            rollout_corr_config = self.global_config.algorithm.rollout_correction
+            bypass_recomputing_logprobs = (
+                rollout_corr_config is not None and rollout_corr_config.get("bypass_mode", False)
+            )
+
+            if bypass_recomputing_logprobs:
+                # Bypass mode: use rollout_log_probs as old_log_probs
+                if "rollout_log_probs" in batch.batch:
+                    from verl.trainer.ppo.rollout_corr_helper import apply_bypass_mode
+
+                    apply_bypass_mode(
+                        batch=batch,
+                        rollout_corr_config=rollout_corr_config,
+                        policy_loss_config=self.config.actor.policy_loss,
+                    )
+            else:
+                # Decoupled mode: recompute old_log_probs
+                if (
+                    "model_versions" in batch.meta_info
+                    and (batch.meta_info["model_versions"] != self.global_steps - 1).any()
+                ):
+                    self.logger.warning(
+                        f"model_versions mismatch: {batch.meta_info['model_versions']} vs {self.global_steps - 1}"
+                    )
+                with marked_timer("old_log_prob", timing_raw, color="blue"):
+                    batch = self._compute_old_log_prob(batch, metrics)
 
             if self.use_reference_policy:
                 with marked_timer(str(Role.RefPolicy), timing_raw, color="olive"):
@@ -523,7 +560,7 @@ class VERLTrainer(TrainEngineWrapper):
         await self.checkpoint_monitor.monitor_step.remote(self.global_steps)
 
     def sync_weight_nccl(self) -> None:
-        self.actor_rollout_wg.sync_weight_nccl(global_steps=self.global_steps)
+        self.actor_rollout_wg.sync_weight_nccl()
 
     async def upload_state_dict(self):
         self.actor_rollout_wg.upload_state_dict(self.global_steps)
@@ -606,7 +643,7 @@ class VERLTrainer(TrainEngineWrapper):
 
         batch_td = batch.to_tensordict()
         batch_td = left_right_2_no_padding(batch_td)
-        calculate_sum_pi_squared = self.config.actor_rollout_ref.actor.calculate_sum_pi_squared
+        calculate_sum_pi_squared = self.config.actor.calculate_sum_pi_squared
         tu.assign_non_tensor(
             batch_td,
             calculate_entropy=True,
@@ -679,10 +716,10 @@ class VERLTrainer(TrainEngineWrapper):
         batch_td = batch.to_tensordict()
         batch_td = left_right_2_no_padding(batch_td)
         calculate_entropy = self.algorithm_config.entropy_loss_fn != "none"
-        ppo_mini_batch_size = self.config.actor_rollout_ref.actor.ppo_mini_batch_size
-        ppo_epochs = self.config.actor_rollout_ref.actor.ppo_epochs
-        seed = self.config.actor_rollout_ref.actor.data_loader_seed
-        shuffle = self.config.actor_rollout_ref.actor.shuffle
+        ppo_mini_batch_size = self.config.actor.ppo_mini_batch_size
+        ppo_epochs = self.config.actor.ppo_epochs
+        seed = self.config.actor.data_loader_seed
+        shuffle = self.config.actor.shuffle
         tu.assign_non_tensor(
             batch_td,
             calculate_entropy=calculate_entropy,

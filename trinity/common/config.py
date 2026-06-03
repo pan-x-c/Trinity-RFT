@@ -643,6 +643,9 @@ class AlgorithmConfig:
     enable_router_replay: bool = False
     # bypass old logprobs computation by using rollout logprobs directly
     bypass_old_logprobs: bool = True
+    # rollout correction config for off-policy correction (IS weights, rejection sampling)
+    # If set, should be a dict with keys like: bypass_mode, rollout_is, rollout_rs, etc.
+    rollout_correction: Optional[dict] = None
 
 
 @dataclass
