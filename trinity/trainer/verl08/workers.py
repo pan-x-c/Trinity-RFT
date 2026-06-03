@@ -61,13 +61,37 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """
         from trinity.trainer.verl.monkey_patch import apply_monkey_patch
 
-        # Strip "rollout" from role so the base class skips rollout engine init.
-        # veRL checks `if "rollout" in self.role:` to decide whether to build
-        # the rollout engine — Trinity handles rollout in Explorer, not Trainer.
-        original_role = self.role
-        self.role = self.role.replace("_rollout", "")
-        super().init_model()
-        self.role = original_role
+        # Patch veRL's update_model_config to handle dict-valued HF config
+        # attributes (e.g. rope_scaling). The upstream implementation recurses
+        # into dict values and tries setattr on the target, which fails when
+        # the target is itself a dict rather than an object with attributes.
+        import verl.utils.model as _verl_model
+
+        _orig_update = _verl_model.update_model_config
+
+        def _fixed_update(module_config, override_config_kwargs):
+            for key, val in override_config_kwargs.items():
+                if isinstance(val, dict):
+                    target = getattr(module_config, key, None)
+                    if isinstance(target, dict):
+                        # Target is a dict — assign directly
+                        setattr(module_config, key, val)
+                    else:
+                        _fixed_update(target, val)
+                else:
+                    setattr(module_config, key, val)
+
+        _verl_model.update_model_config = _fixed_update
+        try:
+            # Strip "rollout" from role so the base class skips rollout engine init.
+            # veRL checks `if "rollout" in self.role:` to decide whether to build
+            # the rollout engine — Trinity handles rollout in Explorer, not Trainer.
+            original_role = self.role
+            self.role = self.role.replace("_rollout", "")
+            super().init_model()
+            self.role = original_role
+        finally:
+            _verl_model.update_model_config = _orig_update
 
         # Apply Trinity-specific patches on top of what veRL already did
         if self.actor is not None and hasattr(self.actor, "engine"):
