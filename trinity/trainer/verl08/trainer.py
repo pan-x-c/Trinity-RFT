@@ -458,27 +458,17 @@ class VERLTrainer(TrainEngineWrapper):
             if images_seqlens_all:
                 batch.meta_info["images_seqlens"] = images_seqlens_all
 
-            # Operating Mode Selection:
-            # - Bypass mode: Sets old_log_probs = rollout_log_probs (2 policies: π_rollout, π_θ)
-            # - Decoupled mode: Recomputes old_log_probs as proximal anchor (3 policies: π_rollout, π_old, π_θ)
-            #   Note: π_old computed once per data batch, serves as stable reference during mini-batch updates
-            rollout_corr_config = self.global_config.algorithm.rollout_correction
-            bypass_recomputing_logprobs = (
-                rollout_corr_config is not None and rollout_corr_config.get("bypass_mode", False)
-            )
-
-            if bypass_recomputing_logprobs:
-                # Bypass mode: use rollout_log_probs as old_log_probs
+            # Old log-probs computation:
+            # - bypass_old_logprobs=True (default): use rollout_log_probs directly
+            #   (2 policies: π_rollout, π_θ)
+            # - bypass_old_logprobs=False: recompute old_log_probs as proximal anchor
+            #   (3 policies: π_rollout, π_old, π_θ)
+            if self.global_config.algorithm.bypass_old_logprobs:
                 if "rollout_log_probs" in batch.batch:
-                    from verl.trainer.ppo.rollout_corr_helper import apply_bypass_mode
-
-                    apply_bypass_mode(
-                        batch=batch,
-                        rollout_corr_config=rollout_corr_config,
-                        policy_loss_config=self.config.actor.policy_loss,
-                    )
+                    batch.batch["old_log_probs"] = batch.batch["rollout_log_probs"]
             else:
-                # Decoupled mode: recompute old_log_probs
+                # TODO(verl08): Recompute path not yet fully validated with the
+                # new engine-based worker. Use bypass_old_logprobs=True for now.
                 if (
                     "model_versions" in batch.meta_info
                     and (batch.meta_info["model_versions"] != self.global_steps - 1).any()
@@ -639,12 +629,8 @@ class VERLTrainer(TrainEngineWrapper):
         return batch
 
     def _compute_old_log_prob(self, batch: DataProto, metrics: Dict) -> DataProto:
-        if self.global_config.algorithm.bypass_old_logprobs:
-            if "rollout_log_probs" not in batch.batch:
-                raise KeyError("bypass_mode requires rollout_log_probs in batch")
-            batch.batch["old_log_probs"] = batch.batch["rollout_log_probs"]
-            return batch
-
+        # NOTE: This recompute path is not yet fully validated for verl08.
+        # Callers should prefer bypass_old_logprobs=True until this is stable.
         batch_td = batch.to_tensordict()
         batch_td = left_right_2_no_padding(batch_td)
         calculate_sum_pi_squared = self.config.actor.calculate_sum_pi_squared

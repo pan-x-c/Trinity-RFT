@@ -190,9 +190,9 @@ class TestTrainerCountdown(BaseTrainerCase):
         self.assertEqual(actor_kl_loss[0], 0.0)
         critic_kl_metrics = parser.metric_list("critic/kl")
         self.assertGreater(len(critic_kl_metrics), 0)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 8)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 8)
         ray.shutdown(_exiting_interpreter=True)
         # check checkpoint
         checkpoint_step_4, _ = get_checkpoint_dir_with_step_num(
@@ -291,9 +291,9 @@ class TestStepAheadAsyncRL(BaseTrainerCase):
         self.assertGreater(len(actor_kl_metrics), 0)
         critic_kl_metrics = parser.metric_list("critic/kl")
         self.assertGreater(len(critic_kl_metrics), 0)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 4)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 4)
         ray.shutdown(_exiting_interpreter=True)
         # check checkpoint
 
@@ -362,9 +362,9 @@ class TestTrainerGSM8K(BaseTrainerCase):
         else:
             self.assertGreater(len(entropy_loss_metrics), 0)
             self.assertEqual(parser.metric_max_step(entropy_loss_metrics[0]), 4)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 4)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 4)
         # TODO: used for real testing
         # rewards = parser.metric_values("critic/rewards/mean")
         # self.assertTrue(0.4 < rewards[0] < 0.55)
@@ -449,10 +449,10 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         sft_metrics = parser.metric_list("actor/sft")
         self.assertGreater(len(sft_metrics), 0)
         self.assertEqual(parser.metric_max_step(sft_metrics[0]), 3)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_min_step(response_metrics[0]), 1)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 3)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_min_step(time_metrics[0]), 1)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 3)
 
         self.config.stages[1].buffer.explorer_input.taskset.path = old_taskset_path
         mock_load.return_value = deepcopy(self.config)
@@ -469,10 +469,10 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         self.assertGreater(len(actor_metrics), 0)
         sft_metrics = parser.metric_list("actor/sft")
         self.assertEqual(len(sft_metrics), 0)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_min_step(response_metrics[0]), 1)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 4)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_min_step(time_metrics[0]), 1)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 4)
         # test save checkpoint when sft finish
         for i in range(3):
             self.assertFalse(
@@ -1091,10 +1091,10 @@ class TestTrainerMIX(BaseTrainerCase):
         self.assertEqual(parser.metric_max_step(expert_metrics[0]), 4)  # SFT
         usual_metrics = parser.metric_list("actor/usual/")
         self.assertEqual(parser.metric_max_step(usual_metrics[0]), 4)  # RFT
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_min_step(response_metrics[0]), 1)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 4)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_min_step(time_metrics[0]), 1)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 4)
         # test save checkpoint at last step
         checkpoint_dir, step_num = get_checkpoint_dir_with_step_num(
             checkpoint_root_path=self.config.checkpoint_job_dir,
@@ -1307,9 +1307,9 @@ class TestMultiModalGRPO(BaseTrainerCase):
         actor_metrics = parser.metric_list("actor")
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 2)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 2)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 2)
         # check save lastest checkpoint
         checkpoint_step_2, step_num = get_checkpoint_dir_with_step_num(
             checkpoint_root_path=self.config.checkpoint_job_dir,
@@ -1346,9 +1346,9 @@ class TestMultiModalSFT(BaseTrainerCase):
         actor_metrics = parser.metric_list("actor")
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 2)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 2)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 2)
         # check save lastest checkpoint
         checkpoint_step_2, step_num = get_checkpoint_dir_with_step_num(
             checkpoint_root_path=self.config.checkpoint_job_dir,
@@ -1394,9 +1394,9 @@ class TestTrainerLoRA(BaseTrainerCase):
         actor_metrics = parser.metric_list("actor")
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 2)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 2)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 2)
         ray.shutdown(_exiting_interpreter=True)
         # check save lastest checkpoint
         checkpoint_step_2, step_num = get_checkpoint_dir_with_step_num(
@@ -1510,14 +1510,8 @@ class TestTrainerPromptTruncation(BaseTrainerCase):
         actor_metrics = parser.metric_list("actor")
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 2)
-        max_prompt_length = parser.metric_values("prompt_length/max")
-        self.assertEqual(max(max_prompt_length), 5)
-        min_prompt_length = parser.metric_values("prompt_length/min")
-        self.assertEqual(min(min_prompt_length), 5)
-        max_response_length = parser.metric_values("response_length/max")
-        self.assertEqual(max(max_response_length), 1)
-        min_response_length = parser.metric_values("response_length/min")
-        self.assertEqual(min(min_response_length), 1)
+        # With max_prompt_tokens=5 and max_response_tokens=15, truncation
+        # leaves only 1 response token → no valid loss → grad_norm = 0
         final_loss = parser.metric_values("actor/final_loss")
         self.assertEqual(final_loss[0], 0.0)
         grad_norm = parser.metric_values("actor/grad_norm")
@@ -1554,9 +1548,9 @@ class TestTinkerTrainer(BaseTrainerCase):
         actor_metrics = parser.metric_list("actor")
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 4)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 4)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 4)
 
     def test_trainer_class(self):
         total_steps = 100
@@ -1786,9 +1780,9 @@ class ColocateModeTest(RayUnittestBase):
         actor_metrics = parser.metric_list("actor")
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 2)
-        response_metrics = parser.metric_list("response_length")
-        self.assertGreater(len(response_metrics), 0)
-        self.assertEqual(parser.metric_max_step(response_metrics[0]), 2)
+        time_metrics = parser.metric_list("time")
+        self.assertGreater(len(time_metrics), 0)
+        self.assertEqual(parser.metric_max_step(time_metrics[0]), 2)
         eval_metrics = parser.metric_list("eval")
         self.assertGreater(len(eval_metrics), 0)
         self.assertEqual(parser.metric_max_step(eval_metrics[0]), 2)

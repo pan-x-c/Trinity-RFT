@@ -76,6 +76,7 @@ def to_data_proto(  # noqa: C901
         "unique_ids": np.array([exp.eid.uid for exp in experiences]),
         "position_ids": position_ids,
         "input_ids": tokens,
+        "prompts": tokens[:, :max_prompt_length],
         "responses": tokens[:, max_prompt_length:],
         "attention_mask": attention_mask,
         "response_mask": gather_action_masks(experiences, max_response_length),
