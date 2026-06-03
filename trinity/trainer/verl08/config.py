@@ -326,7 +326,6 @@ def _build_actor_config(cfg: Config, strategy: str, total_training_steps: int) -
         actor["use_remove_padding"] = cfg.trainer.use_remove_padding
         actor["use_rollout_log_probs"] = False
         actor["calculate_sum_pi_squared"] = False
-        actor["sum_pi_squared_checkpointing"] = False
     elif is_megatron:
         actor["megatron"] = _build_mcore_engine_config(cfg)
         actor["load_weight"] = True
@@ -377,13 +376,13 @@ def _build_ref_config(cfg: Config, strategy: str) -> dict:
         ref["ulysses_sequence_parallel_size"] = cfg.trainer.ulysses_sequence_parallel_size
         ref["entropy_from_logits_with_chunking"] = False
         ref["entropy_checkpointing"] = False
-        ref["fsdp_config"] = _build_fsdp_engine_config(cfg, strategy)
+        ref["fsdp_config"] = {**_build_fsdp_engine_config(cfg, strategy), "forward_only": True}
         ref["use_remove_padding"] = cfg.trainer.use_remove_padding
         ref["use_rollout_log_probs"] = False
     elif is_megatron:
         ref["load_weight"] = True
         ref["use_rollout_log_probs"] = False
-        ref["megatron"] = _build_mcore_engine_config(cfg)
+        ref["megatron"] = {**_build_mcore_engine_config(cfg), "forward_only": True}
 
     _inject_targets(ref, dc_type, type_overrides=type_overrides)
     return ref

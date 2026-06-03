@@ -61,7 +61,13 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """
         from trinity.trainer.verl.monkey_patch import apply_monkey_patch
 
+        # Strip "rollout" from role so the base class skips rollout engine init.
+        # veRL checks `if "rollout" in self.role:` to decide whether to build
+        # the rollout engine — Trinity handles rollout in Explorer, not Trainer.
+        original_role = self.role
+        self.role = self.role.replace("_rollout", "")
         super().init_model()
+        self.role = original_role
 
         # Apply Trinity-specific patches on top of what veRL already did
         if self.actor is not None and hasattr(self.actor, "engine"):
