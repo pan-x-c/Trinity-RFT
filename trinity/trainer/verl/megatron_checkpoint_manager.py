@@ -90,7 +90,7 @@ class MegatronCheckpointManager(OldMegatronCheckpointManager):
         rope_scaling = getattr(hf_config, "rope_scaling", None)
         if not isinstance(rope_scaling, dict):
             return None
-        if rope_scaling.get("type") != "yarn":
+        if rope_scaling.get("rope_type") != "yarn":
             return None
 
         original_max_position_embeddings = rope_scaling.get("original_max_position_embeddings")

@@ -150,7 +150,7 @@ class TestTrainerCountdown(BaseTrainerCase):
         """Test the both and bench mode."""
         # test both mode
         self.config.model.rope_scaling = {
-            "type": "yarn",
+            "rope_type": "yarn",
             "factor": 2.0,
             "original_max_position_embeddings": 16384,
         }

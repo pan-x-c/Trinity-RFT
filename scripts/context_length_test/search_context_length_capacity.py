@@ -244,7 +244,7 @@ def find_max_model_len(
         }
         if length > origin_max_len:
             rope_config = {
-                "type": "yarn",
+                "rope_type": "yarn",
                 "factor": length / origin_max_len,
                 "original_max_position_embeddings": origin_max_len,
             }
