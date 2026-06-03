@@ -423,7 +423,7 @@ class VERLTrainer(TrainEngineWrapper):
         return self.global_steps
 
     async def prepare(self):
-        self.actor_rollout_wg.setup_weight_sync_group()
+        self.actor_rollout_wg.init_weights_update_group()
         self.actor_rollout_wg.set_algorithm(self.algorithm_config)
         self.global_steps = 0
         self._load_checkpoint()

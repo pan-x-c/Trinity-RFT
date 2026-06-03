@@ -144,11 +144,6 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             self.logger.info("Trainer explorer setup confirmation received.")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def setup_weight_sync_group(self):
-        """Alias for init_weights_update_group, called by VERLTrainer.prepare()."""
-        self.init_weights_update_group()
-
-    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def sync_weight_nccl(self):
         """Sync model weights across workers using NCCL.
 
