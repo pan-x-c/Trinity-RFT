@@ -468,9 +468,18 @@ def _build_critic_config(
 ) -> dict:
     """Build CriticConfig-compatible dict with `_target_`.
 
-    NOTE: We skip `_target_` injection for `model_config` because
-    HFModelConfig.__post_init__ does heavy I/O (model/tokenizer loading).
-    The trainer.py code creates HFModelConfig manually from the DictConfig.
+    Key design decisions for the critic config:
+    - `model_config` is NOT a dataclass field in CriticConfig (it's only in
+      _mutable_fields).  It cannot be passed to __init__ as a kwarg.  The
+      trainer.py code creates HFModelConfig manually.
+    - `model` is a dataclass field typed as `HFModelConfig = None`.  We omit
+      it (let it default to None) to avoid Hydra instantiating an HFModelConfig
+      during omega_conf_to_dataclass().
+    - `engine` is inherited from CriticConfig and set by __post_init__:
+        FSDPCriticConfig.__post_init__ sets  self.engine = self.fsdp
+        McoreCriticConfig.__post_init__ sets self.engine = self.megatron
+      So we include `fsdp` / `megatron` in the dict and let __post_init__
+      wire up `engine` automatically.
     """
     from verl.workers.config.critic import FSDPCriticConfig, McoreCriticConfig
     from verl.workers.config.engine import FSDPEngineConfig, McoreEngineConfig
@@ -484,18 +493,12 @@ def _build_critic_config(
         dc_type = FSDPCriticConfig
         type_overrides = {
             "optim": FSDPOptimizerConfig,
-            "engine": FSDPEngineConfig,
         }
     else:
         dc_type = McoreCriticConfig
         type_overrides = {
             "optim": McoreOptimizerConfig,
-            "engine": McoreEngineConfig,
         }
-
-    # Do NOT inject _target_ into model_config — HFModelConfig.__post_init__
-    # does heavy I/O that should not be triggered by hydra.utils.instantiate().
-    skip_fields = {"model_config"}
 
     critic = {
         "enable": use_critic,
@@ -515,8 +518,6 @@ def _build_critic_config(
         "profiler": {},
         "optim": _build_critic_optimizer_config(strategy, total_training_steps),
         "checkpoint": _build_checkpoint_config(),
-        # model_config without _target_ — trainer.py creates HFModelConfig manually
-        "model_config": _build_critic_model_config(cfg),
     }
 
     # Strategy-specific fields
@@ -526,18 +527,15 @@ def _build_critic_config(
         critic["forward_micro_batch_size"] = 1
         critic["forward_micro_batch_size_per_gpu"] = 1
         critic["forward_max_token_len_per_gpu"] = cfg.trainer.max_token_len_per_gpu
-        # engine config for the critic worker (FSDPCriticConfig doesn't have
-        # fsdp_config — it inherits engine: BaseConfig from CriticConfig).
-        # We set engine directly so trainer.py can access it.
-        critic["engine"] = _build_fsdp_engine_config(cfg, strategy)
+        # fsdp field — FSDPCriticConfig.__post_init__ sets self.engine = self.fsdp
+        critic["fsdp"] = _build_fsdp_engine_config(cfg, strategy)
     elif is_megatron:
         critic["load_weight"] = True
-        # McoreCriticConfig has megatron field
+        critic["nccl_timeout"] = 600
+        # megatron field — McoreCriticConfig.__post_init__ sets self.engine = self.megatron
         critic["megatron"] = _build_mcore_engine_config(cfg)
-        # Also set engine so trainer.py can access it via critic_cfg.engine
-        critic["engine"] = _build_mcore_engine_config(cfg)
 
-    _inject_targets(critic, dc_type, type_overrides=type_overrides, skip_fields=skip_fields)
+    _inject_targets(critic, dc_type, type_overrides=type_overrides)
     return critic
 
 
