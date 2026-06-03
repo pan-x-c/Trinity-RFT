@@ -174,7 +174,17 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
     # ====================================================================
     # 6. Global profiler
     # ====================================================================
-    global_profiler = {"steps": None, "tools": "nsys"}
+    global_profiler = {
+        "tool": None,
+        "enable": False,
+        "all_ranks": False,
+        "ranks": [],
+        "save_path": "outputs/profile",
+        "tool_config": None,
+        "global_tool_config": None,
+        "steps": None,
+        "profile_continuous_steps": False,
+    }
 
     # ====================================================================
     # 7. Assemble the DictConfig
@@ -301,7 +311,7 @@ def _build_actor_config(cfg: Config, strategy: str, total_training_steps: int) -
             "rollout_correction": cfg.algorithm.rollout_correction or {"bypass_mode": True},
         },
         "router_replay": {"mode": "disabled"},
-        "profiler": {},
+        "profiler": _build_profiler_config(),
         "checkpoint": _build_checkpoint_config(),
         "optim": _build_optimizer_config(cfg.algorithm.optimizer, strategy, total_training_steps),
     }
@@ -355,7 +365,7 @@ def _build_ref_config(cfg: Config, strategy: str) -> dict:
         "log_prob_use_dynamic_bsz": cfg.trainer.use_dynamic_bsz,
         "log_prob_max_token_len_per_gpu": cfg.trainer.max_token_len_per_gpu,
         "use_prefix_grouper": False,
-        "profiler": {},
+        "profiler": _build_profiler_config(),
         "router_replay": {"mode": "disabled"},
         "checkpoint": _build_checkpoint_config(
             save_contents=["model"], load_contents=["model"]
@@ -469,7 +479,7 @@ def _build_critic_config(
         "loss_agg_mode": "token-mean",
         "data_loader_seed": 42,
         "rollout_n": cfg.algorithm.repeat_times,
-        "profiler": {},
+        "profiler": _build_profiler_config(),
         "optim": _build_critic_optimizer_config(strategy, total_training_steps),
         "checkpoint": _build_checkpoint_config(),
         # model_config without _target_ — trainer.py creates HFModelConfig manually
@@ -667,6 +677,19 @@ def _build_critic_optimizer_config(strategy: str, total_training_steps: int) -> 
         optim["override_optimizer_config"] = None
 
     return optim
+
+
+def _build_profiler_config() -> dict:
+    """Build a disabled ProfilerConfig-compatible dict for worker-level profiler."""
+    return {
+        "tool": None,
+        "enable": False,
+        "all_ranks": False,
+        "ranks": [],
+        "save_path": "outputs/profile",
+        "tool_config": None,
+        "global_tool_config": None,
+    }
 
 
 def _build_checkpoint_config(

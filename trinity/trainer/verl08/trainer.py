@@ -367,7 +367,7 @@ class VERLTrainer(TrainEngineWrapper):
         if self.config.global_profiler.steps is not None:
             wg_kwargs["profile_steps"] = self.config.global_profiler.steps
             # Only require nsight worker options when tool is nsys
-            if self.config.global_profiler.tools == "nsys":
+            if self.config.global_profiler.tool == "nsys":
                 # TODO: setup nsys config
                 # assert (
                 #     OmegaConf.select(self.config.global_profiler.global_tool_config.nsys, "worker_nsight_options")
