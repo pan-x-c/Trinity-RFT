@@ -112,11 +112,13 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         and coordinates with the Synchronizer actor.
         """
         per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
+        # All ranks must iterate the generator — full_tensor() is an FSDP collective.
+        state_dict_meta_list = [
+            (name, str(param.dtype).split(".")[-1], param.shape)
+            for name, param in per_tensor_param
+        ]
         if torch.distributed.get_rank() == 0:
-            self._state_dict_meta_list = [
-                (name, str(param.dtype).split(".")[-1], param.shape)
-                for name, param in per_tensor_param
-            ]
+            self._state_dict_meta_list = state_dict_meta_list
             aggressive_empty_cache(force_sync=True)
             master_address, master_port = self.get_available_master_addr_port()
             world_size = self.config.synchronizer.explorer_world_size + 1
@@ -152,7 +154,8 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """
         per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
         for _, param in per_tensor_param:
-            torch.distributed.broadcast(param, src=0, group=self._model_update_group)
+            if torch.distributed.get_rank() == 0:
+                torch.distributed.broadcast(param, src=0, group=self._model_update_group)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_state_dict(self, local_path, global_step=0):
