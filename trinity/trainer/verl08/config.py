@@ -26,13 +26,12 @@ Config sections and their target types:
   config.rollout      → RolloutConfig
   config.critic       → FSDPCriticConfig | McoreCriticConfig
   config.synchronizer → SynchronizerConfig   (direct access)
-  config.trainer      → VerlTrainerConfig     (Trinity-specific)
-  config.global_profiler → ProfilerConfig      (Trinity-specific)
+  config.global_profiler → dict (plain dict, not a dataclass)
 """
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, field, is_dataclass
+from dataclasses import is_dataclass
 from typing import Any, Dict, List, Optional, Union, get_origin, get_args
 
 from omegaconf import DictConfig, OmegaConf
@@ -44,41 +43,6 @@ from trinity.common.constants import EXPLORER_NAME
 from trinity.utils.log import get_logger
 
 logger = get_logger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Lightweight dataclasses for trainer-level config (stored in DictConfig.trainer)
-# These are NOT veRL config classes — they are Trinity-specific containers
-# that VERLTrainer reads from self.config.trainer.
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class ProfilerConfig:
-    """Profiler configuration for veRL worker groups."""
-
-    steps: Optional[int] = None
-    tools: str = "nsys"
-
-
-@dataclass
-class VerlTrainerConfig:
-    """Trainer-level config stored in the DictConfig.
-
-    These fields are read by VERLTrainer, NOT by veRL workers directly.
-    """
-
-    gpu_per_node: int = 8
-    node_num: int = 1
-    total_training_steps: int = -1
-    sync_freq: int = 0
-    save_freq: int = 0
-    default_local_dir: str = ""
-    default_hdfs_dir: Optional[str] = None
-    max_actor_ckpt_to_keep: Optional[int] = None
-    max_critic_ckpt_to_keep: Optional[int] = None
-    del_local_ckpt_after_load: bool = False
-    resume_mode: str = "auto"
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +135,7 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
       - rollout:     RolloutConfig fields
       - critic:      CriticConfig fields (for VERLTrainer._init_workers)
       - synchronizer: SynchronizerConfig
-      - trainer:     VerlTrainerConfig fields
-      - global_profiler: ProfilerConfig fields
+      - global_profiler: plain dict
     """
     cfg = global_config
     strategy = cfg.trainer.trainer_strategy  # "fsdp", "fsdp2", or "megatron"
@@ -209,17 +172,22 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
     critic = _build_critic_config(cfg, strategy, use_critic, total_training_steps)
 
     # ====================================================================
-    # 6. Trainer config (Trinity-specific, read by VERLTrainer)
+    # 6. Global profiler
     # ====================================================================
-    trainer = _build_trainer_config(cfg, total_training_steps)
+    global_profiler = {
+        "tool": None,
+        "enable": False,
+        "all_ranks": False,
+        "ranks": [],
+        "save_path": "outputs/profile",
+        "tool_config": None,
+        "global_tool_config": None,
+        "steps": None,
+        "profile_continuous_steps": False,
+    }
 
     # ====================================================================
-    # 7. Global profiler
-    # ====================================================================
-    global_profiler = {"steps": None, "tools": "nsys"}
-
-    # ====================================================================
-    # 8. Assemble the DictConfig
+    # 7. Assemble the DictConfig
     # ====================================================================
     verl_dict = {
         "model": model,
@@ -228,7 +196,6 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
         "rollout": rollout,
         "critic": critic,
         "synchronizer": cfg.synchronizer,
-        "trainer": trainer,
         "global_profiler": global_profiler,
     }
 
@@ -344,7 +311,7 @@ def _build_actor_config(cfg: Config, strategy: str, total_training_steps: int) -
             "rollout_correction": cfg.algorithm.rollout_correction or {"bypass_mode": True},
         },
         "router_replay": {"mode": "disabled"},
-        "profiler": {},
+        "profiler": _build_profiler_config(),
         "checkpoint": _build_checkpoint_config(),
         "optim": _build_optimizer_config(cfg.algorithm.optimizer, strategy, total_training_steps),
     }
@@ -398,7 +365,7 @@ def _build_ref_config(cfg: Config, strategy: str) -> dict:
         "log_prob_use_dynamic_bsz": cfg.trainer.use_dynamic_bsz,
         "log_prob_max_token_len_per_gpu": cfg.trainer.max_token_len_per_gpu,
         "use_prefix_grouper": False,
-        "profiler": {},
+        "profiler": _build_profiler_config(),
         "router_replay": {"mode": "disabled"},
         "checkpoint": _build_checkpoint_config(
             save_contents=["model"], load_contents=["model"]
@@ -515,7 +482,7 @@ def _build_critic_config(
         "loss_agg_mode": "token-mean",
         "data_loader_seed": 42,
         "rollout_n": cfg.algorithm.repeat_times,
-        "profiler": {},
+        "profiler": _build_profiler_config(),
         "optim": _build_critic_optimizer_config(strategy, total_training_steps),
         "checkpoint": _build_checkpoint_config(),
     }
@@ -710,6 +677,19 @@ def _build_critic_optimizer_config(strategy: str, total_training_steps: int) -> 
     return optim
 
 
+def _build_profiler_config() -> dict:
+    """Build a disabled ProfilerConfig-compatible dict for worker-level profiler."""
+    return {
+        "tool": None,
+        "enable": False,
+        "all_ranks": False,
+        "ranks": [],
+        "save_path": "outputs/profile",
+        "tool_config": None,
+        "global_tool_config": None,
+    }
+
+
 def _build_checkpoint_config(
     save_contents: Optional[List[str]] = None,
     load_contents: Optional[List[str]] = None,
@@ -725,33 +705,6 @@ def _build_checkpoint_config(
         "async_save": False,
         "mbridge_config": {"distributed_filesystem": True, "memory_efficient": True},
     }
-
-
-def _build_trainer_config(cfg: Config, total_training_steps: int) -> dict:
-    """Build the trainer-level config dict (read by VERLTrainer)."""
-    trainer = {
-        "gpu_per_node": cfg.cluster.trainer_gpu_num_per_node,
-        "node_num": cfg.cluster.trainer_node_num,
-        "total_training_steps": total_training_steps,
-        "sync_freq": cfg.synchronizer.sync_interval,
-        "save_freq": cfg.trainer.save_interval,
-        "default_local_dir": cfg.checkpoint_job_dir,
-        "default_hdfs_dir": None,
-        "del_local_ckpt_after_load": False,
-    }
-    if cfg.trainer.max_checkpoints_to_keep:
-        trainer["max_actor_ckpt_to_keep"] = cfg.trainer.max_checkpoints_to_keep
-        trainer["max_critic_ckpt_to_keep"] = cfg.trainer.max_checkpoints_to_keep
-    else:
-        trainer["max_actor_ckpt_to_keep"] = None
-        trainer["max_critic_ckpt_to_keep"] = None
-
-    if not cfg.continue_from_checkpoint:
-        trainer["resume_mode"] = "disable"
-    else:
-        trainer["resume_mode"] = "auto"
-
-    return trainer
 
 
 # ---------------------------------------------------------------------------
