@@ -20,7 +20,7 @@ import ray
 import torch
 import transformers
 from accelerate import init_empty_weights
-from omegaconf import OmegaConf
+from omegaconf import DictConfig
 from ray.actor import ActorHandle
 from verl import DataProto
 from verl.single_controller.ray import (
@@ -35,7 +35,7 @@ from verl.trainer.ppo.metric_utils import (
     compute_timing_metrics,
     compute_variance_proxy_metrics,
 )
-from verl.trainer.ppo.utils import Role, need_critic, need_reference_policy
+from verl.trainer.ppo.utils import Role
 from verl.utils import hf_processor, hf_tokenizer
 from verl.utils import tensordict_utils as tu
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
@@ -49,7 +49,6 @@ from verl.utils.seqlen_balancing import (
     get_seqlen_balanced_partitions,
     log_seqlen_unbalance,
 )
-from verl.workers.config import EngineConfig
 from verl.workers.engine_workers import TrainingWorker, TrainingWorkerConfig
 from verl.workers.utils.losses import value_loss
 from verl.workers.utils.padding import left_right_2_no_padding, no_padding_2_padding
@@ -60,11 +59,150 @@ from trinity.common.config import Config
 from trinity.common.constants import SaveStrategy
 from trinity.common.experience import Experience
 from trinity.trainer.trainer import TrainEngineWrapper
-from trinity.trainer.verl08.config import VERLConfig, build_verl_config
+from trinity.trainer.verl08.config import build_verl_config
 from trinity.trainer.verl08.utils import to_data_proto
 from trinity.trainer.verl08.workers import TrinityActorRolloutRefWorker
 from trinity.trainer.verl.utils import compute_data_metrics
 from trinity.utils.log import get_logger
+
+
+class CheckpointMonitor:
+    def __init__(
+        self, save_strategy: SaveStrategy, default_local_dir: str, default_hdfs_dir: str = None
+    ):
+        self.logger = get_logger("checkpoint_monitor", in_ray_actor=True)
+        self.default_local_dir = default_local_dir
+        self.default_hdfs_dir = default_hdfs_dir
+        self.local_latest_checkpointed_iteration = os.path.join(
+            default_local_dir, "latest_checkpointed_iteration.txt"
+        )
+        self.local_latest_state_dict_iteration = os.path.join(
+            default_local_dir, "latest_state_dict_iteration.txt"
+        )
+        self.checkpoint_counter = defaultdict(int)
+        self.state_dict_counter = defaultdict(int)
+        self.checkpoint_steps = set()
+        self.state_dict_steps = set()
+        self.latest_checkpoint_step = 0
+        self.latest_state_dict_step = 0
+
+        self.save_strategy = save_strategy
+        self.condition = asyncio.Condition()
+        self.current_identifier = 0
+        self.saving_count = 0
+
+    def update_latest_checkpoint_step(self, step: int):
+        assert step >= self.latest_checkpoint_step
+        if step == self.latest_checkpoint_step:
+            return
+        self.latest_checkpoint_step = step
+        with open(self.local_latest_checkpointed_iteration, "w") as f:
+            f.write(str(step))
+        if step in self.state_dict_counter:
+            assert self.state_dict_counter[step] == 0
+            self.update_latest_state_dict_step(step)
+
+        # Upload checkpoint to hdfs
+        if self.default_hdfs_dir is not None:
+            local_path = os.path.join(self.default_local_dir, f"global_step_{step}")
+            hdfs_path = os.path.join(self.default_hdfs_dir, f"global_step_{step}")
+            self.logger.info(f"Uploading checkpoint to {hdfs_path}")
+            from verl.utils import hdfs_io
+
+            hdfs_io.makedirs(hdfs_path, exist_ok=True)
+            hdfs_io.copy(src=local_path, dst=hdfs_path, dirs_exist_ok=True)
+        self.logger.info(f"Checkpoint at step {step} saved.")
+
+    def update_latest_state_dict_step(self, step: int):
+        assert step >= self.latest_state_dict_step
+        if step == self.latest_state_dict_step:
+            return
+        self.latest_state_dict_step = step
+        with open(self.local_latest_state_dict_iteration, "w") as f:
+            f.write(str(step))
+
+    async def register_thread_count(
+        self,
+        step: int,
+        *,
+        state_dict_thread_count: int = 0,
+        checkpoint_thread_count: int = 0,
+    ):
+        if state_dict_thread_count != 0:
+            self.state_dict_counter[step] += state_dict_thread_count
+        if checkpoint_thread_count != 0:
+            self.checkpoint_counter[step] += checkpoint_thread_count
+
+    async def monitor_step(self, step: int, is_state_dict: bool = False):
+        if is_state_dict:
+            self.state_dict_steps.add(step)
+            if self.state_dict_counter[step] == 0:
+                self.update_latest_state_dict_step(step)
+        else:
+            self.checkpoint_steps.add(step)
+            if self.checkpoint_counter[step] == 0 and self.state_dict_counter[step] == 0:
+                self.update_latest_checkpoint_step(step)
+
+    async def notify_started(self, node_id: str, job_id: str):
+        if self.save_strategy == SaveStrategy.SINGLE_THREAD:
+            identifier = self.current_identifier + 1
+        elif self.save_strategy == SaveStrategy.SINGLE_PROCESS:
+            identifier = f"{node_id}_{job_id}"
+        elif self.save_strategy == SaveStrategy.SINGLE_NODE:
+            identifier = node_id
+        elif self.save_strategy == SaveStrategy.UNRESTRICTED:
+            return
+        else:
+            raise ValueError(f"Invalid save strategy: {self.save_strategy}")
+
+        async with self.condition:
+            if identifier != self.current_identifier and self.saving_count > 0:
+                await self.condition.wait_for(lambda: self.saving_count == 0)
+            self.current_identifier = identifier
+            self.saving_count += 1
+
+    async def notify_finished(self, step: int, is_state_dict: bool = False):
+        async with self.condition:
+            self.saving_count -= 1
+            self.condition.notify_all()
+        if is_state_dict:
+            self.state_dict_counter[step] -= 1
+            if (
+                step in self.state_dict_steps or step in self.checkpoint_steps
+            ) and self.state_dict_counter[step] == 0:
+                self.update_latest_state_dict_step(step)
+                if step in self.checkpoint_steps and self.checkpoint_counter[step] == 0:
+                    self.update_latest_checkpoint_step(step)
+        else:
+            self.checkpoint_counter[step] -= 1
+            if (
+                step in self.checkpoint_steps
+                and self.checkpoint_counter[step] == 0
+                and self.state_dict_counter[step] == 0
+            ):
+                self.update_latest_checkpoint_step(step)
+
+    @classmethod
+    def get_actor(
+        cls,
+        namespace: str,
+        save_strategy: Optional[SaveStrategy] = None,
+        default_local_dir: Optional[str] = None,
+        default_hdfs_dir: Optional[str] = None,
+    ):
+        return (
+            ray.remote(cls)
+            .options(
+                name="checkpoint_monitor",
+                namespace=namespace,
+                get_if_exists=True,
+            )
+            .remote(
+                save_strategy=save_strategy,
+                default_local_dir=default_local_dir,
+                default_hdfs_dir=default_hdfs_dir,
+            )
+        )
 
 
 class VERLTrainer(TrainEngineWrapper):
@@ -84,7 +222,7 @@ class VERLTrainer(TrainEngineWrapper):
             f"Initializing verl Trainer with {global_config.trainer.trainer_strategy} backend"
         )
         self.global_config = global_config
-        self.config: VERLConfig = build_verl_config(global_config)
+        self.config: DictConfig = build_verl_config(global_config)
         # ---------------
         # Algorithm Setup
         # ---------------
@@ -164,6 +302,12 @@ class VERLTrainer(TrainEngineWrapper):
         #     self.config.critic.optim.total_training_steps = self.total_training_steps
         # we only support cuda for now
         self.device_name = "cuda"
+        self.checkpoint_monitor = CheckpointMonitor.get_actor(
+            namespace=global_config.synchronizer.ray_namespace,
+            save_strategy=global_config.trainer.save_strategy,
+            default_local_dir=self.config.trainer.default_local_dir,
+            default_hdfs_dir=self.config.trainer.default_hdfs_dir,
+        )
         self._init_workers()
 
     def _init_workers(self):
@@ -363,7 +507,7 @@ class VERLTrainer(TrainEngineWrapper):
         max_critic_ckpt_to_keep = self.global_config.trainer.max_checkpoints_to_keep
 
         self.actor_rollout_wg.save_checkpoint(
-            actor_local_path,
+            local_path=actor_local_path,
             global_step=self.global_steps,
             max_ckpt_to_keep=max_actor_ckpt_to_keep,
         )
@@ -371,7 +515,7 @@ class VERLTrainer(TrainEngineWrapper):
         if self.use_critic:
             critic_local_path = os.path.join(local_global_step_folder, "critic")
             self.critic_wg.save_checkpoint(
-                critic_local_path,
+                local_path=critic_local_path,
                 global_step=self.global_steps,
                 max_ckpt_to_keep=max_critic_ckpt_to_keep,
             )
@@ -382,13 +526,16 @@ class VERLTrainer(TrainEngineWrapper):
         self.actor_rollout_wg.sync_weight_nccl(global_steps=self.global_steps)
 
     async def upload_state_dict(self):
-        pass
+        self.actor_rollout_wg.upload_state_dict(self.global_steps)
 
     async def save_state_dict(self):
         actor_local_path = os.path.join(
             self.global_config.checkpoint_job_dir, f"global_step_{self.global_steps}", "actor"
         )
-        self.actor_rollout_wg.save_checkpoint(actor_local_path, global_step=self.global_steps)
+        self.actor_rollout_wg.save_state_dict(
+            actor_local_path,
+            global_step=self.global_steps,
+        )
         await self.checkpoint_monitor.monitor_step.remote(self.global_steps, is_state_dict=True)
 
     # ------------------------------------------------------------------
@@ -580,24 +727,18 @@ class VERLTrainer(TrainEngineWrapper):
         return batch
 
     def _load_checkpoint(self):
-        if self.config.trainer.resume_mode == "disable":
+        if not self.global_config.continue_from_checkpoint:
+            self.logger.info("Training from scratch (continue_from_checkpoint=False)")
             return
 
-        checkpoint_folder = self.config.trainer.default_local_dir
+        checkpoint_folder = self.global_config.checkpoint_job_dir
         if not os.path.isabs(checkpoint_folder):
             checkpoint_folder = os.path.join(os.getcwd(), checkpoint_folder)
         global_step_folder = find_latest_ckpt_path(checkpoint_folder)
 
-        if self.config.trainer.resume_mode == "auto":
-            if global_step_folder is None:
-                self.logger.info("Training from scratch")
-                return
-        elif self.config.trainer.resume_mode == "resume_path":
-            assert isinstance(self.config.trainer.resume_from_path, str)
-            assert "global_step_" in self.config.trainer.resume_from_path
-            global_step_folder = self.config.trainer.resume_from_path
-            if not os.path.isabs(global_step_folder):
-                global_step_folder = os.path.join(os.getcwd(), global_step_folder)
+        if global_step_folder is None:
+            self.logger.info("Training from scratch (checkpoint folder not found)")
+            return
 
         self.logger.info(f"Load from checkpoint folder: {global_step_folder}")
         self.global_steps = int(global_step_folder.split("global_step_")[-1])

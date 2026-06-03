@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
+from omegaconf import DictConfig
+
 from trinity.common.config import Config
 
 
@@ -53,7 +55,7 @@ class ModelConfig:
     lora_adapter_path: str = ""
 
 
-def build_verl_config(global_config: Config) -> VERLConfig:
+def build_verl_config(global_config: Config) -> DictConfig:
     """Extract and build the veRL-specific configuration from the global config."""
     raise NotImplementedError(
         "This function is a placeholder. Implement config extraction logic here."
