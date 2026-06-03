@@ -262,7 +262,7 @@ class VERLTrainer(TrainEngineWrapper):
 
         # TODO: use a global resource manager for both explorer and trainer
         resource_pool_spec = {
-            self.GLOBAL_POOL_ID: [self.config.trainer.gpu_per_node] * self.config.trainer.node_num
+            self.GLOBAL_POOL_ID: [self.global_config.cluster.trainer_gpu_num_per_node] * self.global_config.cluster.trainer_node_num
         }
         # Trinity do not need reward / distillation model workers, so we only create one global pool for actor and critic
         self.resource_pool_manager = ResourcePoolManager(
@@ -296,8 +296,8 @@ class VERLTrainer(TrainEngineWrapper):
         self.checkpoint_monitor = CheckpointMonitor.get_actor(
             namespace=global_config.synchronizer.ray_namespace,
             save_strategy=global_config.trainer.save_strategy,
-            default_local_dir=self.config.trainer.default_local_dir,
-            default_hdfs_dir=self.config.trainer.default_hdfs_dir,
+            default_local_dir=self.global_config.checkpoint_job_dir,
+            default_hdfs_dir=None,
         )
         self._init_workers()
 
@@ -787,10 +787,10 @@ class VERLTrainer(TrainEngineWrapper):
 
         actor_path = os.path.join(global_step_folder, "actor")
         self.actor_rollout_wg.load_checkpoint(
-            actor_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load
+            actor_path, del_local_after_load=False
         )
         if self.use_critic:
             critic_path = os.path.join(global_step_folder, "critic")
             self.critic_wg.load_checkpoint(
-                critic_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load
+                critic_path, del_local_after_load=False
             )
