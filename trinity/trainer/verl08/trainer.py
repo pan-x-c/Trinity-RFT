@@ -332,8 +332,12 @@ class VERLTrainer(TrainEngineWrapper):
 
             critic_cfg: CriticConfig = omega_conf_to_dataclass(self.config.critic)
 
-            # Build HFModelConfig for critic from our model_config dict
-            critic_model_config = HFModelConfig(**self.config.critic.model_config)
+            # Build HFModelConfig for critic from our model_config dict.
+            # model_config does NOT have _target_ in the DictConfig (to avoid
+            # triggering HFModelConfig.__post_init__ heavy I/O during Hydra
+            # instantiation), so we create the HFModelConfig manually here.
+            model_cfg_dict = OmegaConf.to_container(self.config.critic.model_config, resolve=True)
+            critic_model_config = HFModelConfig(**model_cfg_dict)
             critic_engine_config = critic_cfg.engine
             critic_optim_config = critic_cfg.optim
             critic_checkpoint_config = critic_cfg.checkpoint

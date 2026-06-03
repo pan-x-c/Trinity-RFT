@@ -12,30 +12,34 @@ Design principle (P1):
   - Only fields that veRL workers/engines actually consume are included.
 
 The DictConfig structure must match what `ActorRolloutRefWorker.__init__`
-and `ActorRolloutRefWorker.init_model()` expect:
+and `ActorRolloutRefWorker.init_model()` expect.  Every nested section
+that corresponds to a `BaseConfig` subclass **must** contain a `_target_`
+field pointing to the fully-qualified Python class path, because
+`omega_conf_to_dataclass()` (Mode 1 — no `dataclass_type` argument) uses
+`hydra.utils.instantiate()` which requires `_target_` for recursive
+instantiation.
 
-  config.model        → HFModelConfig       (via omega_conf_to_dataclass)
+Config sections and their target types:
+  config.model        → HFModelConfig
   config.actor        → FSDPActorConfig | McoreActorConfig
   config.ref          → FSDPActorConfig | McoreActorConfig  (subset)
   config.rollout      → RolloutConfig
+  config.critic       → FSDPCriticConfig | McoreCriticConfig
   config.synchronizer → SynchronizerConfig   (direct access)
-  config.trainer      → trainer-level fields (gpu_per_node, node_num, etc.)
-  config.critic       → CriticConfig         (for VERLTrainer._init_workers)
-  config.global_profiler → profiler settings
+  config.trainer      → VerlTrainerConfig     (Trinity-specific)
+  config.global_profiler → ProfilerConfig      (Trinity-specific)
 """
 from __future__ import annotations
 
-import math
 import sys
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass, field, is_dataclass
+from typing import Any, Dict, List, Optional, Union, get_origin, get_args
 
 from omegaconf import DictConfig, OmegaConf
 
 from trinity.algorithm import ALGORITHM_TYPE
 from trinity.common.config import Config
 from trinity.common.config import OptimizerConfig as TrinityOptimizerConfig
-from trinity.common.config import set_if_none
 from trinity.common.constants import EXPLORER_NAME
 from trinity.utils.log import get_logger
 
@@ -75,6 +79,82 @@ class VerlTrainerConfig:
     max_critic_ckpt_to_keep: Optional[int] = None
     del_local_ckpt_after_load: bool = False
     resume_mode: str = "auto"
+
+
+# ---------------------------------------------------------------------------
+# Helpers for injecting `_target_` into config dicts
+# ---------------------------------------------------------------------------
+
+
+def _resolve_dc_type(type_hint):
+    """Resolve the concrete BaseConfig dataclass type from a field annotation.
+
+    Handles plain types, Optional[T], and Union[T, None].
+    Returns None if the type is not a BaseConfig subclass.
+    """
+    from verl.base_config import BaseConfig
+
+    # Direct dataclass type
+    if is_dataclass(type_hint) and isinstance(type_hint, type) and issubclass(type_hint, BaseConfig):
+        return type_hint
+
+    # Handle Optional[T] / Union[T, None]
+    origin = get_origin(type_hint)
+    if origin is Union:
+        for arg in get_args(type_hint):
+            if arg is type(None):
+                continue
+            if is_dataclass(arg) and isinstance(arg, type) and issubclass(arg, BaseConfig):
+                return arg
+
+    return None
+
+
+def _inject_targets(config, dataclass_type, type_overrides=None, skip_fields=None):
+    """Recursively inject `_target_` into a config dict based on the dataclass type hierarchy.
+
+    Args:
+        config: The config dict to inject _target_ into.
+        dataclass_type: The verl dataclass type that this config corresponds to.
+        type_overrides: Dict mapping field name → concrete dataclass type, for fields
+            where the annotation type doesn't match the desired concrete type
+            (e.g., ActorConfig.optim: OptimizerConfig → FSDPOptimizerConfig).
+        skip_fields: Set of field names to skip (no _target_ injection).
+            Used for fields like CriticConfig.model_config where we don't want
+            Hydra to recursively instantiate the nested config.
+    """
+    if type_overrides is None:
+        type_overrides = {}
+    if skip_fields is None:
+        skip_fields = set()
+
+    # Set _target_ at this level
+    config["_target_"] = f"{dataclass_type.__module__}.{dataclass_type.__name__}"
+
+    # Walk all fields of the dataclass (including inherited fields)
+    for f in dataclass_type.__dataclass_fields__.values():
+        if f.name in skip_fields:
+            continue
+        if f.name not in config:
+            continue
+
+        # Determine the concrete type for this field
+        if f.name in type_overrides:
+            ft = type_overrides[f.name]
+        else:
+            ft = _resolve_dc_type(f.type)
+
+        if ft is None:
+            continue
+
+        nested = config[f.name]
+        if isinstance(nested, dict):
+            _inject_targets(nested, ft)
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
 
 
 def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
@@ -121,7 +201,7 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
     # ====================================================================
     # 4. Rollout config
     # ====================================================================
-    rollout = _build_rollout_config(cfg, actor)
+    rollout = _build_rollout_config(cfg)
 
     # ====================================================================
     # 5. Critic config
@@ -161,12 +241,14 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
 
 
 def _build_model_config(cfg: Config) -> dict:
-    """Build HFModelConfig-compatible dict from Trinity config."""
+    """Build HFModelConfig-compatible dict with `_target_`."""
+    from verl.workers.config.model import HFModelConfig, MtpConfig
+
     model = {
         "path": cfg.model.model_path,
         "use_shm": False,
         "trust_remote_code": cfg.model.trust_remote_code,
-        # LoRA fields (set later if lora_configs is not None)
+        # LoRA fields
         "lora_rank": 0,
         "lora_alpha": 16,
         "target_modules": "all-linear",
@@ -200,13 +282,37 @@ def _build_model_config(cfg: Config) -> dict:
     if cfg.model.rope_theta is not None:
         model["override_config"]["rope_theta"] = cfg.model.rope_theta
 
+    _inject_targets(model, HFModelConfig)
     return model
 
 
 def _build_actor_config(cfg: Config, strategy: str, total_training_steps: int) -> dict:
-    """Build ActorConfig-compatible dict from Trinity config."""
+    """Build ActorConfig-compatible dict with `_target_`."""
+    from verl.workers.config.actor import (
+        FSDPActorConfig,
+        McoreActorConfig,
+        PolicyLossConfig,
+        RouterReplayConfig,
+    )
+    from verl.workers.config.engine import FSDPEngineConfig, McoreEngineConfig
+    from verl.workers.config.optimizer import FSDPOptimizerConfig, McoreOptimizerConfig
+    from verl.trainer.config import CheckpointConfig
+
     is_fsdp = strategy.startswith("fsdp")
     is_megatron = strategy.startswith("megatron")
+
+    if is_fsdp:
+        dc_type = FSDPActorConfig
+        type_overrides = {
+            "optim": FSDPOptimizerConfig,
+            "engine": FSDPEngineConfig,
+        }
+    else:
+        dc_type = McoreActorConfig
+        type_overrides = {
+            "optim": McoreOptimizerConfig,
+            "engine": McoreEngineConfig,
+        }
 
     actor = {
         "strategy": strategy,
@@ -226,84 +332,105 @@ def _build_actor_config(cfg: Config, strategy: str, total_training_steps: int) -
         "ppo_epochs": 1,
         "shuffle": False,
         "data_loader_seed": 42,
-        "grad_clip": cfg.trainer.grad_clip,
-        "clip_grad": cfg.trainer.grad_clip,
         "loss_agg_mode": cfg.algorithm.loss_agg_mode or "token-mean",
         "loss_scale_factor": None,
-        "calculate_sum_pi_squared": False,
         "use_prefix_grouper": False,
         "use_torch_compile": True,
         "freeze_vision_tower": False,
         "use_fused_kernels": False,
         "rollout_n": cfg.algorithm.repeat_times,
-        "fix_actor_microbatch_loss_scale": cfg.trainer.fix_actor_microbatch_loss_scale,
-        "ulysses_sequence_parallel_size": cfg.trainer.ulysses_sequence_parallel_size,
-        "router_replay": {"mode": "disabled"},
         "policy_loss": {
             "loss_mode": "vanilla",
             "rollout_correction": cfg.algorithm.rollout_correction or {"bypass_mode": True},
         },
+        "router_replay": {"mode": "disabled"},
         "profiler": {},
+        "checkpoint": _build_checkpoint_config(),
+        "optim": _build_optimizer_config(cfg.algorithm.optimizer, strategy, total_training_steps),
     }
 
-    # Strategy-specific engine config
+    # Strategy-specific fields
     if is_fsdp:
-        actor["fsdp_config"] = _build_fsdp_engine_config(cfg, strategy)
+        actor["grad_clip"] = cfg.trainer.grad_clip
+        actor["ulysses_sequence_parallel_size"] = cfg.trainer.ulysses_sequence_parallel_size
         actor["entropy_from_logits_with_chunking"] = False
         actor["entropy_checkpointing"] = False
+        actor["fsdp_config"] = _build_fsdp_engine_config(cfg, strategy)
         actor["use_remove_padding"] = cfg.trainer.use_remove_padding
         actor["use_rollout_log_probs"] = False
+        actor["calculate_sum_pi_squared"] = False
+        actor["sum_pi_squared_checkpointing"] = False
     elif is_megatron:
         actor["megatron"] = _build_mcore_engine_config(cfg)
         actor["load_weight"] = True
         actor["use_rollout_log_probs"] = False
 
-    # Optimizer config
-    actor["optim"] = _build_optimizer_config(
-        cfg.algorithm.optimizer, strategy, total_training_steps
-    )
-
-    # Checkpoint config
-    actor["checkpoint"] = _build_checkpoint_config()
-
+    _inject_targets(actor, dc_type, type_overrides=type_overrides)
     return actor
 
 
 def _build_ref_config(cfg: Config, strategy: str) -> dict:
-    """Build ref-config dict (subset of actor config)."""
+    """Build ref-config dict with `_target_` (subset of actor config)."""
+    from verl.workers.config.actor import (
+        FSDPActorConfig,
+        McoreActorConfig,
+        RouterReplayConfig,
+    )
+    from verl.workers.config.engine import FSDPEngineConfig, McoreEngineConfig
+    from verl.trainer.config import CheckpointConfig
+
     is_fsdp = strategy.startswith("fsdp")
     is_megatron = strategy.startswith("megatron")
 
+    if is_fsdp:
+        dc_type = FSDPActorConfig
+        type_overrides = {"engine": FSDPEngineConfig}
+    else:
+        dc_type = McoreActorConfig
+        type_overrides = {"engine": McoreEngineConfig}
+
+    # NOTE: use log_prob_* naming — engine_workers.py renames these to ppo_*
+    # before calling omega_conf_to_dataclass().
     ref = {
         "strategy": strategy,
+        "rollout_n": cfg.algorithm.repeat_times,
         "log_prob_micro_batch_size_per_gpu": None,
         "log_prob_use_dynamic_bsz": cfg.trainer.use_dynamic_bsz,
         "log_prob_max_token_len_per_gpu": cfg.trainer.max_token_len_per_gpu,
-        "ulysses_sequence_parallel_size": cfg.trainer.ulysses_sequence_parallel_size,
         "use_prefix_grouper": False,
-        "entropy_from_logits_with_chunking": False,
-        "entropy_checkpointing": False,
-        "load_weight": True,
         "profiler": {},
         "router_replay": {"mode": "disabled"},
+        "checkpoint": _build_checkpoint_config(
+            save_contents=["model"], load_contents=["model"]
+        ),
     }
 
+    # Strategy-specific fields
     if is_fsdp:
+        ref["ulysses_sequence_parallel_size"] = cfg.trainer.ulysses_sequence_parallel_size
+        ref["entropy_from_logits_with_chunking"] = False
+        ref["entropy_checkpointing"] = False
         ref["fsdp_config"] = _build_fsdp_engine_config(cfg, strategy)
         ref["use_remove_padding"] = cfg.trainer.use_remove_padding
         ref["use_rollout_log_probs"] = False
     elif is_megatron:
-        ref["megatron"] = _build_mcore_engine_config(cfg)
         ref["load_weight"] = True
         ref["use_rollout_log_probs"] = False
+        ref["megatron"] = _build_mcore_engine_config(cfg)
 
-    ref["checkpoint"] = _build_checkpoint_config(save_contents=["model"], load_contents=["model"])
-
+    _inject_targets(ref, dc_type, type_overrides=type_overrides)
     return ref
 
 
-def _build_rollout_config(cfg: Config, actor: dict) -> dict:
-    """Build RolloutConfig-compatible dict."""
+def _build_rollout_config(cfg: Config) -> dict:
+    """Build RolloutConfig-compatible dict with `_target_`."""
+    from verl.workers.config.rollout import (
+        RolloutConfig,
+        SamplingConfig,
+        MultiTurnConfig,
+        CheckpointEngineConfig,
+    )
+
     # Get temperature from taskset or default
     temperature = 1.0
     if cfg.buffer.explorer_input.tasksets:
@@ -326,20 +453,50 @@ def _build_rollout_config(cfg: Config, actor: dict) -> dict:
             "backend": "naive",
             "update_weights_bucket_megabytes": 2048,
             "engine_kwargs": {},
-            "custom_backend_module": None,
         },
         "load_format": "dummy",
         "skip_tokenizer_init": True,
         "enable_sleep_mode": True,
     }
 
+    _inject_targets(rollout, RolloutConfig)
     return rollout
 
 
 def _build_critic_config(
     cfg: Config, strategy: str, use_critic: bool, total_training_steps: int
 ) -> dict:
-    """Build CriticConfig-compatible dict for VERLTrainer._init_workers."""
+    """Build CriticConfig-compatible dict with `_target_`.
+
+    NOTE: We skip `_target_` injection for `model_config` because
+    HFModelConfig.__post_init__ does heavy I/O (model/tokenizer loading).
+    The trainer.py code creates HFModelConfig manually from the DictConfig.
+    """
+    from verl.workers.config.critic import FSDPCriticConfig, McoreCriticConfig
+    from verl.workers.config.engine import FSDPEngineConfig, McoreEngineConfig
+    from verl.workers.config.optimizer import FSDPOptimizerConfig, McoreOptimizerConfig
+    from verl.trainer.config import CheckpointConfig
+
+    is_fsdp = strategy.startswith("fsdp")
+    is_megatron = strategy.startswith("megatron")
+
+    if is_fsdp:
+        dc_type = FSDPCriticConfig
+        type_overrides = {
+            "optim": FSDPOptimizerConfig,
+            "engine": FSDPEngineConfig,
+        }
+    else:
+        dc_type = McoreCriticConfig
+        type_overrides = {
+            "optim": McoreOptimizerConfig,
+            "engine": McoreEngineConfig,
+        }
+
+    # Do NOT inject _target_ into model_config — HFModelConfig.__post_init__
+    # does heavy I/O that should not be triggered by hydra.utils.instantiate().
+    skip_fields = {"model_config"}
+
     critic = {
         "enable": use_critic,
         "strategy": strategy,
@@ -355,15 +512,45 @@ def _build_critic_config(
         "loss_agg_mode": "token-mean",
         "data_loader_seed": 42,
         "rollout_n": cfg.algorithm.repeat_times,
-        "grad_clip": cfg.trainer.grad_clip,
-        "ulysses_sequence_parallel_size": cfg.trainer.ulysses_sequence_parallel_size,
+        "profiler": {},
+        "optim": _build_critic_optimizer_config(strategy, total_training_steps),
+        "checkpoint": _build_checkpoint_config(),
+        # model_config without _target_ — trainer.py creates HFModelConfig manually
+        "model_config": _build_critic_model_config(cfg),
     }
 
-    # Critic model config
+    # Strategy-specific fields
+    if is_fsdp:
+        critic["grad_clip"] = cfg.trainer.grad_clip
+        critic["ulysses_sequence_parallel_size"] = cfg.trainer.ulysses_sequence_parallel_size
+        critic["forward_micro_batch_size"] = 1
+        critic["forward_micro_batch_size_per_gpu"] = 1
+        critic["forward_max_token_len_per_gpu"] = cfg.trainer.max_token_len_per_gpu
+        # engine config for the critic worker (FSDPCriticConfig doesn't have
+        # fsdp_config — it inherits engine: BaseConfig from CriticConfig).
+        # We set engine directly so trainer.py can access it.
+        critic["engine"] = _build_fsdp_engine_config(cfg, strategy)
+    elif is_megatron:
+        critic["load_weight"] = True
+        # McoreCriticConfig has megatron field
+        critic["megatron"] = _build_mcore_engine_config(cfg)
+        # Also set engine so trainer.py can access it via critic_cfg.engine
+        critic["engine"] = _build_mcore_engine_config(cfg)
+
+    _inject_targets(critic, dc_type, type_overrides=type_overrides, skip_fields=skip_fields)
+    return critic
+
+
+def _build_critic_model_config(cfg: Config) -> dict:
+    """Build HFModelConfig dict for critic (without `_target_`).
+
+    This dict is stored in critic["model_config"] but does NOT get a
+    `_target_` because HFModelConfig.__post_init__ does heavy I/O.
+    The trainer.py code creates HFModelConfig manually from this dict.
+    """
     critic_model_path = cfg.model.critic_model_path or cfg.model.model_path
-    critic["model_config"] = {
+    model_config = {
         "path": critic_model_path,
-        "model_type": "value_model",
         "use_shm": False,
         "trust_remote_code": cfg.model.trust_remote_code,
         "enable_gradient_checkpointing": True,
@@ -373,34 +560,21 @@ def _build_critic_config(
 
     # Rope config for critic
     if cfg.model.rope_scaling is not None:
-        critic["model_config"]["override_config"]["rope_scaling"] = cfg.model.rope_scaling
+        model_config["override_config"]["rope_scaling"] = cfg.model.rope_scaling
     if cfg.model.rope_theta is not None:
-        critic["model_config"]["override_config"]["rope_theta"] = cfg.model.rope_theta
+        model_config["override_config"]["rope_theta"] = cfg.model.rope_theta
 
-    # Strategy-specific engine config
-    is_fsdp = strategy.startswith("fsdp")
-    is_megatron = strategy.startswith("megatron")
+    return model_config
 
-    if is_fsdp:
-        critic["fsdp"] = _build_fsdp_engine_config(cfg, strategy)
-        critic["forward_micro_batch_size"] = 1
-        critic["forward_micro_batch_size_per_gpu"] = 1
-        critic["forward_max_token_len_per_gpu"] = cfg.trainer.max_token_len_per_gpu
-    elif is_megatron:
-        critic["megatron"] = _build_mcore_engine_config(cfg)
-        critic["load_weight"] = True
 
-    # Critic optimizer — use a default conservative config
-    critic["optim"] = _build_critic_optimizer_config(strategy, total_training_steps)
-    critic["checkpoint"] = _build_checkpoint_config()
-    critic["profiler"] = {}
-
-    return critic
+# ---------------------------------------------------------------------------
+# Sub-config builders (return plain dicts — _inject_targets handles _target_)
+# ---------------------------------------------------------------------------
 
 
 def _build_fsdp_engine_config(cfg: Config, strategy: str) -> dict:
     """Build FSDPEngineConfig-compatible dict."""
-    fsdp = {
+    return {
         "param_offload": False,
         "optimizer_offload": False,
         "offload_policy": False,
@@ -408,7 +582,7 @@ def _build_fsdp_engine_config(cfg: Config, strategy: str) -> dict:
         "wrap_policy": {"min_num_params": 0},
         "fsdp_size": -1,
         "forward_prefetch": False,
-        "model_dtype": None,
+        "model_dtype": "fp32",
         "dtype": "bfloat16",
         "mixed_precision": {},
         "ulysses_sequence_parallel_size": cfg.trainer.ulysses_sequence_parallel_size,
@@ -417,13 +591,13 @@ def _build_fsdp_engine_config(cfg: Config, strategy: str) -> dict:
         "max_token_len_per_gpu": cfg.trainer.max_token_len_per_gpu,
         "use_remove_padding": cfg.trainer.use_remove_padding,
         "use_fused_kernels": False,
+        "router_replay": {"mode": "disabled"},
     }
-    return fsdp
 
 
 def _build_mcore_engine_config(cfg: Config) -> dict:
     """Build McoreEngineConfig-compatible dict."""
-    megatron = {
+    return {
         "strategy": "megatron",
         "param_offload": False,
         "optimizer_offload": False,
@@ -450,7 +624,6 @@ def _build_mcore_engine_config(cfg: Config) -> dict:
         "distrib_optim_fully_reshardable_mem_efficient": False,
         "use_mbridge": True,
         "vanilla_mbridge": True,
-        "use_megatron_fsdp": False,
         "override_ddp_config": {},
         "override_transformer_config": {
             "recompute_granularity": "full",
@@ -461,7 +634,6 @@ def _build_mcore_engine_config(cfg: Config) -> dict:
         "override_mcore_model_config": {},
         "router_replay": {"mode": "disabled"},
     }
-    return megatron
 
 
 def _build_optimizer_config(
@@ -554,7 +726,6 @@ def _build_checkpoint_config(
         "load_contents": load_contents,
         "async_save": False,
         "mbridge_config": {"distributed_filesystem": True, "memory_efficient": True},
-        "strict": True,
     }
 
 
