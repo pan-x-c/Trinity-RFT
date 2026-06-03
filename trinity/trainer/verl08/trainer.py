@@ -338,9 +338,10 @@ class VERLTrainer(TrainEngineWrapper):
             # omega_conf_to_dataclass. We construct it here from global_config.
             gcfg = self.global_config
             critic_model_path = gcfg.model.critic_model_path or gcfg.model.model_path
+            # Only scalar overrides go through override_config; nested dicts
+            # (like rope_scaling) must be applied manually after instantiation
+            # because veRL's update_model_config cannot setattr on dict attrs.
             override_config = {}
-            if gcfg.model.rope_scaling is not None:
-                override_config["rope_scaling"] = gcfg.model.rope_scaling
             if gcfg.model.rope_theta is not None:
                 override_config["rope_theta"] = gcfg.model.rope_theta
             critic_model_config = HFModelConfig(
@@ -351,6 +352,10 @@ class VERLTrainer(TrainEngineWrapper):
                 use_remove_padding=gcfg.trainer.use_remove_padding,
                 override_config=override_config,
             )
+            # Apply rope_scaling manually — it's a nested dict that veRL's
+            # update_model_config cannot handle via setattr on dict objects.
+            if gcfg.model.rope_scaling is not None:
+                critic_model_config.hf_config.rope_scaling = gcfg.model.rope_scaling
             critic_engine_config = critic_cfg.engine
             critic_optim_config = critic_cfg.optim
             critic_checkpoint_config = critic_cfg.checkpoint
