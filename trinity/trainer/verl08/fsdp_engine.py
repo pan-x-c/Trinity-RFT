@@ -1,0 +1,131 @@
+# -*- coding: utf-8 -*-
+"""FSDP-specific checkpoint and weight sync helpers for Trinity.
+
+These helper functions are called by `TrinityActorRolloutRefWorker` to
+perform FSDP/FSDP2-specific operations that veRL 0.8's engine does not
+provide natively:
+
+- fsdp_save_state_dict:    Save sharded state dict for checkpoint sync
+- fsdp_upload_state_dict:  Upload full state dict to Synchronizer (memory sync)
+- fsdp_sync_weight_nccl:   Broadcast full params via NCCL
+
+All functions receive the `engine` object (an FSDPEngine instance from
+`verl.workers.engine.fsdp`) which exposes:
+  - engine.module: the FSDP-wrapped model
+  - engine.get_per_tensor_param(): generator of (name, tensor) pairs
+  - engine.save_checkpoint() / engine.load_checkpoint()
+"""
+import os
+import warnings
+
+import ray
+import torch
+from torch.distributed.fsdp import (
+    ShardedOptimStateDictConfig,
+    ShardedStateDictConfig,
+    StateDictType,
+)
+from verl.utils.device import is_cuda_available
+from verl.utils.fs import local_mkdir_safe
+from verl.utils.fsdp_utils import get_fsdp_full_state_dict, get_fsdp_state_ctx
+
+from trinity.utils.log import get_logger
+
+logger = get_logger(__name__)
+
+
+def fsdp_save_state_dict(engine, local_path: str, global_step: int = 0):
+    """Save FSDP model state dict (sharded) for checkpoint-based weight sync.
+
+    Uses FSDP's SHARDED_STATE_DICT mode to efficiently save each rank's
+    shard of the model. This is much more memory-efficient than gathering
+    the full state dict on rank 0.
+
+    Args:
+        engine: The FSDPEngine instance (engine.actor.engine).
+        local_path: Local directory path to save the state dict.
+        global_step: Current training step (used for logging/coordination).
+    """
+    if local_path is None:
+        return
+
+    local_path = local_mkdir_safe(local_path)
+    torch.distributed.barrier()
+
+    model = engine.module
+    state_dict_cfg = ShardedStateDictConfig(offload_to_cpu=True if is_cuda_available else False)
+    optim_cfg = ShardedOptimStateDictConfig(offload_to_cpu=True if is_cuda_available else False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with get_fsdp_state_ctx(model, StateDictType.SHARDED_STATE_DICT, state_dict_cfg, optim_cfg):
+            state_dict = model.state_dict()
+            # Save per-rank shard
+            path = os.path.join(
+                local_path,
+                f"model_world_size_{torch.distributed.get_world_size()}_rank_{torch.distributed.get_rank()}.pt",
+            )
+            torch.save(state_dict, path)
+
+    torch.distributed.barrier()
+    logger.info(f"FSDP state dict saved to {local_path} at step {global_step}")
+
+
+def fsdp_upload_state_dict(engine, synchronizer, global_step: int = 0):
+    """Upload full FSDP model state dict to Synchronizer for memory-based weight sync.
+
+    Gathers the full state dict on rank 0 and sends it to the Synchronizer
+    actor, which makes it available for the Explorer to load.
+
+    Args:
+        engine: The FSDPEngine instance (engine.actor.engine).
+        synchronizer: The Synchronizer Ray actor handle.
+        global_step: Current training step (used as version key).
+    """
+    if global_step == 0:
+        return
+
+    model = engine.module
+    state_dict = get_fsdp_full_state_dict(model, offload_to_cpu=True, rank0_only=True)
+
+    if torch.distributed.get_rank() == 0:
+        ray.get(synchronizer.set_model_state_dict.remote(state_dict, global_step))
+
+    torch.distributed.barrier()
+    logger.info(f"FSDP state dict uploaded to Synchronizer at step {global_step}")
+
+
+def fsdp_sync_weight_nccl(engine, model_update_group):
+    """Broadcast full model parameters via NCCL for FSDP/FSDP2.
+
+    For FSDP1: Uses FSDP.summon_full_params to gather full parameters before broadcast.
+    For FSDP2: Uses param.full_tensor() to get the full parameter.
+
+    Args:
+        engine: The FSDPEngine instance (engine.actor.engine).
+        model_update_group: The NCCL process group for weight broadcast.
+    """
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+    strategy = getattr(engine, "_strategy", "fsdp")
+
+    if strategy == "fsdp":
+        # FSDP1 path: summon full params for each FSDP module
+        for name_prefix, module in engine.module.named_modules():
+            if isinstance(module, FSDP):
+                with FSDP.summon_full_params(module, recurse=False):
+                    if torch.distributed.get_rank() == 0:
+                        for name, param in module.named_parameters():
+                            torch.distributed.broadcast(param, 0, group=model_update_group)
+    else:
+        # FSDP2 path: use full_tensor()
+        per_tensor_param, _ = engine.get_per_tensor_param()
+        for name, param in per_tensor_param:
+            if hasattr(param, "full_tensor"):
+                full_param = param.full_tensor().detach()
+            else:
+                full_param = param
+            if torch.distributed.get_rank() == 0:
+                torch.distributed.broadcast(full_param, 0, group=model_update_group)
+
+    if torch.distributed.get_rank() == 0:
+        torch.cuda.synchronize()
