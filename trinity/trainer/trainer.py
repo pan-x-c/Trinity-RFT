@@ -107,9 +107,15 @@ class Trainer:
                 self.logger.error(f"Error in Trainer:\n{traceback.format_exc()}")
                 break
 
-        await self.save_checkpoint(
-            block_until_saved=True, save_as_hf=self.save_hf_checkpoint != "never"
-        )
+        # Save final checkpoint if:
+        # - This step wasn't already saved in the loop, OR
+        # - HF format is requested at the last step ("last") but the loop
+        #   only saved without HF format (loop uses save_as_hf only for "always")
+        already_saved = self.need_save()
+        if not already_saved or self.save_hf_checkpoint == "last":
+            await self.save_checkpoint(
+                block_until_saved=True, save_as_hf=self.save_hf_checkpoint != "never"
+            )
         await self.synchronizer.set_trainer_status.remote(RunningStatus.STOPPED)
         self.logger.info("--------------------\n> Trainer finished.\n--------------------")
         return self.config.trainer.name
