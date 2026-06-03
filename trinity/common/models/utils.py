@@ -204,7 +204,7 @@ def get_checkpoint_dir_with_step_num(
         Tuple[str, int]: The checkpoint directory and the step number of the checkpoint.
             If the checkpoint does not exist and `raise_error` is False, return (None, 0).
     """
-    if trainer_type == "verl":
+    if trainer_type in ("verl", "verl08"):
         return get_verl_checkpoint_info(
             checkpoint_path=checkpoint_root_path, step_num=step_num, raise_error=raise_error
         )
@@ -225,7 +225,7 @@ def get_latest_state_dict(
         Tuple[str, int]: The state dict path and the iteration of the state dict.
             If the state dict does not exist, return (None, 0).
     """
-    if trainer_type != "verl":
+    if trainer_type not in ("verl", "verl08"):
         raise NotImplementedError(f"Unsupported trainer type {trainer_type}")
     latest_state_dict_iteration_path = os.path.join(
         checkpoint_root_path, "latest_state_dict_iteration.txt"
@@ -251,11 +251,18 @@ def load_state_dict(checkpoint_dir: str, config: TrainerConfig) -> Union[dict, T
         Union[dict, Tuple[str, str]]: The state dict. If the checkpoint uses
             megatron dist checkpointing, return a tuple of (method, checkpoint_dir).
     """
-    if config.trainer_type == "verl":
+    if config.trainer_type in ("verl", "verl08"):
         strategy = config.trainer_strategy
         if strategy in {"fsdp", "fsdp2"}:
             return load_fsdp_state_dict_from_verl_checkpoint(checkpoint_dir)
         elif strategy == "megatron":
+            if config.trainer_type == "verl08":
+                # verl08: megatron config is not in trainer_config,
+                # default to mbridge-based HF checkpointing
+                return load_huggingface_state_dict(
+                    os.path.join(checkpoint_dir, "huggingface"),
+                    trust_remote_code=config.trust_remote_code,
+                )
             actor_config = config.trainer_config.actor_rollout_ref.actor
             if (
                 actor_config.megatron.use_dist_checkpointing

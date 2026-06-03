@@ -81,13 +81,13 @@ class Synchronizer:
             pass
 
     async def _find_latest_state_dict(self) -> None:
-        if self.config.trainer.trainer_type == "verl":
+        if self.config.trainer.trainer_type in ("verl", "verl08"):
             await self._find_verl_latest_state_dict()
         elif self.config.trainer.trainer_type == "tinker":
             await self._find_tinker_latest_state_dict()
         else:
             self.logger.warning(
-                "Synchronizer does not support this trainer type. Please use `verl` or `tinker`."
+                "Synchronizer does not support this trainer type. Please use `verl`, `verl08`, or `tinker`."
             )
 
     async def _find_verl_latest_state_dict(self) -> None:

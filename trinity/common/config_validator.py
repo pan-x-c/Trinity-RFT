@@ -1261,6 +1261,22 @@ class TrainerConfigValidator(ConfigValidator):
                     "must be one of 'last', 'always', or 'never'."
                 )
             config.trainer.trainer_config.synchronize_config(config)
+        elif config.trainer.trainer_type == "verl08":
+            # verl08 uses build_verl_config() at trainer init time, so no
+            # trainer_config preprocessing is needed here.  All fields are
+            # read directly from the Trinity Config dataclass.
+            config.trainer.trainer_config = None
+            if config.trainer.ulysses_sequence_parallel_size < 1:
+                config.trainer.ulysses_sequence_parallel_size = 1
+            if config.trainer.max_token_len_per_gpu is None:
+                config.trainer.max_token_len_per_gpu = math.ceil(
+                    2 * config.model.max_model_len / config.trainer.ulysses_sequence_parallel_size  # type: ignore [operator]
+                )
+            if config.trainer.save_hf_checkpoint not in {"last", "always", "never"}:
+                raise ValueError(
+                    f"Invalid trainer.save_hf_checkpoint: {config.trainer.save_hf_checkpoint}, "
+                    "must be one of 'last', 'always', or 'never'."
+                )
         elif config.trainer.trainer_type == "tinker":
             config.trainer.trainer_config = None
         else:

@@ -296,7 +296,7 @@ def compute_data_metrics(batch: DataProto) -> dict:
 
 def get_latest_hf_checkpoint_path(config: Config):
     """Get the latest huggingface checkpoint path"""
-    if config.trainer.trainer_type != "verl":
+    if config.trainer.trainer_type not in ("verl", "verl08"):
         raise ValueError("This function is only for verl trainer.")
     checkpoint_dir = find_latest_ckpt_path(config.checkpoint_job_dir)
     hf_checkpoint_dir = os.path.join(checkpoint_dir, "actor", "huggingface")
