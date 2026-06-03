@@ -48,8 +48,6 @@ init_docker_compose() {
 
     for required_var in \
         TRINITY_DOCKER_IMAGE \
-        TRINITY_PYPI_INDEX_URL \
-        TRINITY_HF_ENDPOINT \
         TRINITY_MOUNT_DIR \
         TRINITY_RAY_DASHBOARD_PORT \
         TRINITY_NODE1_GPU_0 \
