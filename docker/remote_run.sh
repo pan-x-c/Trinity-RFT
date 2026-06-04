@@ -2,7 +2,6 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
-DEFAULT_MODULE="common"
 DEFAULT_TIMEOUT=600
 
 print_help() {
@@ -12,15 +11,17 @@ Usage: bash docker/remote_run.sh [options]
 Sync code to the remote server and run pytest inside its Docker container.
 
 Options:
-  -m, --module <name>    Test module under tests/. Default: ${DEFAULT_MODULE}
+  -m, --module <path>    Test target under tests/ (directory or file)
   -k, --keyword <expr>   Pytest -k expression used to filter tests
+  -q, --quiet            Run pytest in quiet mode
   -t, --timeout <secs>   SSH command timeout in seconds. Default: ${DEFAULT_TIMEOUT}
   --no-sync              Skip the rsync step (code is already up to date)
   -h, --help             Show this help message and exit
 
 Examples:
   bash docker/remote_run.sh --module common
-  bash docker/remote_run.sh --module common --keyword test_config
+  bash docker/remote_run.sh --module trainer/trainer_test
+  bash docker/remote_run.sh --module common --keyword test_config --quiet
   bash docker/remote_run.sh --module explorer --no-sync --timeout 300
 EOF
 }
@@ -39,8 +40,9 @@ require_arg() {
     fi
 }
 
-module_name="$DEFAULT_MODULE"
+module_name=""
 keyword_expr=""
+quiet_mode=false
 timeout_secs="$DEFAULT_TIMEOUT"
 skip_sync=false
 
@@ -55,6 +57,10 @@ while [[ $# -gt 0 ]]; do
             require_arg "$1" "$2"
             keyword_expr="$2"
             shift 2
+            ;;
+        -q|--quiet)
+            quiet_mode=true
+            shift
             ;;
         -t|--timeout)
             require_arg "$1" "$2"
@@ -96,9 +102,15 @@ if [[ "$skip_sync" == false ]]; then
     echo ""
 fi
 
-run_cmd="cd ${TRINITY_REMOTE_WORKSPACE} && bash docker/run.sh --module ${module_name}"
+run_cmd="cd ${TRINITY_REMOTE_WORKSPACE} && bash docker/run.sh"
+if [[ -n "$module_name" ]]; then
+    run_cmd="${run_cmd} --module ${module_name}"
+fi
 if [[ -n "$keyword_expr" ]]; then
     run_cmd="${run_cmd} --keyword $(printf '%q' "$keyword_expr")"
+fi
+if [[ "$quiet_mode" == true ]]; then
+    run_cmd="${run_cmd} --quiet"
 fi
 
 echo "=== Running tests on remote ==="
