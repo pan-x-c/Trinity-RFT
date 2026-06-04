@@ -54,7 +54,7 @@ async def sync_code(dry_run: bool = False) -> str:
 async def run_tests(
     module: str = "",
     keyword: str = "",
-    quiet: bool = False,
+    quiet: bool = True,
     no_sync: bool = False,
     timeout: int = 600,
 ) -> str:
