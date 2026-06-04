@@ -84,12 +84,13 @@ async def run_tests(
 async def check_status() -> str:
     """Check Docker container and Ray cluster status on the remote GPU server."""
     cmd = [
-        "bash", "-c",
+        "bash",
+        "-c",
         f"source {os.path.join(DOCKER_DIR, 'common.sh')} && "
         "load_remote_env && "
         'ssh -p "$TRINITY_REMOTE_SSH_PORT" '
-        '-o StrictHostKeyChecking=accept-new '
-        '-o ConnectTimeout=10 '
+        "-o StrictHostKeyChecking=accept-new "
+        "-o ConnectTimeout=10 "
         '"$TRINITY_REMOTE_HOST" '
         f'"cd $TRINITY_REMOTE_WORKSPACE && bash docker/status.sh"',
     ]
