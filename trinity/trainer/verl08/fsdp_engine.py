@@ -17,6 +17,7 @@ All functions receive the `engine` object (an FSDPEngine instance from
 """
 import os
 import warnings
+from typing import Optional
 
 import ray
 import torch
@@ -29,45 +30,63 @@ from verl.utils.device import is_cuda_available
 from verl.utils.fs import local_mkdir_safe
 from verl.utils.fsdp_utils import get_fsdp_full_state_dict, get_fsdp_state_ctx
 
+from trinity.trainer.verl08.checkpoint import CheckpointCoordinator
 from trinity.utils.log import get_logger
 
 logger = get_logger(__name__)
 
 
-def fsdp_save_state_dict(engine, local_path: str, global_step: int = 0):
+def fsdp_save_state_dict(
+    engine,
+    local_path: str,
+    global_step: int = 0,
+    coordinator: Optional[CheckpointCoordinator] = None,
+):
     """Save FSDP model state dict (sharded) for checkpoint-based weight sync.
 
-    Uses FSDP's SHARDED_STATE_DICT mode to efficiently save each rank's
-    shard of the model. This is much more memory-efficient than gathering
-    the full state dict on rank 0.
+    Collects the sharded state dict on the main thread (requires FSDP context),
+    then offloads ``torch.save`` to a background thread via ``coordinator`` so
+    the training loop can continue without waiting for I/O.
+
+    The ``coordinator`` notifies CheckpointMonitor before and after saving, which
+    gates the iteration-file update and prevents the Synchronizer from reading
+    an incomplete checkpoint.
 
     Args:
         engine: The FSDPEngine instance (engine.actor.engine).
         local_path: Local directory path to save the state dict.
-        global_step: Current training step (used for logging/coordination).
+        global_step: Current training step.
+        coordinator: CheckpointCoordinator for background save + Monitor integration.
+            When None, falls back to synchronous save (no Monitor notification).
     """
     if local_path is None:
         return
 
     local_path = local_mkdir_safe(local_path)
-    torch.distributed.barrier()
 
     model = engine.module
+    rank = torch.distributed.get_rank()
+    world_size = torch.distributed.get_world_size()
     state_dict_cfg = ShardedStateDictConfig(offload_to_cpu=True if is_cuda_available else False)
     optim_cfg = ShardedOptimStateDictConfig(offload_to_cpu=True if is_cuda_available else False)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with get_fsdp_state_ctx(model, StateDictType.SHARDED_STATE_DICT, state_dict_cfg, optim_cfg):
             state_dict = model.state_dict()
-            # Save per-rank shard
-            path = os.path.join(
-                local_path,
-                f"model_world_size_{torch.distributed.get_world_size()}_rank_{torch.distributed.get_rank()}.pt",
-            )
-            torch.save(state_dict, path)
 
-    torch.distributed.barrier()
-    logger.info(f"FSDP state dict saved to {local_path} at step {global_step}")
+    path = os.path.join(local_path, f"model_world_size_{world_size}_rank_{rank}.pt")
+
+    if coordinator is not None and rank == 0:
+        coordinator.save_async(
+            "model_state_dict",
+            lambda: torch.save(state_dict, path),
+            global_step,
+            is_state_dict=True,
+        )
+    else:
+        torch.save(state_dict, path)
+
+    logger.info(f"FSDP state dict save initiated for {local_path} at step {global_step}")
 
 
 def fsdp_upload_state_dict(engine, synchronizer, global_step: int = 0):

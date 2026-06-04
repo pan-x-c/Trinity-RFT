@@ -566,7 +566,15 @@ class VERLTrainer(TrainEngineWrapper):
                 max_ckpt_to_keep=max_critic_ckpt_to_keep,
             )
 
+        ray.get(
+            self.checkpoint_monitor.register_thread_count.remote(
+                self.global_steps, state_dict_thread_count=1
+            )
+        )
         await self.checkpoint_monitor.monitor_step.remote(self.global_steps)
+
+        if block_until_saved:
+            self.actor_rollout_wg.wait_on_save_thread()
 
     def sync_weight_nccl(self) -> None:
         self.actor_rollout_wg.sync_weight_nccl()
@@ -581,6 +589,11 @@ class VERLTrainer(TrainEngineWrapper):
         self.actor_rollout_wg.save_state_dict(
             actor_local_path,
             global_step=self.global_steps,
+        )
+        ray.get(
+            self.checkpoint_monitor.register_thread_count.remote(
+                self.global_steps, state_dict_thread_count=1
+            )
         )
         await self.checkpoint_monitor.monitor_step.remote(self.global_steps, is_state_dict=True)
 

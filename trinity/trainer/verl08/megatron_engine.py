@@ -15,30 +15,52 @@ All functions receive the `engine` object (a McoreEngine instance from
   - engine.get_per_tensor_param(): generator of (name, tensor) pairs
   - engine.save_checkpoint() / engine.load_checkpoint()
 """
+from typing import Optional
+
 import ray
 import torch
 from verl.utils.memory_utils import aggressive_empty_cache
 
+from trinity.trainer.verl08.checkpoint import CheckpointCoordinator
 from trinity.utils.log import get_logger
 
 logger = get_logger(__name__)
 
 
-def megatron_save_state_dict(engine, local_path: str, global_step: int = 0):
+def megatron_save_state_dict(
+    engine,
+    local_path: str,
+    global_step: int = 0,
+    coordinator: Optional[CheckpointCoordinator] = None,
+):
     """Save Megatron model state dict for checkpoint-based weight sync.
 
     Delegates to the engine's built-in save_checkpoint for proper
-    distributed checkpoint handling.
+    distributed checkpoint handling. When a ``coordinator`` is provided,
+    the save is wrapped with CheckpointMonitor notifications.
+
+    Note: Megatron's save_checkpoint involves distributed barriers internally,
+    so it runs synchronously. The coordinator's ``save_sync`` is used to add
+    Monitor notifications without background threading.
 
     Args:
         engine: The McoreEngine instance (engine.actor.engine).
         local_path: Local directory path to save the state dict.
         global_step: Current training step.
+        coordinator: CheckpointCoordinator for Monitor integration.
     """
     if local_path is None:
         return
 
-    engine.save_checkpoint(local_path=local_path, global_step=global_step)
+    if coordinator is not None and torch.distributed.get_rank() == 0:
+        coordinator.save_sync(
+            lambda: engine.save_checkpoint(local_path=local_path, global_step=global_step),
+            global_step,
+            is_state_dict=True,
+        )
+    else:
+        engine.save_checkpoint(local_path=local_path, global_step=global_step)
+
     torch.distributed.barrier()
     logger.info(f"Megatron state dict saved to {local_path} at step {global_step}")
 

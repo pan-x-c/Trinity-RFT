@@ -23,6 +23,7 @@ from verl.workers.engine_workers import ActorRolloutRefWorker
 from trinity.common.config import AlgorithmConfig
 from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME
 from trinity.manager.synchronizer import Synchronizer
+from trinity.trainer.verl08.checkpoint import CheckpointCoordinator
 from trinity.trainer.verl08.losses import build_trinity_loss
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
@@ -46,6 +47,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         self._algo_config: Optional[AlgorithmConfig] = None
         self._model_update_group = None
         self._state_dict_meta_list = None
+        self._coordinator: Optional[CheckpointCoordinator] = None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def init_model(self):
@@ -156,24 +158,66 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             if torch.distributed.get_rank() == 0:
                 torch.distributed.broadcast(param, src=0, group=self._model_update_group)
 
+    def _get_coordinator(self) -> CheckpointCoordinator:
+        if self._coordinator is None:
+            from trinity.trainer.verl08.trainer import CheckpointMonitor
+
+            monitor = CheckpointMonitor.get_actor(
+                namespace=self.config.synchronizer.ray_namespace,
+            )
+            self._coordinator = CheckpointCoordinator(monitor)
+        return self._coordinator
+
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_state_dict(self, local_path, global_step=0):
         """Save model state dict for checkpoint-based weight sync.
 
-        Delegates to strategy-specific helpers in fsdp_engine.py or
-        megatron_engine.py based on the actor's strategy.
+        On rank 0, saving is offloaded to a background thread via the
+        CheckpointCoordinator, which also notifies CheckpointMonitor so the
+        iteration file is only updated after the save completes.
         """
+        coordinator = self._get_coordinator()
         strategy = self.config.actor.strategy
         if strategy.startswith("fsdp"):
             from trinity.trainer.verl08.fsdp_engine import fsdp_save_state_dict
 
-            fsdp_save_state_dict(self.actor.engine, local_path, global_step)
+            fsdp_save_state_dict(self.actor.engine, local_path, global_step, coordinator)
         elif strategy.startswith("megatron"):
             from trinity.trainer.verl08.megatron_engine import megatron_save_state_dict
 
-            megatron_save_state_dict(self.actor.engine, local_path, global_step)
+            megatron_save_state_dict(self.actor.engine, local_path, global_step, coordinator)
         else:
             raise ValueError(f"Unsupported strategy for save_state_dict: {strategy}")
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def save_checkpoint(self, local_path, global_step=0, max_ckpt_to_keep=None, **kwargs):
+        """Save full checkpoint with CheckpointMonitor coordination.
+
+        Delegates to the engine's save_checkpoint (which is synchronous due to
+        internal distributed barriers), but wraps it with CheckpointMonitor
+        notifications on rank 0 to prevent the Synchronizer from reading an
+        incomplete checkpoint.
+        """
+        coordinator = self._get_coordinator()
+        rank = torch.distributed.get_rank()
+        if rank == 0:
+            coordinator.save_sync(
+                lambda: self.actor.save_checkpoint(
+                    local_path, global_step=global_step, max_ckpt_to_keep=max_ckpt_to_keep
+                ),
+                global_step,
+                is_state_dict=True,
+            )
+        else:
+            self.actor.save_checkpoint(
+                local_path, global_step=global_step, max_ckpt_to_keep=max_ckpt_to_keep
+            )
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def wait_on_save_thread(self):
+        """Block until all background save threads complete."""
+        if self._coordinator is not None:
+            self._coordinator.wait_all()
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def upload_state_dict(self, global_step=0):
