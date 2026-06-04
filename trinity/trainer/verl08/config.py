@@ -564,7 +564,7 @@ def _build_mcore_engine_config(cfg: Config) -> dict:
         "context_parallel_size": 1,
         "sequence_parallel": True,
         "use_distributed_optimizer": True,
-        "use_dist_checkpointing": False,
+        "use_dist_checkpointing": True,
         "dist_checkpointing_path": None,
         "dist_ckpt_optim_fully_reshardable": False,
         "distrib_optim_fully_reshardable_mem_efficient": False,
