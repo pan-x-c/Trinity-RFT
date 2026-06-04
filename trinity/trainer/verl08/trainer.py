@@ -505,9 +505,9 @@ class VERLTrainer(TrainEngineWrapper):
             if self.algorithm.compute_advantage_in_trainer:
                 with marked_timer("adv", timing_raw):
                     batch, kl_metrics = self.kl_fn.apply_kl_penalty_to_reward(batch)
-                    metrics.update(prefix_metrics(kl_metrics, prefix="actor"))
-                    batch, metrics = self.advantage_fn(batch)
-                    metrics.update(prefix_metrics(metrics, prefix="actor"))
+                    metrics.update(prefix_metrics(kl_metrics, prefix="advantage"))
+                    batch, adv_metrics = self.advantage_fn(batch)
+                    metrics.update(prefix_metrics(adv_metrics, prefix="advantage"))
             else:
                 if "token_level_scores" in batch.batch.keys():
                     assert "token_level_rewards" not in batch.batch.keys()
