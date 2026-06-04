@@ -92,9 +92,41 @@ Stop the Docker test environment after use:
 bash docker/stop.sh
 ```
 
+## Remote Testing
+
+When working from a machine that cannot run the Docker environment (e.g. macOS without GPU), use `sync.sh` and `remote_run.sh` to sync code and run tests on a remote GPU server.
+
+### Remote Setup
+
+1. Copy `docker/remote.env.example` to `docker/remote.env`.
+2. Fill in the remote server details (`TRINITY_REMOTE_HOST`, `TRINITY_REMOTE_WORKSPACE`).
+3. Make sure SSH key authentication is configured for the remote host.
+4. The remote machine must already have its own `docker/env` and a running Docker environment (`bash docker/start.sh`).
+
+`docker/remote.env` is gitignored and is not synced to the remote, so it will not interfere with the remote machine's own `docker/env`.
+
+### Sync Code
+
+```bash
+bash docker/sync.sh              # sync local code to remote workspace
+bash docker/sync.sh --dry-run    # preview what would be synced
+```
+
+### Run Tests Remotely
+
+```bash
+bash docker/remote_run.sh --module common
+bash docker/remote_run.sh --module common --keyword test_config
+bash docker/remote_run.sh --module explorer --no-sync --timeout 300
+```
+
+`remote_run.sh` syncs code first (unless `--no-sync` is passed), then runs `docker/run.sh` on the remote machine via SSH.
+
 ## Script Roles
 
-- [start.sh](/nas/pxc/rft/Trinity-RFT/docker/start.sh): starts the test environment.
-- [status.sh](/nas/pxc/rft/Trinity-RFT/docker/status.sh): checks container state and Ray health.
-- [run.sh](/nas/pxc/rft/Trinity-RFT/docker/run.sh): runs pytest in the Docker test environment.
-- [stop.sh](/nas/pxc/rft/Trinity-RFT/docker/stop.sh): shuts the test environment down cleanly.
+- [start.sh](start.sh): starts the test environment.
+- [status.sh](status.sh): checks container state and Ray health.
+- [run.sh](run.sh): runs pytest in the Docker test environment.
+- [stop.sh](stop.sh): shuts the test environment down cleanly.
+- [sync.sh](sync.sh): syncs local code to a remote workspace via rsync.
+- [remote_run.sh](remote_run.sh): syncs code and runs tests on a remote server.
