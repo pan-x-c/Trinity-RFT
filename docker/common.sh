@@ -68,12 +68,16 @@ init_docker_compose() {
     load_docker_env || return 1
 
     COMPOSE_CMD=(docker compose -f "$COMPOSE_FILE")
+    if [[ -n "${TRINITY_COMPOSE_PROJECT_NAME:-}" ]]; then
+        COMPOSE_CMD+=(-p "$TRINITY_COMPOSE_PROJECT_NAME")
+    fi
     if ! "${COMPOSE_CMD[@]}" version >/dev/null 2>&1; then
         docker_fail "Docker Compose is not available. Make sure 'docker compose' works on this machine."
         return 1
     fi
 
     for required_var in \
+        TRINITY_COMPOSE_PROJECT_NAME \
         TRINITY_DOCKER_IMAGE \
         TRINITY_MOUNT_DIR \
         TRINITY_RAY_DASHBOARD_PORT \
