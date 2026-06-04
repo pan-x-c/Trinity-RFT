@@ -564,7 +564,7 @@ def _build_mcore_engine_config(cfg: Config) -> dict:
         "context_parallel_size": 1,
         "sequence_parallel": True,
         "use_distributed_optimizer": True,
-        "use_dist_checkpointing": True,
+        "use_dist_checkpointing": False,
         "dist_checkpointing_path": None,
         "dist_ckpt_optim_fully_reshardable": False,
         "distrib_optim_fully_reshardable_mem_efficient": False,
@@ -684,7 +684,7 @@ def _build_checkpoint_config(
         "save_contents": save_contents,
         "load_contents": load_contents,
         "async_save": False,
-        "mbridge_config": {"distributed_filesystem": True, "memory_efficient": True},
+        "mbridge_config": {"distributed_filesystem": True, "memory_efficient": True, "strict": False},
     }
 
 
