@@ -96,14 +96,24 @@ bash docker/stop.sh
 
 When working from a machine that cannot run the Docker environment (e.g. macOS without GPU), use `sync.sh` and `remote_run.sh` to sync code and run tests on a remote GPU server.
 
-### Remote Setup
+### Prepare the GPU Server
+
+SSH into the remote GPU server and follow the [Test Environment Setup](#test-environment-setup) section above to set up `docker/env`, then start the Docker environment:
+
+```bash
+bash docker/start.sh
+bash docker/status.sh   # verify containers and Ray are healthy
+```
+
+The Docker environment should stay running on the GPU server. You do not need to restart it for each test run.
+
+### Local Setup
 
 1. Copy `docker/remote.env.example` to `docker/remote.env`.
 2. Fill in the remote server details (`TRINITY_REMOTE_HOST`, `TRINITY_REMOTE_WORKSPACE`).
 3. Make sure SSH key authentication is configured for the remote host.
-4. The remote machine must already have its own `docker/env` and a running Docker environment (`bash docker/start.sh`).
 
-`docker/remote.env` is gitignored and is not synced to the remote, so it will not interfere with the remote machine's own `docker/env`.
+`docker/remote.env` is gitignored and is not synced to the remote
 
 ### Sync Code
 
