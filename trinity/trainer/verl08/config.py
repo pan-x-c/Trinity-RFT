@@ -684,7 +684,11 @@ def _build_checkpoint_config(
         "save_contents": save_contents,
         "load_contents": load_contents,
         "async_save": False,
-        "mbridge_config": {"distributed_filesystem": True, "memory_efficient": True, "strict": False},
+        "mbridge_config": {
+            "distributed_filesystem": True,
+            "memory_efficient": True,
+            "strict": False,
+        },
     }
 
 
