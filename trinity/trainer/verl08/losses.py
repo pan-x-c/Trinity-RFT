@@ -85,6 +85,12 @@ class TrinityPolicyLoss:
             prefix_metrics(src_metrics=kl_loss_metrics, prefix="actor", dst_metrics=metrics)
             policy_loss = policy_loss + kl_loss
 
+        # final_loss: the unscaled combined loss (pg - entropy + kl), aligned
+        # with the old dp_actor's actor/final_loss metric.  veRL's engine also
+        # reports "loss" (sum across micro-batches, DP-averaged), but that has
+        # different scaling semantics.
+        metrics["final_loss"] = policy_loss.detach().item()
+
         return policy_loss, metrics
 
     def __repr__(self) -> str:
