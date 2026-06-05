@@ -170,7 +170,6 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
 
         import json
         import os
-        from collections import OrderedDict
         from dataclasses import asdict
 
         from safetensors.torch import save_file
@@ -189,12 +188,12 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
 
         try:
             if fsdp_version(model) > 0:
-                from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-
                 model = model.to(torch.cuda.current_device())
                 lora_params = layered_summon_lora_params(model)
                 if rank == 0:
-                    save_file(lora_params, os.path.join(lora_save_path, "adapter_model.safetensors"))
+                    save_file(
+                        lora_params, os.path.join(lora_save_path, "adapter_model.safetensors")
+                    )
                     with open(
                         os.path.join(lora_save_path, "adapter_config.json"),
                         "w",
