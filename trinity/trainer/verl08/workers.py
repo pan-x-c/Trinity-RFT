@@ -152,6 +152,83 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                 cls._build_lora_module = _patched_build_lora_module
                 break
 
+    def _save_lora(self, local_path: str):
+        """Save LoRA adapter weights alongside the checkpoint.
+
+        The Explorer needs the LoRA adapter at ``{local_path}/lora_adapter``
+        to reload weights into vLLM after checkpoint sync. This mirrors the
+        logic in the legacy ``fsdp_workers.py`` ``_save_lora`` method.
+        """
+        if self.actor is None or not hasattr(self.actor, "engine"):
+            return
+        engine = self.actor.engine
+        model = engine.module
+        # Check if model is a PeftModel
+        peft_model = getattr(model, "_fsdp_wrapped_module", model)
+        if not hasattr(peft_model, "peft_config"):
+            return
+
+        import json
+        import os
+        from collections import OrderedDict
+        from dataclasses import asdict
+
+        from safetensors.torch import save_file
+        from verl.utils.fsdp_utils import fsdp_version, layered_summon_lora_params
+
+        rank = torch.distributed.get_rank()
+        lora_save_path = os.path.join(local_path, "lora_adapter")
+
+        peft_config = {}
+        if rank == 0:
+            os.makedirs(lora_save_path, exist_ok=True)
+            peft_config = asdict(peft_model.peft_config.get("default", {}))
+            peft_config["task_type"] = peft_config["task_type"].value
+            peft_config["peft_type"] = peft_config["peft_type"].value
+            peft_config["target_modules"] = list(peft_config["target_modules"])
+
+        try:
+            if fsdp_version(model) > 0:
+                from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+                model = model.to(torch.cuda.current_device())
+                lora_params = layered_summon_lora_params(model)
+                if rank == 0:
+                    save_file(lora_params, os.path.join(lora_save_path, "adapter_model.safetensors"))
+                    with open(
+                        os.path.join(lora_save_path, "adapter_config.json"),
+                        "w",
+                        encoding="utf-8",
+                    ) as f:
+                        json.dump(peft_config, f, ensure_ascii=False, indent=4)
+            else:
+                # FSDP2: parameters are DTensors, use full_tensor() to collect
+                from peft.utils.save_and_load import get_peft_model_state_dict
+
+                state_dict = {}
+                for name, param in model.named_parameters():
+                    if hasattr(param, "full_tensor"):
+                        state_dict[name] = param.full_tensor().detach().cpu()
+                    else:
+                        state_dict[name] = param.detach().cpu()
+                lora_params = get_peft_model_state_dict(peft_model, state_dict=state_dict)
+                if rank == 0:
+                    save_file(
+                        dict(lora_params),
+                        os.path.join(lora_save_path, "adapter_model.safetensors"),
+                    )
+                    with open(
+                        os.path.join(lora_save_path, "adapter_config.json"),
+                        "w",
+                        encoding="utf-8",
+                    ) as f:
+                        json.dump(peft_config, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            self.logger.error(f"Save LoRA adapter error: {e}")
+
+        torch.distributed.barrier()
+        self.logger.info(f"Saved LoRA adapter to: {lora_save_path}")
+
     def _cache_state_dict_meta(self):
         """Cache state_dict meta (names, dtypes, shapes) without full materialization.
 
@@ -284,6 +361,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             megatron_save_state_dict(self.actor.engine, local_path, global_step, coordinator)
         else:
             raise ValueError(f"Unsupported strategy for save_state_dict: {strategy}")
+        self._save_lora(local_path)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(self, local_path, global_step=0, **kwargs):
@@ -308,6 +386,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             )
         else:
             self.actor.save_checkpoint(local_path, global_step=global_step)
+        self._save_lora(local_path)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def wait_on_save_thread(self):
