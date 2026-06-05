@@ -315,6 +315,30 @@ def get_verl_checkpoint_info(
 
 
 # modified from verl/model_merger/fsdp_model_merger.py
+def _infer_world_size_from_checkpoint(checkpoint_path: str) -> int:
+    """Infer FSDP world_size from shard filenames in *checkpoint_path*.
+
+    The sharded state dicts are named ``model_world_size_{N}_rank_{M}.pt``.
+    We glob for rank-0 files and extract *N*.  This avoids depending on
+    ``fsdp_config.json`` which ``save_state_dict`` (weight-sync shortcut)
+    does not produce.
+    """
+    import glob
+    import re
+
+    pattern = os.path.join(checkpoint_path, "model_world_size_*_rank_0.pt")
+    matches = glob.glob(pattern)
+    if not matches:
+        raise FileNotFoundError(
+            f"No FSDP shard files matching {pattern} found in {checkpoint_path}"
+        )
+    # Extract world_size from the first (and usually only) match.
+    m = re.search(r"model_world_size_(\d+)_rank_0\.pt$", matches[0])
+    if m is None:
+        raise ValueError(f"Cannot parse world_size from filename: {matches[0]}")
+    return int(m.group(1))
+
+
 def load_fsdp_state_dict_from_verl_checkpoint(checkpoint_path: str) -> dict:  # noqa: C901
     """Load state dict from a Verl checkpoint."""
 
@@ -332,7 +356,14 @@ def load_fsdp_state_dict_from_verl_checkpoint(checkpoint_path: str) -> dict:  # 
     )
     merger = FSDPModelMerger(config)
 
-    world_size = merger._get_world_size()
+    # Prefer fsdp_config.json (written by full checkpoints), fall back to
+    # inferring from shard filenames (weight-sync state dicts).
+    try:
+        world_size = merger._get_world_size()
+    except FileNotFoundError:
+        world_size = _infer_world_size_from_checkpoint(checkpoint_path)
+        logger.info(f"Inferred world_size={world_size} from shard filenames")
+
     rank_zero_state_dict = merger._load_rank_zero_state_dict(world_size)
 
     mesh, mesh_dim_names = merger._extract_device_mesh_info(rank_zero_state_dict, world_size)

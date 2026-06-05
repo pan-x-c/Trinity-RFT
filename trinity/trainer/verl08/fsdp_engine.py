@@ -36,12 +36,15 @@ from trinity.utils.log import get_logger
 logger = get_logger(__name__)
 
 
-def _save_hf_config_and_tokenizer(engine, local_path: str):
+def _save_checkpoint_metadata(engine, local_path: str):
     """Save HF model config and tokenizer to ``{local_path}/huggingface/``.
 
     ``FSDPModelMerger`` (used by Synchronizer to load sharded checkpoints)
     requires ``config.json`` to understand the model structure.  This is
     cheap — only a few small JSON files, no model weights.
+
+    ``fsdp_config.json`` is NOT saved here — the loading side infers
+    ``world_size`` from shard filenames instead.
     """
     from verl.utils.fsdp_utils import fsdp_version
 
@@ -109,9 +112,10 @@ def fsdp_save_state_dict(
         with get_fsdp_state_ctx(model, StateDictType.SHARDED_STATE_DICT, state_dict_cfg, optim_cfg):
             state_dict = model.state_dict()
 
-    # Save HF config/tokenizer on rank 0 so FSDPModelMerger can merge shards.
+    # Save metadata (HF config/tokenizer + fsdp_config.json) on rank 0
+    # so FSDPModelMerger can merge the shards.
     if rank == 0:
-        _save_hf_config_and_tokenizer(engine, local_path)
+        _save_checkpoint_metadata(engine, local_path)
 
     path = os.path.join(local_path, f"model_world_size_{world_size}_rank_{rank}.pt")
 
