@@ -866,6 +866,7 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
         self.config.trainer.save_interval = 2
         self.config.trainer.save_hf_checkpoint = "last"
+        self.config.trainer.trainer_type = TRAINER_TYPE
         self.config.trainer.trainer_strategy = self.strategy
         self.config.trainer.max_checkpoints_to_keep = 2
         self.config.check_and_update()
@@ -873,14 +874,13 @@ class TestTrainerCheckpointSave(unittest.TestCase):
 
     def test_trainer(self):  # noqa: C901
         """Test the checkpoint saving."""
-        _trainer_config = self.config.trainer.trainer_config
 
         stop_event = multiprocessing.Event()
         trainer_process = multiprocessing.Process(target=run_both, args=(self.config, stop_event))
         trainer_process.start()
         self.process_list.append(trainer_process)
 
-        default_local_dir = _trainer_config.trainer.default_local_dir
+        default_local_dir = self.config.checkpoint_job_dir
         state_dict_iteration = checkpoint_iteration = 0
         state_dict_iteration_file = os.path.join(
             default_local_dir, "latest_state_dict_iteration.txt"
