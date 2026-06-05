@@ -9,11 +9,11 @@ Key additions over the base class:
 - set_algorithm(): injects Trinity's pluggable loss function
 - save_state_dict / upload_state_dict / sync_weight_nccl: Trinity-specific
   checkpoint and weight sync methods that delegate to strategy-specific helpers
-- init_weights_update_group: NCCL weight sync group setup for Explorer↔Trainer
+- get_weight_sync_info / setup_weight_sync_group / teardown_weight_sync_group:
+  NCCL weight sync group lifecycle for Explorer↔Trainer
 """
 from typing import Optional
 
-import ray
 import torch
 from omegaconf import DictConfig
 from verl.single_controller.base.decorator import Dispatch, register
@@ -36,7 +36,8 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
     - set_algorithm(): injects Trinity's pluggable loss function (policy + KL + entropy)
     - save_state_dict / upload_state_dict: checkpoint and memory-based weight sync
     - sync_weight_nccl: NCCL-based weight broadcast for Explorer↔Trainer
-    - init_weights_update_group: sets up NCCL process group for weight sync
+    - get_weight_sync_info / setup_weight_sync_group / teardown_weight_sync_group:
+      NCCL weight sync group lifecycle (setup is driven by Synchronizer)
     - Applies Trinity-specific monkey patches after model init
     """
 
@@ -92,6 +93,39 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                     fused_kernels_backend=fused_kernels_backend,
                 )
 
+        self._cache_state_dict_meta()
+
+    def _cache_state_dict_meta(self):
+        """Cache state_dict meta (names, dtypes, shapes) without full materialization.
+
+        For FSDP2/DTensor: state_dict() returns DTensors whose .shape is the
+        global shape — no full_tensor() needed. Only the meta is extracted.
+        For Megatron: iterate the tensor generator for meta only.
+        """
+        if self.actor is None:
+            return
+        strategy = self.config.actor.strategy
+        if strategy.startswith("fsdp"):
+            from verl.utils.model import convert_weight_keys
+
+            model = self.actor.engine.module
+            unwrapped = getattr(model, "_fsdp_wrapped_module", model)
+            params = model.state_dict()
+            params = convert_weight_keys(params, unwrapped)
+            self._state_dict_meta_list = [
+                (name, "bfloat16", tuple(p.shape)) for name, p in params.items()
+            ]
+            del params
+        elif strategy.startswith("megatron"):
+            per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
+            self._state_dict_meta_list = [
+                (name, str(param.dtype).split(".")[-1], tuple(param.shape))
+                for name, param in per_tensor_param
+            ]
+        self.logger.info(
+            f"Cached state_dict meta: {len(self._state_dict_meta_list or [])} parameters"
+        )
+
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def set_algorithm(self, algo_config: AlgorithmConfig):
         """Set Trinity's algorithm config and rebuild loss function.
@@ -106,30 +140,32 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             self.actor.set_loss_fn(loss_fn)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def setup_weight_sync_group(self, world_size: int, ray_namespace: str, timeout: int):
-        """Initialize the weight update group for distributed training.
+    def get_weight_sync_info(self):
+        """Return (addr, port, state_dict_meta) from rank 0 for NCCL group setup.
 
-        This method sets up the NCCL process group responsible for synchronizing
-        model weights between the Trainer and Explorer. It runs only on rank 0
-        and coordinates with the Synchronizer actor.
+        Uses cached meta from init_model() — no parameter materialization.
+        Other ranks return None.
         """
-        per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
-        # All ranks must iterate the generator — full_tensor() is an FSDP collective.
-        state_dict_meta_list = [
-            (name, str(param.dtype).split(".")[-1], param.shape) for name, param in per_tensor_param
-        ]
         if torch.distributed.get_rank() == 0:
-            self._state_dict_meta_list = state_dict_meta_list
             aggressive_empty_cache(force_sync=True)
-            master_address, master_port = self.get_available_master_addr_port()
+            addr, port = self.get_available_master_addr_port()
+            self.logger.info(f"Weight sync info: {addr}:{port}")
+            return addr, int(port), self._state_dict_meta_list
+        return None
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def setup_weight_sync_group(
+        self, master_address: str, master_port: int, world_size: int, timeout: int
+    ):
+        """Join the NCCL process group for weight sync.
+
+        Called concurrently with Explorer's setup_weight_sync_group.
+        Only rank 0 creates the process group.
+        """
+        if torch.distributed.get_rank() == 0:
             self.logger.info(
                 f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
             )
-            synchronizer = Synchronizer.get_actor(namespace=ray_namespace)
-            setup_ref = synchronizer.setup_weight_sync_group.remote(
-                master_address, master_port, self._state_dict_meta_list
-            )
-            self.logger.info("Trainer start init_process_group.")
             self._model_update_group = init_process_group(
                 host=master_address,
                 port=int(master_port),
@@ -139,9 +175,15 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                 world_size=world_size,
                 rank=0,
             )
-            self.logger.info("Trainer init_process_group done, wait for explorer confirmation.")
-            ray.get(setup_ref)
-            self.logger.info("Trainer explorer setup confirmation received.")
+            self.logger.info("Trainer init_process_group done.")
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def teardown_weight_sync_group(self):
+        """Destroy the NCCL process group for weight sync."""
+        if torch.distributed.get_rank() == 0 and self._model_update_group is not None:
+            self.logger.info("Tearing down weight sync group.")
+            torch.distributed.destroy_process_group(self._model_update_group)
+            self._model_update_group = None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def sync_weight_nccl(self):

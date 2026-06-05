@@ -61,6 +61,12 @@ class WorkerExtension:
         self.synchronizer = Synchronizer.get_actor(namespace=self._namespace)
         self._checkpoint_converter = None
 
+    def teardown_process_group(self):
+        """Destroy the NCCL process group for weight sync."""
+        if hasattr(self, "_model_update_group") and self._model_update_group is not None:
+            torch.distributed.destroy_process_group(self._model_update_group)
+            self._model_update_group = None
+
     def update_weight(self):
         """Broadcast weight to all vllm workers from source rank 0 (actor model)"""
         if self._weight_update_rank == 0:

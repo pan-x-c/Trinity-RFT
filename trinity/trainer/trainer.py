@@ -8,7 +8,7 @@ import asyncio
 import time
 import traceback
 from abc import ABC, abstractmethod
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import ray
@@ -73,6 +73,25 @@ class Trainer:
         self.last_sync_step = self.train_step_num
         await self.synchronizer.set_trainer_status.remote(RunningStatus.RUNNING)
         self.logger.info("Trainer is ready.")
+
+    async def get_weight_sync_info(self) -> Optional[Tuple[str, int, List]]:
+        """Get rendezvous info for NCCL weight sync group setup.
+
+        Returns (master_address, master_port, state_dict_meta) from the
+        trainer's GPU worker rank 0. Called by Synchronizer before
+        coordinating NCCL group creation.
+        """
+        return await self.engine.get_weight_sync_info()
+
+    async def setup_weight_sync_group(
+        self, master_address: str, master_port: int, world_size: int, timeout: int
+    ) -> None:
+        """Join the NCCL weight sync group. Called by Synchronizer."""
+        await self.engine.setup_weight_sync_group(master_address, master_port, world_size, timeout)
+
+    async def teardown_weight_sync_group(self) -> None:
+        """Destroy the NCCL weight sync group. Called by Synchronizer."""
+        await self.engine.teardown_weight_sync_group()
 
     async def train(self) -> str:
         """Train the model."""
@@ -274,6 +293,20 @@ class TrainEngineWrapper(ABC):
     @abstractmethod
     async def save_state_dict(self) -> None:
         """Only save the model state dict for Synchronizer.  (For `CHECKPOINT` sync method)"""
+
+    @abstractmethod
+    async def get_weight_sync_info(self) -> Optional[Tuple[str, int, List]]:
+        """Get (master_address, master_port, state_dict_meta) for NCCL group setup."""
+
+    @abstractmethod
+    async def setup_weight_sync_group(
+        self, master_address: str, master_port: int, world_size: int, timeout: int
+    ) -> None:
+        """Join the NCCL weight sync group."""
+
+    @abstractmethod
+    async def teardown_weight_sync_group(self) -> None:
+        """Tear down the NCCL weight sync group."""
 
 
 def get_trainer_wrapper(config: Config) -> TrainEngineWrapper:

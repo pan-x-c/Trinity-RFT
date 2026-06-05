@@ -57,7 +57,7 @@ from verl.workers.utils.padding import left_right_2_no_padding, no_padding_2_pad
 from trinity.algorithm import ADVANTAGE_FN, ALGORITHM_TYPE, KL_FN
 from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import Config
-from trinity.common.constants import SaveStrategy, SyncMethod
+from trinity.common.constants import SaveStrategy
 from trinity.common.experience import Experience
 from trinity.trainer.trainer import TrainEngineWrapper
 from trinity.trainer.verl08.config import build_verl_config
@@ -438,16 +438,29 @@ class VERLTrainer(TrainEngineWrapper):
         return self.global_steps
 
     async def prepare(self):
-        if self.global_config.synchronizer.sync_method == SyncMethod.NCCL:
-            self.actor_rollout_wg.setup_weight_sync_group(
-                world_size=self.global_config.synchronizer.explorer_world_size
-                + 1,  # +1 for trainer
-                ray_namespace=self.global_config.synchronizer.ray_namespace,
-                timeout=self.config.synchronizer.sync_timeout,
-            )
         self.actor_rollout_wg.set_algorithm(self.algorithm_config)
         self.global_steps = 0
         self._load_checkpoint()
+
+    async def get_weight_sync_info(self):
+        results = self.actor_rollout_wg.get_weight_sync_info()
+        for r in results:
+            if r is not None:
+                return r
+        raise RuntimeError("Failed to get weight sync info from rank 0")
+
+    async def setup_weight_sync_group(
+        self, master_address: str, master_port: int, world_size: int, timeout: int
+    ):
+        self.actor_rollout_wg.setup_weight_sync_group(
+            master_address=master_address,
+            master_port=master_port,
+            world_size=world_size,
+            timeout=timeout,
+        )
+
+    async def teardown_weight_sync_group(self):
+        self.actor_rollout_wg.teardown_weight_sync_group()
 
     async def train_step(self, batch_exps: List[Experience]) -> Dict:  # noqa: C901
         batch = to_data_proto(

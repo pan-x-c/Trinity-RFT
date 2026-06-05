@@ -303,6 +303,11 @@ class SGLangRolloutModel(BaseInferenceModel):
         self._has_weight_update_group = resp
         return resp
 
+    async def teardown_process_group(self):
+        """Destroy the weight update group."""
+        self._has_weight_update_group = False
+        self.state_dict_meta = []
+
     async def _initialize_tokenizer(self) -> None:
         if self.tokenizer is not None:
             return

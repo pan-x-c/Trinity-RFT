@@ -138,6 +138,11 @@ class Explorer:
         ]
         await asyncio.gather(*refs)
 
+    async def teardown_weight_sync_group(self):
+        """Destroy the NCCL process group on all model workers."""
+        refs = [model.teardown_process_group() for model in self.models]
+        await asyncio.gather(*refs)
+
     async def setup_model_level_weight_sync_group(self):
         """Setup process group for each model, only used in serve mode."""
         await self._wait_for_models_ready()
