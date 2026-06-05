@@ -46,23 +46,17 @@ class TrinityPolicyLoss:
         if entropy is not None:
             entropy = no_padding_2_padding(entropy, data)
 
-        fields = ["response_mask", "old_log_probs", "advantages"]
-        if "rollout_is_weights" in data.keys():
-            fields.append("rollout_is_weights")
-        if "ref_log_prob" in data.keys():
-            fields.append("ref_log_prob")
+        fields = ["response_mask"]
+        for optional_field in ["old_log_probs", "advantages", "rollout_is_weights", "ref_log_prob"]:
+            if optional_field in data.keys():
+                fields.append(optional_field)
         padded_data = data.select(*fields).to_padded_tensor()
 
         response_mask = padded_data["response_mask"].to(bool)
-        model_inputs = {
-            "response_mask": response_mask,
-            "old_log_probs": padded_data["old_log_probs"],
-            "advantages": padded_data["advantages"],
-        }
-        if "rollout_is_weights" in padded_data.keys():
-            model_inputs["rollout_is_weights"] = padded_data["rollout_is_weights"]
-        if "ref_log_prob" in padded_data.keys():
-            model_inputs["ref_log_prob"] = padded_data["ref_log_prob"]
+        model_inputs = {"response_mask": response_mask}
+        for key in ["old_log_probs", "advantages", "rollout_is_weights", "ref_log_prob"]:
+            if key in padded_data.keys():
+                model_inputs[key] = padded_data[key]
 
         metrics = {}
 
