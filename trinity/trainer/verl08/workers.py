@@ -64,6 +64,13 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """
         from trinity.trainer.verl.monkey_patch import apply_monkey_patch
 
+        # Patch veRL engine for LoRA + FSDP2 dtype alignment.
+        # veRL's _build_lora_module does not align trainable param dtypes
+        # to the FSDP2 mixed-precision param_dtype, causing a gradient dtype
+        # mismatch during backward. We monkey-patch _build_lora_module to add
+        # the alignment step that the legacy fsdp_workers.py had.
+        self._maybe_patch_lora_fsdp2()
+
         # Strip "rollout" from role so the base class skips rollout engine init.
         # veRL checks `if "rollout" in self.role:` to decide whether to build
         # the rollout engine — Trinity handles rollout in Explorer, not Trainer.
@@ -94,6 +101,56 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                 )
 
         self._cache_state_dict_meta()
+
+    def _maybe_patch_lora_fsdp2(self):
+        """Monkey-patch veRL engine to align LoRA param dtypes for FSDP2.
+
+        When LoRA is used with FSDP2, PEFT may create adapter parameters in
+        fp32 while FSDP2 produces bf16 gradients (from MixedPrecisionPolicy
+        param_dtype). This causes a RuntimeError during backward because the
+        gradient dtype doesn't match the parameter's grad_dtype.
+
+        We wrap the engine's _build_lora_module to cast all trainable params
+        to the FSDP2 param_dtype (bf16) after LoRA creation, before FSDP2
+        wrapping — matching the legacy fsdp_workers.py behavior.
+        """
+        is_lora = (
+            self.config.model.get("lora_rank", 0) > 0
+            or self.config.model.get("lora_adapter_path") is not None
+        )
+        strategy = self.config.actor.get("strategy", "fsdp2")
+        if not is_lora or strategy != "fsdp2":
+            return
+
+        from verl.utils.torch_dtypes import PrecisionType
+        from verl.workers.engine.fsdp import transformer_impl as fsdp_impl
+
+        mixed_precision_config = self.config.actor.get("fsdp_config", {}).get("mixed_precision")
+        if mixed_precision_config is not None:
+            param_dtype = PrecisionType.to_dtype(mixed_precision_config.get("param_dtype", "bf16"))
+        else:
+            param_dtype = torch.bfloat16
+
+        # Find the base FSDP engine class that defines _build_lora_module.
+        # Use attribute lookup to be robust across veRL versions.
+        for name in dir(fsdp_impl):
+            cls = getattr(fsdp_impl, name)
+            if (
+                isinstance(cls, type)
+                and hasattr(cls, "_build_lora_module")
+                and "_build_lora_module" in cls.__dict__
+            ):
+                original_build_lora = cls._build_lora_module
+
+                def _patched_build_lora_module(engine_self, module, _orig=original_build_lora):
+                    module = _orig(engine_self, module)
+                    for param in module.parameters():
+                        if param.requires_grad and param.dtype != param_dtype:
+                            param.data = param.data.to(dtype=param_dtype)
+                    return module
+
+                cls._build_lora_module = _patched_build_lora_module
+                break
 
     def _cache_state_dict_meta(self):
         """Cache state_dict meta (names, dtypes, shapes) without full materialization.

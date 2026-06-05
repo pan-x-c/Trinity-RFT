@@ -423,7 +423,7 @@ class VERLTrainer(TrainEngineWrapper):
         self.actor_rollout_wg = all_wg[str(actor_role)]
         self.actor_rollout_wg.init_model()
         self.logger.info("actor and ref model engine initialized")
-        if self.use_reference_policy:
+        if self.use_reference_policy and not self.ref_in_actor:
             self.ref_policy_wg = all_wg[str(Role.ActorRolloutRef)]
 
         # Checkpoint saving is handled by worker-level save_checkpoint / save_state_dict
