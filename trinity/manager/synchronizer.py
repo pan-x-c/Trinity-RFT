@@ -310,26 +310,30 @@ class Synchronizer:
             state_dict_meta: Metadata of the model parameters.
         """
         explorer = ray.get_actor(self.config.explorer.name, namespace=self.config.ray_namespace)
-        await explorer.setup_weight_sync_group.remote(master_address, master_port, state_dict_meta)
+        await explorer.setup_weight_sync_group.remote(master_address, master_port)
+        if state_dict_meta is not None:
+            await explorer.set_state_dict_meta.remote(state_dict_meta)
 
     async def coordinate_weight_sync_setup(self, timeout: int = None):
         """Orchestrate NCCL weight sync group setup between Trainer and Explorer.
 
         1. Get rendezvous info (addr/port/meta) from Trainer
         2. Both Trainer and Explorer join the NCCL group concurrently
+        3. Set state_dict_meta on Explorer for weight sync
         """
         trainer = ray.get_actor(self.config.trainer.name, namespace=self.config.ray_namespace)
         explorer = ray.get_actor(self.config.explorer.name, namespace=self.config.ray_namespace)
 
         addr, port, meta = await trainer.get_weight_sync_info.remote()
-        world_size = self.config.synchronizer.explorer_world_size + 1
+        world_size = self.config.synchronizer.explorer_world_size + 1  # type: ignore
         timeout = timeout or self.config.synchronizer.sync_timeout
 
         self.logger.info(f"Coordinating weight sync setup: {addr}:{port}, world_size={world_size}")
         await asyncio.gather(
             trainer.setup_weight_sync_group.remote(addr, port, world_size, timeout),
-            explorer.setup_weight_sync_group.remote(addr, port, meta),
+            explorer.setup_weight_sync_group.remote(addr, port, world_size, timeout),
         )
+        await explorer.set_state_dict_meta.remote(meta)
         self.logger.info("Weight sync group setup complete.")
 
     async def coordinate_weight_sync_teardown(self):

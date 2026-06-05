@@ -109,13 +109,21 @@ class Explorer:
         self.logger.info("Rollout models are ready. Continue weight sync initialization.")
 
     async def setup_weight_sync_group(
-        self, master_address: str, master_port: int, state_dict_meta: List = None
+        self,
+        master_address: str,
+        master_port: int,
+        world_size: int = None,
+        timeout: int = None,
     ):
         await self._wait_for_models_ready()
         base_offset = 1 if self.use_nccl_sync else 0
-        world_size = (
-            len(self.models) * self.config.explorer.rollout_model.tensor_parallel_size + base_offset
-        )
+        if world_size is None:
+            world_size = (
+                len(self.models) * self.config.explorer.rollout_model.tensor_parallel_size
+                + base_offset
+            )
+        if timeout is None:
+            timeout = self.config.synchronizer.sync_timeout
         self.logger.info(
             f"Initialize process group for weight synchronization, "
             f"master_address={master_address}, master_port={master_port}, "
@@ -131,11 +139,19 @@ class Explorer:
                 world_size=world_size,
                 group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
                 explorer_name=self.config.explorer.name,
-                timeout=self.config.synchronizer.sync_timeout,
-                state_dict_meta=state_dict_meta,
+                timeout=timeout,
             )
             for i, model in enumerate(self.models)
         ]
+        await asyncio.gather(*refs)
+
+    async def set_state_dict_meta(self, state_dict_meta: List):
+        """Set the state_dict meta on all model workers for NCCL weight sync.
+
+        Must be called after setup_weight_sync_group and before the first
+        sync_model_weights call.
+        """
+        refs = [model.set_state_dict_meta(state_dict_meta) for model in self.models]
         await asyncio.gather(*refs)
 
     async def teardown_weight_sync_group(self):

@@ -27,7 +27,6 @@ class WorkerExtension:
         group_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
-        state_dict_meta: list = None,
         explorer_name: str = None,
         namespace: str = None,
     ):
@@ -37,7 +36,7 @@ class WorkerExtension:
 
         assert torch.distributed.is_initialized(), "default torch process group must be initialized"
         assert group_name != "", "group name must not be empty"
-        self._state_dict_meta = state_dict_meta
+        self._state_dict_meta = None
         self._weight_update_rank = rank + rank_offset
         self.logger.info(
             f"vLLM starting init_process_group:\n"
@@ -60,6 +59,10 @@ class WorkerExtension:
         self._namespace = namespace
         self.synchronizer = Synchronizer.get_actor(namespace=self._namespace)
         self._checkpoint_converter = None
+
+    def set_state_dict_meta(self, state_dict_meta: list):
+        """Set the state_dict meta for NCCL weight sync."""
+        self._state_dict_meta = state_dict_meta
 
     def teardown_process_group(self):
         """Destroy the NCCL process group for weight sync."""

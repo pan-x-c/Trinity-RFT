@@ -84,7 +84,11 @@ class Trainer:
         return await self.engine.get_weight_sync_info()
 
     async def setup_weight_sync_group(
-        self, master_address: str, master_port: int, world_size: int, timeout: int
+        self,
+        master_address: str,
+        master_port: int,
+        world_size: int,
+        timeout: int,
     ) -> None:
         """Join the NCCL weight sync group. Called by Synchronizer."""
         await self.engine.setup_weight_sync_group(master_address, master_port, world_size, timeout)
