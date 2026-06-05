@@ -36,6 +36,37 @@ from trinity.utils.log import get_logger
 logger = get_logger(__name__)
 
 
+def _save_hf_config_and_tokenizer(engine, local_path: str):
+    """Save HF model config and tokenizer to ``{local_path}/huggingface/``.
+
+    ``FSDPModelMerger`` (used by Synchronizer to load sharded checkpoints)
+    requires ``config.json`` to understand the model structure.  This is
+    cheap — only a few small JSON files, no model weights.
+    """
+    from verl.utils.fsdp_utils import fsdp_version
+
+    model = engine.module
+    if fsdp_version(model) == 1:
+        unwrapped = getattr(model, "_fsdp_wrapped_module", model)
+    else:
+        unwrapped = model
+
+    hf_path = os.path.join(local_path, "huggingface")
+    local_mkdir_safe(hf_path)
+
+    model_config = unwrapped.config
+    if hasattr(model_config, "auto_map") and None in model_config.auto_map:
+        model_config.auto_map = {k: v for k, v in model_config.auto_map.items() if k is not None}
+    model_config.save_pretrained(hf_path)
+
+    # Save tokenizer / processor if the engine's checkpoint_manager has one.
+    ckpt_mgr = getattr(engine, "checkpoint_manager", None)
+    if ckpt_mgr is not None and getattr(ckpt_mgr, "processing_class", None) is not None:
+        ckpt_mgr.processing_class.save_pretrained(hf_path)
+
+    logger.info(f"Saved HF config/tokenizer to {hf_path}")
+
+
 def fsdp_save_state_dict(
     engine,
     local_path: str,
@@ -47,6 +78,10 @@ def fsdp_save_state_dict(
     Collects the sharded state dict on the main thread (requires FSDP context),
     then offloads ``torch.save`` to a background thread via ``coordinator`` so
     the training loop can continue without waiting for I/O.
+
+    On rank 0, also saves HF model config and tokenizer to
+    ``{local_path}/huggingface/`` so that ``FSDPModelMerger`` (used by
+    Synchronizer) can merge the shards back into a full state dict.
 
     The ``coordinator`` notifies CheckpointMonitor before and after saving, which
     gates the iteration-file update and prevents the Synchronizer from reading
@@ -73,6 +108,10 @@ def fsdp_save_state_dict(
         warnings.simplefilter("ignore")
         with get_fsdp_state_ctx(model, StateDictType.SHARDED_STATE_DICT, state_dict_cfg, optim_cfg):
             state_dict = model.state_dict()
+
+    # Save HF config/tokenizer on rank 0 so FSDPModelMerger can merge shards.
+    if rank == 0:
+        _save_hf_config_and_tokenizer(engine, local_path)
 
     path = os.path.join(local_path, f"model_world_size_{world_size}_rank_{rank}.pt")
 

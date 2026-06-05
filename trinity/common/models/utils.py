@@ -257,12 +257,10 @@ def load_state_dict(checkpoint_dir: str, config: TrainerConfig) -> Union[dict, T
             return load_fsdp_state_dict_from_verl_checkpoint(checkpoint_dir)
         elif strategy == "megatron":
             if config.trainer_type == "verl08":
-                # verl08: megatron config is not in trainer_config,
-                # default to mbridge-based HF checkpointing
-                return load_huggingface_state_dict(
-                    os.path.join(checkpoint_dir, "huggingface"),
-                    trust_remote_code=config.trust_remote_code,
-                )
+                # verl08 uses engine.save_checkpoint which saves megatron-native
+                # format.  Return a ("megatron", dir) tuple so that the caller
+                # (Synchronizer / vLLM worker) converts via mbridge on the fly.
+                return "megatron", checkpoint_dir
             actor_config = config.trainer_config.actor_rollout_ref.actor
             if (
                 actor_config.megatron.use_dist_checkpointing
