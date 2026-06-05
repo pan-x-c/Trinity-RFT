@@ -229,28 +229,28 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             raise ValueError(f"Unsupported strategy for save_state_dict: {strategy}")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def save_checkpoint(self, local_path, global_step=0, max_ckpt_to_keep=None, **kwargs):
+    def save_checkpoint(self, local_path, global_step=0, **kwargs):
         """Save full checkpoint with CheckpointMonitor coordination.
 
         Delegates to the engine's save_checkpoint (which is synchronous due to
         internal distributed barriers), but wraps it with CheckpointMonitor
         notifications on rank 0 to prevent the Synchronizer from reading an
         incomplete checkpoint.
+
+        Note: max_ckpt_to_keep is NOT passed to the engine — checkpoint
+        retention is managed by VERLTrainer to avoid veRL's double-counting
+        bug when the same path is registered multiple times.
         """
         coordinator = self._get_coordinator()
         rank = torch.distributed.get_rank()
         if rank == 0:
             coordinator.save_sync(
-                lambda: self.actor.save_checkpoint(
-                    local_path, global_step=global_step, max_ckpt_to_keep=max_ckpt_to_keep
-                ),
+                lambda: self.actor.save_checkpoint(local_path, global_step=global_step),
                 global_step,
                 is_state_dict=True,
             )
         else:
-            self.actor.save_checkpoint(
-                local_path, global_step=global_step, max_ckpt_to_keep=max_ckpt_to_keep
-            )
+            self.actor.save_checkpoint(local_path, global_step=global_step)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def wait_on_save_thread(self):

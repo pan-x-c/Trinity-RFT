@@ -302,6 +302,7 @@ class VERLTrainer(TrainEngineWrapper):
             default_hdfs_dir=None,
         )
         self.checkpoint_coordinator = CheckpointCoordinator(checkpoint_monitor)
+        self._saved_checkpoint_paths: list[str] = []
         self._init_workers()
 
     def _init_workers(self):
@@ -570,13 +571,10 @@ class VERLTrainer(TrainEngineWrapper):
             f.write("")
 
         actor_local_path = os.path.join(local_global_step_folder, "actor")
-        max_actor_ckpt_to_keep = self.global_config.trainer.max_checkpoints_to_keep
-        max_critic_ckpt_to_keep = self.global_config.trainer.max_checkpoints_to_keep
 
         self.actor_rollout_wg.save_checkpoint(
             local_path=actor_local_path,
             global_step=self.global_steps,
-            max_ckpt_to_keep=max_actor_ckpt_to_keep,
         )
 
         if self.use_critic:
@@ -584,8 +582,12 @@ class VERLTrainer(TrainEngineWrapper):
             self.critic_wg.save_checkpoint(
                 local_path=critic_local_path,
                 global_step=self.global_steps,
-                max_ckpt_to_keep=max_critic_ckpt_to_keep,
             )
+
+        # Manage checkpoint retention at the VERLTrainer level (not inside
+        # the engine) to avoid veRL's double-counting bug when the same path
+        # is registered multiple times.
+        self._retain_checkpoints(local_global_step_folder)
 
         await self.checkpoint_coordinator.register_and_monitor(
             self.global_steps, state_dict_thread_count=1
@@ -593,6 +595,31 @@ class VERLTrainer(TrainEngineWrapper):
 
         if block_until_saved:
             self.actor_rollout_wg.wait_on_save_thread()
+
+    def _retain_checkpoints(self, new_path: str) -> None:
+        """Register a checkpoint path and remove old ones beyond the retention limit.
+
+        Deduplicates: if the same path was already the latest registered (e.g.
+        save_state_dict and save_checkpoint at the same step), it is not
+        counted twice.
+        """
+        import shutil
+
+        new_path = os.path.abspath(new_path)
+        max_keep = self.global_config.trainer.max_checkpoints_to_keep
+
+        # Dedup: skip if this is already the latest registered path
+        if self._saved_checkpoint_paths and self._saved_checkpoint_paths[-1] == new_path:
+            return
+        self._saved_checkpoint_paths.append(new_path)
+
+        if not max_keep or max_keep <= 0:
+            return
+        while len(self._saved_checkpoint_paths) > max_keep:
+            old_path = self._saved_checkpoint_paths.pop(0)
+            if os.path.exists(old_path):
+                self.logger.info(f"Removing old checkpoint: {old_path}")
+                shutil.rmtree(old_path, ignore_errors=True)
 
     def sync_weight_nccl(self) -> None:
         self.actor_rollout_wg.sync_weight_nccl()
