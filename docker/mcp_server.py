@@ -6,95 +6,19 @@ Bash tool avoids Claude Code's sandbox, which blocks outbound SSH connections.
 
 import asyncio
 import os
-import re
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 DOCKER_DIR = os.path.dirname(os.path.abspath(__file__))
 
 mcp = FastMCP("trinity-remote-test")
 
 # ---------------------------------------------------------------------------
-# Output formatting helpers
-# ---------------------------------------------------------------------------
-
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-
-_TEST_NOISE_RE = re.compile(
-    "|".join(
-        [
-            r"\[transformers\] Flash Attention 2",
-            r"Monkey patch _flash_attention_forward",
-            r"Skipping monkey patch for \w+",
-            r"is_fx_tracing will return true",
-            r"Using blocking ray\.get inside async actor",
-            r"Before FSDP, memory",
-            r"After FSDP, memory",
-            r"\w+ForCausalLM contains.*parameters",
-            r"colocated worker base class",
-            r"W\d{4} \d{2}:\d{2}:\d{2}\.\d+ \d+ torch/",
-            r"INFO worker\.py:\d+ -- (Using address|Connecting to existing|Connected to Ray|Calling ray\.init)",
-            r"sys:\d+: DeprecationWarning",
-        ]
-    )
-)
-
-_REPEATED_SUFFIX_RE = re.compile(r"\x1b\[32m\s*\[repeated \d+x across cluster\][^\x1b]*\x1b\[0m")
-
-_RSYNC_ITEMIZE_PREFIX_RE = re.compile(r"^[<>ch.*][fdLDS][.+cstTpoguax]* ")
-
-
-def _clean_output(raw: str) -> str:
-    """Remove noise from combined sync + test output."""
-    lines = raw.split("\n")
-    result: list[str] = []
-    in_warnings_section = False
-    prev_blank = False
-
-    for line in lines:
-        plain = _ANSI_RE.sub("", line).strip()
-
-        # ── pytest warnings summary section: skip entirely ──
-        if "= warnings summary =" in plain:
-            in_warnings_section = True
-            continue
-        if in_warnings_section:
-            if re.match(r"^(\d+ passed|FAILED|ERROR|=)", plain):
-                in_warnings_section = False
-                result.append(line)
-            continue
-
-        # ── rsync --itemize-changes: show only transferred files ──
-        m = _RSYNC_ITEMIZE_PREFIX_RE.match(plain)
-        if m:
-            if plain[1] == "d":
-                continue
-            line = "  " + plain[m.end() :]
-
-        # ── test noise filter ──
-        if plain and _TEST_NOISE_RE.search(plain):
-            continue
-
-        # Strip "[repeated Nx across cluster]" ANSI suffix from kept lines
-        line = _REPEATED_SUFFIX_RE.sub("", line)
-
-        # Collapse consecutive blank lines
-        is_blank = not plain
-        if is_blank and prev_blank:
-            continue
-        prev_blank = is_blank
-
-        result.append(line)
-
-    return "\n".join(result)
-
-
-# ---------------------------------------------------------------------------
 # Script runner
 # ---------------------------------------------------------------------------
 
 
-async def _run_script(cmd: list[str], timeout: int) -> str:
+async def _run_script(cmd: list[str], timeout: int, ctx: Context | None = None) -> str:
     """Run a shell script and return combined stdout+stderr."""
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -102,21 +26,57 @@ async def _run_script(cmd: list[str], timeout: int) -> str:
         stderr=asyncio.subprocess.STDOUT,
         cwd=os.path.join(DOCKER_DIR, ".."),
     )
-    try:
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        return f"Command timed out after {timeout} seconds."
+    assert proc.stdout is not None
 
-    output = stdout.decode(errors="replace") if stdout else ""
+    output_lines: list[str] = []
+    loop = asyncio.get_running_loop()
+    start_time = loop.time()
+    last_heartbeat = start_time
+    heartbeat_interval = 15
+
+    while True:
+        elapsed = loop.time() - start_time
+        remaining = timeout - elapsed
+        if remaining <= 0:
+            proc.kill()
+            await proc.wait()
+            timeout_msg = f"Command timed out after {timeout} seconds."
+            output_lines.append(timeout_msg)
+            if ctx is not None:
+                await ctx.warning(timeout_msg)
+            break
+
+        try:
+            line = await asyncio.wait_for(proc.stdout.readline(), timeout=min(1, remaining))
+        except asyncio.TimeoutError:
+            now = loop.time()
+            if ctx is not None and now - last_heartbeat >= heartbeat_interval:
+                heartbeat_msg = f"Still running after {int(now - start_time)}s..."
+                await ctx.info(heartbeat_msg)
+                await ctx.report_progress(now - start_time, message=heartbeat_msg)
+                last_heartbeat = now
+            continue
+
+        if not line:
+            if proc.stdout.at_eof():
+                break
+            continue
+
+        decoded = line.decode(errors="replace").rstrip("\n")
+        output_lines.append(decoded)
+        if ctx is not None:
+            await ctx.info(decoded)
+
+    output = "\n".join(output_lines)
+    if proc.returncode is None:
+        await proc.wait()
     if proc.returncode != 0:
         output += f"\n[exit code: {proc.returncode}]"
     return output
 
 
 @mcp.tool()
-async def sync_code(dry_run: bool = False) -> str:
+async def sync_code(dry_run: bool = False, ctx: Context | None = None) -> str:
     """Sync local code to the remote GPU server via rsync over SSH.
 
     Only git-tracked files are synced. Untracked files are listed as warnings.
@@ -127,7 +87,7 @@ async def sync_code(dry_run: bool = False) -> str:
     cmd = ["bash", os.path.join(DOCKER_DIR, "sync.sh")]
     if dry_run:
         cmd.append("--dry-run")
-    return _clean_output(await _run_script(cmd, timeout=120))
+    return await _run_script(cmd, timeout=120, ctx=ctx)
 
 
 @mcp.tool()
@@ -137,6 +97,7 @@ async def run_tests(
     quiet: bool = True,
     no_sync: bool = False,
     timeout: int = 600,
+    ctx: Context | None = None,
 ) -> str:
     """Sync code and run pytest on the remote GPU server inside Docker.
 
@@ -157,11 +118,11 @@ async def run_tests(
     if no_sync:
         cmd.append("--no-sync")
     cmd.extend(["--timeout", str(timeout)])
-    return _clean_output(await _run_script(cmd, timeout=timeout + 30))
+    return await _run_script(cmd, timeout=timeout + 30, ctx=ctx)
 
 
 @mcp.tool()
-async def check_status() -> str:
+async def check_status(ctx: Context | None = None) -> str:
     """Check Docker container and Ray cluster status on the remote GPU server."""
     cmd = [
         "bash",
@@ -174,7 +135,7 @@ async def check_status() -> str:
         '"$TRINITY_REMOTE_HOST" '
         f'"cd $TRINITY_REMOTE_WORKSPACE && bash docker/status.sh"',
     ]
-    return await _run_script(cmd, timeout=30)
+    return await _run_script(cmd, timeout=30, ctx=ctx)
 
 
 if __name__ == "__main__":
