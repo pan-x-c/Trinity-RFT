@@ -406,6 +406,14 @@ def get_megatron_converter(checkpoint_path: str):
     # modified from verl/model_merger/megatron_model_merger.py
     class MegatronStateDictConverter(MegatronModelMerger):
         def __init__(self, config: ModelMergerConfig):
+            # Patch Megatron-Core ModelType enum compatibility:
+            # newer mcore renamed encoder_and_decoder → encoder_or_decoder,
+            # but verl's get_model() still references the old name.
+            from megatron.core.enums import ModelType
+
+            if not hasattr(ModelType, "encoder_and_decoder"):
+                ModelType.encoder_and_decoder = getattr(ModelType, "encoder_or_decoder", None)
+
             original_init_process_group = torch.distributed.init_process_group
             original_get_rank = torch.distributed.get_rank
             original_get_world_size = torch.distributed.get_world_size
