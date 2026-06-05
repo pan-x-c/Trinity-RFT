@@ -63,7 +63,8 @@ fi
 ssh_port="${port_override:-$TRINITY_REMOTE_SSH_PORT}"
 
 rsync_args=(
-    -avz
+    -az
+    --itemize-changes
     --files-from=-
     --from0
     -e "ssh -p ${ssh_port} -o StrictHostKeyChecking=accept-new"
