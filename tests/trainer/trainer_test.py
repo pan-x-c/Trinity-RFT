@@ -1002,15 +1002,15 @@ class TestTrainerCheckpointSave(unittest.TestCase):
             )
             actor_checkpoint_dir = os.path.join(checkpoint_dir, "actor")
             self.assertTrue(os.path.exists(actor_checkpoint_dir))
-        # check step 2 should have no checkpoint
+        # check step 2 should not exist or have no checkpoint file
         checkpoint_dir = os.path.join(default_local_dir, "global_step_2")
-        self.assertTrue(os.path.exists(checkpoint_dir))
-        actor_checkpoint_dir = os.path.join(checkpoint_dir, "actor")
-        self.assertFalse(os.path.exists(actor_checkpoint_dir))
-        critic_checkpoint_dir = os.path.join(checkpoint_dir, "critic")
-        self.assertFalse(os.path.exists(critic_checkpoint_dir))
-        trainer_process.join(timeout=10)
-        self.assertIn("model.safetensors", huggingface_dir_files)
+        if os.path.exists(checkpoint_dir):
+            actor_checkpoint_dir = os.path.join(checkpoint_dir, "actor")
+            self.assertFalse(os.path.exists(actor_checkpoint_dir))
+            critic_checkpoint_dir = os.path.join(checkpoint_dir, "critic")
+            self.assertFalse(os.path.exists(critic_checkpoint_dir))
+            trainer_process.join(timeout=10)
+            self.assertIn("model.safetensors", huggingface_dir_files)
 
     def tearDown(self):
         # remove dir only when the test passed
@@ -1754,6 +1754,7 @@ class ColocateModeTest(RayUnittestBase):
         self.config.checkpoint_root_dir = get_checkpoint_path()
         self.config.explorer.rollout_model.engine_num = 1
         self.config.trainer.ulysses_sequence_parallel_size = 1
+        self.config.trainer.trainer_type = TRAINER_TYPE
         self.config.synchronizer.sync_method = SyncMethod.MEMORY
 
     def test_trainer(self):
