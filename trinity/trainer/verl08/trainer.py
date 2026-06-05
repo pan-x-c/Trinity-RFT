@@ -57,7 +57,7 @@ from verl.workers.utils.padding import left_right_2_no_padding, no_padding_2_pad
 from trinity.algorithm import ADVANTAGE_FN, ALGORITHM_TYPE, KL_FN
 from trinity.algorithm.utils import prefix_metrics
 from trinity.common.config import Config
-from trinity.common.constants import SaveStrategy
+from trinity.common.constants import SaveStrategy, SyncMethod
 from trinity.common.experience import Experience
 from trinity.trainer.trainer import TrainEngineWrapper
 from trinity.trainer.verl08.config import build_verl_config
@@ -438,7 +438,13 @@ class VERLTrainer(TrainEngineWrapper):
         return self.global_steps
 
     async def prepare(self):
-        self.actor_rollout_wg.init_weights_update_group()
+        if self.global_config.synchronizer.sync_method == SyncMethod.NCCL:
+            self.actor_rollout_wg.setup_weight_sync_group(
+                world_size=self.global_config.synchronizer.explorer_world_size
+                + 1,  # +1 for trainer
+                ray_namespace=self.global_config.synchronizer.ray_namespace,
+                timeout=self.config.synchronizer.sync_timeout,
+            )
         self.actor_rollout_wg.set_algorithm(self.algorithm_config)
         self.global_steps = 0
         self._load_checkpoint()

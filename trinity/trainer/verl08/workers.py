@@ -106,7 +106,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             self.actor.set_loss_fn(loss_fn)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def init_weights_update_group(self):
+    def setup_weight_sync_group(self, world_size: int, ray_namespace: str, timeout: int):
         """Initialize the weight update group for distributed training.
 
         This method sets up the NCCL process group responsible for synchronizing
@@ -122,16 +122,13 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             self._state_dict_meta_list = state_dict_meta_list
             aggressive_empty_cache(force_sync=True)
             master_address, master_port = self.get_available_master_addr_port()
-            world_size = self.config.synchronizer.explorer_world_size + 1
             self.logger.info(
                 f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
             )
-            synchronizer = Synchronizer.get_actor(namespace=self.config.synchronizer.ray_namespace)
+            synchronizer = Synchronizer.get_actor(namespace=ray_namespace)
             setup_ref = synchronizer.setup_weight_sync_group.remote(
                 master_address, master_port, self._state_dict_meta_list
             )
-            timeout = self.config.synchronizer.sync_timeout
-
             self.logger.info("Trainer start init_process_group.")
             self._model_update_group = init_process_group(
                 host=master_address,
