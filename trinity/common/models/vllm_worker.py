@@ -83,6 +83,10 @@ class WorkerExtension:
 
                         self._checkpoint_converter = get_megatron_converter(checkpoint_dir)
                     state_dict = self._checkpoint_converter.get_state_dict(checkpoint_dir)
+                elif method == "huggingface":
+                    from trinity.common.models.utils import load_huggingface_state_dict
+
+                    state_dict = load_huggingface_state_dict(checkpoint_dir)
                 else:
                     raise NotImplementedError(f"{method} is not supported")
                 ray.get(self.synchronizer.set_model_state_dict.remote(state_dict, model_version))
