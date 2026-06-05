@@ -667,6 +667,7 @@ class TestFullyAsyncMode(unittest.TestCase):
         config.project = "unittest"
         config.name = f"fully_async_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         config.checkpoint_root_dir = get_checkpoint_path()
+        config.trainer.trainer_type = TRAINER_TYPE
         config.buffer.total_epochs = 1
         config.buffer.batch_size = 4
         config.cluster.gpu_per_node = 2
@@ -797,14 +798,14 @@ class TestFullyAsyncMode(unittest.TestCase):
         self.assertEqual(
             get_checkpoint_dir_with_step_num(
                 checkpoint_root_path=explorer1_config.checkpoint_job_dir,
-                trainer_type="verl",
+                trainer_type=trainer_config.trainer.trainer_type,
             )[1],
             8,
         )
         self.assertEqual(
             get_checkpoint_dir_with_step_num(
                 checkpoint_root_path=explorer2_config.checkpoint_job_dir,
-                trainer_type="verl",
+                trainer_type=trainer_config.trainer.trainer_type,
             )[1],
             8,
         )
