@@ -1049,7 +1049,7 @@ class TestTrainerMIX(BaseTrainerCase):
         ].total_epochs = 8  # test this works
         self.config.check_and_update()
         self.config.buffer.trainer_input.experience_buffer.max_read_timeout = 20
-        self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = 2
+        self.config.trainer.max_checkpoints_to_keep = 2
         both(self.config)
         ray.shutdown(_exiting_interpreter=True)
 

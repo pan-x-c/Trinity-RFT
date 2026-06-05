@@ -47,14 +47,17 @@ class TrinityPolicyLoss:
             entropy = no_padding_2_padding(entropy, data)
 
         fields = ["response_mask"]
-        for optional_field in ["old_log_probs", "advantages", "rollout_is_weights", "ref_log_prob"]:
-            if optional_field in data.keys():
-                fields.append(optional_field)
+        fields.extend(self.policy_loss_fn.select_keys)
+        if not isinstance(self.kl_loss_fn, DummyKLFn):
+            fields.append("ref_log_prob")
+        fields = list(dict.fromkeys(fields))
         padded_data = data.select(*fields).to_padded_tensor()
 
         response_mask = padded_data["response_mask"].to(bool)
         model_inputs = {"response_mask": response_mask}
-        for key in ["old_log_probs", "advantages", "rollout_is_weights", "ref_log_prob"]:
+        for key in fields:
+            if key == "response_mask":
+                continue
             if key in padded_data.keys():
                 model_inputs[key] = padded_data[key]
 
