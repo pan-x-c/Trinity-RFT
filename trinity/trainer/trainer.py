@@ -114,12 +114,23 @@ class Trainer:
                 metrics.update(sample_metrics)
                 self.logger.info(f"Sample data for step {self.train_step_num + 1} finished.")
                 metrics.update(await self.train_step(exps))
-                if await self.need_sync():
+                need_sync = await self.need_sync()
+                need_save = self.need_save()
+                # For CHECKPOINT sync, save_checkpoint is a superset of
+                # save_state_dict — skip the latter to avoid redundant writes
+                # to the same directory.
+                if need_sync and not (need_save and self.sync_method == SyncMethod.CHECKPOINT):
                     metrics.update(await self.sync_weight())
-                if self.need_save():
+                if need_save:
                     metrics.update(
                         await self.save_checkpoint(save_as_hf=self.save_hf_checkpoint == "always")
                     )
+                    if need_sync:
+                        # Update sync bookkeeping even though sync_weight was
+                        # skipped — save_checkpoint already wrote the weights
+                        # and updated latest_state_dict_iteration.txt.
+                        self.last_sync_step = self.train_step_num
+                        self.last_sync_time = time.time()
                 if self.config.trainer.enable_preview:
                     self._log_experiences(repr_samples)
                 self.monitor.log(metrics, self.train_step_num)
