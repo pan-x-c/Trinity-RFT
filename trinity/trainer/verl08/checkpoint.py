@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """Checkpoint coordination for verl08 trainer.
 
-Provides CheckpointCoordinator — a lightweight helper that manages background
-checkpoint saves and coordinates with CheckpointMonitor to ensure the
-Synchronizer never reads an incomplete checkpoint.
+Provides CheckpointCoordinator — the single entry point for all checkpoint
+operations. It wraps the CheckpointMonitor Ray actor and background-thread
+management so that callers (VERLTrainer, workers, engine helpers) never need
+to interact with CheckpointMonitor directly.
 
 Flow:
     1. Main thread collects state dicts (requires FSDP/Megatron context)
@@ -25,7 +26,11 @@ logger = get_logger(__name__)
 
 
 class CheckpointCoordinator:
-    """Manages background checkpoint saves with CheckpointMonitor coordination.
+    """Manages checkpoint saves and coordinates with CheckpointMonitor.
+
+    This is the **only** interface callers should use for checkpoint
+    operations.  CheckpointMonitor (a Ray actor) is an internal
+    implementation detail — all Monitor RPCs are routed through this class.
 
     Each save operation runs in a named background thread. Threads with the same
     name are serialized (the previous one is joined before a new one starts).
@@ -43,6 +48,10 @@ class CheckpointCoordinator:
     def __init__(self, checkpoint_monitor: ActorHandle):
         self._monitor = checkpoint_monitor
         self._threads: dict[str, threading.Thread] = {}
+
+    # ------------------------------------------------------------------
+    # Worker-level: background save with Monitor notifications
+    # ------------------------------------------------------------------
 
     def save_async(
         self,
@@ -113,3 +122,36 @@ class CheckpointCoordinator:
         for t in self._threads.values():
             t.join()
         self._threads.clear()
+
+    # ------------------------------------------------------------------
+    # Trainer-level: register expected save counts and commit step
+    # ------------------------------------------------------------------
+
+    async def register_and_monitor(
+        self,
+        global_step: int,
+        is_state_dict: bool = False,
+        state_dict_thread_count: int = 0,
+        checkpoint_thread_count: int = 0,
+    ) -> None:
+        """Register expected save thread counts and commit the step.
+
+        Called by VERLTrainer after dispatching save operations to workers.
+        This wraps the two Monitor RPCs (register_thread_count + monitor_step)
+        into a single call so the trainer never talks to Monitor directly.
+
+        Args:
+            global_step: Training step.
+            is_state_dict: Whether this is a state-dict-only save.
+            state_dict_thread_count: Number of state dict save threads to expect.
+            checkpoint_thread_count: Number of full checkpoint save threads to expect.
+        """
+        if state_dict_thread_count or checkpoint_thread_count:
+            ray.get(
+                self._monitor.register_thread_count.remote(
+                    global_step,
+                    state_dict_thread_count=state_dict_thread_count,
+                    checkpoint_thread_count=checkpoint_thread_count,
+                )
+            )
+        await self._monitor.monitor_step.remote(global_step, is_state_dict=is_state_dict)

@@ -60,6 +60,7 @@ from trinity.common.config import Config
 from trinity.common.constants import SaveStrategy
 from trinity.common.experience import Experience
 from trinity.trainer.trainer import TrainEngineWrapper
+from trinity.trainer.verl08.checkpoint import CheckpointCoordinator
 from trinity.trainer.verl08.config import build_verl_config
 from trinity.trainer.verl08.utils import compute_data_metrics, to_data_proto
 from trinity.trainer.verl08.workers import TrinityActorRolloutRefWorker
@@ -294,12 +295,13 @@ class VERLTrainer(TrainEngineWrapper):
         self.total_training_steps = global_config.trainer.total_steps or sys.maxsize
         # we only support cuda for now
         self.device_name = "cuda"
-        self.checkpoint_monitor = CheckpointMonitor.get_actor(
+        checkpoint_monitor = CheckpointMonitor.get_actor(
             namespace=global_config.synchronizer.ray_namespace,
             save_strategy=global_config.trainer.save_strategy,
             default_local_dir=self.global_config.checkpoint_job_dir,
             default_hdfs_dir=None,
         )
+        self.checkpoint_coordinator = CheckpointCoordinator(checkpoint_monitor)
         self._init_workers()
 
     def _init_workers(self):
@@ -585,12 +587,9 @@ class VERLTrainer(TrainEngineWrapper):
                 max_ckpt_to_keep=max_critic_ckpt_to_keep,
             )
 
-        ray.get(
-            self.checkpoint_monitor.register_thread_count.remote(
-                self.global_steps, state_dict_thread_count=1
-            )
+        await self.checkpoint_coordinator.register_and_monitor(
+            self.global_steps, state_dict_thread_count=1
         )
-        await self.checkpoint_monitor.monitor_step.remote(self.global_steps)
 
         if block_until_saved:
             self.actor_rollout_wg.wait_on_save_thread()
@@ -609,12 +608,9 @@ class VERLTrainer(TrainEngineWrapper):
             actor_local_path,
             global_step=self.global_steps,
         )
-        ray.get(
-            self.checkpoint_monitor.register_thread_count.remote(
-                self.global_steps, state_dict_thread_count=1
-            )
+        await self.checkpoint_coordinator.register_and_monitor(
+            self.global_steps, is_state_dict=True, state_dict_thread_count=1
         )
-        await self.checkpoint_monitor.monitor_step.remote(self.global_steps, is_state_dict=True)
 
     # ------------------------------------------------------------------
     # Internal training methods
