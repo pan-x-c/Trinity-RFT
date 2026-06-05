@@ -1172,6 +1172,7 @@ class TestServeWithTrainer(RayUnittestBaseAsync):
         config.explorer.rollout_model.enable_openai_api = True
         config.explorer.rollout_model.tensor_parallel_size = 1
         config.explorer.service_status_check_interval = 5
+        config.trainer.trainer_type = TRAINER_TYPE
         self.config = config
         self.process_list = []
 
