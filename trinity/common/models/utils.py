@@ -240,6 +240,18 @@ def get_latest_state_dict(
     return None, 0  # type: ignore
 
 
+def has_huggingface_model_weights(checkpoint_path: str) -> bool:
+    """Return True when ``checkpoint_path`` contains serialized HF model weights."""
+    weight_file_prefixes = (
+        "model.safetensors",
+        "pytorch_model",
+        "adapter_model",
+    )
+    if not os.path.isdir(checkpoint_path):
+        return False
+    return any(name.startswith(weight_file_prefixes) for name in os.listdir(checkpoint_path))
+
+
 def load_state_dict(checkpoint_dir: str, config: TrainerConfig) -> Union[dict, Tuple[str, str]]:
     """Load state dict from a checkpoint dir.
 
@@ -256,10 +268,14 @@ def load_state_dict(checkpoint_dir: str, config: TrainerConfig) -> Union[dict, T
         if strategy in {"fsdp", "fsdp2"}:
             return load_fsdp_state_dict_from_verl_checkpoint(checkpoint_dir)
         elif strategy == "megatron":
+            huggingface_dir = os.path.join(checkpoint_dir, "huggingface")
             if config.trainer_type == "verl08":
-                # verl08 uses engine.save_checkpoint which saves megatron-native
-                # format.  Return a ("megatron", dir) tuple so that the caller
-                # (Synchronizer / vLLM worker) converts via mbridge on the fly.
+                # In verl08 Megatron checkpoints, model weights may live under
+                # ``huggingface/`` while ``dist_ckpt/`` contains only optimizer
+                # and RNG state. Prefer HF weights when present to avoid loading
+                # an optimizer-only dist checkpoint through the Megatron merger.
+                if has_huggingface_model_weights(huggingface_dir):
+                    return "huggingface", huggingface_dir
                 return "megatron", checkpoint_dir
             actor_config = config.trainer_config.actor_rollout_ref.actor
             if (
@@ -269,7 +285,7 @@ def load_state_dict(checkpoint_dir: str, config: TrainerConfig) -> Union[dict, T
                 return "megatron", checkpoint_dir
             else:  # hf checkpointing
                 return load_huggingface_state_dict(
-                    os.path.join(checkpoint_dir, "huggingface"),
+                    huggingface_dir,
                     trust_remote_code=config.trust_remote_code,
                 )
         else:
