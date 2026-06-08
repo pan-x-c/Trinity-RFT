@@ -197,6 +197,11 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
         "global_profiler": global_profiler,
     }
 
+    # Merge user overrides from trainer_config (if any)
+    user_overrides = _normalize_trainer_config(cfg.trainer.trainer_config)
+    if user_overrides:
+        _deep_merge(verl_dict, user_overrides, FROZEN_KEYS)
+
     return OmegaConf.create(verl_dict, flags={"allow_objects": True})
 
 
@@ -679,3 +684,121 @@ def _map_optimizer_name_fsdp(name: str) -> str:
         "sgd": "SGD",
     }
     return mapping.get(name, name)
+
+
+# ---------------------------------------------------------------------------
+# User trainer_config override support
+# ---------------------------------------------------------------------------
+
+# Keys derived from global_config — user overrides for these are ignored.
+FROZEN_KEYS = {
+    # model
+    "model.path",
+    "model.trust_remote_code",
+    "model.use_remove_padding",
+    "model.custom_chat_template",
+    "model.lora_rank",
+    "model.lora_alpha",
+    "model.target_modules",
+    "model.exclude_modules",
+    "model.lora_adapter_path",
+    # actor
+    "actor.strategy",
+    "actor.ppo_mini_batch_size",
+    "actor.use_dynamic_bsz",
+    "actor.ppo_max_token_len_per_gpu",
+    "actor.ppo_infer_max_token_len_per_gpu",
+    "actor.use_kl_loss",
+    "actor.loss_agg_mode",
+    "actor.rollout_n",
+    "actor.grad_clip",
+    "actor.ulysses_sequence_parallel_size",
+    "actor.use_remove_padding",
+    # ref
+    "ref.strategy",
+    "ref.rollout_n",
+    "ref.log_prob_use_dynamic_bsz",
+    "ref.log_prob_max_token_len_per_gpu",
+    "ref.ulysses_sequence_parallel_size",
+    "ref.use_remove_padding",
+    # rollout
+    "rollout.temperature",
+    "rollout.n",
+    "rollout.log_prob_use_dynamic_bsz",
+    "rollout.log_prob_max_token_len_per_gpu",
+    # critic
+    "critic.enable",
+    "critic.strategy",
+    "critic.ppo_mini_batch_size",
+    "critic.use_dynamic_bsz",
+    "critic.ppo_max_token_len_per_gpu",
+    "critic.ppo_infer_max_token_len_per_gpu",
+    "critic.rollout_n",
+    "critic.grad_clip",
+    "critic.ulysses_sequence_parallel_size",
+    "critic.forward_max_token_len_per_gpu",
+}
+
+_MERGEABLE_KEYS = ("model", "actor", "ref", "rollout", "critic")
+
+
+def _normalize_trainer_config(trainer_config) -> dict:
+    """Normalize user trainer_config to verl08 flat structure.
+
+    Accepts the old ``veRLConfig`` layout (with ``actor_rollout_ref`` wrapper)
+    or the flat layout (``model``/``actor``/``ref``/``rollout``/``critic`` at
+    the top level).  Returns a plain dict with only the mergeable top-level
+    keys.
+    """
+    if not trainer_config:
+        return {}
+
+    if hasattr(trainer_config, "to_container"):
+        tc = OmegaConf.to_container(trainer_config, resolve=True)
+    elif not isinstance(trainer_config, dict):
+        tc = OmegaConf.to_container(OmegaConf.structured(trainer_config), resolve=True)
+    else:
+        tc = dict(trainer_config)
+
+    result: dict = {}
+
+    # Unwrap actor_rollout_ref → flat model/actor/ref/rollout
+    if "actor_rollout_ref" in tc:
+        arr = tc.pop("actor_rollout_ref")
+        if isinstance(arr, dict):
+            for key in _MERGEABLE_KEYS:
+                if key in arr:
+                    result[key] = arr[key]
+
+    # Direct top-level keys (critic lives outside actor_rollout_ref)
+    if "critic" in tc:
+        result["critic"] = tc["critic"]
+
+    # Also accept the flat format where user writes model/actor/… at top level
+    for key in _MERGEABLE_KEYS:
+        if key in tc and key not in result:
+            result[key] = tc[key]
+
+    return result
+
+
+def _deep_merge(base: dict, overrides: dict, frozen: set, prefix: str = "") -> None:
+    """Recursively deep-merge *overrides* into *base*, skipping frozen keys."""
+    for key, value in overrides.items():
+        full_key = f"{prefix}.{key}" if prefix else key
+
+        if full_key in frozen:
+            logger.warning(
+                "Ignoring trainer_config override for '%s' — "
+                "this field is controlled by global_config",
+                full_key,
+            )
+            continue
+
+        if key == "_target_":
+            continue
+
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value, frozen, full_key)
+        else:
+            base[key] = value
