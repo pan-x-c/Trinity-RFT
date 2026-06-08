@@ -184,12 +184,7 @@ async def init_async_engine(db_url: str, table_name: str, schema_type: Optional[
 
     logger = get_logger(__name__)
     async_url = to_async_url(db_url)
-    connect_args = {}
-    if "sqlite" in async_url:
-        connect_args["timeout"] = 30
-    engine = create_async_engine(
-        async_url, pool_pre_ping=True, connect_args=connect_args
-    )
+    engine = create_async_engine(async_url, pool_pre_ping=True)
 
     if schema_type is None:
         schema_type = "task"
