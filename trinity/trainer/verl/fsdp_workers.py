@@ -838,7 +838,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             return master_address, int(master_port), self.state_dict_meta
         return None
 
-    @register(dispatch_mode=Dispatch.RANK_ZERO)
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def setup_weight_sync_group(
         self,
         master_address: str,
@@ -851,24 +851,25 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         Called concurrently with Explorer's setup_weight_sync_group.
         """
-        self.logger.info(
-            f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
-        )
-        self._model_update_group = init_process_group(
-            host=master_address,
-            port=int(master_port),
-            group_name=group_name,
-            backend="nccl",
-            timeout=timeout,
-            world_size=world_size,
-            rank=0,
-        )
-        self.logger.info("Trainer init_process_group done.")
+        if torch.distributed.get_rank() == 0:
+            self.logger.info(
+                f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
+            )
+            self._model_update_group = init_process_group(
+                host=master_address,
+                port=int(master_port),
+                group_name=group_name,
+                backend="nccl",
+                timeout=timeout,
+                world_size=world_size,
+                rank=0,
+            )
+            self.logger.info("Trainer init_process_group done.")
 
-    @register(dispatch_mode=Dispatch.RANK_ZERO)
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def teardown_weight_sync_group(self):
         """Destroy the NCCL process group for weight sync."""
-        if self._model_update_group is not None:
+        if torch.distributed.get_rank() == 0 and self._model_update_group is not None:
             self.logger.info("Tearing down weight sync group.")
             torch.distributed.destroy_process_group(self._model_update_group)
             self._model_update_group = None
