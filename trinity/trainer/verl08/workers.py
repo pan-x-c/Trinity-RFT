@@ -229,32 +229,18 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         self.logger.info(f"Saved LoRA adapter to: {lora_save_path}")
 
     def _cache_state_dict_meta(self):
-        """Cache state_dict meta (names, dtypes, shapes) without full materialization.
+        """Cache state_dict meta (names, dtypes, shapes) from get_per_tensor_param.
 
-        For FSDP2/DTensor: state_dict() returns DTensors whose .shape is the
-        global shape — no full_tensor() needed. Only the meta is extracted.
-        For Megatron: iterate the tensor generator for meta only.
+        Uses the same parameter source as sync_weight_nccl to ensure dtype
+        and shape are consistent with what is actually broadcast.
         """
         if self.actor is None:
             return
-        strategy = self.config.actor.strategy
-        if strategy.startswith("fsdp"):
-            from verl.utils.model import convert_weight_keys
-
-            model = self.actor.engine.module
-            unwrapped = getattr(model, "_fsdp_wrapped_module", model)
-            params = model.state_dict()
-            params = convert_weight_keys(params, unwrapped)
-            self._state_dict_meta_list = [
-                (name, str(p.dtype).split(".")[-1], tuple(p.shape)) for name, p in params.items()
-            ]
-            del params
-        elif strategy.startswith("megatron"):
-            per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
-            self._state_dict_meta_list = [
-                (name, str(param.dtype).split(".")[-1], tuple(param.shape))
-                for name, param in per_tensor_param
-            ]
+        per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
+        self._state_dict_meta_list = [
+            (name, str(param.dtype).split(".")[-1], tuple(param.shape))
+            for name, param in per_tensor_param
+        ]
         self.logger.info(
             f"Cached state_dict meta: {len(self._state_dict_meta_list or [])} parameters"
         )
