@@ -384,7 +384,7 @@ def run(
     try:
         if cfg.stages:
             from trinity.manager.state_manager import StateManager
-            from trinity.trainer.verl.utils import get_latest_hf_checkpoint_path
+            from trinity.trainer.verl_legacy.utils import get_latest_hf_checkpoint_path
 
             state_manager = StateManager(path=cfg.get_checkpoint_job_dir())
             latest_stage = state_manager.load_stage().get("latest_stage", 0)

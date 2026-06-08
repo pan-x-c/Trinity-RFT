@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Checkpoint coordination for verl08 trainer.
+"""Checkpoint coordination for verl trainer.
 
 Provides CheckpointCoordinator — the single entry point for all checkpoint
 operations. It wraps the CheckpointMonitor Ray actor and background-thread

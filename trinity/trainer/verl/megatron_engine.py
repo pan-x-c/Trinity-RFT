@@ -21,7 +21,7 @@ import ray
 import torch
 from verl.utils.memory_utils import aggressive_empty_cache
 
-from trinity.trainer.verl08.checkpoint import CheckpointCoordinator
+from trinity.trainer.verl.checkpoint import CheckpointCoordinator
 from trinity.utils.log import get_logger
 
 logger = get_logger(__name__)

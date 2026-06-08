@@ -92,9 +92,9 @@ from verl.workers.sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManage
 
 from trinity.common.config import AlgorithmConfig
 from trinity.common.patch import kimi_vl_monkey_patch_decorator
-from trinity.trainer.verl.fsdp_checkpoint_manager import FSDPCheckpointManager
-from trinity.trainer.verl.monkey_patch import apply_monkey_patch
-from trinity.trainer.verl.utils import apply_fsdp2
+from trinity.trainer.verl_legacy.fsdp_checkpoint_manager import FSDPCheckpointManager
+from trinity.trainer.verl_legacy.monkey_patch import apply_monkey_patch
+from trinity.trainer.verl_legacy.utils import apply_fsdp2
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
 
@@ -115,7 +115,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         # bug fix patch for seqlen_balancing in verl
         from verl.utils import seqlen_balancing
 
-        from trinity.trainer.verl.utils import rearrange_micro_batches
+        from trinity.trainer.verl_legacy.utils import rearrange_micro_batches
 
         seqlen_balancing.rearrange_micro_batches = rearrange_micro_batches
         # end bug fix patch
@@ -654,7 +654,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def init_model(self):
-        from trinity.trainer.verl.dp_actor import DataParallelPPOActor
+        from trinity.trainer.verl_legacy.dp_actor import DataParallelPPOActor
 
         # This is used to import external_lib into the huggingface systems
         import_external_libs(self.config.model.get("external_lib", None))
@@ -1227,7 +1227,7 @@ class CriticWorker(Worker, DistProfilerExtension):
         # bug fix patch for seqlen_balancing in verl
         from verl.utils import seqlen_balancing
 
-        from trinity.trainer.verl.utils import rearrange_micro_batches
+        from trinity.trainer.verl_legacy.utils import rearrange_micro_batches
 
         seqlen_balancing.rearrange_micro_batches = rearrange_micro_batches
         # end bug fix patch

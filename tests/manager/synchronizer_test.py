@@ -34,13 +34,6 @@ from trinity.utils.log import get_logger
 
 logger = get_logger(__name__)
 
-# ---------------------------------------------------------------------------
-# Global toggle: switch between verl and verl08 trainer backend.
-# Set TRINITY_TRAINER_TYPE=verl08 to run tests with the new engine-based
-# trainer.  Defaults to "verl08" (the legacy worker-per-strategy trainer).
-# ---------------------------------------------------------------------------
-TRAINER_TYPE = os.environ.get("TRINITY_TRAINER_TYPE", "verl08")  # "verl" or "verl08"
-
 
 def trainer_monkey_patch(train_step_time_list: List[int]):
     async def new_train_step(self: Trainer, exps) -> Dict:
@@ -139,7 +132,6 @@ class BaseTestSynchronizer(unittest.TestCase):
         self.config.synchronizer.sync_style = self.sync_style
         self.config.synchronizer.sync_interval = 2
         self.config.monitor.monitor_type = "tensorboard"
-        self.config.trainer.trainer_type = TRAINER_TYPE
 
         self.config.trainer.total_steps = len(self.train_step_time_list)
         self.config.trainer.save_interval = 100

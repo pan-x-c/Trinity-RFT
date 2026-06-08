@@ -800,7 +800,12 @@ class TrainerConfig:
     max_token_len_per_gpu: Optional[int] = None
     ulysses_sequence_parallel_size: int = 1  # sp size
     fix_actor_microbatch_loss_scale: bool = False  # EXPERIMENTAL
-    # TODO: extract more train-related params from underlying trainer engine
+
+    # offloading
+    param_offload: bool = False
+    optimizer_offload: bool = False
+    grad_offload: bool = False
+    offload_policy: bool = False  # FSDP2-specific
 
     save_strategy: SaveStrategy = SaveStrategy.UNRESTRICTED
     max_checkpoints_to_keep: int = 0  # 0 means keep all checkpoints

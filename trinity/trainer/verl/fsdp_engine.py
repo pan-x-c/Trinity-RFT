@@ -30,7 +30,7 @@ from verl.utils.device import is_cuda_available
 from verl.utils.fs import local_mkdir_safe
 from verl.utils.fsdp_utils import get_fsdp_full_state_dict, get_fsdp_state_ctx
 
-from trinity.trainer.verl08.checkpoint import CheckpointCoordinator
+from trinity.trainer.verl.checkpoint import CheckpointCoordinator
 from trinity.utils.log import get_logger
 
 logger = get_logger(__name__)

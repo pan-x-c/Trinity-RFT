@@ -22,8 +22,8 @@ from verl.workers.engine_workers import ActorRolloutRefWorker
 
 from trinity.common.config import AlgorithmConfig
 from trinity.manager.synchronizer import Synchronizer
-from trinity.trainer.verl08.checkpoint import CheckpointCoordinator
-from trinity.trainer.verl08.losses import build_trinity_loss
+from trinity.trainer.verl.checkpoint import CheckpointCoordinator
+from trinity.trainer.verl.losses import build_trinity_loss
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
 
@@ -62,7 +62,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         - Fused kernels VLM SP bugfix (patch_fused_kernels)
         - Flops counter registration for qwen3_5
         """
-        from trinity.trainer.verl.monkey_patch import apply_monkey_patch
+        from trinity.trainer.verl_legacy.monkey_patch import apply_monkey_patch
 
         # Patch veRL engine for LoRA + FSDP2 dtype alignment.
         # veRL's _build_lora_module does not align trainable param dtypes
@@ -324,7 +324,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
 
     def _get_coordinator(self) -> CheckpointCoordinator:
         if self._coordinator is None:
-            from trinity.trainer.verl08.trainer import CheckpointMonitor
+            from trinity.trainer.verl.trainer import CheckpointMonitor
 
             monitor = CheckpointMonitor.get_actor(
                 namespace=self._ray_namespace,  # type: ignore
@@ -343,11 +343,11 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         coordinator = self._get_coordinator()
         strategy = self.config.actor.strategy
         if strategy.startswith("fsdp"):
-            from trinity.trainer.verl08.fsdp_engine import fsdp_save_state_dict
+            from trinity.trainer.verl.fsdp_engine import fsdp_save_state_dict
 
             fsdp_save_state_dict(self.actor.engine, local_path, global_step, coordinator)
         elif strategy.startswith("megatron"):
-            from trinity.trainer.verl08.megatron_engine import megatron_save_state_dict
+            from trinity.trainer.verl.megatron_engine import megatron_save_state_dict
 
             megatron_save_state_dict(self.actor.engine, local_path, global_step, coordinator)
         else:
@@ -396,13 +396,11 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         synchronizer = Synchronizer.get_actor(namespace=self._ray_namespace)
 
         if strategy.startswith("fsdp"):
-            from trinity.trainer.verl08.fsdp_engine import fsdp_upload_state_dict
+            from trinity.trainer.verl.fsdp_engine import fsdp_upload_state_dict
 
             fsdp_upload_state_dict(self.actor.engine, synchronizer, global_step)
         elif strategy.startswith("megatron"):
-            from trinity.trainer.verl08.megatron_engine import (
-                megatron_upload_state_dict,
-            )
+            from trinity.trainer.verl.megatron_engine import megatron_upload_state_dict
 
             megatron_upload_state_dict(self.actor.engine, synchronizer, global_step)
         else:

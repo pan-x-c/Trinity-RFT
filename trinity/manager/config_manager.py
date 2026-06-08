@@ -266,7 +266,7 @@ class ConfigManager:
 
         self.get_configs("enable_preview")
 
-        if st.session_state["trainer_type"] in ("verl", "verl08"):
+        if st.session_state["trainer_type"] == "verl":
             self._expert_verl_trainer_part()
 
     def _expert_verl_training_part(self):
@@ -702,7 +702,7 @@ class ConfigManager:
         return explorer_config
 
     def generate_config(self):
-        if st.session_state["trainer_type"] in ("verl", "verl08"):
+        if st.session_state["trainer_type"] == "verl":
             trainer_config = self._generate_verl_config()
         else:
             raise ValueError(f"Invalid trainer type: {st.session_state['trainer_type']}")

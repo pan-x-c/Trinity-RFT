@@ -40,7 +40,7 @@ from trinity.common.config import Config
 from trinity.common.constants import SaveStrategy
 from trinity.common.experience import Experience
 from trinity.trainer.trainer import TrainEngineWrapper
-from trinity.trainer.verl.utils import compute_data_metrics, to_data_proto
+from trinity.trainer.verl_legacy.utils import compute_data_metrics, to_data_proto
 from trinity.utils.log import get_logger
 
 
@@ -219,13 +219,13 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
 
         # define worker classes
         if config.actor_rollout_ref.actor.strategy in ["fsdp", "fsdp2"]:
-            from trinity.trainer.verl.fsdp_workers import (
+            from trinity.trainer.verl_legacy.fsdp_workers import (
                 ActorRolloutRefWorker,
                 CriticWorker,
             )
 
         elif config.actor_rollout_ref.actor.strategy == "megatron":
-            from trinity.trainer.verl.megatron_workers import (
+            from trinity.trainer.verl_legacy.megatron_workers import (
                 ActorRolloutRefWorker,
                 CriticWorker,
             )

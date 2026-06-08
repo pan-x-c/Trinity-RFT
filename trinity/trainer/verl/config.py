@@ -500,9 +500,9 @@ def _build_fsdp_engine_config(
 ) -> dict:
     """Build FSDPEngineConfig-compatible dict."""
     return {
-        "param_offload": False,
-        "optimizer_offload": False,
-        "offload_policy": False,
+        "param_offload": cfg.trainer.param_offload,
+        "optimizer_offload": cfg.trainer.optimizer_offload,
+        "offload_policy": cfg.trainer.offload_policy,
         "reshard_after_forward": True,
         "wrap_policy": {"min_num_params": 0},
         "fsdp_size": -1,
@@ -524,9 +524,9 @@ def _build_mcore_engine_config(cfg: Config, router_replay_mode: str = "disabled"
     """Build McoreEngineConfig-compatible dict."""
     return {
         "strategy": "megatron",
-        "param_offload": False,
-        "optimizer_offload": False,
-        "grad_offload": False,
+        "param_offload": cfg.trainer.param_offload,
+        "optimizer_offload": cfg.trainer.optimizer_offload,
+        "grad_offload": cfg.trainer.grad_offload,
         "forward_only": False,
         "dtype": "bfloat16",
         "use_dynamic_bsz": cfg.trainer.use_dynamic_bsz,
@@ -743,7 +743,7 @@ _MERGEABLE_KEYS = ("model", "actor", "ref", "rollout", "critic")
 
 
 def _normalize_trainer_config(trainer_config) -> dict:
-    """Normalize user trainer_config to verl08 flat structure.
+    """Normalize user trainer_config to verl flat structure.
 
     Accepts the old ``veRLConfig`` layout (with ``actor_rollout_ref`` wrapper)
     or the flat layout (``model``/``actor``/``ref``/``rollout``/``critic`` at

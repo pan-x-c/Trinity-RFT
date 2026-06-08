@@ -204,7 +204,7 @@ def get_checkpoint_dir_with_step_num(
         Tuple[str, int]: The checkpoint directory and the step number of the checkpoint.
             If the checkpoint does not exist and `raise_error` is False, return (None, 0).
     """
-    if trainer_type in ("verl", "verl08"):
+    if trainer_type == "verl":
         return get_verl_checkpoint_info(
             checkpoint_path=checkpoint_root_path, step_num=step_num, raise_error=raise_error
         )
@@ -225,7 +225,7 @@ def get_latest_state_dict(
         Tuple[str, int]: The state dict path and the iteration of the state dict.
             If the state dict does not exist, return (None, 0).
     """
-    if trainer_type not in ("verl", "verl08"):
+    if trainer_type != "verl":
         raise NotImplementedError(f"Unsupported trainer type {trainer_type}")
     latest_state_dict_iteration_path = os.path.join(
         checkpoint_root_path, "latest_state_dict_iteration.txt"
@@ -263,17 +263,19 @@ def load_state_dict(checkpoint_dir: str, config: TrainerConfig) -> Union[dict, T
         Union[dict, Tuple[str, str]]: The state dict. If the checkpoint uses
             megatron dist checkpointing, return a tuple of (method, checkpoint_dir).
     """
-    if config.trainer_type in ("verl", "verl08"):
+    if config.trainer_type == "verl":
+        from trinity.trainer.trainer import is_verl_legacy
+
         strategy = config.trainer_strategy
         if strategy in {"fsdp", "fsdp2"}:
             return load_fsdp_state_dict_from_verl_checkpoint(checkpoint_dir)
         elif strategy == "megatron":
             huggingface_dir = os.path.join(checkpoint_dir, "huggingface")
-            if config.trainer_type == "verl08":
-                # In verl08 Megatron checkpoints, model weights may live under
-                # ``huggingface/`` while ``dist_ckpt/`` contains only optimizer
-                # and RNG state. Prefer HF weights when present to avoid loading
-                # an optimizer-only dist checkpoint through the Megatron merger.
+            if not is_verl_legacy():
+                # In verl >= 0.8 Megatron checkpoints, model weights may live
+                # under ``huggingface/`` while ``dist_ckpt/`` contains only
+                # optimizer and RNG state. Prefer HF weights when present to
+                # avoid loading an optimizer-only dist checkpoint.
                 if has_huggingface_model_weights(huggingface_dir):
                     return "huggingface", huggingface_dir
                 return "megatron", checkpoint_dir
@@ -417,7 +419,7 @@ def get_megatron_converter(checkpoint_path: str):
     from verl.model_merger.base_model_merger import ModelMergerConfig
     from verl.model_merger.megatron_model_merger import MegatronModelMerger
 
-    from trinity.trainer.verl.utils import patch_rope_theta_in_hf_config
+    from trinity.trainer.verl_legacy.utils import patch_rope_theta_in_hf_config
 
     # modified from verl/model_merger/megatron_model_merger.py
     class MegatronStateDictConverter(MegatronModelMerger):

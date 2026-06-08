@@ -332,16 +332,30 @@ class TrainEngineWrapper(ABC):
         """Tear down the NCCL weight sync group."""
 
 
+def is_verl_legacy() -> bool:
+    """Return True when the installed verl package is < 0.8 (legacy backend)."""
+    from packaging.version import parse as parse_version
+
+    try:
+        import verl
+
+        ver = getattr(verl, "__version__", "0.0.0")
+    except ImportError:
+        return False
+    return parse_version(ver) < parse_version("0.8.0")
+
+
 def get_trainer_wrapper(config: Config) -> TrainEngineWrapper:
     """Get a trainer wrapper."""
     if config.trainer.trainer_type == "verl":
-        from trinity.trainer.verl.verl_trainer import VerlPPOTrainerWrapper
+        if is_verl_legacy():
+            from trinity.trainer.verl_legacy.verl_trainer import VerlPPOTrainerWrapper
 
-        return VerlPPOTrainerWrapper(config)
-    elif config.trainer.trainer_type == "verl08":
-        from trinity.trainer.verl08.trainer import VERLTrainer
+            return VerlPPOTrainerWrapper(config)
+        else:
+            from trinity.trainer.verl.trainer import VERLTrainer
 
-        return VERLTrainer(config)
+            return VERLTrainer(config)
     elif config.trainer.trainer_type == "tinker":
         from trinity.trainer.tinker.tinker_trainer import TinkerTrainerWrapper
 

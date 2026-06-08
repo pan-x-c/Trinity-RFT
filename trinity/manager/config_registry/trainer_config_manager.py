@@ -28,7 +28,7 @@ def use_critic():
 
 @CONFIG_GENERATORS.register_config(default_value="verl")
 def set_trainer_type(**kwargs):
-    st.selectbox("Trainer Type", ["verl", "verl08"], **kwargs)
+    st.selectbox("Trainer Type", ["verl", "tinker"], **kwargs)
 
 
 @CONFIG_GENERATORS.register_config(default_value=100)

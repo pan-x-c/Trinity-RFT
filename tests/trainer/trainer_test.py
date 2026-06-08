@@ -55,19 +55,8 @@ from trinity.common.models.utils import get_checkpoint_dir_with_step_num
 from trinity.explorer.proxy.client import TrinityClient
 from trinity.manager.state_manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
+from trinity.trainer import is_verl_legacy
 from trinity.trainer.tinker.tinker_trainer import TinkerTrainerWrapper
-
-# ---------------------------------------------------------------------------
-# Global toggle: switch between verl and verl08 trainer backend.
-# Set TRINITY_TRAINER_TYPE=verl08 to run tests with the new engine-based
-# trainer.  Defaults to "verl" (the legacy worker-per-strategy trainer).
-# ---------------------------------------------------------------------------
-TRAINER_TYPE = os.environ.get("TRINITY_TRAINER_TYPE", "verl08")  # "verl" or "verl08"
-
-
-def _is_verl08() -> bool:
-    """Return True when the test run targets the verl08 trainer backend."""
-    return TRAINER_TYPE == "verl08"
 
 
 class BaseTrainerCase(RayUnittestBase):
@@ -86,56 +75,6 @@ class BaseTrainerCase(RayUnittestBase):
         self.config.synchronizer.sync_interval = 2
         self.config.synchronizer.sync_method = SyncMethod.NCCL
         self.config.explorer.eval_interval = 4
-        # Set trainer type based on the global toggle
-        self.config.trainer.trainer_type = TRAINER_TYPE
-
-    # ------------------------------------------------------------------
-    # Helpers that abstract the difference between verl and verl08
-    # config structures.
-    # verl  uses config.trainer.trainer_config (OmegaConf veRLConfig)
-    # verl08 reads everything from the Trinity Config dataclass directly.
-    # ------------------------------------------------------------------
-
-    def _set_max_checkpoints_keep(self, n: int):
-        """Set max checkpoint count for both actor and critic."""
-        if _is_verl08():
-            self.config.trainer.max_checkpoints_to_keep = n
-        else:
-            self.config.trainer.trainer_config.trainer.max_actor_ckpt_to_keep = n
-            self.config.trainer.trainer_config.trainer.max_critic_ckpt_to_keep = n
-
-    def _set_critic_strategy(self, strategy: str):
-        """Set critic strategy (fsdp / megatron)."""
-        if _is_verl08():
-            # verl08 auto-detects critic strategy from trainer_strategy
-            pass
-        else:
-            self.config.trainer.trainer_config.critic.strategy = strategy
-
-    def _set_actor_lr(self, lr: float):
-        """Set the actor optimizer learning rate."""
-        if _is_verl08():
-            self.config.algorithm.optimizer.lr = lr
-        else:
-            self.config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr = lr
-
-    def _set_offloading(self, offload: bool):
-        """Enable / disable parameter and optimizer offloading."""
-        if _is_verl08():
-            # verl08 offloading is configured through build_verl_config()
-            # and read from config.trainer fields; no direct access needed
-            pass
-        else:
-            actor_rollout_ref = self.config.trainer.trainer_config.actor_rollout_ref
-            strategy = self.config.trainer.trainer_strategy
-            if strategy == "fsdp":
-                actor_rollout_ref.actor.fsdp_config.param_offload = offload
-                actor_rollout_ref.actor.fsdp_config.optimizer_offload = offload
-                actor_rollout_ref.ref.fsdp_config.param_offload = offload
-                actor_rollout_ref.ref.fsdp_config.optimizer_offload = offload
-            else:  # fsdp2
-                actor_rollout_ref.actor.fsdp_config.offload_policy = offload
-                actor_rollout_ref.ref.fsdp_config.offload_policy = offload
 
 
 @parameterized_class(
@@ -167,12 +106,10 @@ class TestTrainerCountdown(BaseTrainerCase):
         eval_tasksets[1].repeat_times = 4
         self.config.trainer.save_interval = 4
         self.config.trainer.save_hf_checkpoint = "never"
+        self.config.trainer.max_checkpoints_to_keep = 2
         if self.strategy == "megatron":
             self.config.trainer.trainer_strategy = "megatron"
         self.config.check_and_update()
-        if self.strategy == "megatron":
-            self._set_critic_strategy("megatron")
-        self._set_max_checkpoints_keep(2)
         both(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
         rollout_metrics = parser.metric_list("rollout")
@@ -274,10 +211,10 @@ class TestStepAheadAsyncRL(BaseTrainerCase):
         self.config.explorer.rollout_model.tensor_parallel_size = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
         self.config.trainer.save_interval = 4
+        self.config.trainer.max_checkpoints_to_keep = 1
         self.config.synchronizer.sync_interval = 2
         self.config.synchronizer.sync_offset = 1
         self.config.check_and_update()
-        self._set_max_checkpoints_keep(1)
 
         both(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
@@ -342,10 +279,15 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.trainer.trainer_strategy = self.strategy
+        self.config.trainer.max_checkpoints_to_keep = 2
+        self.config.algorithm.optimizer.lr = 1e-5
+        if self.offloading:
+            if self.strategy == "fsdp":
+                self.config.trainer.param_offload = True
+                self.config.trainer.optimizer_offload = True
+            else:
+                self.config.trainer.offload_policy = True
         self.config.check_and_update()
-        self._set_max_checkpoints_keep(2)
-        self._set_actor_lr(1e-5)
-        self._set_offloading(self.offloading)
         both(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
         rollout_metrics = parser.metric_list("rollout")
@@ -510,9 +452,9 @@ class TestTrainerDPO(BaseTrainerCase):
         self.config.synchronizer.sync_interval = 4
         self.config.buffer.train_batch_size = 8
         self.config.buffer.trainer_input.experience_buffer = get_unittest_dataset_config("dpo")
+        self.config.trainer.max_checkpoints_to_keep = 2
+        self.config.algorithm.optimizer.lr = 5e-7
         self.config.check_and_update()
-        self._set_max_checkpoints_keep(2)
-        self._set_actor_lr(5e-7)
         train(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
         actor_metrics = parser.metric_list("actor")
@@ -667,7 +609,6 @@ class TestFullyAsyncMode(unittest.TestCase):
         config.project = "unittest"
         config.name = f"fully_async_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         config.checkpoint_root_dir = get_checkpoint_path()
-        config.trainer.trainer_type = TRAINER_TYPE
         config.buffer.total_epochs = 1
         config.buffer.batch_size = 4
         config.cluster.gpu_per_node = 2
@@ -688,10 +629,6 @@ class TestFullyAsyncMode(unittest.TestCase):
         trainer_config.mode = "train"
         trainer_config.buffer.train_batch_size = 4
         trainer_config.check_and_update()
-        if _is_verl08():
-            pass  # critic strategy auto-detected
-        else:
-            trainer_config.trainer.trainer_config.critic.strategy = self.strategy
 
         explorer1_config = deepcopy(config)
         explorer1_config.trainer = deepcopy(trainer_config.trainer)
@@ -866,7 +803,6 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("countdown")
         self.config.trainer.save_interval = 2
         self.config.trainer.save_hf_checkpoint = "last"
-        self.config.trainer.trainer_type = TRAINER_TYPE
         self.config.trainer.trainer_strategy = self.strategy
         self.config.trainer.max_checkpoints_to_keep = 2
         self.config.check_and_update()
@@ -1172,7 +1108,6 @@ class TestServeWithTrainer(RayUnittestBaseAsync):
         config.explorer.rollout_model.enable_openai_api = True
         config.explorer.rollout_model.tensor_parallel_size = 1
         config.explorer.service_status_check_interval = 5
-        config.trainer.trainer_type = TRAINER_TYPE
         self.config = config
         self.process_list = []
 
@@ -1596,7 +1531,7 @@ class TestTinkerTrainer(BaseTrainerCase):
         shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
-@unittest.skipIf(TRAINER_TYPE != "verl", "AgentScopeTuner is only supported in verl trainer")
+@unittest.skipUnless(is_verl_legacy(), "AgentScopeTuner is only supported in verl_legacy trainer")
 class AgentScopeTunerTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         ray.init(ignore_reinit_error=True)
@@ -1755,7 +1690,6 @@ class ColocateModeTest(RayUnittestBase):
         self.config.checkpoint_root_dir = get_checkpoint_path()
         self.config.explorer.rollout_model.engine_num = 1
         self.config.trainer.ulysses_sequence_parallel_size = 1
-        self.config.trainer.trainer_type = TRAINER_TYPE
         self.config.synchronizer.sync_method = SyncMethod.MEMORY
 
     def test_trainer(self):

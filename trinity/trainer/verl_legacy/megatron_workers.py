@@ -86,9 +86,11 @@ from verl.workers.megatron_workers import logger, set_random_seed
 
 from trinity.common.config import AlgorithmConfig
 from trinity.manager.synchronizer import Synchronizer
-from trinity.trainer.verl.megatron_actor import MegatronPPOActor
-from trinity.trainer.verl.megatron_checkpoint_manager import MegatronCheckpointManager
-from trinity.trainer.verl.utils import patch_rope_theta_in_hf_config
+from trinity.trainer.verl_legacy.megatron_actor import MegatronPPOActor
+from trinity.trainer.verl_legacy.megatron_checkpoint_manager import (
+    MegatronCheckpointManager,
+)
+from trinity.trainer.verl_legacy.utils import patch_rope_theta_in_hf_config
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
 

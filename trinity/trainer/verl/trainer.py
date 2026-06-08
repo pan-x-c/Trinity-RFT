@@ -60,10 +60,10 @@ from trinity.common.config import Config
 from trinity.common.constants import SaveStrategy
 from trinity.common.experience import Experience
 from trinity.trainer.trainer import TrainEngineWrapper
-from trinity.trainer.verl08.checkpoint import CheckpointCoordinator
-from trinity.trainer.verl08.config import build_verl_config
-from trinity.trainer.verl08.utils import compute_data_metrics, to_data_proto
-from trinity.trainer.verl08.workers import TrinityActorRolloutRefWorker
+from trinity.trainer.verl.checkpoint import CheckpointCoordinator
+from trinity.trainer.verl.config import build_verl_config
+from trinity.trainer.verl.utils import compute_data_metrics, to_data_proto
+from trinity.trainer.verl.workers import TrinityActorRolloutRefWorker
 from trinity.utils.log import get_logger
 
 
@@ -512,7 +512,7 @@ class VERLTrainer(TrainEngineWrapper):
                 if "rollout_log_probs" in batch.batch:
                     batch.batch["old_log_probs"] = batch.batch["rollout_log_probs"]
             else:
-                # TODO(verl08): Recompute path not yet fully validated with the
+                # TODO: Recompute path not yet fully validated with the
                 # new engine-based worker. Use bypass_old_logprobs=True for now.
                 if (
                     "model_versions" in batch.meta_info
@@ -707,7 +707,7 @@ class VERLTrainer(TrainEngineWrapper):
         return batch
 
     def _compute_old_log_prob(self, batch: DataProto, metrics: Dict) -> DataProto:
-        # NOTE: This recompute path is not yet fully validated for verl08.
+        # NOTE: This recompute path is not yet fully validated for verl.
         # Callers should prefer bypass_old_logprobs=True until this is stable.
         batch_td = batch.to_tensordict()
         batch_td = left_right_2_no_padding(batch_td)
