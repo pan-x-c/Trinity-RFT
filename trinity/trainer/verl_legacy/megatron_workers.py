@@ -747,6 +747,8 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
 
     def _cache_state_dict_meta(self):
         """Cache state_dict meta at init time for lightweight get_weight_sync_info."""
+        if not self._is_actor:
+            return
         aggressive_empty_cache(force_sync=True)
         set_expandable_segments(False)
         self.state_dict_meta = []
