@@ -1531,7 +1531,6 @@ class TestTinkerTrainer(BaseTrainerCase):
         shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
-@unittest.skipUnless(is_verl_legacy(), "AgentScopeTuner is only supported in verl_legacy trainer")
 class AgentScopeTunerTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         ray.init(ignore_reinit_error=True)

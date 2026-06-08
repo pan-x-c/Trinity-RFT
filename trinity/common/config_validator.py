@@ -1480,6 +1480,10 @@ class GPUMemoryValidator(ConfigValidator):
         Raises:
             ValueError: If estimated memory usage exceeds safe limits and suggestions are not bypassed.
         """
+        if config.trainer.trainer_config is None:
+            self.logger.info("GPU memory check skipped: trainer_config is not set.")
+            return
+
         from trinity.trainer.verl_legacy.verl_config import veRLConfig
 
         self.pytorch_env_flag = (
