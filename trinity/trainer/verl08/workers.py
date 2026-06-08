@@ -6,7 +6,7 @@ thin extension that adds Trinity-specific hooks on top of veRL's unified
 engine-based training worker.
 
 Key additions over the base class:
-- set_algorithm(): injects Trinity's pluggable loss function
+- set_trinity_config(): injects Trinity's pluggable loss function and Ray namespace
 - save_state_dict / upload_state_dict / sync_weight_nccl: Trinity-specific
   checkpoint and weight sync methods that delegate to strategy-specific helpers
 - get_weight_sync_info / setup_weight_sync_group / teardown_weight_sync_group:
@@ -33,7 +33,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
     """Extends veRL's ActorRolloutRefWorker with Trinity-specific hooks.
 
     Additions over the base class:
-    - set_algorithm(): injects Trinity's pluggable loss function (policy + KL + entropy)
+    - set_trinity_config(): injects Trinity's pluggable loss function and Ray namespace
     - save_state_dict / upload_state_dict: checkpoint and memory-based weight sync
     - sync_weight_nccl: NCCL-based weight broadcast for Explorer↔Trainer
     - get_weight_sync_info / setup_weight_sync_group / teardown_weight_sync_group:
@@ -46,6 +46,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         self.logger = get_logger(f"{role}_{self.rank}", in_ray_actor=True)
         self._is_rollout = False  # Disable rollout in Trainer
         self._algo_config: Optional[AlgorithmConfig] = None
+        self._ray_namespace: Optional[str] = None
         self._model_update_group = None
         self._state_dict_meta_list = None
         self._coordinator: Optional[CheckpointCoordinator] = None
@@ -260,14 +261,15 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         )
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def set_algorithm(self, algo_config: AlgorithmConfig):
-        """Set Trinity's algorithm config and rebuild loss function.
+    def set_trinity_config(self, algo_config: AlgorithmConfig, ray_namespace: str):
+        """Set Trinity-specific runtime config on the worker.
 
-        This is called by VERLTrainer after worker initialization to
-        inject the pluggable policy loss, KL loss, and entropy loss from
-        Trinity's algorithm registry.
+        This is called by VERLTrainer after worker initialization to inject:
+        - The pluggable policy loss, KL loss, and entropy loss from Trinity's algorithm registry
+        - The Ray namespace used to locate Synchronizer and CheckpointMonitor actors
         """
         self._algo_config = algo_config
+        self._ray_namespace = ray_namespace
         if self.actor is not None:
             loss_fn = build_trinity_loss(algo_config)
             self.actor.set_loss_fn(loss_fn)
@@ -335,7 +337,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             from trinity.trainer.verl08.trainer import CheckpointMonitor
 
             monitor = CheckpointMonitor.get_actor(
-                namespace=self.config.synchronizer.ray_namespace,
+                namespace=self._ray_namespace,
             )
             self._coordinator = CheckpointCoordinator(monitor)
         return self._coordinator
@@ -401,7 +403,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         megatron_engine.py based on the actor's strategy.
         """
         strategy = self.config.actor.strategy
-        synchronizer = Synchronizer.get_actor(namespace=self.config.synchronizer.ray_namespace)
+        synchronizer = Synchronizer.get_actor(namespace=self._ray_namespace)
 
         if strategy.startswith("fsdp"):
             from trinity.trainer.verl08.fsdp_engine import fsdp_upload_state_dict

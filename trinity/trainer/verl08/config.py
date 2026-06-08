@@ -25,7 +25,6 @@ Config sections and their target types:
   config.ref          → FSDPActorConfig | McoreActorConfig  (subset)
   config.rollout      → RolloutConfig
   config.critic       → FSDPCriticConfig | McoreCriticConfig
-  config.synchronizer → SynchronizerConfig   (direct access)
   config.global_profiler → dict (plain dict, not a dataclass)
 """
 from __future__ import annotations
@@ -137,7 +136,6 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
       - ref:         actor-style config for reference model
       - rollout:     RolloutConfig fields
       - critic:      CriticConfig fields (for VERLTrainer._init_workers)
-      - synchronizer: SynchronizerConfig
       - global_profiler: plain dict
     """
     cfg = global_config
@@ -196,7 +194,6 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
         "ref": ref,
         "rollout": rollout,
         "critic": critic,
-        "synchronizer": cfg.synchronizer,
         "global_profiler": global_profiler,
     }
 
@@ -306,24 +303,25 @@ def _build_actor_config(cfg: Config, strategy: str, total_training_steps: int) -
             "loss_mode": "vanilla",
             "rollout_correction": cfg.algorithm.rollout_correction or {"bypass_mode": True},
         },
-        "router_replay": {"mode": "disabled"},
+        "router_replay": {"mode": "R3" if cfg.algorithm.enable_router_replay else "disabled"},
         "profiler": _build_profiler_config(),
         "checkpoint": _build_checkpoint_config(),
         "optim": _build_optimizer_config(cfg.algorithm.optimizer, strategy, total_training_steps),
     }
 
     # Strategy-specific fields
+    router_replay_mode = "R3" if cfg.algorithm.enable_router_replay else "disabled"
     if is_fsdp:
         actor["grad_clip"] = cfg.trainer.grad_clip
         actor["ulysses_sequence_parallel_size"] = cfg.trainer.ulysses_sequence_parallel_size
         actor["entropy_from_logits_with_chunking"] = False
         actor["entropy_checkpointing"] = False
-        actor["fsdp_config"] = _build_fsdp_engine_config(cfg, strategy)
+        actor["fsdp_config"] = _build_fsdp_engine_config(cfg, strategy, router_replay_mode)
         actor["use_remove_padding"] = cfg.trainer.use_remove_padding
         actor["use_rollout_log_probs"] = False
         actor["calculate_sum_pi_squared"] = False
     elif is_megatron:
-        actor["megatron"] = _build_mcore_engine_config(cfg)
+        actor["megatron"] = _build_mcore_engine_config(cfg, router_replay_mode)
         actor["load_weight"] = True
         actor["use_rollout_log_probs"] = False
 
@@ -487,38 +485,12 @@ def _build_critic_config(
     return critic
 
 
-def _build_critic_model_config(cfg: Config) -> dict:
-    """Build HFModelConfig dict for critic (without `_target_`).
-
-    This dict is stored in critic["model_config"] but does NOT get a
-    `_target_` because HFModelConfig.__post_init__ does heavy I/O.
-    The trainer.py code creates HFModelConfig manually from this dict.
-    """
-    critic_model_path = cfg.model.critic_model_path or cfg.model.model_path
-    model_config = {
-        "path": critic_model_path,
-        "use_shm": False,
-        "trust_remote_code": cfg.model.trust_remote_code,
-        "enable_gradient_checkpointing": True,
-        "use_remove_padding": cfg.trainer.use_remove_padding,
-        "override_config": {},
-    }
-
-    # Rope config for critic
-    if cfg.model.rope_scaling is not None:
-        model_config["override_config"]["rope_scaling"] = cfg.model.rope_scaling  # type: ignore
-    if cfg.model.rope_theta is not None:
-        model_config["override_config"]["rope_theta"] = cfg.model.rope_theta  # type: ignore
-
-    return model_config
-
-
 # ---------------------------------------------------------------------------
 # Sub-config builders (return plain dicts — _inject_targets handles _target_)
 # ---------------------------------------------------------------------------
 
 
-def _build_fsdp_engine_config(cfg: Config, strategy: str) -> dict:
+def _build_fsdp_engine_config(cfg: Config, strategy: str, router_replay_mode: str = "disabled") -> dict:
     """Build FSDPEngineConfig-compatible dict."""
     return {
         "param_offload": False,
@@ -537,11 +509,11 @@ def _build_fsdp_engine_config(cfg: Config, strategy: str) -> dict:
         "max_token_len_per_gpu": cfg.trainer.max_token_len_per_gpu,
         "use_remove_padding": cfg.trainer.use_remove_padding,
         "use_fused_kernels": False,
-        "router_replay": {"mode": "disabled"},
+        "router_replay": {"mode": router_replay_mode},
     }
 
 
-def _build_mcore_engine_config(cfg: Config) -> dict:
+def _build_mcore_engine_config(cfg: Config, router_replay_mode: str = "disabled") -> dict:
     """Build McoreEngineConfig-compatible dict."""
     return {
         "strategy": "megatron",
@@ -578,7 +550,7 @@ def _build_mcore_engine_config(cfg: Config) -> dict:
             "recompute_num_layers": 1,
         },
         "override_mcore_model_config": {},
-        "router_replay": {"mode": "disabled"},
+        "router_replay": {"mode": router_replay_mode},
     }
 
 
