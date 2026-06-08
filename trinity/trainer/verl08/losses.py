@@ -48,8 +48,9 @@ class TrinityPolicyLoss:
 
         fields = ["response_mask"]
         fields.extend(self.policy_loss_fn.select_keys)
-        if not isinstance(self.kl_loss_fn, DummyKLFn):
+        if self.use_kl_loss:
             fields.append("ref_log_prob")
+            fields.append("old_log_probs")
         fields = list(dict.fromkeys(fields))
         padded_data = data.select(*fields).to_padded_tensor()
 
