@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from transformers import PreTrainedModel
 from verl import DataProto
+from verl.trainer.ppo.metric_utils import _compute_response_info
 
 from trinity.common.experience import (
     Experience,
@@ -205,6 +206,8 @@ def compute_data_metrics(batch: DataProto) -> dict:
             - critic/returns/mean, max, min: Statistics about returns
             - critic/values/mean, max, min: Statistics about critic values
             - critic/vf_explained_var: Explained variance of the value function
+            - response_length/mean, max, min: Statistics about response length
+            - prompt_length/mean, max, min: Statistics about prompt length
     """
     metrics = {}
 
@@ -225,7 +228,24 @@ def compute_data_metrics(batch: DataProto) -> dict:
         )
 
     max_response_length = batch.batch["responses"].shape[-1]
+
     response_mask = batch.batch["attention_mask"][:, -max_response_length:].bool()
+
+    response_info = _compute_response_info(batch)
+    prompt_length = response_info["prompt_length"]
+    response_length = response_info["response_length"]
+    metrics.update(
+        {
+            # response length
+            "response_length/mean": torch.mean(response_length).detach().item(),
+            "response_length/max": torch.max(response_length).detach().item(),
+            "response_length/min": torch.min(response_length).detach().item(),
+            # prompt length
+            "prompt_length/mean": torch.mean(prompt_length).detach().item(),
+            "prompt_length/max": torch.max(prompt_length).detach().item(),
+            "prompt_length/min": torch.min(prompt_length).detach().item(),
+        }
+    )
 
     if "advantages" in batch.batch:
         # adv

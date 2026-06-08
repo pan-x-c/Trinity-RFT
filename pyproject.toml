@@ -49,6 +49,7 @@ dependencies = [
     "transformers>=5.8.1",
     "datasets>=4.0.0",
     "typer>=0.23.0",
+    "fsspec>=2023.10.0",
 ]
 
 [project.scripts]
