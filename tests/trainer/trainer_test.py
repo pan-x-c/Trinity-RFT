@@ -55,7 +55,6 @@ from trinity.common.models.utils import get_checkpoint_dir_with_step_num
 from trinity.explorer.proxy.client import TrinityClient
 from trinity.manager.state_manager import StateManager
 from trinity.manager.synchronizer import Synchronizer
-from trinity.trainer import is_verl_legacy
 from trinity.trainer.tinker.tinker_trainer import TinkerTrainerWrapper
 
 
