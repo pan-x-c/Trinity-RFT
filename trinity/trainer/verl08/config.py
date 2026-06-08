@@ -490,7 +490,9 @@ def _build_critic_config(
 # ---------------------------------------------------------------------------
 
 
-def _build_fsdp_engine_config(cfg: Config, strategy: str, router_replay_mode: str = "disabled") -> dict:
+def _build_fsdp_engine_config(
+    cfg: Config, strategy: str, router_replay_mode: str = "disabled"
+) -> dict:
     """Build FSDPEngineConfig-compatible dict."""
     return {
         "param_offload": False,

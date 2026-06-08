@@ -17,12 +17,7 @@ import torch
 from trinity.buffer.buffer import get_buffer_reader
 from trinity.buffer.task_scheduler import get_taskset_scheduler
 from trinity.common.config import Config
-from trinity.common.constants import (
-    ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
-    RunningStatus,
-    SyncMethod,
-    SyncStyle,
-)
+from trinity.common.constants import RunningStatus, SyncMethod, SyncStyle
 from trinity.common.models.allocator import Allocator
 from trinity.common.models.model import ModelWrapper
 from trinity.explorer.rollout_coordinator import RolloutCoordinator
@@ -113,6 +108,7 @@ class Explorer:
         master_address: str,
         master_port: int,
         world_size: int = None,
+        group_name: str = None,
         timeout: int = None,
     ):
         await self._wait_for_models_ready()
@@ -124,6 +120,8 @@ class Explorer:
             )
         if timeout is None:
             timeout = self.config.synchronizer.sync_timeout
+        if group_name is None:
+            group_name = self.config.synchronizer.group_name
         self.logger.info(
             f"Initialize process group for weight synchronization, "
             f"master_address={master_address}, master_port={master_port}, "
@@ -137,7 +135,7 @@ class Explorer:
                 rank_offset=i * self.config.explorer.rollout_model.tensor_parallel_size
                 + base_offset,
                 world_size=world_size,
-                group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
+                group_name=group_name,
                 explorer_name=self.config.explorer.name,
                 timeout=timeout,
             )
@@ -177,7 +175,7 @@ class Explorer:
                     master_port=master_port,
                     rank_offset=0,
                     world_size=world_size,
-                    group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
+                    group_name=self.config.synchronizer.group_name,
                     explorer_name=self.config.explorer.name,
                     timeout=self.config.synchronizer.sync_timeout,
                 )

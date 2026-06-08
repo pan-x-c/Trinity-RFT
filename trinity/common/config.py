@@ -16,6 +16,7 @@ from trinity.common.constants import (
     LOG_LEVEL_ENV_VAR,
     LOG_NODE_IP_ENV_VAR,
     PLUGIN_DIRS_ENV_VAR,
+    ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
     TRAINER_NAME,
     PromptType,
     SaveStrategy,
@@ -836,6 +837,8 @@ class SynchronizerConfig:
     sync_offset: int = 0
     # waiting for `sync_timeout` seconds before timeout in `nccl` method
     sync_timeout: int = 3600
+    # NCCL process group name for weight sync
+    group_name: str = ROLLOUT_WEIGHT_SYNC_GROUP_NAME
     # wait for the lastest checkpoint to be ready  # TODO: to be used
     wait_for_checkpoint: bool = False
 

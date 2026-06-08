@@ -85,7 +85,6 @@ from verl.workers.critic.megatron_critic import MegatronPPOCritic
 from verl.workers.megatron_workers import logger, set_random_seed
 
 from trinity.common.config import AlgorithmConfig
-from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME
 from trinity.manager.synchronizer import Synchronizer
 from trinity.trainer.verl.megatron_actor import MegatronPPOActor
 from trinity.trainer.verl.megatron_checkpoint_manager import MegatronCheckpointManager
@@ -772,34 +771,34 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
             return master_address, int(master_port), self.state_dict_meta
         return None
 
-    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    @register(dispatch_mode=Dispatch.RANK_ZERO)
     def setup_weight_sync_group(
         self,
-        master_address: str = None,
-        master_port: int = None,
-        world_size: int = None,
-        timeout: int = None,
+        master_address: str,
+        master_port: int,
+        world_size: int,
+        group_name: str,
+        timeout: int,
     ):
         """Join the NCCL process group for weight sync."""
-        if torch.distributed.get_rank() == 0:
-            self.logger.info(
-                f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
-            )
-            self._model_update_group = init_process_group(
-                host=master_address,
-                port=int(master_port),
-                group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
-                backend="nccl",
-                timeout=timeout,
-                world_size=world_size,
-                rank=0,
-            )
-            self.logger.info("Trainer init_process_group done.")
+        self.logger.info(
+            f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
+        )
+        self._model_update_group = init_process_group(
+            host=master_address,
+            port=int(master_port),
+            group_name=group_name,
+            backend="nccl",
+            timeout=timeout,
+            world_size=world_size,
+            rank=0,
+        )
+        self.logger.info("Trainer init_process_group done.")
 
-    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    @register(dispatch_mode=Dispatch.RANK_ZERO)
     def teardown_weight_sync_group(self):
         """Destroy the NCCL process group for weight sync."""
-        if torch.distributed.get_rank() == 0 and self._model_update_group is not None:
+        if self._model_update_group is not None:
             self.logger.info("Tearing down weight sync group.")
             torch.distributed.destroy_process_group(self._model_update_group)
             self._model_update_group = None

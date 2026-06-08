@@ -448,19 +448,21 @@ class VERLTrainer(TrainEngineWrapper):
         self._load_checkpoint()
 
     async def get_weight_sync_info(self):
-        results = self.actor_rollout_wg.get_weight_sync_info()
-        for r in results:
-            if r is not None:
-                return r
-        raise RuntimeError("Failed to get weight sync info from rank 0")
+        return self.actor_rollout_wg.get_weight_sync_info()
 
     async def setup_weight_sync_group(
-        self, master_address: str, master_port: int, world_size: int, timeout: int
+        self,
+        master_address: str,
+        master_port: int,
+        world_size: int,
+        group_name: str,
+        timeout: int,
     ):
         self.actor_rollout_wg.setup_weight_sync_group(
             master_address=master_address,
             master_port=master_port,
             world_size=world_size,
+            group_name=group_name,
             timeout=timeout,
         )
 

@@ -448,12 +448,18 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         raise RuntimeError("Failed to get weight sync info from rank 0")
 
     async def setup_weight_sync_group(
-        self, master_address: str, master_port: int, world_size: int, timeout: int
+        self,
+        master_address: str,
+        master_port: int,
+        world_size: int,
+        group_name: str,
+        timeout: int,
     ):
         self.actor_rollout_wg.setup_weight_sync_group(
             master_address=master_address,
             master_port=master_port,
             world_size=world_size,
+            group_name=group_name,
             timeout=timeout,
         )
 

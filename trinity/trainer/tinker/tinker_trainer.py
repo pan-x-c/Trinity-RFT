@@ -358,7 +358,9 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
     async def get_weight_sync_info(self):
         return None, None, []
 
-    async def setup_weight_sync_group(self, master_address, master_port, world_size, timeout):
+    async def setup_weight_sync_group(
+        self, master_address, master_port, world_size, group_name, timeout
+    ):
         pass
 
     async def teardown_weight_sync_group(self):

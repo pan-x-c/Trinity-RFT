@@ -21,7 +21,6 @@ from verl.utils.memory_utils import aggressive_empty_cache
 from verl.workers.engine_workers import ActorRolloutRefWorker
 
 from trinity.common.config import AlgorithmConfig
-from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME
 from trinity.manager.synchronizer import Synchronizer
 from trinity.trainer.verl08.checkpoint import CheckpointCoordinator
 from trinity.trainer.verl08.losses import build_trinity_loss
@@ -247,7 +246,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             params = model.state_dict()
             params = convert_weight_keys(params, unwrapped)
             self._state_dict_meta_list = [
-                (name, "bfloat16", tuple(p.shape)) for name, p in params.items()
+                (name, str(p.dtype).split(".")[-1], tuple(p.shape)) for name, p in params.items()
             ]
             del params
         elif strategy.startswith("megatron"):
@@ -274,48 +273,48 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             loss_fn = build_trinity_loss(algo_config)
             self.actor.set_loss_fn(loss_fn)
 
-    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    @register(dispatch_mode=Dispatch.RANK_ZERO)
     def get_weight_sync_info(self):
         """Return (addr, port, state_dict_meta) from rank 0 for NCCL group setup.
 
         Uses cached meta from init_model() — no parameter materialization.
-        Other ranks return None.
         """
-        if torch.distributed.get_rank() == 0:
-            aggressive_empty_cache(force_sync=True)
-            addr, port = self.get_available_master_addr_port()
-            self.logger.info(f"Weight sync info: {addr}:{port}")
-            return addr, int(port), self._state_dict_meta_list
-        return None
+        aggressive_empty_cache(force_sync=True)
+        addr, port = self.get_available_master_addr_port()
+        self.logger.info(f"Weight sync info: {addr}:{port}")
+        return addr, int(port), self._state_dict_meta_list
 
-    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    @register(dispatch_mode=Dispatch.RANK_ZERO)
     def setup_weight_sync_group(
-        self, master_address: str, master_port: int, world_size: int, timeout: int
+        self,
+        master_address: str,
+        master_port: int,
+        world_size: int,
+        group_name: str,
+        timeout: int,
     ):
         """Join the NCCL process group for weight sync.
 
         Called concurrently with Explorer's setup_weight_sync_group.
-        Only rank 0 creates the process group.
         """
-        if torch.distributed.get_rank() == 0:
-            self.logger.info(
-                f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
-            )
-            self._model_update_group = init_process_group(
-                host=master_address,
-                port=int(master_port),
-                group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
-                backend="nccl",
-                timeout=timeout,
-                world_size=world_size,
-                rank=0,
-            )
-            self.logger.info("Trainer init_process_group done.")
+        self.logger.info(
+            f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
+        )
+        self._model_update_group = init_process_group(
+            host=master_address,
+            port=int(master_port),
+            group_name=group_name,
+            backend="nccl",
+            timeout=timeout,
+            world_size=world_size,
+            rank=0,
+        )
+        self.logger.info("Trainer init_process_group done.")
 
-    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    @register(dispatch_mode=Dispatch.RANK_ZERO)
     def teardown_weight_sync_group(self):
         """Destroy the NCCL process group for weight sync."""
-        if torch.distributed.get_rank() == 0 and self._model_update_group is not None:
+        if self._model_update_group is not None:
             self.logger.info("Tearing down weight sync group.")
             torch.distributed.destroy_process_group(self._model_update_group)
             self._model_update_group = None
@@ -337,7 +336,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             from trinity.trainer.verl08.trainer import CheckpointMonitor
 
             monitor = CheckpointMonitor.get_actor(
-                namespace=self._ray_namespace,
+                namespace=self._ray_namespace,  # type: ignore
             )
             self._coordinator = CheckpointCoordinator(monitor)
         return self._coordinator

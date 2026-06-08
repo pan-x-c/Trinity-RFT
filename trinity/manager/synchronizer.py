@@ -328,10 +328,11 @@ class Synchronizer:
         world_size = self.config.synchronizer.explorer_world_size + 1  # type: ignore
         timeout = timeout or self.config.synchronizer.sync_timeout
 
+        group_name = self.config.synchronizer.group_name
         self.logger.info(f"Coordinating weight sync setup: {addr}:{port}, world_size={world_size}")
         await asyncio.gather(
-            trainer.setup_weight_sync_group.remote(addr, port, world_size, timeout),
-            explorer.setup_weight_sync_group.remote(addr, port, world_size, timeout),
+            trainer.setup_weight_sync_group.remote(addr, port, world_size, group_name, timeout),
+            explorer.setup_weight_sync_group.remote(addr, port, world_size, group_name, timeout),
         )
         await explorer.set_state_dict_meta.remote(meta)
         self.logger.info("Weight sync group setup complete.")

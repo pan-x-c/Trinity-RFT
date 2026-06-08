@@ -88,10 +88,13 @@ class Trainer:
         master_address: str,
         master_port: int,
         world_size: int,
+        group_name: str,
         timeout: int,
     ) -> None:
         """Join the NCCL weight sync group. Called by Synchronizer."""
-        await self.engine.setup_weight_sync_group(master_address, master_port, world_size, timeout)
+        await self.engine.setup_weight_sync_group(
+            master_address, master_port, world_size, group_name, timeout
+        )
 
     async def teardown_weight_sync_group(self) -> None:
         """Destroy the NCCL weight sync group. Called by Synchronizer."""
@@ -315,7 +318,12 @@ class TrainEngineWrapper(ABC):
 
     @abstractmethod
     async def setup_weight_sync_group(
-        self, master_address: str, master_port: int, world_size: int, timeout: int
+        self,
+        master_address: str,
+        master_port: int,
+        world_size: int,
+        group_name: str,
+        timeout: int,
     ) -> None:
         """Join the NCCL weight sync group."""
 
