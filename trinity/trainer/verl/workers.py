@@ -345,11 +345,15 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         if strategy.startswith("fsdp"):
             from trinity.trainer.verl.fsdp_engine import fsdp_save_state_dict
 
-            fsdp_save_state_dict(self.actor.engine, local_path, global_step, coordinator)
+            fsdp_save_state_dict(
+                self.actor.engine, local_path, global_step, coordinator, logger=self.logger
+            )
         elif strategy.startswith("megatron"):
             from trinity.trainer.verl.megatron_engine import megatron_save_state_dict
 
-            megatron_save_state_dict(self.actor.engine, local_path, global_step, coordinator)
+            megatron_save_state_dict(
+                self.actor.engine, local_path, global_step, coordinator, logger=self.logger
+            )
         else:
             raise ValueError(f"Unsupported strategy for save_state_dict: {strategy}")
         self._save_lora(local_path)
@@ -398,10 +402,12 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         if strategy.startswith("fsdp"):
             from trinity.trainer.verl.fsdp_engine import fsdp_upload_state_dict
 
-            fsdp_upload_state_dict(self.actor.engine, synchronizer, global_step)
+            fsdp_upload_state_dict(self.actor.engine, synchronizer, global_step, logger=self.logger)
         elif strategy.startswith("megatron"):
             from trinity.trainer.verl.megatron_engine import megatron_upload_state_dict
 
-            megatron_upload_state_dict(self.actor.engine, synchronizer, global_step)
+            megatron_upload_state_dict(
+                self.actor.engine, synchronizer, global_step, logger=self.logger
+            )
         else:
             raise ValueError(f"Unsupported strategy for upload_state_dict: {strategy}")

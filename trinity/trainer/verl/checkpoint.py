@@ -22,8 +22,6 @@ from ray.actor import ActorHandle
 
 from trinity.utils.log import get_logger
 
-logger = get_logger(__name__)
-
 
 class CheckpointCoordinator:
     """Manages checkpoint saves and coordinates with CheckpointMonitor.
@@ -48,6 +46,7 @@ class CheckpointCoordinator:
     def __init__(self, checkpoint_monitor: ActorHandle):
         self._monitor = checkpoint_monitor
         self._threads: dict[str, threading.Thread] = {}
+        self.logger = get_logger(__name__)
 
     # ------------------------------------------------------------------
     # Worker-level: background save with Monitor notifications
@@ -85,7 +84,7 @@ class CheckpointCoordinator:
                 save_fn()
                 ray.get(self._monitor.notify_finished.remote(global_step, is_state_dict))
             except Exception:
-                logger.error(
+                self.logger.error(
                     f"Background save '{name}' failed at step {global_step}", exc_info=True
                 )
                 raise

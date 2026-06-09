@@ -17,7 +17,6 @@ All functions receive the `engine` object (an FSDPEngine instance from
 """
 import os
 import warnings
-from typing import Optional
 
 import ray
 import torch
@@ -31,12 +30,9 @@ from verl.utils.fs import local_mkdir_safe
 from verl.utils.fsdp_utils import get_fsdp_full_state_dict, get_fsdp_state_ctx
 
 from trinity.trainer.verl.checkpoint import CheckpointCoordinator
-from trinity.utils.log import get_logger
-
-logger = get_logger(__name__)
 
 
-def _save_checkpoint_metadata(engine, local_path: str):
+def _save_checkpoint_metadata(engine, local_path: str, logger):
     """Save HF model config and tokenizer to ``{local_path}/huggingface/``.
 
     ``FSDPModelMerger`` (used by Synchronizer to load sharded checkpoints)
@@ -73,8 +69,9 @@ def _save_checkpoint_metadata(engine, local_path: str):
 def fsdp_save_state_dict(
     engine,
     local_path: str,
-    global_step: int = 0,
-    coordinator: Optional[CheckpointCoordinator] = None,
+    global_step: int,
+    coordinator: CheckpointCoordinator,
+    logger,
 ):
     """Save FSDP model state dict (sharded) for checkpoint-based weight sync.
 
@@ -95,7 +92,7 @@ def fsdp_save_state_dict(
         local_path: Local directory path to save the state dict.
         global_step: Current training step.
         coordinator: CheckpointCoordinator for background save + Monitor integration.
-            When None, falls back to synchronous save (no Monitor notification).
+        logger: Logger instance from the calling worker.
     """
     if local_path is None:
         return
@@ -115,11 +112,11 @@ def fsdp_save_state_dict(
     # Save metadata (HF config/tokenizer + fsdp_config.json) on rank 0
     # so FSDPModelMerger can merge the shards.
     if rank == 0:
-        _save_checkpoint_metadata(engine, local_path)
+        _save_checkpoint_metadata(engine, local_path, logger)
 
     path = os.path.join(local_path, f"model_world_size_{world_size}_rank_{rank}.pt")
 
-    if coordinator is not None and rank == 0:
+    if rank == 0:
         coordinator.save_async(
             "model_state_dict",
             lambda: torch.save(state_dict, path),
@@ -132,7 +129,7 @@ def fsdp_save_state_dict(
     logger.info(f"FSDP state dict save initiated for {local_path} at step {global_step}")
 
 
-def fsdp_upload_state_dict(engine, synchronizer, global_step: int = 0):
+def fsdp_upload_state_dict(engine, synchronizer, global_step: int, logger):
     """Upload full FSDP model state dict to Synchronizer for memory-based weight sync.
 
     Gathers the full state dict on rank 0 and sends it to the Synchronizer

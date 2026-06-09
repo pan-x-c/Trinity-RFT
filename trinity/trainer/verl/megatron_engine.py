@@ -15,29 +15,25 @@ All functions receive the `engine` object (a McoreEngine instance from
   - engine.get_per_tensor_param(): generator of (name, tensor) pairs
   - engine.save_checkpoint() / engine.load_checkpoint()
 """
-from typing import Optional
-
 import ray
 import torch
 from verl.utils.memory_utils import aggressive_empty_cache
 
 from trinity.trainer.verl.checkpoint import CheckpointCoordinator
-from trinity.utils.log import get_logger
-
-logger = get_logger(__name__)
 
 
 def megatron_save_state_dict(
     engine,
     local_path: str,
-    global_step: int = 0,
-    coordinator: Optional[CheckpointCoordinator] = None,
+    global_step: int,
+    coordinator: CheckpointCoordinator,
+    logger,
 ):
     """Save Megatron model state dict for checkpoint-based weight sync.
 
     Delegates to the engine's built-in save_checkpoint for proper
-    distributed checkpoint handling. When a ``coordinator`` is provided,
-    the save is wrapped with CheckpointMonitor notifications.
+    distributed checkpoint handling. The save is wrapped with
+    CheckpointMonitor notifications via the coordinator.
 
     Note: Megatron's save_checkpoint involves distributed barriers internally,
     so it runs synchronously. The coordinator's ``save_sync`` is used to add
@@ -48,11 +44,12 @@ def megatron_save_state_dict(
         local_path: Local directory path to save the state dict.
         global_step: Current training step.
         coordinator: CheckpointCoordinator for Monitor integration.
+        logger: Logger instance from the calling worker.
     """
     if local_path is None:
         return
 
-    if coordinator is not None and torch.distributed.get_rank() == 0:
+    if torch.distributed.get_rank() == 0:
         coordinator.save_sync(
             lambda: engine.save_checkpoint(local_path=local_path, global_step=global_step),
             global_step,
@@ -65,7 +62,7 @@ def megatron_save_state_dict(
     logger.info(f"Megatron state dict saved to {local_path} at step {global_step}")
 
 
-def megatron_upload_state_dict(engine, synchronizer, global_step: int = 0):
+def megatron_upload_state_dict(engine, synchronizer, global_step: int, logger):
     """Upload Megatron model state dict to Synchronizer for memory-based weight sync.
 
     Iterates over per-tensor parameters and collects them on rank 0,

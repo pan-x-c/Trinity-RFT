@@ -67,6 +67,11 @@ class Trainer:
         self.sync_style = config.synchronizer.sync_style
         self.total_steps = config.trainer.total_steps or float("inf")
         self.save_hf_checkpoint = config.trainer.save_hf_checkpoint
+        # Track the train_step at which the loop most recently completed a
+        # save_checkpoint call. Used by the post-loop branch to decide
+        # whether the current step still needs a final save (e.g. when the
+        # loop broke due to StopAsyncIteration / Exception before saving).
+        self._last_saved_step: int = -1
 
     async def prepare(self) -> None:
         """Prepare the trainer."""
@@ -126,9 +131,26 @@ class Trainer:
                 if need_sync and not (need_save and self.sync_method == SyncMethod.CHECKPOINT):
                     metrics.update(await self.sync_weight())
                 if need_save:
-                    metrics.update(
-                        await self.save_checkpoint(save_as_hf=self.save_hf_checkpoint == "always")
+                    # Detect the final training step so we can honor
+                    # save_hf_checkpoint == "last" inline. This guarantees
+                    # save_checkpoint is invoked at most once per step —
+                    # the post-loop branch will skip only when the loop
+                    # already saved at the current train_step_num.
+                    is_final_step = self.train_step_num >= self.total_steps
+                    save_as_hf = self.save_hf_checkpoint == "always" or (
+                        is_final_step and self.save_hf_checkpoint == "last"
                     )
+                    metrics.update(
+                        await self.save_checkpoint(
+                            block_until_saved=is_final_step,
+                            save_as_hf=save_as_hf,
+                        )
+                    )
+                    # Record the saved step only after save_checkpoint
+                    # returns successfully. If it raises, _last_saved_step
+                    # stays at the previous value and the post-loop branch
+                    # will perform the save.
+                    self._last_saved_step = self.train_step_num
                     if need_sync:
                         # Update sync bookkeeping even though sync_weight was
                         # skipped — save_checkpoint already wrote the weights
@@ -145,19 +167,23 @@ class Trainer:
                 self.logger.error(f"Error in Trainer:\n{traceback.format_exc()}")
                 break
 
-        # Save final checkpoint if:
-        # - This step wasn't already saved in the loop, OR
-        # - HF format is requested at the last step ("last") but the loop
-        #   only saved without HF format (loop uses save_as_hf only for "always")
-        already_saved = self.need_save()
-        if not already_saved or self.save_hf_checkpoint == "last":
+        # Save final checkpoint when the loop did not already complete a
+        # save at the current train_step_num. This covers every exit path
+        # — natural finish, StopAsyncIteration, and Exception — while still
+        # guaranteeing save_checkpoint is invoked at most once per step:
+        #   - Loop saved this step successfully  -> _last_saved_step matches
+        #     train_step_num -> skip and just wait for background writes.
+        #   - Loop never saved this step (e.g. exception fired after
+        #     train_step advanced train_step_num but before save_checkpoint,
+        #     or save_checkpoint itself raised) -> save now.
+        if self._last_saved_step != self.train_step_num:
             await self.save_checkpoint(
                 block_until_saved=True, save_as_hf=self.save_hf_checkpoint != "never"
             )
         else:
-            # The last step was already saved (non-blocking) in the loop.
-            # Wait for background save threads to finish so the iteration
-            # file is guaranteed to exist before the trainer exits.
+            # The last step was already saved in the loop (with HF when
+            # appropriate). Wait for background save threads to finish so
+            # the iteration file is guaranteed to exist before exit.
             await self.engine.wait_for_save()
         await self.synchronizer.set_trainer_status.remote(RunningStatus.STOPPED)
         self.logger.info("--------------------\n> Trainer finished.\n--------------------")
