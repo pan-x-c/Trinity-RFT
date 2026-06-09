@@ -774,6 +774,18 @@ class ExplorerConfig:
 
 
 @dataclass
+class MegatronParallelConfig:
+    """Megatron-Core parallelism settings for the trainer."""
+
+    tensor_model_parallel_size: int = 1
+    pipeline_model_parallel_size: int = 1
+    virtual_pipeline_model_parallel_size: Optional[int] = None
+    expert_model_parallel_size: int = 1
+    expert_tensor_parallel_size: Optional[int] = None
+    context_parallel_size: int = 1
+
+
+@dataclass
 class TrainerConfig:
     name: str = TRAINER_NAME
     trainer_type: str = "verl"
@@ -809,6 +821,10 @@ class TrainerConfig:
 
     save_strategy: SaveStrategy = SaveStrategy.UNRESTRICTED
     max_checkpoints_to_keep: int = 0  # 0 means keep all checkpoints
+
+    megatron: MegatronParallelConfig = field(default_factory=MegatronParallelConfig)
+    # TODO: add fsdp config in the future
+
     # ! DO NOT SET
     trust_remote_code: bool = False
     trainer_config: Any = field(default_factory=dict)

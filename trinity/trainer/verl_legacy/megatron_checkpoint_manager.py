@@ -473,7 +473,25 @@ class MegatronCheckpointManager(OldMegatronCheckpointManager):
             return
 
         local_path = local_mkdir_safe(local_path)
-        self._save_state_dict(local_path, global_step)
+
+        # Temporarily restrict checkpoint contents to model-only so that
+        # optimizer and extra (rng / scheduler) states are skipped — this
+        # path is used only for weight-sync to the rollout side, not for
+        # training resume.
+        original_save_contents = None
+        if hasattr(self, "checkpoint_save_contents"):
+            original_save_contents = list(self.checkpoint_save_contents)
+            new_contents = ["model"]
+            if "hf_model" in original_save_contents:
+                new_contents.append("hf_model")
+            self.checkpoint_save_contents = new_contents
+
+        try:
+            self._save_state_dict(local_path, global_step)
+        finally:
+            if original_save_contents is not None:
+                self.checkpoint_save_contents = original_save_contents
+
         self._save_tokenizer(local_path, global_step)
         ray.get(
             self.checkpoint_monitor.register_thread_count.remote(

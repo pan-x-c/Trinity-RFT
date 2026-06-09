@@ -703,6 +703,20 @@ class veRLConfig:
         self.actor_rollout_ref.ref.megatron.use_remove_padding = use_remove_padding
         self.critic.megatron.use_remove_padding = use_remove_padding
 
+        # Megatron parallelism
+        mg = config.trainer.megatron
+        for mcore_cfg in [
+            self.actor_rollout_ref.actor.megatron,
+            self.actor_rollout_ref.ref.megatron,
+            self.critic.megatron,
+        ]:
+            mcore_cfg.tensor_model_parallel_size = mg.tensor_model_parallel_size
+            mcore_cfg.pipeline_model_parallel_size = mg.pipeline_model_parallel_size
+            mcore_cfg.virtual_pipeline_model_parallel_size = mg.virtual_pipeline_model_parallel_size
+            mcore_cfg.expert_model_parallel_size = mg.expert_model_parallel_size
+            mcore_cfg.expert_tensor_parallel_size = mg.expert_tensor_parallel_size
+            mcore_cfg.context_parallel_size = mg.context_parallel_size
+
         # TODO: check other fields
         self.enable_preview = config.trainer.enable_preview
 

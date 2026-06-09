@@ -278,6 +278,8 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.trainer.trainer_strategy = self.strategy
+        if self.strategy == "megatron":
+            self.config.trainer.megatron.tensor_model_parallel_size = 2
         self.config.trainer.max_checkpoints_to_keep = 2
         self.config.algorithm.optimizer.lr = 1e-5
         if self.offloading:
@@ -830,9 +832,6 @@ class TestTrainerCheckpointSave(unittest.TestCase):
             "common.pt",
             ".metadata",
             "metadata.json",
-            # for Megatron < 0.18
-            # "__0_1.distcp",
-            # "__1_1.distcp",
         }
         # Model-only state dict saves (used for weight sync) don't include
         # optimizer shards, so no .distcp files are produced.

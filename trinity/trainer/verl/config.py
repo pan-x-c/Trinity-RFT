@@ -522,6 +522,7 @@ def _build_fsdp_engine_config(
 
 def _build_mcore_engine_config(cfg: Config, router_replay_mode: str = "disabled") -> dict:
     """Build McoreEngineConfig-compatible dict."""
+    mg = cfg.trainer.megatron
     return {
         "strategy": "megatron",
         "param_offload": cfg.trainer.param_offload,
@@ -535,12 +536,12 @@ def _build_mcore_engine_config(cfg: Config, router_replay_mode: str = "disabled"
         "use_fused_kernels": False,
         "seed": 42,
         # Mcore-specific parallelism
-        "tensor_model_parallel_size": 1,
-        "expert_model_parallel_size": 1,
-        "expert_tensor_parallel_size": None,
-        "pipeline_model_parallel_size": 1,
-        "virtual_pipeline_model_parallel_size": None,
-        "context_parallel_size": 1,
+        "tensor_model_parallel_size": mg.tensor_model_parallel_size,
+        "expert_model_parallel_size": mg.expert_model_parallel_size,
+        "expert_tensor_parallel_size": mg.expert_tensor_parallel_size,
+        "pipeline_model_parallel_size": mg.pipeline_model_parallel_size,
+        "virtual_pipeline_model_parallel_size": mg.virtual_pipeline_model_parallel_size,
+        "context_parallel_size": mg.context_parallel_size,
         "sequence_parallel": True,
         "use_distributed_optimizer": True,
         "use_dist_checkpointing": False,
