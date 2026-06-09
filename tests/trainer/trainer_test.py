@@ -834,6 +834,15 @@ class TestTrainerCheckpointSave(unittest.TestCase):
             # "__0_1.distcp",
             # "__1_1.distcp",
         }
+        # Model-only state dict saves (used for weight sync) don't include
+        # optimizer shards, so no .distcp files are produced.
+        megatron_state_dict_items = {
+            "common.pt",
+            ".metadata",
+            "metadata.json",
+        }
+        prev_state_dict_iteration = 0
+        prev_checkpoint_iteration = 0
         start_time = time.time()
         while not stop_event.is_set() and time.time() - start_time < 60 * 10:
             time.sleep(10)
@@ -851,27 +860,41 @@ class TestTrainerCheckpointSave(unittest.TestCase):
                 except (IOError, ValueError):
                     pass
 
-            if state_dict_iteration > 0:
-                iteration_dir = os.path.join(
-                    default_local_dir, f"global_step_{state_dict_iteration}", "actor"
+            # Only check state-dict-only contents when the iteration advances
+            # AND a full checkpoint is not being (or about to be) saved to
+            # the same directory.  When training stops early the post-loop
+            # save_checkpoint writes a full checkpoint to the same
+            # global_step_N/actor path, temporarily deleting the .distcp
+            # files.  The full checkpoint is verified separately via the
+            # checkpoint_iteration branch below.
+            if state_dict_iteration > prev_state_dict_iteration:
+                prev_state_dict_iteration = state_dict_iteration
+                full_ckpt_flag = os.path.join(
+                    default_local_dir,
+                    f"global_step_{state_dict_iteration}",
+                    ".full_checkpoint",
                 )
-                if self.strategy == "fsdp":
-                    items = os.listdir(iteration_dir)
-                    self.assertIn("model_world_size_2_rank_0.pt", items)
-                    self.assertIn("model_world_size_2_rank_1.pt", items)
-                else:  # megatron
-                    dist_ckpt_dir = os.path.join(iteration_dir, "dist_ckpt")
-                    self.assertEqual(
-                        set(os.listdir(dist_ckpt_dir)),
-                        megatron_dist_ckpt_items,
+                if not os.path.exists(full_ckpt_flag):
+                    iteration_dir = os.path.join(
+                        default_local_dir, f"global_step_{state_dict_iteration}", "actor"
                     )
-                    huggingface_dir = os.path.join(iteration_dir, "huggingface")
-                    items = os.listdir(huggingface_dir)
-                    self.assertIn("config.json", items)
-                    self.assertIn("generation_config.json", items)
-                # print(f"State dict check at {state_dict_iteration} iteration passed.")  # for debug
+                    if self.strategy == "fsdp":
+                        items = os.listdir(iteration_dir)
+                        self.assertIn("model_world_size_2_rank_0.pt", items)
+                        self.assertIn("model_world_size_2_rank_1.pt", items)
+                    else:  # megatron
+                        dist_ckpt_dir = os.path.join(iteration_dir, "dist_ckpt")
+                        self.assertEqual(
+                            set(os.listdir(dist_ckpt_dir)),
+                            megatron_state_dict_items,
+                        )
+                        huggingface_dir = os.path.join(iteration_dir, "huggingface")
+                        items = os.listdir(huggingface_dir)
+                        self.assertIn("config.json", items)
+                        self.assertIn("generation_config.json", items)
 
-            if checkpoint_iteration > 0:
+            if checkpoint_iteration > prev_checkpoint_iteration:
+                prev_checkpoint_iteration = checkpoint_iteration
                 flag_file = os.path.join(
                     default_local_dir, f"global_step_{checkpoint_iteration}", ".full_checkpoint"
                 )
