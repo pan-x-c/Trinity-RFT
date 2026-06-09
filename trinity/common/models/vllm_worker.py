@@ -15,9 +15,7 @@ from trinity.utils.log import get_logger
 def _suppress_layerwise_reload_warnings() -> None:
     """Silence benign vLLM layerwise reload warnings during weight sync."""
     try:
-        logger = logging.getLogger(
-            "vllm.model_executor.model_loader.reload.layerwise"
-        )
+        logger = logging.getLogger("vllm.model_executor.model_loader.reload.layerwise")
         if logger is not None:
             logger.setLevel(logging.ERROR)
     except Exception:  # pragma: no cover - best-effort suppression
