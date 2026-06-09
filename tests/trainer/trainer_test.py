@@ -968,8 +968,12 @@ class TestTrainerCheckpointSave(unittest.TestCase):
             self.assertFalse(os.path.exists(actor_checkpoint_dir))
             critic_checkpoint_dir = os.path.join(checkpoint_dir, "critic")
             self.assertFalse(os.path.exists(critic_checkpoint_dir))
-            trainer_process.join(timeout=10)
-            self.assertIn("model.safetensors", huggingface_dir_files)
+        trainer_process.join(timeout=10)
+        # save_hf_checkpoint="last" → only the final checkpoint has model weights
+        last_hf_dir = os.path.join(
+            default_local_dir, "global_step_6", "actor", "huggingface"
+        )
+        self.assertIn("model.safetensors", os.listdir(last_hf_dir))
 
     def tearDown(self):
         # remove dir only when the test passed
