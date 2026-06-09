@@ -1,6 +1,4 @@
 """Utils for compatibility issues with verl."""
-
-import os
 from logging import Logger
 from typing import List
 
@@ -278,49 +276,3 @@ def compute_data_metrics(batch: DataProto) -> dict:
         )
 
     return metrics
-
-
-def get_latest_hf_checkpoint_path(config):
-    """Get the latest huggingface checkpoint path from the checkpoint directory.
-
-    Args:
-        config: Trinity Config object with checkpoint_job_dir field.
-
-    Returns:
-        str: Path to the huggingface checkpoint directory inside the latest
-             checkpoint step, or None if no checkpoint is found.
-    """
-    from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
-
-    checkpoint_dir = find_latest_ckpt_path(config.checkpoint_job_dir)
-    if checkpoint_dir is None:
-        return None
-    hf_checkpoint_dir = os.path.join(checkpoint_dir, "actor", "huggingface")
-    if not os.path.exists(hf_checkpoint_dir):
-        return None
-    return hf_checkpoint_dir
-
-
-def patch_rope_theta_in_hf_config(hf_config):
-    """Add rope_theta to hf_config for backward compatibility.
-
-    Some HuggingFace model configs store rope_theta inside a nested
-    rope_parameters dict rather than as a top-level attribute.  This helper
-    patches the top-level attribute so that downstream code (e.g., verl's
-    HFModelConfig) can access it directly.
-
-    Can be removed once verl handles this internally.
-    """
-    if not hasattr(hf_config, "rope_theta"):
-        if hasattr(hf_config, "rope_parameters"):
-            rope_parameters = hf_config.rope_parameters
-        elif hasattr(hf_config, "text_config") and hasattr(
-            hf_config.text_config, "rope_parameters"
-        ):
-            rope_parameters = hf_config.text_config.rope_parameters
-        else:
-            rope_parameters = {}
-
-        rope_theta = rope_parameters.get("rope_theta", None)
-        if rope_theta is not None:
-            setattr(hf_config, "rope_theta", rope_theta)

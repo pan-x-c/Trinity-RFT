@@ -5,6 +5,7 @@ Trainer Class
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import traceback
 from abc import ABC, abstractmethod
@@ -343,6 +344,23 @@ def is_verl_legacy() -> bool:
     except ImportError:
         return False
     return parse_version(ver) < parse_version("0.8.0")
+
+
+def get_latest_hf_checkpoint_path(config: Config) -> str | None:
+    """Return the latest HF checkpoint path for a verl trainer config."""
+    if config.trainer.trainer_type != "verl":
+        raise ValueError("This function is only for verl trainer.")
+
+    from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
+
+    checkpoint_dir = find_latest_ckpt_path(config.checkpoint_job_dir)
+    if checkpoint_dir is None:
+        return None
+
+    hf_checkpoint_dir = os.path.join(checkpoint_dir, "actor", "huggingface")
+    if not os.path.exists(hf_checkpoint_dir):
+        return None
+    return hf_checkpoint_dir
 
 
 def get_trainer_wrapper(config: Config) -> TrainEngineWrapper:

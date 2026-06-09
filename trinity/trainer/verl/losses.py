@@ -50,7 +50,8 @@ class TrinityPolicyLoss:
         fields.extend(self.policy_loss_fn.select_keys)
         if self.use_kl_loss:
             fields.append("ref_log_prob")
-            fields.append("old_log_probs")
+            if "old_log_probs" in data.keys():
+                fields.append("old_log_probs")
         fields = list(dict.fromkeys(fields))
         padded_data = data.select(*fields).to_padded_tensor()
 
