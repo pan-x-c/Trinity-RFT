@@ -583,6 +583,7 @@ class VERLTrainer(TrainEngineWrapper):
         self.actor_rollout_wg.save_checkpoint(
             local_path=actor_local_path,
             global_step=self.global_steps,
+            save_as_hf=save_as_hf,
         )
 
         if self.use_critic:

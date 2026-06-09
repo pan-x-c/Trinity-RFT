@@ -12,6 +12,7 @@ Key additions over the base class:
 - get_weight_sync_info / setup_weight_sync_group / teardown_weight_sync_group:
   NCCL weight sync group lifecycle for Explorer↔Trainer
 """
+from contextlib import contextmanager
 from typing import Optional
 
 import torch
@@ -228,6 +229,32 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         torch.distributed.barrier()
         self.logger.info(f"Saved LoRA adapter to: {lora_save_path}")
 
+    @contextmanager
+    def _save_hf_checkpoint_if_requested(self, save_as_hf: bool):
+        """Temporarily enable HF weight export for a single checkpoint save."""
+        if not save_as_hf:
+            yield
+            return
+
+        engine = getattr(self.actor, "engine", None)
+        checkpoint_manager = getattr(engine, "checkpoint_manager", None)
+        if checkpoint_manager is None:
+            checkpoint_manager = getattr(engine, "checkpoint_mananager", None)
+        if checkpoint_manager is None:
+            yield
+            return
+
+        original_contents = list(checkpoint_manager.checkpoint_save_contents)
+        if "hf_model" not in checkpoint_manager.checkpoint_save_contents:
+            checkpoint_manager.checkpoint_save_contents = [
+                *checkpoint_manager.checkpoint_save_contents,
+                "hf_model",
+            ]
+        try:
+            yield
+        finally:
+            checkpoint_manager.checkpoint_save_contents = original_contents
+
     def _cache_state_dict_meta(self):
         """Cache state_dict meta (names, dtypes, shapes) from get_per_tensor_param.
 
@@ -373,14 +400,16 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """
         coordinator = self._get_coordinator()
         rank = torch.distributed.get_rank()
-        if rank == 0:
-            coordinator.save_sync(
-                lambda: self.actor.save_checkpoint(local_path, global_step=global_step),
-                global_step,
-                is_state_dict=True,
-            )
-        else:
-            self.actor.save_checkpoint(local_path, global_step=global_step)
+        save_as_hf = kwargs.pop("save_as_hf", False)
+        with self._save_hf_checkpoint_if_requested(save_as_hf):
+            if rank == 0:
+                coordinator.save_sync(
+                    lambda: self.actor.save_checkpoint(local_path, global_step=global_step),
+                    global_step,
+                    is_state_dict=True,
+                )
+            else:
+                self.actor.save_checkpoint(local_path, global_step=global_step)
         self._save_lora(local_path)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
