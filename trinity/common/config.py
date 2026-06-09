@@ -783,6 +783,7 @@ class MegatronParallelConfig:
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: Optional[int] = None
     context_parallel_size: int = 1
+    sequence_parallel: bool = True
 
 
 @dataclass

@@ -542,7 +542,7 @@ def _build_mcore_engine_config(cfg: Config, router_replay_mode: str = "disabled"
         "pipeline_model_parallel_size": mg.pipeline_model_parallel_size,
         "virtual_pipeline_model_parallel_size": mg.virtual_pipeline_model_parallel_size,
         "context_parallel_size": mg.context_parallel_size,
-        "sequence_parallel": True,
+        "sequence_parallel": mg.sequence_parallel,
         "use_distributed_optimizer": True,
         "use_dist_checkpointing": False,
         "dist_checkpointing_path": None,

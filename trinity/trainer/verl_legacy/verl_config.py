@@ -716,6 +716,7 @@ class veRLConfig:
             mcore_cfg.expert_model_parallel_size = mg.expert_model_parallel_size
             mcore_cfg.expert_tensor_parallel_size = mg.expert_tensor_parallel_size
             mcore_cfg.context_parallel_size = mg.context_parallel_size
+            mcore_cfg.sequence_parallel = mg.sequence_parallel
 
         # TODO: check other fields
         self.enable_preview = config.trainer.enable_preview
