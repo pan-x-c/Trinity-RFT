@@ -67,11 +67,6 @@ class Trainer:
         self.sync_style = config.synchronizer.sync_style
         self.total_steps = config.trainer.total_steps or float("inf")
         self.save_hf_checkpoint = config.trainer.save_hf_checkpoint
-        # Track the train_step at which the loop most recently completed a
-        # save_checkpoint call. Used by the post-loop branch to decide
-        # whether the current step still needs a final save (e.g. when the
-        # loop broke due to StopAsyncIteration / Exception before saving).
-        self._last_saved_step: int = -1
 
     async def prepare(self) -> None:
         """Prepare the trainer."""
@@ -131,11 +126,10 @@ class Trainer:
                 if need_sync and not (need_save and self.sync_method == SyncMethod.CHECKPOINT):
                     metrics.update(await self.sync_weight())
                 if need_save:
-                    # Detect the final training step so we can honor
-                    # save_hf_checkpoint == "last" inline. This guarantees
-                    # save_checkpoint is invoked at most once per step —
-                    # the post-loop branch will skip only when the loop
-                    # already saved at the current train_step_num.
+                    # Only block for the final step (when total_steps is
+                    # finite) to avoid stalling the training loop on earlier
+                    # saves. The HF-model write for save_hf_checkpoint="last"
+                    # is handled unconditionally by the post-loop save below.
                     is_final_step = self.train_step_num >= self.total_steps
                     save_as_hf = self.save_hf_checkpoint == "always" or (
                         is_final_step and self.save_hf_checkpoint == "last"
@@ -146,11 +140,6 @@ class Trainer:
                             save_as_hf=save_as_hf,
                         )
                     )
-                    # Record the saved step only after save_checkpoint
-                    # returns successfully. If it raises, _last_saved_step
-                    # stays at the previous value and the post-loop branch
-                    # will perform the save.
-                    self._last_saved_step = self.train_step_num
                     if need_sync:
                         # Update sync bookkeeping even though sync_weight was
                         # skipped — save_checkpoint already wrote the weights
@@ -167,24 +156,21 @@ class Trainer:
                 self.logger.error(f"Error in Trainer:\n{traceback.format_exc()}")
                 break
 
-        # Save final checkpoint when the loop did not already complete a
-        # save at the current train_step_num. This covers every exit path
-        # — natural finish, StopAsyncIteration, and Exception — while still
-        # guaranteeing save_checkpoint is invoked at most once per step:
-        #   - Loop saved this step successfully  -> _last_saved_step matches
-        #     train_step_num -> skip and just wait for background writes.
-        #   - Loop never saved this step (e.g. exception fired after
-        #     train_step advanced train_step_num but before save_checkpoint,
-        #     or save_checkpoint itself raised) -> save now.
-        if self._last_saved_step != self.train_step_num:
-            await self.save_checkpoint(
-                block_until_saved=True, save_as_hf=self.save_hf_checkpoint != "never"
-            )
-        else:
-            # The last step was already saved in the loop (with HF when
-            # appropriate). Wait for background save threads to finish so
-            # the iteration file is guaranteed to exist before exit.
-            await self.engine.wait_for_save()
+        # Always perform a final save to guarantee:
+        # 1. A checkpoint exists even when the loop never triggered
+        #    need_save() at the final step.
+        # 2. The HF model is saved for save_hf_checkpoint="last" even
+        #    when config.trainer.total_steps is None (total_steps becomes
+        #    float("inf"), so is_final_step is never True inside the loop
+        #    and save_as_hf stays False there). The loop may exit via
+        #    StopAsyncIteration after the last step has already been saved
+        #    *without* the HF model; this call fills that gap.
+        # Checkpoint managers deduplicate saves by tracking the latest
+        # saved global_step per component, so re-saving an already-written
+        # component is a safe no-op.
+        await self.save_checkpoint(
+            block_until_saved=True, save_as_hf=self.save_hf_checkpoint != "never"
+        )
         await self.synchronizer.set_trainer_status.remote(RunningStatus.STOPPED)
         self.logger.info("--------------------\n> Trainer finished.\n--------------------")
         return self.config.trainer.name
