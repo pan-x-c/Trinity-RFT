@@ -1239,6 +1239,22 @@ class TrainerConfigValidator(ConfigValidator):
         if config.trainer.trainer_type == "verl":
             from trinity.trainer.trainer import is_verl_legacy
 
+            if config.trainer.ulysses_sequence_parallel_size < 1:
+                self.logger.warning(
+                    "Ulysses sequence parallel size is set to 1 "
+                    f"because {config.trainer.ulysses_sequence_parallel_size} is invalid."
+                )
+                config.trainer.ulysses_sequence_parallel_size = 1
+
+            if config.trainer.max_token_len_per_gpu is None:
+                if config.trainer.trainer_strategy.startswith("fsdp"):
+                    parallel_size = config.trainer.ulysses_sequence_parallel_size
+                else:
+                    parallel_size = config.trainer.megatron.context_parallel_size
+                config.trainer.max_token_len_per_gpu = math.ceil(
+                    (2 * config.model.max_model_len) / parallel_size  # type: ignore [operator]
+                )
+
             if is_verl_legacy():
                 if config.trainer.trainer_config:
                     from trinity.trainer.verl_legacy.verl_config import veRLConfig
@@ -1260,22 +1276,6 @@ class TrainerConfigValidator(ConfigValidator):
                     )
                     config.trainer.trainer_config = veRLConfig()
                 config.trainer.trainer_config.synchronize_config(config)
-
-            if config.trainer.ulysses_sequence_parallel_size < 1:
-                self.logger.warning(
-                    "Ulysses sequence parallel size is set to 1 "
-                    f"because {config.trainer.ulysses_sequence_parallel_size} is invalid."
-                )
-                config.trainer.ulysses_sequence_parallel_size = 1
-
-            if config.trainer.max_token_len_per_gpu is None:
-                if config.trainer.trainer_strategy.startswith("fsdp"):
-                    parallel_size = config.trainer.ulysses_sequence_parallel_size
-                else:
-                    parallel_size = config.trainer.megatron.context_parallel_size
-                config.trainer.max_token_len_per_gpu = math.ceil(
-                    config.model.max_model_len / parallel_size  # type: ignore [operator]
-                )
 
             if config.trainer.save_hf_checkpoint not in {"last", "always", "never"}:
                 raise ValueError(

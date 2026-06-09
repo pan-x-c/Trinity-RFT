@@ -152,7 +152,7 @@ class TestLauncherMain(unittest.IsolatedAsyncioTestCase):
             call_kwargs.kwargs.get("port", call_kwargs.args[0] if call_kwargs.args else None), 9999
         )
 
-    @mock.patch("trinity.cli.launcher.get_latest_hf_checkpoint_path")
+    @mock.patch("trinity.trainer.get_latest_hf_checkpoint_path")
     @mock.patch("trinity.cli.launcher.both")
     @mock.patch("trinity.cli.launcher.train")
     @mock.patch("trinity.cli.launcher.load_config")
