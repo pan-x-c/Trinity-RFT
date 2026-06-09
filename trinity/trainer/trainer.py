@@ -154,6 +154,11 @@ class Trainer:
             await self.save_checkpoint(
                 block_until_saved=True, save_as_hf=self.save_hf_checkpoint != "never"
             )
+        else:
+            # The last step was already saved (non-blocking) in the loop.
+            # Wait for background save threads to finish so the iteration
+            # file is guaranteed to exist before the trainer exits.
+            await self.engine.wait_for_save()
         await self.synchronizer.set_trainer_status.remote(RunningStatus.STOPPED)
         self.logger.info("--------------------\n> Trainer finished.\n--------------------")
         return self.config.trainer.name
@@ -300,6 +305,15 @@ class TrainEngineWrapper(ABC):
         self, block_until_saved: bool = False, save_as_hf: bool = False
     ) -> None:
         """Save the whole checkpoint (Including model, optimizer, and other states)."""
+
+    async def wait_for_save(self) -> None:
+        """Wait for any pending background save operations to complete.
+
+        Default implementation is a no-op. Override in subclasses that use
+        background save threads to ensure the checkpoint iteration file is
+        written before the trainer exits.
+        """
+        pass
 
     @abstractmethod
     def sync_weight_nccl(self) -> None:

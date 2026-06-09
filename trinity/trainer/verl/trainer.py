@@ -602,7 +602,10 @@ class VERLTrainer(TrainEngineWrapper):
         )
 
         if block_until_saved:
-            self.actor_rollout_wg.wait_on_save_thread()
+            await self.wait_for_save()
+
+    async def wait_for_save(self) -> None:
+        self.actor_rollout_wg.wait_on_save_thread()
 
     def _retain_checkpoints(self, new_path: str) -> None:
         """Register a checkpoint path and remove old ones beyond the retention limit.

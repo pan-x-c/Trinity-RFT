@@ -646,9 +646,12 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
     ) -> None:
         await self._save_checkpoint(save_as_hf=save_as_hf)
         if block_until_saved:
-            self.actor_rollout_wg.wait_on_save_thread()
-            if self.algorithm and self.algorithm.use_critic:
-                self.critic_wg.wait_on_save_thread()
+            await self.wait_for_save()
+
+    async def wait_for_save(self) -> None:
+        self.actor_rollout_wg.wait_on_save_thread()
+        if self.algorithm and self.algorithm.use_critic:
+            self.critic_wg.wait_on_save_thread()
 
     async def _save_checkpoint(self, save_as_hf: bool = False):
         # path: given_path + `/global_step_{global_steps}` + `/actor`
