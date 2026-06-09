@@ -29,11 +29,16 @@ def megatron_save_state_dict(
     coordinator: CheckpointCoordinator,
     logger,
 ):
-    """Save Megatron model state dict for checkpoint-based weight sync.
+    """Save Megatron actor model state dict for checkpoint-based weight sync.
 
-    Delegates to the engine's built-in save_checkpoint for proper
-    distributed checkpoint handling. The save is wrapped with
-    CheckpointMonitor notifications via the coordinator.
+    Delegates to the engine's built-in ``save_checkpoint`` for proper
+    distributed checkpoint handling, but temporarily restricts the
+    checkpoint manager's ``checkpoint_save_contents`` to ``["model"]`` so
+    that only the actor model parameters are written to disk -- optimizer
+    and extra (rng / scheduler) states are skipped, since this path is
+    used only for weight-sync to the rollout side, not for training
+    resume. The save is wrapped with CheckpointMonitor notifications via
+    the coordinator.
 
     Note: Megatron's save_checkpoint involves distributed barriers internally,
     so it runs synchronously. The coordinator's ``save_sync`` is used to add
@@ -49,17 +54,38 @@ def megatron_save_state_dict(
     if local_path is None:
         return
 
-    if torch.distributed.get_rank() == 0:
-        coordinator.save_sync(
-            lambda: engine.save_checkpoint(local_path=local_path, global_step=global_step),
-            global_step,
-            is_state_dict=True,
-        )
-    else:
+    # Temporarily restrict checkpoint contents to model-only. The veRL
+    # Megatron engine attribute is ``checkpoint_mananager`` (sic, upstream typo).
+    ckpt_mgr = getattr(engine, "checkpoint_mananager", None) or getattr(
+        engine, "checkpoint_manager", None
+    )
+    original_save_contents = None
+    if ckpt_mgr is not None and hasattr(ckpt_mgr, "checkpoint_save_contents"):
+        original_save_contents = list(ckpt_mgr.checkpoint_save_contents)
+        # Preserve hf_model export if it was originally enabled, but drop
+        # optimizer / extra so we don't pay their cost on every weight sync.
+        new_contents = ["model"]
+        if "hf_model" in original_save_contents:
+            new_contents.append("hf_model")
+        ckpt_mgr.checkpoint_save_contents = new_contents
+
+    def _do_save():
         engine.save_checkpoint(local_path=local_path, global_step=global_step)
 
+    try:
+        if torch.distributed.get_rank() == 0:
+            coordinator.save_sync(_do_save, global_step, is_state_dict=True)
+        else:
+            _do_save()
+    finally:
+        if original_save_contents is not None:
+            ckpt_mgr.checkpoint_save_contents = original_save_contents
+
     torch.distributed.barrier()
-    logger.info(f"Megatron state dict saved to {local_path} at step {global_step}")
+    logger.info(
+        f"[Megatron] actor state_dict saved: path={local_path}, step={global_step} "
+        f"(optimizer/extra skipped)"
+    )
 
 
 def megatron_upload_state_dict(engine, synchronizer, global_step: int, logger):
@@ -90,7 +116,7 @@ def megatron_upload_state_dict(engine, synchronizer, global_step: int, logger):
 
     torch.distributed.barrier()
     torch.cuda.empty_cache()
-    logger.info(f"Megatron state dict uploaded to Synchronizer at step {global_step}")
+    logger.info(f"[Megatron] state_dict uploaded to Synchronizer: step={global_step}")
 
 
 def megatron_sync_weight_nccl(engine, model_update_group):

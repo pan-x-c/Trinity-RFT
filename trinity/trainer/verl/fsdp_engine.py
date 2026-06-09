@@ -126,7 +126,7 @@ def fsdp_save_state_dict(
     else:
         torch.save(state_dict, path)
 
-    logger.info(f"FSDP state dict save initiated for {local_path} at step {global_step}")
+    logger.info(f"[FSDP] actor state_dict save initiated: path={local_path}, step={global_step}")
 
 
 def fsdp_upload_state_dict(engine, synchronizer, global_step: int, logger):
@@ -150,7 +150,7 @@ def fsdp_upload_state_dict(engine, synchronizer, global_step: int, logger):
         ray.get(synchronizer.set_model_state_dict.remote(state_dict, global_step))
 
     torch.distributed.barrier()
-    logger.info(f"FSDP state dict uploaded to Synchronizer at step {global_step}")
+    logger.info(f"[FSDP] state_dict uploaded to Synchronizer: step={global_step}")
 
 
 def fsdp_sync_weight_nccl(engine, model_update_group):
