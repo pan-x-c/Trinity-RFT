@@ -703,7 +703,8 @@ class veRLConfig:
         self.actor_rollout_ref.ref.megatron.use_remove_padding = use_remove_padding
         self.critic.megatron.use_remove_padding = use_remove_padding
 
-        # Megatron parallelism — only relevant when strategy is megatron
+        # Megatron parallelism — only relevant when strategy is megatron.
+        # Use object.__setattr__ because verl's BaseConfig freezes these fields.
         if config.trainer.trainer_strategy.startswith("megatron"):
             mg = config.trainer.megatron
             for mcore_cfg in [
@@ -711,15 +712,16 @@ class veRLConfig:
                 self.actor_rollout_ref.ref.megatron,
                 self.critic.megatron,
             ]:
-                mcore_cfg.tensor_model_parallel_size = mg.tensor_model_parallel_size
-                mcore_cfg.pipeline_model_parallel_size = mg.pipeline_model_parallel_size
-                mcore_cfg.virtual_pipeline_model_parallel_size = (
-                    mg.virtual_pipeline_model_parallel_size
-                )
-                mcore_cfg.expert_model_parallel_size = mg.expert_model_parallel_size
-                mcore_cfg.expert_tensor_parallel_size = mg.expert_tensor_parallel_size
-                mcore_cfg.context_parallel_size = mg.context_parallel_size
-                mcore_cfg.sequence_parallel = mg.sequence_parallel
+                for attr in (
+                    "tensor_model_parallel_size",
+                    "pipeline_model_parallel_size",
+                    "virtual_pipeline_model_parallel_size",
+                    "expert_model_parallel_size",
+                    "expert_tensor_parallel_size",
+                    "context_parallel_size",
+                    "sequence_parallel",
+                ):
+                    object.__setattr__(mcore_cfg, attr, getattr(mg, attr))
 
         # TODO: check other fields
         self.enable_preview = config.trainer.enable_preview
