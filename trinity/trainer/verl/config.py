@@ -200,6 +200,7 @@ def build_verl_config(global_config: Config) -> DictConfig:  # noqa: C901
     # Merge user overrides from trainer_config (if any)
     user_overrides = _normalize_trainer_config(cfg.trainer.trainer_config)
     if user_overrides:
+        _strip_incompatible_engine_keys(user_overrides, strategy)
         _deep_merge(verl_dict, user_overrides, FROZEN_KEYS)
 
     return OmegaConf.create(verl_dict, flags={"allow_objects": True})
@@ -741,6 +742,38 @@ FROZEN_KEYS = {
 }
 
 _MERGEABLE_KEYS = ("model", "actor", "ref", "rollout", "critic")
+
+# Engine config keys that are strategy-specific.
+# FSDP actor/ref use "fsdp_config"; FSDP critic uses "fsdp".
+# Megatron actor/ref/critic all use "megatron".
+_FSDP_ENGINE_KEYS = ("fsdp_config", "fsdp")
+_MEGATRON_ENGINE_KEYS = ("megatron",)
+
+
+def _strip_incompatible_engine_keys(overrides: dict, strategy: str) -> None:
+    """Remove engine config keys that don't belong to the active strategy.
+
+    When ``trainer_config`` carries overrides from a different strategy
+    (e.g. ``actor.megatron`` while the strategy is ``fsdp2``), the extra
+    keys would fail at ``omega_conf_to_dataclass`` time because the target
+    dataclass doesn't define them.
+    """
+    is_fsdp = strategy.startswith("fsdp")
+    drop_keys = _MEGATRON_ENGINE_KEYS if is_fsdp else _FSDP_ENGINE_KEYS
+
+    for section in ("actor", "ref", "critic"):
+        sub = overrides.get(section)
+        if isinstance(sub, dict):
+            for key in drop_keys:
+                if key in sub:
+                    logger.warning(
+                        "Stripping trainer_config override '%s.%s' — "
+                        "incompatible with strategy '%s'",
+                        section,
+                        key,
+                        strategy,
+                    )
+                    del sub[key]
 
 
 def _normalize_trainer_config(trainer_config) -> dict:
