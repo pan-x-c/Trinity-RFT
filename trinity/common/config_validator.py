@@ -830,6 +830,12 @@ class SynchronizerConfigValidator(ConfigValidator):
                     "Set `synchronizer.sync_method` to `memory` instead."
                 )
 
+        assert config.synchronizer.sync_interval > 0, "`sync_interval` must be positive."
+        set_if_none(
+            config.synchronizer, "explorer_sync_interval", config.synchronizer.sync_interval
+        )
+        set_if_none(config.synchronizer, "trainer_sync_interval", config.synchronizer.sync_interval)
+
 
 class IntervalConfigValidator(ConfigValidator):
     """Validator for interval configuration settings.
@@ -854,12 +860,16 @@ class IntervalConfigValidator(ConfigValidator):
 
         if config.mode != "bench" and config.algorithm.algorithm_type not in {"dpo", "sft"}:  # TODO
             # check eval_interval
-            if config.explorer.eval_interval % config.synchronizer.sync_interval != 0:
+            explorer_sync_interval: int = config.synchronizer.explorer_sync_interval
+            if config.explorer.eval_interval % explorer_sync_interval != 0:
                 config.explorer.eval_interval = (
-                    max(config.explorer.eval_interval // config.synchronizer.sync_interval, 1)
-                ) * config.synchronizer.sync_interval
+                    max(
+                        config.explorer.eval_interval // explorer_sync_interval,
+                        1,
+                    )
+                ) * explorer_sync_interval
                 self.logger.warning(
-                    "`eval_interval` is not a multiple of `sync_interval`; "
+                    "`eval_interval` is not a multiple of `explorer_sync_interval`; "
                     f"adjusted to the nearest integer={config.explorer.eval_interval}."
                 )
 
@@ -1230,18 +1240,6 @@ class TrainerConfigValidator(ConfigValidator):
             from trinity.trainer.trainer import is_verl_legacy
 
             if is_verl_legacy():
-                if config.trainer.ulysses_sequence_parallel_size < 1:
-                    self.logger.warning(
-                        "Ulysses sequence parallel size is set to 1 "
-                        f"because {config.trainer.ulysses_sequence_parallel_size} is invalid."
-                    )
-                    config.trainer.ulysses_sequence_parallel_size = 1
-
-                if config.trainer.max_token_len_per_gpu is None:
-                    config.trainer.max_token_len_per_gpu = math.ceil(
-                        2 * config.model.max_model_len / config.trainer.ulysses_sequence_parallel_size  # type: ignore [operator]
-                    )
-
                 if config.trainer.trainer_config:
                     from trinity.trainer.verl_legacy.verl_config import veRLConfig
 
@@ -1262,15 +1260,23 @@ class TrainerConfigValidator(ConfigValidator):
                     )
                     config.trainer.trainer_config = veRLConfig()
                 config.trainer.trainer_config.synchronize_config(config)
-            else:
-                config.trainer.trainer_config = None
-                if config.trainer.ulysses_sequence_parallel_size < 1:
-                    config.trainer.ulysses_sequence_parallel_size = 1
 
-                if config.trainer.max_token_len_per_gpu is None:
-                    config.trainer.max_token_len_per_gpu = math.ceil(
-                        2 * config.model.max_model_len / config.trainer.ulysses_sequence_parallel_size  # type: ignore [operator]
-                    )
+            if config.trainer.ulysses_sequence_parallel_size < 1:
+                self.logger.warning(
+                    "Ulysses sequence parallel size is set to 1 "
+                    f"because {config.trainer.ulysses_sequence_parallel_size} is invalid."
+                )
+                config.trainer.ulysses_sequence_parallel_size = 1
+
+            if config.trainer.max_token_len_per_gpu is None:
+                if config.trainer.trainer_strategy.startswith("fsdp"):
+                    parallel_size = config.trainer.ulysses_sequence_parallel_size
+                else:
+                    parallel_size = config.trainer.megatron.context_parallel_size
+                config.trainer.max_token_len_per_gpu = math.ceil(
+                    config.model.max_model_len / parallel_size  # type: ignore [operator]
+                )
+
             if config.trainer.save_hf_checkpoint not in {"last", "always", "never"}:
                 raise ValueError(
                     f"Invalid trainer.save_hf_checkpoint: {config.trainer.save_hf_checkpoint}, "

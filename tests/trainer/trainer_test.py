@@ -805,6 +805,8 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         self.config.trainer.save_interval = 2
         self.config.trainer.save_hf_checkpoint = "last"
         self.config.trainer.trainer_strategy = self.strategy
+        if self.strategy == "megatron":
+            self.config.trainer.megatron.tensor_model_parallel_size = 2
         self.config.trainer.max_checkpoints_to_keep = 2
         self.config.check_and_update()
         self.process_list = []
