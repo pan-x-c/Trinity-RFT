@@ -271,6 +271,22 @@ class ModelWeightSender:
         elapsed = time.time() - start_time
         self.logger.info(f"ModelWeightSender: send completed in {elapsed:.2f}s")
 
+    @torch.no_grad()
+    def send_sync(
+        self,
+        weights: Iterable[Tuple[str, torch.Tensor]],
+    ) -> None:
+        """Synchronous wrapper around :meth:`send`.
+
+        Runs the async send in a dedicated event loop.  Safe to call from
+        synchronous contexts (e.g. vLLM ``collective_rpc`` handlers).
+        """
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(self.send(weights))
+        finally:
+            loop.close()
+
     def finalize(self) -> None:
         """Release GPU buffers and close the ZMQ socket."""
         self._send_buf = None

@@ -609,6 +609,17 @@ class vLLMRolloutModel(BaseInferenceModel):
             args=(state_dict_meta,),
         )
 
+    async def get_weight_sender_zmq_info(self):
+        """Get ZMQ info from intra-explorer Sender (rank 0 only)."""
+        return await self._collective_rpc("get_weight_sender_zmq_info")
+
+    async def setup_weight_receiver(self, zmq_ip, zmq_port, bucket_size_mb):
+        """Set up intra-explorer Receivers on non-rank-0 workers."""
+        return await self._collective_rpc(
+            "setup_weight_receiver",
+            args=(zmq_ip, zmq_port, bucket_size_mb),
+        )
+
     async def run_api_server(self) -> bool:
         """Run the OpenAI API server in a Ray actor.
 

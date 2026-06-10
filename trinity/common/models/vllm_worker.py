@@ -7,7 +7,7 @@ import torch
 import torch.distributed
 
 from trinity.common.models.vllm_patch.worker_patch import patch_vllm_prompt_logprobs
-from trinity.common.weight_transfer import ModelWeightReceiver
+from trinity.common.weight_transfer import ModelWeightReceiver, ModelWeightSender
 from trinity.manager.synchronizer import Synchronizer
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
@@ -77,9 +77,62 @@ class WorkerExtension:
         self.synchronizer = Synchronizer.get_actor(namespace=self._namespace)
         self._checkpoint_converter = None
 
-        # Set up the bucketed weight receiver for NCCL transfer.
+        # Set up bucketed weight transfer for NCCL or intra-explorer sync.
         self._weight_receiver = None
-        if zmq_ip is not None and zmq_port is not None and bucket_size_mb > 0:
+        self._weight_sender = None
+        if bucket_size_mb > 0:
+            bucket_size = bucket_size_mb * 1024 * 1024
+            if zmq_ip is not None and zmq_port is not None:
+                # NCCL mode: all workers are Receivers (Sender is on Trainer).
+                self._weight_receiver = ModelWeightReceiver(
+                    pg=self._model_update_group,
+                    bucket_size=bucket_size,
+                    zmq_ip=zmq_ip,
+                    zmq_port=zmq_port,
+                )
+                self.logger.info(
+                    f"ModelWeightReceiver ready "
+                    f"(ZMQ: {zmq_ip}:{zmq_port}, bucket_size={bucket_size_mb}MB)"
+                )
+            elif self._weight_update_rank == 0 and world_size > 1:
+                # CHECKPOINT/MEMORY mode: rank 0 creates a Sender for
+                # bucketed intra-explorer broadcast.  Receivers on rank 1+
+                # are created in a second phase via setup_weight_receiver().
+                self._weight_sender = ModelWeightSender()
+                self._weight_sender.setup(self._model_update_group, bucket_size)
+                self.logger.info(
+                    f"Intra-explorer ModelWeightSender ready "
+                    f"(ZMQ: {self._weight_sender.zmq_info}, "
+                    f"bucket_size={bucket_size_mb}MB)"
+                )
+
+    def set_state_dict_meta(self, state_dict_meta: list):
+        """Set the state_dict meta for NCCL weight sync."""
+        self._state_dict_meta = state_dict_meta
+
+    def get_weight_sender_zmq_info(self):
+        """Return Sender's ZMQ info for Receiver setup (Phase 2).
+
+        Only rank 0 has a Sender (created during ``init_process_group``
+        for CHECKPOINT/MEMORY mode).  Other ranks return ``None``.
+        """
+        if hasattr(self, "_weight_sender") and self._weight_sender is not None:
+            return self._weight_sender.zmq_info
+        return None
+
+    def setup_weight_receiver(self, zmq_ip, zmq_port, bucket_size_mb):
+        """Create :class:`ModelWeightReceiver` on non-rank-0 workers.
+
+        Phase 2 of intra-explorer bucketed weight transfer setup.
+        Called after ``init_process_group`` has created the NCCL group
+        and the Sender on rank 0.
+        """
+        if (
+            self._weight_update_rank != 0
+            and zmq_ip is not None
+            and bucket_size_mb > 0
+            and self._weight_receiver is None
+        ):
             self._weight_receiver = ModelWeightReceiver(
                 pg=self._model_update_group,
                 bucket_size=bucket_size_mb * 1024 * 1024,
@@ -87,16 +140,15 @@ class WorkerExtension:
                 zmq_port=zmq_port,
             )
             self.logger.info(
-                f"ModelWeightReceiver ready "
+                f"Intra-explorer ModelWeightReceiver ready "
                 f"(ZMQ: {zmq_ip}:{zmq_port}, bucket_size={bucket_size_mb}MB)"
             )
 
-    def set_state_dict_meta(self, state_dict_meta: list):
-        """Set the state_dict meta for NCCL weight sync."""
-        self._state_dict_meta = state_dict_meta
-
     def teardown_process_group(self):
-        """Destroy the NCCL process group and finalize the receiver."""
+        """Destroy the NCCL process group and finalize sender/receiver."""
+        if hasattr(self, "_weight_sender") and self._weight_sender is not None:
+            self._weight_sender.finalize()
+            self._weight_sender = None
         if hasattr(self, "_weight_receiver") and self._weight_receiver is not None:
             self._weight_receiver.finalize()
             self._weight_receiver = None
@@ -105,7 +157,14 @@ class WorkerExtension:
             self._model_update_group = None
 
     def update_weight(self):
-        """Broadcast weight to all vllm workers from source rank 0 (actor model)"""
+        """Broadcast weight to all vllm workers from source rank 0 (actor model).
+
+        Uses bucketed double-buffered transfer when a
+        :class:`ModelWeightSender` (rank 0) or :class:`ModelWeightReceiver`
+        (rank 1+) has been set up for intra-explorer sync.  Otherwise
+        falls back to per-tensor ``broadcast``.
+        """
+        state_dict = None
         if self._weight_update_rank == 0:
             state_dict, model_version = ray.get(self.synchronizer.get_model_state_dict.remote())
             if isinstance(state_dict, tuple):
@@ -124,27 +183,51 @@ class WorkerExtension:
                 else:
                     raise NotImplementedError(f"{method} is not supported")
                 ray.get(self.synchronizer.set_model_state_dict.remote(state_dict, model_version))
-        if self._state_dict_meta is None:
-            self._state_dict_meta = ray.get(self.synchronizer.get_state_dict_meta.remote())
-
-        def _weight_iterator():
-            for name, dtype_str, shape in self._state_dict_meta:
-                if self._weight_update_rank == 0:
-                    weight = state_dict[name]
-                    weight = weight.to(self.device)
-                else:
-                    dtype = getattr(torch, dtype_str)
-                    weight = torch.empty(shape, dtype=dtype, device=self.device)
-                torch.distributed.broadcast(weight, 0, group=self._model_update_group)
-                yield (name, weight)
 
         from vllm.config import set_current_vllm_config
 
-        with set_current_vllm_config(self.model_runner.vllm_config):
-            self.model_runner.reload_weights(
-                weights_iterator=_weight_iterator(),
-                is_checkpoint_format=True,
-            )
+        if self._weight_sender is not None:
+            # Rank 0 with intra-explorer Sender: bucketed broadcast to
+            # other workers, then load into own model directly.
+            assert state_dict is not None
+            self._weight_sender.send_sync(state_dict.items())
+            with set_current_vllm_config(self.model_runner.vllm_config):
+                self.model_runner.reload_weights(
+                    weights_iterator=(
+                        (name, param.to(self.device)) for name, param in state_dict.items()
+                    ),
+                    is_checkpoint_format=True,
+                )
+        elif self._weight_receiver is not None:
+            # Rank 1+ with intra-explorer Receiver: bucketed receive.
+            weights_iter = self._weight_receiver.receive_sync()
+            with set_current_vllm_config(self.model_runner.vllm_config):
+                self.model_runner.reload_weights(
+                    weights_iterator=weights_iter,
+                    is_checkpoint_format=True,
+                )
+        else:
+            # Fallback: per-tensor broadcast (original path).
+            if self._state_dict_meta is None:
+                self._state_dict_meta = ray.get(self.synchronizer.get_state_dict_meta.remote())
+
+            def _weight_iterator():
+                for name, dtype_str, shape in self._state_dict_meta:
+                    if self._weight_update_rank == 0:
+                        weight = state_dict[name]
+                        weight = weight.to(self.device)
+                    else:
+                        dtype = getattr(torch, dtype_str)
+                        weight = torch.empty(shape, dtype=dtype, device=self.device)
+                    torch.distributed.broadcast(weight, 0, group=self._model_update_group)
+                    yield (name, weight)
+
+            with set_current_vllm_config(self.model_runner.vllm_config):
+                self.model_runner.reload_weights(
+                    weights_iterator=_weight_iterator(),
+                    is_checkpoint_format=True,
+                )
+
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
 

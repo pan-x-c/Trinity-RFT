@@ -95,6 +95,14 @@ class InferenceModel(ABC):
         """Set the state_dict meta for NCCL weight sync."""
         pass
 
+    async def get_weight_sender_zmq_info(self):
+        """Return Sender ZMQ info for intra-explorer weight transfer setup."""
+        return None
+
+    async def setup_weight_receiver(self, zmq_ip, zmq_port, bucket_size_mb):
+        """Set up intra-explorer weight receiver (non-rank-0 workers)."""
+        pass
+
     @abstractmethod
     async def sync_model_weights(
         self, model_version: int, method: SyncMethod, timeout: float = 1200
@@ -848,6 +856,14 @@ class ModelWrapper:
     async def set_state_dict_meta(self, state_dict_meta: List):
         """Set the state_dict meta for NCCL weight sync."""
         await self.model.set_state_dict_meta.remote(state_dict_meta)
+
+    async def get_weight_sender_zmq_info(self):
+        """Return Sender ZMQ info from the driver worker."""
+        return await self.model.get_weight_sender_zmq_info.remote()
+
+    async def setup_weight_receiver(self, zmq_ip, zmq_port, bucket_size_mb):
+        """Set up intra-explorer weight receiver on all workers."""
+        await self.model.setup_weight_receiver.remote(zmq_ip, zmq_port, bucket_size_mb)
 
     async def sync_model_weights(
         self, model_version: int, method: SyncMethod, timeout: int = 1200

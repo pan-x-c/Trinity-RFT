@@ -149,6 +149,27 @@ class Explorer:
         ]
         await asyncio.gather(*refs)
 
+    async def _setup_intra_weight_transfer(self):
+        """Set up intra-explorer bucketed weight transfer (Phase 2).
+
+        After the intra-explorer NCCL group is created, worker 0 has a
+        :class:`ModelWeightSender`.  This method retrieves its ZMQ info
+        and creates :class:`ModelWeightReceiver` on all other workers.
+
+        Skipped when worker 0 did not create a Sender (e.g. single-worker
+        explorer or ``bucket_size_mb=0``).
+        """
+        zmq_info = await self.models[0].get_weight_sender_zmq_info()
+        if zmq_info is None:
+            return
+        bucket_size_mb = self.config.synchronizer.weight_transfer_bucket_size_mb
+        refs = [
+            model.setup_weight_receiver(zmq_info["zmq_ip"], zmq_info["zmq_port"], bucket_size_mb)
+            for model in self.models
+        ]
+        await asyncio.gather(*refs)
+        self.logger.info("Intra-explorer bucketed weight transfer setup complete.")
+
     async def set_state_dict_meta(self, state_dict_meta: List):
         """Set the state_dict meta on all model workers for NCCL weight sync.
 
@@ -267,6 +288,11 @@ class Explorer:
                         random_port=True
                     )
                     await self.setup_weight_sync_group(master_address, master_port)
+                    # Phase 2: set up intra-explorer bucketed weight transfer.
+                    # Worker 0 created a Sender in Phase 1 (init_process_group).
+                    # Now share its ZMQ info with all other workers to create
+                    # Receivers.
+                    await self._setup_intra_weight_transfer()
 
             self.rollout_coordinator = RolloutCoordinator.get_actor(self.config)
             await self.rollout_coordinator.prepare.remote()
