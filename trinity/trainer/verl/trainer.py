@@ -633,7 +633,7 @@ class VERLTrainer(TrainEngineWrapper):
                 self.logger.info(f"Removing old checkpoint: {old_path}")
                 shutil.rmtree(old_path, ignore_errors=True)
 
-    def sync_weight_nccl(self) -> None:
+    async def sync_weight_nccl(self) -> None:
         self.actor_rollout_wg.sync_weight_nccl()
 
     async def upload_state_dict(self):

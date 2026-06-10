@@ -80,6 +80,8 @@ class InferenceModel(ABC):
         explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
+        zmq_ip: str = None,
+        zmq_port: int = None,
     ):
         """Initialize the process group for model weight synchronization."""
         pass
@@ -818,6 +820,8 @@ class ModelWrapper:
         group_name: str,
         explorer_name: str,
         timeout: int = 1200,
+        zmq_ip: str = None,
+        zmq_port: int = None,
     ):
         """Initialize the process group for model weight synchronization."""
 
@@ -830,6 +834,8 @@ class ModelWrapper:
             explorer_name=explorer_name,
             backend="nccl",
             timeout=timeout,
+            zmq_ip=zmq_ip,
+            zmq_port=zmq_port,
         )
 
     async def teardown_process_group(self):

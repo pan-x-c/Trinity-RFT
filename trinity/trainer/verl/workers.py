@@ -22,6 +22,7 @@ from verl.utils.memory_utils import aggressive_empty_cache
 from verl.workers.engine_workers import ActorRolloutRefWorker
 
 from trinity.common.config import AlgorithmConfig
+from trinity.common.weight_transfer import ModelWeightSender
 from trinity.manager.synchronizer import Synchronizer
 from trinity.trainer.verl.checkpoint import CheckpointCoordinator
 from trinity.trainer.verl.losses import build_trinity_loss
@@ -50,6 +51,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         self._model_update_group = None
         self._state_dict_meta_list = None
         self._coordinator: Optional[CheckpointCoordinator] = None
+        self._weight_sender: Optional[ModelWeightSender] = None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def init_model(self):
@@ -288,16 +290,32 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def get_weight_sync_info(self):
-        """Return (addr, port, state_dict_meta) from rank 0 for NCCL group setup.
+        """Return (addr, port, state_dict_meta, zmq_ip, zmq_port) from rank 0.
 
-        Uses cached meta from init_model() — no parameter materialization.
-        Other ranks return None.
+        Creates and prepares the ModelWeightSender so the ZMQ PUB server is
+        ready before the process group is set up.  Uses cached meta from
+        init_model() — no parameter materialization.  Other ranks return None.
         """
         if torch.distributed.get_rank() == 0:
             aggressive_empty_cache(force_sync=True)
             addr, port = self.get_available_master_addr_port()
-            self.logger.info(f"Weight sync info: {addr}:{port}")
-            return addr, int(port), self._state_dict_meta_list
+
+            # Create and prepare the sender (allocates buffers, starts ZMQ PUB).
+            bucket_size = self.config.get("weight_transfer_bucket_size", 500 * 1024 * 1024)
+            self._weight_sender = ModelWeightSender(bucket_size=bucket_size)
+            zmq_meta = self._weight_sender.prepare()
+
+            self.logger.info(
+                f"Weight sync info: {addr}:{port}, "
+                f"ZMQ: {zmq_meta['zmq_ip']}:{zmq_meta['zmq_port']}"
+            )
+            return (
+                addr,
+                int(port),
+                self._state_dict_meta_list,
+                zmq_meta["zmq_ip"],
+                zmq_meta["zmq_port"],
+            )
         return None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
@@ -312,7 +330,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """Join the NCCL process group for weight sync.
 
         Called concurrently with Explorer's setup_weight_sync_group.
-        Only rank 0 creates the process group.
+        Only rank 0 creates the process group and wires up the sender.
         """
         if torch.distributed.get_rank() == 0:
             self.logger.info(
@@ -327,27 +345,38 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                 world_size=world_size,
                 rank=0,
             )
+            # Wire the sender to the NCCL process group.
+            if self._weight_sender is not None:
+                self._weight_sender.init_process_group(self._model_update_group)
             self.logger.info("Trainer init_process_group done.")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def teardown_weight_sync_group(self):
-        """Destroy the NCCL process group for weight sync."""
-        if torch.distributed.get_rank() == 0 and self._model_update_group is not None:
-            self.logger.info("Tearing down weight sync group.")
-            torch.distributed.destroy_process_group(self._model_update_group)
-            self._model_update_group = None
+        """Destroy the NCCL process group and finalize the sender."""
+        if torch.distributed.get_rank() == 0:
+            if self._weight_sender is not None:
+                self._weight_sender.finalize()
+                self._weight_sender = None
+            if self._model_update_group is not None:
+                self.logger.info("Tearing down weight sync group.")
+                torch.distributed.destroy_process_group(self._model_update_group)
+                self._model_update_group = None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def sync_weight_nccl(self):
+    async def sync_weight_nccl(self):
         """Sync model weights across workers using NCCL.
 
-        Broadcasts full model parameters from rank 0 (trainer) to all
-        Explorer ranks via the NCCL process group.
+        Uses double-buffered bucket broadcast via ModelWeightSender on
+        rank 0.  Non-rank-0 trainer workers still consume the generator
+        to participate in FSDP all-gather (for DTensor .full_tensor()).
         """
         per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
-        for _, param in per_tensor_param:
-            if torch.distributed.get_rank() == 0:
-                torch.distributed.broadcast(param, src=0, group=self._model_update_group)
+        if torch.distributed.get_rank() == 0:
+            await self._weight_sender.send(per_tensor_param)
+        else:
+            # Consume the generator to participate in FSDP all-gather.
+            for _ in per_tensor_param:
+                pass
 
     def _get_coordinator(self) -> CheckpointCoordinator:
         if self._coordinator is None:

@@ -553,7 +553,11 @@ class vLLMRolloutModel(BaseInferenceModel):
             self.model_version = model_version
             return model_version
         await self.async_llm.reset_prefix_cache(reset_running_requests=True)
-        await self._collective_rpc("update_weight", timeout=timeout)
+        if sync_method == SyncMethod.NCCL:
+            # Use bucketed double-buffer transfer if receiver is set up.
+            await self._collective_rpc("update_weight_nccl", timeout=timeout)
+        else:
+            await self._collective_rpc("update_weight", timeout=timeout)
         self.logger.info(
             f"Synchronized model to version {model_version} using method {sync_method}."
         )
@@ -570,6 +574,8 @@ class vLLMRolloutModel(BaseInferenceModel):
         explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
+        zmq_ip: str = None,
+        zmq_port: int = None,
     ):
         if self.config.node_rank != 0:
             self.logger.warning(
@@ -589,6 +595,8 @@ class vLLMRolloutModel(BaseInferenceModel):
                 timeout,
                 explorer_name,
                 self.ray_namespace,
+                zmq_ip,
+                zmq_port,
             ),
         )
 

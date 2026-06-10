@@ -324,15 +324,28 @@ class Synchronizer:
         trainer = ray.get_actor(self.config.trainer.name, namespace=self.config.ray_namespace)
         explorer = ray.get_actor(self.config.explorer.name, namespace=self.config.ray_namespace)
 
-        addr, port, meta = await trainer.get_weight_sync_info.remote()
+        sync_info = await trainer.get_weight_sync_info.remote()
+        # Support both legacy 3-tuple and new 5-tuple (with ZMQ metadata).
+        if len(sync_info) == 5:
+            addr, port, meta, zmq_ip, zmq_port = sync_info
+        else:
+            addr, port, meta = sync_info
+            zmq_ip, zmq_port = None, None
+
         world_size = self.config.synchronizer.explorer_world_size + 1  # type: ignore
         timeout = timeout or self.config.synchronizer.sync_timeout
 
         group_name = self.config.synchronizer.group_name
-        self.logger.info(f"Coordinating weight sync setup: {addr}:{port}, world_size={world_size}")
+        self.logger.info(
+            f"Coordinating weight sync setup: {addr}:{port}, world_size={world_size}"
+            + (f", ZMQ: {zmq_ip}:{zmq_port}" if zmq_ip else "")
+        )
         await asyncio.gather(
             trainer.setup_weight_sync_group.remote(addr, port, world_size, group_name, timeout),
-            explorer.setup_weight_sync_group.remote(addr, port, world_size, group_name, timeout),
+            explorer.setup_weight_sync_group.remote(
+                addr, port, world_size, group_name, timeout,
+                zmq_ip=zmq_ip, zmq_port=zmq_port,
+            ),
         )
         await explorer.set_state_dict_meta.remote(meta)
         self.logger.info("Weight sync group setup complete.")

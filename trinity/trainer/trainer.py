@@ -234,7 +234,7 @@ class Trainer:
                 if result is None:
                     self.logger.error("Trainer sync_weights failed.")
                 else:
-                    self.engine.sync_weight_nccl()
+                    await self.engine.sync_weight_nccl()
             elif self.sync_method == SyncMethod.CHECKPOINT:
                 await self.engine.save_state_dict()
             elif self.sync_method == SyncMethod.MEMORY:
@@ -328,7 +328,7 @@ class TrainEngineWrapper(ABC):
         pass
 
     @abstractmethod
-    def sync_weight_nccl(self) -> None:
+    async def sync_weight_nccl(self) -> None:
         """Sync the model weight by NCCL. (For `NCCL` sync method)"""
 
     @abstractmethod

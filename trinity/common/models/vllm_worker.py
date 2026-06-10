@@ -7,6 +7,7 @@ import torch
 import torch.distributed
 
 from trinity.common.models.vllm_patch.worker_patch import patch_vllm_prompt_logprobs
+from trinity.common.weight_transfer import ModelWeightReceiver
 from trinity.manager.synchronizer import Synchronizer
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
@@ -42,6 +43,8 @@ class WorkerExtension:
         timeout: int = 1200,
         explorer_name: str = None,
         namespace: str = None,
+        zmq_ip: str = None,
+        zmq_port: int = None,
     ):
         """Init torch process group for model weights update"""
         rank = torch.distributed.get_rank()
@@ -73,12 +76,28 @@ class WorkerExtension:
         self.synchronizer = Synchronizer.get_actor(namespace=self._namespace)
         self._checkpoint_converter = None
 
+        # Set up the bucketed weight receiver for NCCL transfer.
+        self._weight_receiver = None
+        if zmq_ip is not None and zmq_port is not None:
+            self._weight_receiver = ModelWeightReceiver(
+                bucket_size=500 * 1024 * 1024,
+            )
+            self._weight_receiver.prepare()
+            self._weight_receiver.init_process_group(self._model_update_group)
+            self._weight_receiver.connect_metadata(zmq_ip, zmq_port)
+            self.logger.info(
+                f"ModelWeightReceiver ready (ZMQ: {zmq_ip}:{zmq_port})"
+            )
+
     def set_state_dict_meta(self, state_dict_meta: list):
         """Set the state_dict meta for NCCL weight sync."""
         self._state_dict_meta = state_dict_meta
 
     def teardown_process_group(self):
-        """Destroy the NCCL process group for weight sync."""
+        """Destroy the NCCL process group and finalize the receiver."""
+        if hasattr(self, "_weight_receiver") and self._weight_receiver is not None:
+            self._weight_receiver.finalize()
+            self._weight_receiver = None
         if hasattr(self, "_model_update_group") and self._model_update_group is not None:
             torch.distributed.destroy_process_group(self._model_update_group)
             self._model_update_group = None
@@ -122,6 +141,28 @@ class WorkerExtension:
         with set_current_vllm_config(self.model_runner.vllm_config):
             self.model_runner.reload_weights(
                 weights_iterator=_weight_iterator(),
+                is_checkpoint_format=True,
+            )
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+
+    def update_weight_nccl(self):
+        """Receive weights via bucketed NCCL broadcast (ModelWeightReceiver).
+
+        Uses ``receive_sync()`` because vLLM's ``reload_weights`` expects a
+        synchronous iterator.  Falls back to the legacy ``update_weight()``
+        if the receiver was not set up (e.g. ZMQ metadata was not provided).
+        """
+        if not hasattr(self, "_weight_receiver") or self._weight_receiver is None:
+            return self.update_weight()
+
+        weights_iter = self._weight_receiver.receive_sync()
+
+        from vllm.config import set_current_vllm_config
+
+        with set_current_vllm_config(self.model_runner.vllm_config):
+            self.model_runner.reload_weights(
+                weights_iterator=weights_iter,
                 is_checkpoint_format=True,
             )
         torch.cuda.synchronize()

@@ -753,5 +753,5 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
                 critic_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load
             )
 
-    def sync_weight_nccl(self) -> None:
+    async def sync_weight_nccl(self) -> None:
         self.actor_rollout_wg.sync_weight()

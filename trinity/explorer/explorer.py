@@ -110,6 +110,8 @@ class Explorer:
         world_size: int = None,
         group_name: str = None,
         timeout: int = None,
+        zmq_ip: str = None,
+        zmq_port: int = None,
     ):
         await self._wait_for_models_ready()
         base_offset = 1 if self.use_nccl_sync else 0
@@ -138,6 +140,8 @@ class Explorer:
                 group_name=group_name,
                 explorer_name=self.config.explorer.name,
                 timeout=timeout,
+                zmq_ip=zmq_ip,
+                zmq_port=zmq_port,
             )
             for i, model in enumerate(self.models)
         ]
