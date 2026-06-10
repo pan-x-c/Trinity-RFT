@@ -80,9 +80,16 @@ class InferenceModel(ABC):
         explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
-        state_dict_meta: Optional[List] = None,
     ):
         """Initialize the process group for model weight synchronization."""
+        pass
+
+    async def teardown_process_group(self):
+        """Destroy the process group for model weight synchronization."""
+        pass
+
+    async def set_state_dict_meta(self, state_dict_meta: List):
+        """Set the state_dict meta for NCCL weight sync."""
         pass
 
     @abstractmethod
@@ -811,7 +818,6 @@ class ModelWrapper:
         group_name: str,
         explorer_name: str,
         timeout: int = 1200,
-        state_dict_meta: Optional[List] = None,
     ):
         """Initialize the process group for model weight synchronization."""
 
@@ -824,8 +830,15 @@ class ModelWrapper:
             explorer_name=explorer_name,
             backend="nccl",
             timeout=timeout,
-            state_dict_meta=state_dict_meta,
         )
+
+    async def teardown_process_group(self):
+        """Destroy the process group for model weight synchronization."""
+        await self.model.teardown_process_group.remote()
+
+    async def set_state_dict_meta(self, state_dict_meta: List):
+        """Set the state_dict meta for NCCL weight sync."""
+        await self.model.set_state_dict_meta.remote(state_dict_meta)
 
     async def sync_model_weights(
         self, model_version: int, method: SyncMethod, timeout: int = 1200

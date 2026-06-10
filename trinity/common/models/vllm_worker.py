@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Custom vLLM Worker."""
+import logging
+
 import ray
 import torch
 import torch.distributed
@@ -10,6 +12,16 @@ from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
 
 
+def _suppress_layerwise_reload_warnings() -> None:
+    """Silence benign vLLM layerwise reload warnings during weight sync."""
+    try:
+        logger = logging.getLogger("vllm.model_executor.model_loader.reload.layerwise")
+        if logger is not None:
+            logger.setLevel(logging.ERROR)
+    except Exception:  # pragma: no cover - best-effort suppression
+        pass
+
+
 class WorkerExtension:
     def apply_patches(self):
         """Apply necessary patches to vLLM."""
@@ -17,6 +29,7 @@ class WorkerExtension:
 
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
         patch_vllm_prompt_logprobs(self.model_runner)
+        _suppress_layerwise_reload_warnings()
 
     def init_process_group(
         self,
@@ -27,7 +40,6 @@ class WorkerExtension:
         group_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
-        state_dict_meta: list = None,
         explorer_name: str = None,
         namespace: str = None,
     ):
@@ -37,7 +49,7 @@ class WorkerExtension:
 
         assert torch.distributed.is_initialized(), "default torch process group must be initialized"
         assert group_name != "", "group name must not be empty"
-        self._state_dict_meta = state_dict_meta
+        self._state_dict_meta = None
         self._weight_update_rank = rank + rank_offset
         self.logger.info(
             f"vLLM starting init_process_group:\n"
@@ -61,6 +73,16 @@ class WorkerExtension:
         self.synchronizer = Synchronizer.get_actor(namespace=self._namespace)
         self._checkpoint_converter = None
 
+    def set_state_dict_meta(self, state_dict_meta: list):
+        """Set the state_dict meta for NCCL weight sync."""
+        self._state_dict_meta = state_dict_meta
+
+    def teardown_process_group(self):
+        """Destroy the NCCL process group for weight sync."""
+        if hasattr(self, "_model_update_group") and self._model_update_group is not None:
+            torch.distributed.destroy_process_group(self._model_update_group)
+            self._model_update_group = None
+
     def update_weight(self):
         """Broadcast weight to all vllm workers from source rank 0 (actor model)"""
         if self._weight_update_rank == 0:
@@ -74,6 +96,10 @@ class WorkerExtension:
 
                         self._checkpoint_converter = get_megatron_converter(checkpoint_dir)
                     state_dict = self._checkpoint_converter.get_state_dict(checkpoint_dir)
+                elif method == "huggingface":
+                    from trinity.common.models.utils import load_huggingface_state_dict
+
+                    state_dict = load_huggingface_state_dict(checkpoint_dir)
                 else:
                     raise NotImplementedError(f"{method} is not supported")
                 ray.get(self.synchronizer.set_model_state_dict.remote(state_dict, model_version))

@@ -270,7 +270,6 @@ class SGLangRolloutModel(BaseInferenceModel):
         explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
-        state_dict_meta: Optional[List[Tuple[str, str, Tuple]]] = None,
     ):
         if self.config.node_rank != 0:
             self.logger.warning(
@@ -288,7 +287,6 @@ class SGLangRolloutModel(BaseInferenceModel):
             f"  > rank_offset={rank_offset}\n"
             f"  > world_size={world_size}"
         )
-        self.state_dict_meta = state_dict_meta or []
         self.group_name = group_name
         resp = await self.api_client.init_weights_update_group(
             master_address=master_address,
@@ -302,6 +300,25 @@ class SGLangRolloutModel(BaseInferenceModel):
         self.logger.info("SGLang init_process_group finished.")
         self._has_weight_update_group = resp
         return resp
+
+    async def set_state_dict_meta(self, state_dict_meta: List[Tuple[str, str, Tuple]]):
+        """Set the state_dict meta for NCCL weight sync."""
+        self.state_dict_meta = state_dict_meta or []
+
+    async def teardown_process_group(self):
+        """Destroy the weight update group via the SGLang API.
+
+        Only the main node (node_rank=0) issues the API call; other nodes
+        just clear local state.
+        """
+        if (
+            self.config.node_rank == 0
+            and self._has_weight_update_group
+            and self.api_client is not None
+        ):
+            await self.api_client.destroy_weights_update_group(group_name=self.group_name)
+        self._has_weight_update_group = False
+        self.state_dict_meta = []
 
     async def _initialize_tokenizer(self) -> None:
         if self.tokenizer is not None:

@@ -14,6 +14,8 @@ from tests.tools import get_template_config, get_unittest_dataset_config
 from trinity.common.config import InferenceModelConfig, load_config
 from trinity.common.constants import SyncMethod
 from trinity.common.models.model import InferenceModel
+from trinity.trainer.trainer import is_verl_legacy
+from trinity.trainer.verl.config import build_verl_config
 
 CHECKPOINT_ROOT_DIR = os.path.join(os.path.dirname(__file__), "temp_checkpoint_dir")
 
@@ -175,16 +177,26 @@ class TestConfig(unittest.TestCase):
             InferenceModelConfig(model_path="Qwen/Qwen3-32B", tensor_parallel_size=4, engine_num=1),
         )
         config.check_and_update()
-        self.assertIsNotNone(config.trainer.trainer_config)
-        self.assertEqual(config.trainer.trainer_config.trainer.n_gpus_per_node, 8)
-        self.assertEqual(config.trainer.trainer_config.trainer.nnodes, 1)
-        self.assertEqual(config.trainer.trainer_config.trainer.project_name, config.project)
-        self.assertEqual(config.trainer.trainer_config.trainer.experiment_name, config.name)
         self.assertEqual(
             config.buffer.explorer_input.tasksets[0].repeat_times, config.algorithm.repeat_times
         )
         self.assertEqual(config.model.model_path, config.model.critic_model_path)
         self.assertEqual(config.model.model_path, config.explorer.rollout_model.model_path)
+
+        if is_verl_legacy():
+            self.assertIsNotNone(config.trainer.trainer_config)
+            self.assertEqual(config.trainer.trainer_config.trainer.n_gpus_per_node, 8)
+            self.assertEqual(config.trainer.trainer_config.trainer.nnodes, 1)
+            self.assertEqual(config.trainer.trainer_config.trainer.project_name, config.project)
+            self.assertEqual(config.trainer.trainer_config.trainer.experiment_name, config.name)
+            return
+
+        verl_config = build_verl_config(config)
+        self.assertEqual(verl_config.model.path, config.model.model_path)
+        self.assertEqual(verl_config.actor.strategy, config.trainer.trainer_strategy)
+        self.assertEqual(verl_config.actor.ppo_mini_batch_size, config.buffer.train_batch_size)
+        self.assertEqual(verl_config.actor.rollout_n, config.algorithm.repeat_times)
+        self.assertEqual(verl_config.rollout.n, config.algorithm.repeat_times)
 
     def test_all_examples_are_valid(self):
         example_dir = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
@@ -272,20 +284,39 @@ class TestConfig(unittest.TestCase):
         config.trainer.ulysses_sequence_parallel_size = 2
         config.trainer.max_token_len_per_gpu = None
         config.check_and_update()
-        self.assertIsNotNone(config.trainer.trainer_config)
         expected_max_token_len = math.ceil(
             (2 * config.model.max_model_len) / config.trainer.ulysses_sequence_parallel_size
         )
+        self.assertEqual(config.trainer.max_token_len_per_gpu, expected_max_token_len)
+
+        if is_verl_legacy():
+            self.assertIsNotNone(config.trainer.trainer_config)
+            self.assertEqual(
+                config.trainer.trainer_config.actor_rollout_ref.actor.ppo_max_token_len_per_gpu,
+                expected_max_token_len,
+            )
+            self.assertEqual(
+                config.trainer.trainer_config.actor_rollout_ref.ref.log_prob_max_token_len_per_gpu,
+                expected_max_token_len,
+            )
+            self.assertEqual(
+                config.trainer.trainer_config.critic.ppo_max_token_len_per_gpu,
+                expected_max_token_len,
+            )
+            return
+
+        verl_config = build_verl_config(config)
+        self.assertEqual(verl_config.actor.ppo_max_token_len_per_gpu, expected_max_token_len)
+        self.assertEqual(verl_config.actor.ppo_infer_max_token_len_per_gpu, expected_max_token_len)
+        self.assertEqual(verl_config.ref.log_prob_max_token_len_per_gpu, expected_max_token_len)
+        self.assertEqual(verl_config.rollout.log_prob_max_token_len_per_gpu, expected_max_token_len)
+        self.assertEqual(verl_config.critic.ppo_max_token_len_per_gpu, expected_max_token_len)
         self.assertEqual(
-            config.trainer.trainer_config.actor_rollout_ref.actor.ppo_max_token_len_per_gpu,
+            verl_config.critic.ppo_infer_max_token_len_per_gpu,
             expected_max_token_len,
         )
         self.assertEqual(
-            config.trainer.trainer_config.actor_rollout_ref.ref.log_prob_max_token_len_per_gpu,
-            expected_max_token_len,
-        )
-        self.assertEqual(
-            config.trainer.trainer_config.critic.ppo_max_token_len_per_gpu,
+            verl_config.critic.forward_max_token_len_per_gpu,
             expected_max_token_len,
         )
 
@@ -298,36 +329,74 @@ class TestConfig(unittest.TestCase):
         config.algorithm.optimizer.lr_scheduler_type = "cosine"
         config.algorithm.optimizer.min_lr_ratio = 1e-2
         config.check_and_update()
-        self.assertEqual(config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr, 1e-4)
-        self.assertEqual(
-            config.trainer.trainer_config.actor_rollout_ref.actor.optim.weight_decay, 0.05
-        )
-        self.assertEqual(config.trainer.trainer_config.actor_rollout_ref.actor.optim.clip_grad, 2.0)
-        self.assertEqual(
-            config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr_decay_steps, 1000
-        )
-        self.assertEqual(
-            config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr_decay_style, "cosine"
-        )
-        self.assertTrue(
-            torch.allclose(
-                torch.tensor(
-                    config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr_warmup_init
-                ),
-                torch.tensor(1e-6),
+        if is_verl_legacy():
+            self.assertEqual(config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr, 1e-4)
+            self.assertEqual(
+                config.trainer.trainer_config.actor_rollout_ref.actor.optim.weight_decay, 0.05
             )
-        )
-        self.assertTrue(
-            torch.allclose(
-                torch.tensor(config.trainer.trainer_config.actor_rollout_ref.actor.optim.min_lr),
-                torch.tensor(1e-6),
+            self.assertEqual(
+                config.trainer.trainer_config.actor_rollout_ref.actor.optim.clip_grad, 2.0
             )
-        )
-        # critic optimizer should not be affected
-        self.assertEqual(config.trainer.trainer_config.critic.optim.lr, 1e-5)
-        self.assertEqual(config.trainer.trainer_config.critic.optim.weight_decay, 0.01)
-        self.assertEqual(config.trainer.trainer_config.critic.optim.lr_decay_style, "constant")
-        self.assertEqual(config.trainer.trainer_config.critic.optim.clip_grad, 1.0)
+            self.assertEqual(
+                config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr_decay_steps, 1000
+            )
+            self.assertEqual(
+                config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr_decay_style,
+                "cosine",
+            )
+            self.assertTrue(
+                torch.allclose(
+                    torch.tensor(
+                        config.trainer.trainer_config.actor_rollout_ref.actor.optim.lr_warmup_init
+                    ),
+                    torch.tensor(1e-6),
+                )
+            )
+            self.assertTrue(
+                torch.allclose(
+                    torch.tensor(
+                        config.trainer.trainer_config.actor_rollout_ref.actor.optim.min_lr
+                    ),
+                    torch.tensor(1e-6),
+                )
+            )
+            # critic optimizer should not be affected
+            self.assertEqual(config.trainer.trainer_config.critic.optim.lr, 1e-5)
+            self.assertEqual(config.trainer.trainer_config.critic.optim.weight_decay, 0.01)
+            self.assertEqual(config.trainer.trainer_config.critic.optim.lr_decay_style, "constant")
+            self.assertEqual(config.trainer.trainer_config.critic.optim.clip_grad, 1.0)
+            return
+
+        verl_config = build_verl_config(config)
+        self.assertEqual(verl_config.actor.optim.lr, 1e-4)
+        self.assertEqual(verl_config.actor.optim.weight_decay, 0.05)
+        self.assertEqual(verl_config.actor.optim.clip_grad, 2.0)
+        self.assertEqual(verl_config.actor.optim.total_training_steps, 1000)
+
+        if config.trainer.trainer_strategy.startswith("fsdp"):
+            self.assertEqual(verl_config.actor.optim.lr_scheduler_type, "cosine")
+            self.assertEqual(verl_config.actor.optim.min_lr_ratio, 1e-2)
+            self.assertEqual(verl_config.critic.optim.lr_scheduler_type, "constant")
+            self.assertEqual(verl_config.critic.optim.min_lr_ratio, 0.01)
+        else:
+            self.assertEqual(verl_config.actor.optim.lr_decay_steps, 1000)
+            self.assertEqual(verl_config.actor.optim.lr_decay_style, "cosine")
+            self.assertTrue(
+                torch.allclose(
+                    torch.tensor(verl_config.actor.optim.lr_warmup_init), torch.tensor(1e-6)
+                )
+            )
+            self.assertTrue(
+                torch.allclose(torch.tensor(verl_config.actor.optim.min_lr), torch.tensor(1e-6))
+            )
+            self.assertEqual(verl_config.critic.optim.lr_decay_style, "constant")
+            self.assertTrue(
+                torch.allclose(torch.tensor(verl_config.critic.optim.min_lr), torch.tensor(0.0))
+            )
+
+        self.assertEqual(verl_config.critic.optim.lr, 1e-5)
+        self.assertEqual(verl_config.critic.optim.weight_decay, 0.01)
+        self.assertEqual(verl_config.critic.optim.clip_grad, 1.0)
 
     def test_chat_template_path(self):
         config = get_template_config()

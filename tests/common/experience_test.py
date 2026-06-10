@@ -558,7 +558,7 @@ class TestDummyExperienceWithRoutedExperts(unittest.TestCase):
     )
     def test_mixed_batch_succeeds(self, mock_layout):
         """to_data_proto succeeds when mixing normal + truncated experiences."""
-        from trinity.trainer.verl.utils import to_data_proto
+        from trinity.trainer.verl_legacy.utils import to_data_proto
 
         model = self._create_model()
 
@@ -585,7 +585,7 @@ class TestDummyExperienceWithRoutedExperts(unittest.TestCase):
         return_value=(NUM_LAYERS, TOPK, NUM_EXPERTS),
     )
     def test_end_to_end_through_generate(self, mock_layout):
-        from trinity.trainer.verl.utils import to_data_proto
+        from trinity.trainer.verl_legacy.utils import to_data_proto
 
         model = self._create_model()
 
