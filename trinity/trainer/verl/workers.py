@@ -405,38 +405,52 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """Save model state dict for checkpoint-based weight sync.
 
         Uses ``get_per_tensor_param()`` to gather full tensors from all
-        ranks (FSDP all-gather / DTensor full_tensor), then saves them as
-        a single safetensors file on rank 0.  Non-rank-0 workers consume
-        the generator to participate in collective operations but do not
-        save.
+        ranks (FSDP all-gather / DTensor full_tensor), then **streams**
+        them to a safetensors file one tensor at a time on rank 0.
+        Non-rank-0 workers consume the generator to participate in
+        collective operations but do not save.
 
-        On rank 0, the actual file I/O is offloaded to a background thread
-        via :class:`CheckpointCoordinator`, which notifies
-        :class:`CheckpointMonitor` so ``latest_state_dict_iteration.txt``
-        is only updated after the save completes.
+        The streaming write goes through the OS page cache (fast memcpy).
+        After the main-thread write completes, ``fsync`` + atomic rename
+        are offloaded to a background thread via
+        :class:`CheckpointCoordinator` so that the training loop is not
+        blocked by disk I/O.
         """
         coordinator = self._get_coordinator()
         rank = torch.distributed.get_rank()
 
         per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
-        state_dict = {}
-        for name, weight in per_tensor_param:
-            if rank == 0:
-                state_dict[name] = weight.cpu().detach()
-            del weight
 
         if rank == 0:
+            from trinity.common.models.streaming_safetensors import (
+                save_safetensors_streaming,
+            )
 
-            def _save():
-                from safetensors.torch import save_file
+            os.makedirs(local_path, exist_ok=True)
+            filepath = os.path.join(local_path, "model.safetensors")
 
-                os.makedirs(local_path, exist_ok=True)
-                save_file(state_dict, os.path.join(local_path, "model.safetensors"))
+            def _rank0_iter():
+                for name, weight in per_tensor_param:
+                    yield name, weight.cpu().detach()
 
-            coordinator.save_async("model_state_dict", _save, global_step, is_state_dict=True)
+            tmp_path = save_safetensors_streaming(_rank0_iter(), filepath, rename=False)
+
+            def _finalize():
+                fd = os.open(tmp_path, os.O_RDONLY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+                os.replace(tmp_path, filepath)
+
+            coordinator.save_async("model_state_dict", _finalize, global_step, is_state_dict=True)
             self.logger.info(
                 f"Actor state_dict save initiated: path={local_path}, step={global_step}"
             )
+        else:
+            # Consume generator to participate in FSDP all-gather.
+            for _ in per_tensor_param:
+                pass
 
         self._save_lora(local_path)
 

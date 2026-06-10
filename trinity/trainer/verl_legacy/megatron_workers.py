@@ -1073,11 +1073,29 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
     ):
         if self._is_offload_param:
             load_megatron_model_to_gpu(self.actor_module)
-        self.checkpoint_mananager.save_state_dict(
-            local_path=checkpoint_path,
-            global_step=global_step,
-        )
+
+        rank = torch.distributed.get_rank()
+
+        if rank == 0:
+            from trinity.common.models.streaming_safetensors import (
+                save_safetensors_streaming,
+            )
+
+            os.makedirs(checkpoint_path, exist_ok=True)
+            filepath = os.path.join(checkpoint_path, "model.safetensors")
+
+            def _rank0_iter():
+                for name, weight in self._get_tensor_generator():
+                    yield name, weight.cpu().detach()
+
+            tmp_path = save_safetensors_streaming(_rank0_iter(), filepath, rename=False)
+            self.checkpoint_mananager.finalize_safetensors_async(tmp_path, filepath, global_step)
+        else:
+            # Consume generator to participate in Megatron collectives.
+            for _ in self._get_tensor_generator():
+                pass
         torch.distributed.barrier()
+
         if self._is_offload_param:
             offload_megatron_model_to_cpu(self.actor_module)
 

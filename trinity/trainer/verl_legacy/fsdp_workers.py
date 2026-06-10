@@ -1182,10 +1182,30 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         assert self._is_actor
 
         with self._fsdp_offload_context():
-            self.checkpoint_manager.save_state_dict(
-                local_path=local_path,
-                global_step=global_step,
-            )
+            rank = dist.get_rank()
+            if self.config.actor.strategy == "fsdp":
+                gen = self._per_tensor_params_fsdp1()
+            else:  # fsdp2
+                gen = self._per_tensor_params_fsdp2()
+
+            if rank == 0:
+                from trinity.common.models.streaming_safetensors import (
+                    save_safetensors_streaming,
+                )
+
+                os.makedirs(local_path, exist_ok=True)
+                filepath = os.path.join(local_path, "model.safetensors")
+
+                def _rank0_iter():
+                    for name, weight in gen:
+                        yield name, weight.cpu().detach()
+
+                tmp_path = save_safetensors_streaming(_rank0_iter(), filepath, rename=False)
+                self.checkpoint_manager.finalize_safetensors_async(tmp_path, filepath, global_step)
+            else:
+                # Consume generator to participate in FSDP all-gather.
+                for _ in gen:
+                    pass
             dist.barrier()
 
             self._save_lora(local_path)
