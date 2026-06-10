@@ -24,13 +24,11 @@ a background thread for minimal main-thread blocking.
 from __future__ import annotations
 
 import json
-import math
 import os
 import struct
 from typing import Iterable
 
 import torch
-
 
 # ---------------------------------------------------------------------------
 # Dtype mapping (PyTorch → safetensors string / element size)

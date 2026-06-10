@@ -10,10 +10,7 @@ import unittest
 import torch
 from safetensors.torch import load_file
 
-from trinity.common.models.streaming_safetensors import (
-    DTYPE_TO_SAFETENSORS,
-    save_safetensors_streaming,
-)
+from trinity.common.models.streaming_safetensors import save_safetensors_streaming
 
 
 class TestSaveSafetensorsStreaming(unittest.TestCase):
