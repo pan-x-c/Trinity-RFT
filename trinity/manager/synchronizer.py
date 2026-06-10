@@ -325,10 +325,10 @@ class Synchronizer:
         explorer = ray.get_actor(self.config.explorer.name, namespace=self.config.ray_namespace)
 
         bucket_size_mb = self.config.synchronizer.weight_transfer_bucket_size_mb
-        sync_info = await trainer.get_weight_sync_info.remote(
-            bucket_size_mb=bucket_size_mb,
-        )
-        # Support both legacy 3-tuple and new 5-tuple (with ZMQ metadata).
+        sync_info = await trainer.get_weight_sync_info.remote()
+
+        # verl trainer returns 5-tuple (with ZMQ metadata from lightweight
+        # sender); legacy/tinker trainers return 3-tuple.
         if len(sync_info) == 5:
             addr, port, meta, zmq_ip, zmq_port = sync_info
         else:
@@ -345,7 +345,14 @@ class Synchronizer:
             + f", bucket_size={bucket_size_mb}MB"
         )
         await asyncio.gather(
-            trainer.setup_weight_sync_group.remote(addr, port, world_size, group_name, timeout),
+            trainer.setup_weight_sync_group.remote(
+                addr,
+                port,
+                world_size,
+                group_name,
+                timeout,
+                bucket_size_mb=bucket_size_mb,
+            ),
             explorer.setup_weight_sync_group.remote(
                 addr,
                 port,

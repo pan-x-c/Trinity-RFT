@@ -79,14 +79,13 @@ class WorkerExtension:
 
         # Set up the bucketed weight receiver for NCCL transfer.
         self._weight_receiver = None
-        if zmq_ip is not None and zmq_port is not None:
-            bucket_size = bucket_size_mb * 1024 * 1024
+        if zmq_ip is not None and zmq_port is not None and bucket_size_mb > 0:
             self._weight_receiver = ModelWeightReceiver(
-                bucket_size=bucket_size,
+                pg=self._model_update_group,
+                bucket_size=bucket_size_mb * 1024 * 1024,
+                zmq_ip=zmq_ip,
+                zmq_port=zmq_port,
             )
-            self._weight_receiver.prepare()
-            self._weight_receiver.init_process_group(self._model_update_group)
-            self._weight_receiver.connect_metadata(zmq_ip, zmq_port)
             self.logger.info(
                 f"ModelWeightReceiver ready "
                 f"(ZMQ: {zmq_ip}:{zmq_port}, bucket_size={bucket_size_mb}MB)"

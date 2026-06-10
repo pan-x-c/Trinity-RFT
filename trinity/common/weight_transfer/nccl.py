@@ -19,17 +19,14 @@ synchronous iterator (e.g. vLLM's ``reload_weights``).
 Usage::
 
     # --- Trainer (rank 0) ---
-    sender = ModelWeightSender(bucket_size=500_000_000)
-    meta = sender.prepare()        # returns {zmq_ip, zmq_port}
-    sender.init_process_group(pg)
+    sender = ModelWeightSender()
+    zmq_info = sender.zmq_info        # {"zmq_ip": ..., "zmq_port": ...}
+    sender.setup(pg, bucket_size=500_000_000)
     await sender.send(engine.get_per_tensor_param()[0])
     sender.finalize()
 
     # --- Rollout (rank 1+) ---
-    receiver = ModelWeightReceiver(bucket_size=500_000_000)
-    receiver.prepare()
-    receiver.init_process_group(pg)
-    receiver.connect_metadata(zmq_ip, zmq_port)
+    receiver = ModelWeightReceiver(pg, 500_000_000, zmq_ip, zmq_port)
     async for name, tensor in receiver.receive():
         model.load_weight(name, tensor)
     receiver.finalize()
@@ -52,8 +49,6 @@ from trinity.common.weight_transfer.core import (
     merge_weight_chunks,
     split_weight_chunks,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _get_local_ip() -> str:
@@ -137,38 +132,31 @@ class ModelWeightSender:
     any source (FSDP ``get_per_tensor_param``, plain ``state_dict``, etc.)
     and broadcasts them to all receivers in fixed-size buckets.
 
-    Args:
-        bucket_size: Size of each GPU buffer in bytes.  Two buffers are
-            allocated (double buffering), so total GPU overhead is
-            ``2 * bucket_size``.  Default 500 MB.
+    Two-phase lifecycle:
+
+    1. ``__init__()`` — lightweight: only binds a ZMQ PUB socket for
+       the metadata side-channel.  No GPU memory is allocated.
+    2. ``setup(pg, bucket_size)`` — heavy: allocates GPU double buffers
+       and wires the NCCL process group.
+
+    This split exists because the ZMQ port must be known *before* the
+    concurrent NCCL ``init_process_group`` (the explorer needs it), while
+    the process group is only available *after* that collective call.
     """
 
-    def __init__(self, bucket_size: int = 500 * 1024 * 1024) -> None:
-        self.bucket_size = bucket_size
+    def __init__(self) -> None:
+        self.bucket_size: int = 0
+        self.logger = logging.getLogger(self.__class__.__name__)
         self._pg: Optional[torch.distributed.ProcessGroup] = None
         self._send_buf: Optional[torch.Tensor] = None
         self._recv_buf: Optional[torch.Tensor] = None
-        self._socket: Optional[zmq.Socket] = None
-        self._zmq_context: Optional[zmq.Context] = None
-        self._zmq_ip: Optional[str] = None
-        self._zmq_port: Optional[int] = None
         self._topic = "bucket_metadata"
 
-    def prepare(self) -> Dict[str, object]:
-        """Allocate GPU buffers and start the ZMQ PUB server.
-
-        Returns:
-            Dict with ``zmq_ip`` and ``zmq_port`` — pass these to each
-            :class:`ModelWeightReceiver` via ``connect_metadata()``.
-        """
-        self._send_buf = torch.empty(self.bucket_size, dtype=torch.uint8, device="cuda")
-        self._recv_buf = torch.empty(self.bucket_size, dtype=torch.uint8, device="cuda")
-
-        # Start ZMQ PUB server for metadata broadcast
+        # Bind ZMQ PUB server for metadata broadcast.
         self._zmq_ip = _get_local_ip()
         self._zmq_port = _get_free_port(self._zmq_ip)
-        self._zmq_context = zmq.Context()
-        self._socket = self._zmq_context.socket(zmq.PUB)
+        self._zmq_context: zmq.Context = zmq.Context()
+        self._socket: zmq.Socket = self._zmq_context.socket(zmq.PUB)
 
         if _is_ipv6(self._zmq_ip):
             address = f"tcp://[{self._zmq_ip}]:{self._zmq_port}"
@@ -177,18 +165,34 @@ class ModelWeightSender:
             address = f"tcp://{self._zmq_ip}:{self._zmq_port}"
 
         self._socket.bind(address)
-        logger.info(f"ModelWeightSender ZMQ PUB bound to {address}")
+        self.logger.info(f"ModelWeightSender ZMQ PUB bound to {address}")
 
+    @property
+    def zmq_info(self) -> Dict[str, object]:
+        """ZMQ connection info for receivers: ``{zmq_ip, zmq_port}``."""
         return {"zmq_ip": self._zmq_ip, "zmq_port": self._zmq_port}
 
-    def init_process_group(self, pg: torch.distributed.ProcessGroup) -> None:
-        """Accept an externally-created torch.distributed process group.
+    def setup(
+        self,
+        pg: torch.distributed.ProcessGroup,
+        bucket_size: int,
+    ) -> None:
+        """Allocate GPU double buffers and wire the NCCL process group.
+
+        Must be called after the NCCL process group has been created
+        (via ``init_process_group``).
 
         Args:
             pg: The NCCL process group connecting trainer rank 0 to all
                 rollout workers.
+            bucket_size: Size of each GPU buffer in bytes.  Two buffers
+                are allocated (double buffering), so total GPU overhead
+                is ``2 * bucket_size``.
         """
+        self.bucket_size = bucket_size
         self._pg = pg
+        self._send_buf = torch.empty(bucket_size, dtype=torch.uint8, device="cuda")
+        self._recv_buf = torch.empty(bucket_size, dtype=torch.uint8, device="cuda")
 
     @torch.no_grad()
     async def send(
@@ -206,8 +210,8 @@ class ModelWeightSender:
             weights: Iterable of ``(name, tensor)`` pairs — typically from
                 ``engine.get_per_tensor_param()`` or a ``state_dict.items()``.
         """
-        assert self._pg is not None, "Call init_process_group() first"
-        assert self._send_buf is not None, "Call prepare() first"
+        assert self._pg is not None, "Call setup() first"
+        assert self._send_buf is not None, "Call setup() first"
 
         send_buf = self._send_buf
         recv_buf = self._recv_buf
@@ -265,7 +269,7 @@ class ModelWeightSender:
         await broadcast_op.wait()
 
         elapsed = time.time() - start_time
-        logger.info(f"ModelWeightSender: send completed in {elapsed:.2f}s")
+        self.logger.info(f"ModelWeightSender: send completed in {elapsed:.2f}s")
 
     def finalize(self) -> None:
         """Release GPU buffers and close the ZMQ socket."""
@@ -288,42 +292,36 @@ class ModelWeightReceiver:
     Sits on the rollout/inference side (NCCL rank 1+).  Receives buckets
     from :class:`ModelWeightSender` and yields individual weight tensors.
 
+    All initialization is done in ``__init__``: GPU buffer allocation,
+    NCCL process group wiring, and ZMQ SUB connection.
+
     Args:
-        bucket_size: Must match the sender's ``bucket_size``.
+        pg: The NCCL process group connecting trainer rank 0 to all
+            rollout workers.
+        bucket_size: Must match the sender's ``bucket_size`` (in bytes).
+        zmq_ip: The sender's IP address (from ``sender.zmq_info``).
+        zmq_port: The sender's ZMQ port (from ``sender.zmq_info``).
     """
 
-    def __init__(self, bucket_size: int = 500 * 1024 * 1024) -> None:
+    def __init__(
+        self,
+        pg: torch.distributed.ProcessGroup,
+        bucket_size: int,
+        zmq_ip: str,
+        zmq_port: int,
+    ) -> None:
         self.bucket_size = bucket_size
-        self._pg: Optional[torch.distributed.ProcessGroup] = None
-        self._send_buf: Optional[torch.Tensor] = None
-        self._recv_buf: Optional[torch.Tensor] = None
-        self._socket: Optional[zmq.Socket] = None
-        self._zmq_context: Optional[zmq.Context] = None
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self._pg = pg
         self._topic = "bucket_metadata"
 
-    def prepare(self) -> None:
-        """Allocate GPU double buffers."""
+        # Allocate GPU double buffers.
         self._send_buf = torch.empty(self.bucket_size, dtype=torch.uint8, device="cuda")
         self._recv_buf = torch.empty(self.bucket_size, dtype=torch.uint8, device="cuda")
 
-    def init_process_group(self, pg: torch.distributed.ProcessGroup) -> None:
-        """Accept an externally-created torch.distributed process group.
-
-        Args:
-            pg: The NCCL process group connecting trainer rank 0 to all
-                rollout workers.
-        """
-        self._pg = pg
-
-    def connect_metadata(self, zmq_ip: str, zmq_port: int) -> None:
-        """Connect the ZMQ SUB socket to the sender's PUB server.
-
-        Args:
-            zmq_ip: The sender's IP address (from ``sender.prepare()``).
-            zmq_port: The sender's ZMQ port (from ``sender.prepare()``).
-        """
-        self._zmq_context = zmq.Context()
-        self._socket = self._zmq_context.socket(zmq.SUB)
+        # Connect ZMQ SUB socket to the sender's PUB server.
+        self._zmq_context: zmq.Context = zmq.Context()
+        self._socket: zmq.Socket = self._zmq_context.socket(zmq.SUB)
 
         if _is_ipv6(zmq_ip):
             address = f"tcp://[{zmq_ip}]:{zmq_port}"
@@ -333,7 +331,7 @@ class ModelWeightReceiver:
 
         self._socket.connect(address)
         self._socket.setsockopt_string(zmq.SUBSCRIBE, self._topic)
-        logger.info(f"ModelWeightReceiver ZMQ SUB connected to {address}")
+        self.logger.info(f"ModelWeightReceiver ZMQ SUB connected to {address}")
 
     @torch.no_grad()
     async def receive(self) -> AsyncGenerator[Tuple[str, torch.Tensor], None]:
@@ -353,8 +351,8 @@ class ModelWeightReceiver:
         self,
     ) -> AsyncGenerator[Tuple[TensorMeta, torch.Tensor], None]:
         """Receive raw bucket chunks with double-buffering."""
-        assert self._pg is not None, "Call init_process_group() first"
-        assert self._recv_buf is not None, "Call prepare() first"
+        assert self._pg is not None
+        assert self._recv_buf is not None
 
         send_buf = self._send_buf
         recv_buf = self._recv_buf
@@ -413,7 +411,7 @@ class ModelWeightReceiver:
 
         elapsed = time.time() - start_time
         bandwidth = total_bytes / elapsed / (1024 * 1024 * 1024) if elapsed > 0 else 0
-        logger.info(
+        self.logger.debug(
             f"ModelWeightReceiver: received {total_params} params in "
             f"{elapsed:.2f}s ({bandwidth:.2f} GB/s)"
         )

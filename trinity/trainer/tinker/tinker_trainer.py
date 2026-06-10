@@ -355,11 +355,17 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
         """Sync the model weight."""
         raise NotImplementedError("Tinker trainer does not support NCCL sync")
 
-    async def get_weight_sync_info(self, bucket_size_mb: int = 500):
+    async def get_weight_sync_info(self):
         return None, None, []
 
     async def setup_weight_sync_group(
-        self, master_address, master_port, world_size, group_name, timeout
+        self,
+        master_address,
+        master_port,
+        world_size,
+        group_name,
+        timeout,
+        bucket_size_mb=500,
     ):
         pass
 

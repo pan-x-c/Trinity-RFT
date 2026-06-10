@@ -289,13 +289,15 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             self.actor.set_loss_fn(loss_fn)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def get_weight_sync_info(self, bucket_size_mb: int = 500):
+    def get_weight_sync_info(self):
         """Return weight sync rendezvous info from rank 0.
 
-        When *bucket_size_mb* > 0, creates a :class:`ModelWeightSender`
-        and returns a 5-tuple ``(addr, port, meta, zmq_ip, zmq_port)``.
-        When *bucket_size_mb* == 0, skips sender creation and returns a
-        3-tuple ``(addr, port, meta)`` for per-tensor broadcast fallback.
+        Creates a lightweight :class:`ModelWeightSender` (ZMQ bind only,
+        no GPU allocation) and returns a 5-tuple
+        ``(addr, port, meta, zmq_ip, zmq_port)``.
+
+        The sender's GPU buffers are allocated later in
+        :meth:`setup_weight_sync_group` when ``bucket_size_mb`` is known.
 
         Uses cached meta from init_model() — no parameter materialization.
         Other ranks return None.
@@ -304,29 +306,20 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             aggressive_empty_cache(force_sync=True)
             addr, port = self.get_available_master_addr_port()
 
-            bucket_size = bucket_size_mb * 1024 * 1024
-            if bucket_size > 0:
-                # Create and prepare the sender (allocates buffers, starts ZMQ PUB).
-                self._weight_sender = ModelWeightSender(bucket_size=bucket_size)
-                zmq_meta = self._weight_sender.prepare()
+            # Lightweight sender creation (ZMQ bind only, no GPU buffers).
+            self._weight_sender = ModelWeightSender()
+            zmq = self._weight_sender.zmq_info
 
-                self.logger.info(
-                    f"Weight sync info: {addr}:{port}, "
-                    f"ZMQ: {zmq_meta['zmq_ip']}:{zmq_meta['zmq_port']}, "
-                    f"bucket_size={bucket_size_mb}MB"
-                )
-                return (
-                    addr,
-                    int(port),
-                    self._state_dict_meta_list,
-                    zmq_meta["zmq_ip"],
-                    zmq_meta["zmq_port"],
-                )
-            else:
-                self.logger.info(
-                    f"Weight sync info: {addr}:{port}, " f"per-tensor broadcast (bucket_size_mb=0)"
-                )
-                return (addr, int(port), self._state_dict_meta_list)
+            self.logger.info(
+                f"Weight sync info: {addr}:{port}, " f"ZMQ: {zmq['zmq_ip']}:{zmq['zmq_port']}"
+            )
+            return (
+                addr,
+                int(port),
+                self._state_dict_meta_list,
+                zmq["zmq_ip"],
+                zmq["zmq_port"],
+            )
         return None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
@@ -337,11 +330,17 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         world_size: int,
         group_name: str,
         timeout: int,
+        bucket_size_mb: int = 500,
     ):
         """Join the NCCL process group for weight sync.
 
         Called concurrently with Explorer's setup_weight_sync_group.
-        Only rank 0 creates the process group and wires up the sender.
+        Only rank 0 creates the process group and completes the sender
+        setup (GPU buffer allocation).
+
+        Args:
+            bucket_size_mb: Bucket size in MB for double-buffered transfer.
+                Set to 0 to fall back to per-tensor broadcast.
         """
         if torch.distributed.get_rank() == 0:
             self.logger.info(
@@ -356,9 +355,17 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                 world_size=world_size,
                 rank=0,
             )
-            # Wire the sender to the NCCL process group.
-            if self._weight_sender is not None:
-                self._weight_sender.init_process_group(self._model_update_group)
+            # Complete sender setup: allocate GPU buffers and wire NCCL pg.
+            if self._weight_sender is not None and bucket_size_mb > 0:
+                bucket_size = bucket_size_mb * 1024 * 1024
+                self._weight_sender.setup(self._model_update_group, bucket_size)
+                self.logger.info(f"ModelWeightSender ready (bucket_size={bucket_size_mb}MB)")
+            else:
+                # bucket_size_mb=0 → per-tensor broadcast fallback.
+                if self._weight_sender is not None:
+                    self._weight_sender.finalize()
+                    self._weight_sender = None
+                self.logger.info("Per-tensor broadcast mode (bucket_size_mb=0)")
             self.logger.info("Trainer init_process_group done.")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
