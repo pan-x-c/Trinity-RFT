@@ -113,16 +113,12 @@ async def merge_weight_chunks(
     merge_offset: int = 0
 
     async for tensor_meta, chunk in _ensure_async_iterator(chunks):
-        assert chunk.dtype == torch.uint8, (
-            f"Chunk dtype must be uint8, but got {chunk.dtype}"
-        )
+        assert chunk.dtype == torch.uint8, f"Chunk dtype must be uint8, but got {chunk.dtype}"
         nbytes = tensor_meta.shape.numel() * tensor_meta.dtype.itemsize
 
         # Weight fits in one bucket — zero-copy view.
         if nbytes <= bucket_size:
-            assert merge_weight is None, (
-                f"Previous large tensor {merge_name!r} not fully merged"
-            )
+            assert merge_weight is None, f"Previous large tensor {merge_name!r} not fully merged"
             name = tensor_meta.name
             weight = chunk.view(tensor_meta.dtype).view(tensor_meta.shape)
             yield (name, weight)
@@ -130,9 +126,7 @@ async def merge_weight_chunks(
 
         # Large tensor spanning multiple buckets — accumulate.
         if merge_weight is None:
-            assert tensor_meta.chunk_offset == 0, (
-                f"First chunk offset must be 0, got {tensor_meta}"
-            )
+            assert tensor_meta.chunk_offset == 0, f"First chunk offset must be 0, got {tensor_meta}"
             merge_name = tensor_meta.name
             merge_weight = torch.empty(
                 tensor_meta.shape,

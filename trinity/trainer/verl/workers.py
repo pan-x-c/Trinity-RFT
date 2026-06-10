@@ -324,8 +324,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                 )
             else:
                 self.logger.info(
-                    f"Weight sync info: {addr}:{port}, "
-                    f"per-tensor broadcast (bucket_size_mb=0)"
+                    f"Weight sync info: {addr}:{port}, " f"per-tensor broadcast (bucket_size_mb=0)"
                 )
                 return (addr, int(port), self._state_dict_meta_list)
         return None
@@ -392,9 +391,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             else:
                 # Per-tensor broadcast fallback (e.g. SGLang, bucket_size_mb=0).
                 for _, param in per_tensor_param:
-                    torch.distributed.broadcast(
-                        param, src=0, group=self._model_update_group
-                    )
+                    torch.distributed.broadcast(param, src=0, group=self._model_update_group)
         else:
             # Consume the generator to participate in FSDP all-gather.
             for _ in per_tensor_param:

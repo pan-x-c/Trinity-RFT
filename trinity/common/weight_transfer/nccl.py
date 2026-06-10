@@ -161,12 +161,8 @@ class ModelWeightSender:
             Dict with ``zmq_ip`` and ``zmq_port`` — pass these to each
             :class:`ModelWeightReceiver` via ``connect_metadata()``.
         """
-        self._send_buf = torch.empty(
-            self.bucket_size, dtype=torch.uint8, device="cuda"
-        )
-        self._recv_buf = torch.empty(
-            self.bucket_size, dtype=torch.uint8, device="cuda"
-        )
+        self._send_buf = torch.empty(self.bucket_size, dtype=torch.uint8, device="cuda")
+        self._recv_buf = torch.empty(self.bucket_size, dtype=torch.uint8, device="cuda")
 
         # Start ZMQ PUB server for metadata broadcast
         self._zmq_ip = _get_local_ip()
@@ -221,9 +217,7 @@ class ModelWeightSender:
         bucket_meta: Dict[str, TensorMeta] = {}
         offset = 0
 
-        async for tensor_meta, chunk in split_weight_chunks(
-            weights, self.bucket_size
-        ):
+        async for tensor_meta, chunk in split_weight_chunks(weights, self.bucket_size):
             # If chunk doesn't fit in current bucket, flush it.
             if offset + tensor_meta.chunk_size > self.bucket_size:
                 torch.cuda.synchronize()
@@ -309,12 +303,8 @@ class ModelWeightReceiver:
 
     def prepare(self) -> None:
         """Allocate GPU double buffers."""
-        self._send_buf = torch.empty(
-            self.bucket_size, dtype=torch.uint8, device="cuda"
-        )
-        self._recv_buf = torch.empty(
-            self.bucket_size, dtype=torch.uint8, device="cuda"
-        )
+        self._send_buf = torch.empty(self.bucket_size, dtype=torch.uint8, device="cuda")
+        self._recv_buf = torch.empty(self.bucket_size, dtype=torch.uint8, device="cuda")
 
     def init_process_group(self, pg: torch.distributed.ProcessGroup) -> None:
         """Accept an externally-created torch.distributed process group.
@@ -356,9 +346,7 @@ class ModelWeightReceiver:
         The method overlaps NCCL reception of the next bucket with
         consumption (yielding) of the current bucket's tensors.
         """
-        async for name, weight in merge_weight_chunks(
-            self._receive_chunks(), self.bucket_size
-        ):
+        async for name, weight in merge_weight_chunks(self._receive_chunks(), self.bucket_size):
             yield name, weight
 
     async def _receive_chunks(
@@ -385,6 +373,7 @@ class ModelWeightReceiver:
             topic=self._topic,
         )
         metadata = await broadcast_op.wait()
+        assert metadata is not None, "Receiver must get metadata from sender"
         total_bytes += self.bucket_size
         total_params += len(metadata["bucket_meta"])
 
@@ -404,13 +393,12 @@ class ModelWeightReceiver:
 
             # 2. Yield tensors from the completed bucket (send_buf).
             for name, tensor_meta in metadata["bucket_meta"].items():
-                tensor = send_buf[
-                    tensor_meta.offset : tensor_meta.offset + tensor_meta.chunk_size
-                ]
+                tensor = send_buf[tensor_meta.offset : tensor_meta.offset + tensor_meta.chunk_size]
                 yield tensor_meta, tensor
 
             # 3. Wait for next bucket.
             metadata = await broadcast_op.wait()
+            assert metadata is not None, "Receiver must get metadata from sender"
             total_bytes += self.bucket_size
             total_params += len(metadata["bucket_meta"])
 
@@ -420,9 +408,7 @@ class ModelWeightReceiver:
 
         # Yield tensors from the final bucket.
         for name, tensor_meta in metadata["bucket_meta"].items():
-            tensor = send_buf[
-                tensor_meta.offset : tensor_meta.offset + tensor_meta.chunk_size
-            ]
+            tensor = send_buf[tensor_meta.offset : tensor_meta.offset + tensor_meta.chunk_size]
             yield tensor_meta, tensor
 
         elapsed = time.time() - start_time

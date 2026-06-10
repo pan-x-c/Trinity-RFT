@@ -6,9 +6,8 @@ chunk splitting/merging round-trip and TensorMeta serialization.
 """
 import asyncio
 import pickle
-from typing import AsyncGenerator, List, Tuple
+from typing import List, Tuple
 
-import pytest
 import torch
 
 from trinity.common.weight_transfer.core import (
@@ -17,10 +16,10 @@ from trinity.common.weight_transfer.core import (
     split_weight_chunks,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _run_async(coro):
     """Run an async coroutine in a fresh event loop."""
@@ -50,6 +49,7 @@ def _make_weights(shapes_dtypes: List[Tuple[Tuple[int, ...], torch.dtype]]):
 # ---------------------------------------------------------------------------
 # TensorMeta tests
 # ---------------------------------------------------------------------------
+
 
 class TestTensorMeta:
     def test_create(self):
@@ -89,6 +89,7 @@ class TestTensorMeta:
 # split_weight_chunks tests
 # ---------------------------------------------------------------------------
 
+
 class TestSplitWeightChunks:
     def test_small_tensor_single_chunk(self):
         """A tensor smaller than bucket_size should produce exactly one chunk."""
@@ -96,9 +97,7 @@ class TestSplitWeightChunks:
         bucket_size = 1024 * 1024  # 1MB — much larger than 32*16*4=2048 bytes
 
         async def _run():
-            return await _collect_async_gen(
-                split_weight_chunks(weights, bucket_size)
-            )
+            return await _collect_async_gen(split_weight_chunks(weights, bucket_size))
 
         chunks = _run_async(_run())
         assert len(chunks) == 1
@@ -115,9 +114,7 @@ class TestSplitWeightChunks:
         bucket_size = 100_000  # < 262144, so should get 3 chunks
 
         async def _run():
-            return await _collect_async_gen(
-                split_weight_chunks(weights, bucket_size)
-            )
+            return await _collect_async_gen(split_weight_chunks(weights, bucket_size))
 
         chunks = _run_async(_run())
         assert len(chunks) == 3  # ceil(262144 / 100000) = 3
@@ -133,16 +130,16 @@ class TestSplitWeightChunks:
 
     def test_multiple_tensors(self):
         """Multiple tensors should each produce their own chunks."""
-        weights = _make_weights([
-            ((8, 8), torch.float32),   # 256 bytes
-            ((16, 16), torch.float32), # 1024 bytes
-        ])
+        weights = _make_weights(
+            [
+                ((8, 8), torch.float32),  # 256 bytes
+                ((16, 16), torch.float32),  # 1024 bytes
+            ]
+        )
         bucket_size = 1024 * 1024
 
         async def _run():
-            return await _collect_async_gen(
-                split_weight_chunks(weights, bucket_size)
-            )
+            return await _collect_async_gen(split_weight_chunks(weights, bucket_size))
 
         chunks = _run_async(_run())
         assert len(chunks) == 2  # one chunk per tensor
@@ -155,9 +152,7 @@ class TestSplitWeightChunks:
         bucket_size = 1024 * 1024
 
         async def _run():
-            return await _collect_async_gen(
-                split_weight_chunks(weights, bucket_size)
-            )
+            return await _collect_async_gen(split_weight_chunks(weights, bucket_size))
 
         chunks = _run_async(_run())
         assert len(chunks) == 1
@@ -169,28 +164,27 @@ class TestSplitWeightChunks:
 # merge_weight_chunks tests (round-trip with split)
 # ---------------------------------------------------------------------------
 
+
 class TestMergeWeightChunks:
     def test_roundtrip_small(self):
         """Small tensors should survive a split→merge round-trip exactly."""
-        original = _make_weights([
-            ((32, 16), torch.float32),
-            ((64, 32), torch.float32),
-        ])
+        original = _make_weights(
+            [
+                ((32, 16), torch.float32),
+                ((64, 32), torch.float32),
+            ]
+        )
         bucket_size = 1024 * 1024
 
         async def _run():
             chunks_gen = split_weight_chunks(original, bucket_size)
-            merged = await _collect_async_gen(
-                merge_weight_chunks(chunks_gen, bucket_size)
-            )
+            merged = await _collect_async_gen(merge_weight_chunks(chunks_gen, bucket_size))
             return merged
 
         merged = _run_async(_run())
         assert len(merged) == len(original)
 
-        for (orig_name, orig_tensor), (merged_name, merged_tensor) in zip(
-            original, merged
-        ):
+        for (orig_name, orig_tensor), (merged_name, merged_tensor) in zip(original, merged):
             assert merged_name == orig_name
             assert torch.equal(merged_tensor, orig_tensor)
 
@@ -201,9 +195,7 @@ class TestMergeWeightChunks:
 
         async def _run():
             chunks_gen = split_weight_chunks(original, bucket_size)
-            merged = await _collect_async_gen(
-                merge_weight_chunks(chunks_gen, bucket_size)
-            )
+            merged = await _collect_async_gen(merge_weight_chunks(chunks_gen, bucket_size))
             return merged
 
         merged = _run_async(_run())
@@ -213,26 +205,24 @@ class TestMergeWeightChunks:
 
     def test_roundtrip_mixed_sizes(self):
         """A mix of small and large tensors should all survive round-trip."""
-        original = _make_weights([
-            ((4, 4), torch.float32),       # 64 bytes — fits in one bucket
-            ((256, 256), torch.float32),   # 262144 bytes — split into chunks
-            ((8, 8), torch.bfloat16),      # 128 bytes — fits in one bucket
-        ])
+        original = _make_weights(
+            [
+                ((4, 4), torch.float32),  # 64 bytes — fits in one bucket
+                ((256, 256), torch.float32),  # 262144 bytes — split into chunks
+                ((8, 8), torch.bfloat16),  # 128 bytes — fits in one bucket
+            ]
+        )
         bucket_size = 100_000
 
         async def _run():
             chunks_gen = split_weight_chunks(original, bucket_size)
-            merged = await _collect_async_gen(
-                merge_weight_chunks(chunks_gen, bucket_size)
-            )
+            merged = await _collect_async_gen(merge_weight_chunks(chunks_gen, bucket_size))
             return merged
 
         merged = _run_async(_run())
         assert len(merged) == len(original)
 
-        for (orig_name, orig_tensor), (merged_name, merged_tensor) in zip(
-            original, merged
-        ):
+        for (orig_name, orig_tensor), (merged_name, merged_tensor) in zip(original, merged):
             assert merged_name == orig_name
             assert torch.equal(merged_tensor, orig_tensor)
 
@@ -244,9 +234,7 @@ class TestMergeWeightChunks:
 
         async def _run():
             chunks_gen = split_weight_chunks(original, bucket_size)
-            merged = await _collect_async_gen(
-                merge_weight_chunks(chunks_gen, bucket_size)
-            )
+            merged = await _collect_async_gen(merge_weight_chunks(chunks_gen, bucket_size))
             return merged
 
         merged = _run_async(_run())

@@ -347,8 +347,13 @@ class Synchronizer:
         await asyncio.gather(
             trainer.setup_weight_sync_group.remote(addr, port, world_size, group_name, timeout),
             explorer.setup_weight_sync_group.remote(
-                addr, port, world_size, group_name, timeout,
-                zmq_ip=zmq_ip, zmq_port=zmq_port,
+                addr,
+                port,
+                world_size,
+                group_name,
+                timeout,
+                zmq_ip=zmq_ip,
+                zmq_port=zmq_port,
                 bucket_size_mb=bucket_size_mb,
             ),
         )
