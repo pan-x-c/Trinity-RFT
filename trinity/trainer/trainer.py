@@ -75,14 +75,21 @@ class Trainer:
         await self.synchronizer.set_trainer_status.remote(RunningStatus.RUNNING)
         self.logger.info("Trainer is ready.")
 
-    async def get_weight_sync_info(self) -> Optional[Tuple[str, int, List]]:
+    async def get_weight_sync_info(
+        self, bucket_size_mb: int = 500
+    ) -> Optional[Tuple[str, int, List]]:
         """Get rendezvous info for NCCL weight sync group setup.
 
         Returns (master_address, master_port, state_dict_meta) from the
         trainer's GPU worker rank 0. Called by Synchronizer before
         coordinating NCCL group creation.
+
+        Args:
+            bucket_size_mb: Bucket size in MB for double-buffered NCCL
+                weight transfer.  Passed through to the worker that
+                creates the :class:`ModelWeightSender`.
         """
-        return await self.engine.get_weight_sync_info()
+        return await self.engine.get_weight_sync_info(bucket_size_mb=bucket_size_mb)
 
     async def setup_weight_sync_group(
         self,
@@ -340,7 +347,9 @@ class TrainEngineWrapper(ABC):
         """Only save the model state dict for Synchronizer.  (For `CHECKPOINT` sync method)"""
 
     @abstractmethod
-    async def get_weight_sync_info(self) -> Optional[Tuple[str, int, List]]:
+    async def get_weight_sync_info(
+        self, bucket_size_mb: int = 500
+    ) -> Optional[Tuple[str, int, List]]:
         """Get (master_address, master_port, state_dict_meta) for NCCL group setup."""
 
     @abstractmethod

@@ -112,6 +112,7 @@ class Explorer:
         timeout: int = None,
         zmq_ip: str = None,
         zmq_port: int = None,
+        bucket_size_mb: int = 500,
     ):
         await self._wait_for_models_ready()
         base_offset = 1 if self.use_nccl_sync else 0
@@ -142,6 +143,7 @@ class Explorer:
                 timeout=timeout,
                 zmq_ip=zmq_ip,
                 zmq_port=zmq_port,
+                bucket_size_mb=bucket_size_mb,
             )
             for i, model in enumerate(self.models)
         ]

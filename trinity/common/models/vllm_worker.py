@@ -45,6 +45,7 @@ class WorkerExtension:
         namespace: str = None,
         zmq_ip: str = None,
         zmq_port: int = None,
+        bucket_size_mb: int = 500,
     ):
         """Init torch process group for model weights update"""
         rank = torch.distributed.get_rank()
@@ -79,14 +80,16 @@ class WorkerExtension:
         # Set up the bucketed weight receiver for NCCL transfer.
         self._weight_receiver = None
         if zmq_ip is not None and zmq_port is not None:
+            bucket_size = bucket_size_mb * 1024 * 1024
             self._weight_receiver = ModelWeightReceiver(
-                bucket_size=500 * 1024 * 1024,
+                bucket_size=bucket_size,
             )
             self._weight_receiver.prepare()
             self._weight_receiver.init_process_group(self._model_update_group)
             self._weight_receiver.connect_metadata(zmq_ip, zmq_port)
             self.logger.info(
-                f"ModelWeightReceiver ready (ZMQ: {zmq_ip}:{zmq_port})"
+                f"ModelWeightReceiver ready "
+                f"(ZMQ: {zmq_ip}:{zmq_port}, bucket_size={bucket_size_mb}MB)"
             )
 
     def set_state_dict_meta(self, state_dict_meta: list):

@@ -440,7 +440,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         # load checkpoint before doing anything
         self._load_checkpoint()
 
-    async def get_weight_sync_info(self):
+    async def get_weight_sync_info(self, bucket_size_mb: int = 500):
         results = self.actor_rollout_wg.get_weight_sync_info()
         for r in results:
             if r is not None:

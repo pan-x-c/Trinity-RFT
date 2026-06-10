@@ -270,6 +270,9 @@ class SGLangRolloutModel(BaseInferenceModel):
         explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
+        zmq_ip: str = None,
+        zmq_port: int = None,
+        bucket_size_mb: int = 500,
     ):
         if self.config.node_rank != 0:
             self.logger.warning(

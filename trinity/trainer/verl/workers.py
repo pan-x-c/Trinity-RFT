@@ -289,33 +289,45 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             self.actor.set_loss_fn(loss_fn)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def get_weight_sync_info(self):
-        """Return (addr, port, state_dict_meta, zmq_ip, zmq_port) from rank 0.
+    def get_weight_sync_info(self, bucket_size_mb: int = 500):
+        """Return weight sync rendezvous info from rank 0.
 
-        Creates and prepares the ModelWeightSender so the ZMQ PUB server is
-        ready before the process group is set up.  Uses cached meta from
-        init_model() — no parameter materialization.  Other ranks return None.
+        When *bucket_size_mb* > 0, creates a :class:`ModelWeightSender`
+        and returns a 5-tuple ``(addr, port, meta, zmq_ip, zmq_port)``.
+        When *bucket_size_mb* == 0, skips sender creation and returns a
+        3-tuple ``(addr, port, meta)`` for per-tensor broadcast fallback.
+
+        Uses cached meta from init_model() — no parameter materialization.
+        Other ranks return None.
         """
         if torch.distributed.get_rank() == 0:
             aggressive_empty_cache(force_sync=True)
             addr, port = self.get_available_master_addr_port()
 
-            # Create and prepare the sender (allocates buffers, starts ZMQ PUB).
-            bucket_size = self.config.get("weight_transfer_bucket_size", 500 * 1024 * 1024)
-            self._weight_sender = ModelWeightSender(bucket_size=bucket_size)
-            zmq_meta = self._weight_sender.prepare()
+            bucket_size = bucket_size_mb * 1024 * 1024
+            if bucket_size > 0:
+                # Create and prepare the sender (allocates buffers, starts ZMQ PUB).
+                self._weight_sender = ModelWeightSender(bucket_size=bucket_size)
+                zmq_meta = self._weight_sender.prepare()
 
-            self.logger.info(
-                f"Weight sync info: {addr}:{port}, "
-                f"ZMQ: {zmq_meta['zmq_ip']}:{zmq_meta['zmq_port']}"
-            )
-            return (
-                addr,
-                int(port),
-                self._state_dict_meta_list,
-                zmq_meta["zmq_ip"],
-                zmq_meta["zmq_port"],
-            )
+                self.logger.info(
+                    f"Weight sync info: {addr}:{port}, "
+                    f"ZMQ: {zmq_meta['zmq_ip']}:{zmq_meta['zmq_port']}, "
+                    f"bucket_size={bucket_size_mb}MB"
+                )
+                return (
+                    addr,
+                    int(port),
+                    self._state_dict_meta_list,
+                    zmq_meta["zmq_ip"],
+                    zmq_meta["zmq_port"],
+                )
+            else:
+                self.logger.info(
+                    f"Weight sync info: {addr}:{port}, "
+                    f"per-tensor broadcast (bucket_size_mb=0)"
+                )
+                return (addr, int(port), self._state_dict_meta_list)
         return None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
@@ -367,12 +379,22 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """Sync model weights across workers using NCCL.
 
         Uses double-buffered bucket broadcast via ModelWeightSender on
-        rank 0.  Non-rank-0 trainer workers still consume the generator
-        to participate in FSDP all-gather (for DTensor .full_tensor()).
+        rank 0 when the sender is available.  Falls back to per-tensor
+        broadcast when the sender was not created (``bucket_size_mb=0``).
+
+        Non-rank-0 trainer workers still consume the generator to
+        participate in FSDP all-gather (for DTensor .full_tensor()).
         """
         per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
         if torch.distributed.get_rank() == 0:
-            await self._weight_sender.send(per_tensor_param)
+            if self._weight_sender is not None:
+                await self._weight_sender.send(per_tensor_param)
+            else:
+                # Per-tensor broadcast fallback (e.g. SGLang, bucket_size_mb=0).
+                for _, param in per_tensor_param:
+                    torch.distributed.broadcast(
+                        param, src=0, group=self._model_update_group
+                    )
         else:
             # Consume the generator to participate in FSDP all-gather.
             for _ in per_tensor_param:

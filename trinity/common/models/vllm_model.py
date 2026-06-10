@@ -576,6 +576,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         timeout: int = 1200,
         zmq_ip: str = None,
         zmq_port: int = None,
+        bucket_size_mb: int = 500,
     ):
         if self.config.node_rank != 0:
             self.logger.warning(
@@ -597,6 +598,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 self.ray_namespace,
                 zmq_ip,
                 zmq_port,
+                bucket_size_mb,
             ),
         )
 

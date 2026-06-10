@@ -82,6 +82,7 @@ class InferenceModel(ABC):
         timeout: int = 1200,
         zmq_ip: str = None,
         zmq_port: int = None,
+        bucket_size_mb: int = 500,
     ):
         """Initialize the process group for model weight synchronization."""
         pass
@@ -822,6 +823,7 @@ class ModelWrapper:
         timeout: int = 1200,
         zmq_ip: str = None,
         zmq_port: int = None,
+        bucket_size_mb: int = 500,
     ):
         """Initialize the process group for model weight synchronization."""
 
@@ -836,6 +838,7 @@ class ModelWrapper:
             timeout=timeout,
             zmq_ip=zmq_ip,
             zmq_port=zmq_port,
+            bucket_size_mb=bucket_size_mb,
         )
 
     async def teardown_process_group(self):

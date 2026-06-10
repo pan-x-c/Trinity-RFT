@@ -447,8 +447,10 @@ class VERLTrainer(TrainEngineWrapper):
         self.global_steps = 0
         self._load_checkpoint()
 
-    async def get_weight_sync_info(self):
-        results = self.actor_rollout_wg.get_weight_sync_info()
+    async def get_weight_sync_info(self, bucket_size_mb: int = 500):
+        results = self.actor_rollout_wg.get_weight_sync_info(
+            bucket_size_mb=bucket_size_mb,
+        )
         for r in results:
             if r is not None:
                 return r
