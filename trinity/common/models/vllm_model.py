@@ -520,12 +520,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         args: tuple = (),
         kwargs: Optional[dict] = None,
     ):
-        if self.use_v1:
-            return await self.async_llm.collective_rpc(method, timeout, args, kwargs)
-        else:
-            return self.async_llm.engine.model_executor.collective_rpc(
-                method, timeout, args, kwargs
-            )
+        return await self.async_llm.collective_rpc(method, timeout, args, kwargs)
 
     async def sync_model_weights(
         self, model_version: int, sync_method: SyncMethod, timeout: float = 1200
@@ -603,11 +598,17 @@ class vLLMRolloutModel(BaseInferenceModel):
 
     async def get_weight_sender_zmq_info(self):
         """Get ZMQ info from intra-explorer Sender (rank 0 only)."""
-        return await self._collective_rpc("get_weight_sender_zmq_info")
+        results = await self._collective_rpc("get_weight_sender_zmq_info")
+        # collective rpc returns a list of results from all workers, but only the
+        # Sender (rank 0) will return the ZMQ info, so we need to find the non-None result.
+        for result in results:
+            if result is not None:
+                return result
+        return None
 
     async def setup_weight_receiver(self, zmq_ip, zmq_port, bucket_size_mb):
         """Set up intra-explorer Receivers on non-rank-0 workers."""
-        return await self._collective_rpc(
+        await self._collective_rpc(
             "setup_weight_receiver",
             args=(zmq_ip, zmq_port, bucket_size_mb),
         )
