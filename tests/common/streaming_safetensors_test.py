@@ -168,6 +168,26 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         for name, expected in tensors.items():
             torch.testing.assert_close(loaded[name], expected)
 
+    def test_header_overflow_fallback_with_rename_false(self):
+        """Header overflow should still succeed when the caller finalizes the temp file."""
+        tensors = {f"very_long_tensor_name_{i:04d}": torch.randn(4) for i in range(200)}
+        filepath = os.path.join(self.tmpdir, "overflow_async.safetensors")
+
+        tmp_path = save_safetensors_streaming(
+            tensors.items(),
+            filepath,
+            estimated_tensor_count=1,
+            rename=False,
+        )
+
+        self.assertEqual(tmp_path, filepath + ".tmp")
+        self.assertTrue(os.path.exists(tmp_path))
+
+        loaded = load_file(tmp_path)
+        self.assertEqual(set(loaded.keys()), set(tensors.keys()))
+        for name, expected in tensors.items():
+            torch.testing.assert_close(loaded[name], expected)
+
     # ------------------------------------------------------------------
     # File format validation
     # ------------------------------------------------------------------

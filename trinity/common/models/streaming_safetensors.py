@@ -119,7 +119,7 @@ def save_safetensors_streaming(
     header: dict[str, dict] = {}
     data_offset = 0
 
-    with open(tmp_path, "wb") as f:
+    with open(tmp_path, "w+b") as f:
         # Phase 1: Reserve space for header_size (8B) + header JSON.
         f.write(b"\x00" * (8 + max_header_size))
 
