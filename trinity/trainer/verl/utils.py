@@ -204,8 +204,8 @@ def compute_data_metrics(batch: DataProto) -> dict:
             - critic/returns/mean, max, min: Statistics about returns
             - critic/values/mean, max, min: Statistics about critic values
             - critic/vf_explained_var: Explained variance of the value function
-            - response_length/mean, max, min: Statistics about response length
-            - prompt_length/mean, max, min: Statistics about prompt length
+            - response_length/mean, max, min, clip_ratio: Statistics about response lengths
+            - prompt_length/mean, max, min, clip_ratio: Statistics about prompt lengths
     """
     metrics = {}
 
@@ -227,7 +227,10 @@ def compute_data_metrics(batch: DataProto) -> dict:
 
     max_response_length = batch.batch["responses"].shape[-1]
 
+    prompt_mask = batch.batch["attention_mask"][:, :-max_response_length].bool()
     response_mask = batch.batch["attention_mask"][:, -max_response_length:].bool()
+
+    max_prompt_length = prompt_mask.size(-1)
 
     response_info = _compute_response_info(batch)
     prompt_length = response_info["prompt_length"]
@@ -238,10 +241,20 @@ def compute_data_metrics(batch: DataProto) -> dict:
             "response_length/mean": torch.mean(response_length).detach().item(),
             "response_length/max": torch.max(response_length).detach().item(),
             "response_length/min": torch.min(response_length).detach().item(),
+            "response_length/clip_ratio": torch.mean(
+                torch.eq(response_length, max_response_length).float()
+            )
+            .detach()
+            .item(),
             # prompt length
             "prompt_length/mean": torch.mean(prompt_length).detach().item(),
             "prompt_length/max": torch.max(prompt_length).detach().item(),
             "prompt_length/min": torch.min(prompt_length).detach().item(),
+            "prompt_length/clip_ratio": torch.mean(
+                torch.eq(prompt_length, max_prompt_length).float()
+            )
+            .detach()
+            .item(),
         }
     )
 
