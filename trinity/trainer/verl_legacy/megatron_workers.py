@@ -85,6 +85,7 @@ from verl.workers.critic.megatron_critic import MegatronPPOCritic
 from verl.workers.megatron_workers import logger, set_random_seed
 
 from trinity.common.config import AlgorithmConfig
+from trinity.common.weight_transfer import ModelWeightSender
 from trinity.manager.synchronizer import Synchronizer
 from trinity.trainer.verl_legacy.megatron_actor import MegatronPPOActor
 from trinity.trainer.verl_legacy.megatron_checkpoint_manager import (
@@ -718,6 +719,7 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
         get_torch_device().empty_cache()
         log_gpu_memory_usage("After init_model finish", logger=self.logger)
 
+        self._weight_sender = None
         self._cache_state_dict_meta()
 
     def _get_tensor_generator(self):
@@ -768,11 +770,34 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def get_weight_sync_info(self):
-        """Return (addr, port, state_dict_meta) from rank 0. Other ranks return None."""
+        """Return weight sync rendezvous info from rank 0.
+
+        Creates a lightweight :class:`ModelWeightSender` (ZMQ bind only,
+        no GPU allocation) and returns a 5-tuple
+        ``(addr, port, meta, zmq_ip, zmq_port)``.
+
+        The sender's GPU buffers are allocated later in
+        :meth:`setup_weight_sync_group` when ``bucket_size_mb`` is known.
+        Other ranks return None.
+        """
         if torch.distributed.get_rank() == 0:
             master_address, master_port = self.get_available_master_addr_port()
-            self.logger.info(f"Weight sync info: {master_address}:{master_port}")
-            return master_address, int(master_port), self.state_dict_meta
+
+            # Lightweight sender creation (ZMQ bind only, no GPU buffers).
+            self._weight_sender = ModelWeightSender()
+            zmq = self._weight_sender.zmq_info
+
+            self.logger.info(
+                f"Weight sync info: {master_address}:{master_port}, "
+                f"ZMQ: {zmq['zmq_ip']}:{zmq['zmq_port']}"
+            )
+            return (
+                master_address,
+                int(master_port),
+                self.state_dict_meta,
+                zmq["zmq_ip"],
+                zmq["zmq_port"],
+            )
         return None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
@@ -783,8 +808,18 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
         world_size: int,
         group_name: str,
         timeout: int,
+        bucket_size_mb: int = 500,
     ):
-        """Join the NCCL process group for weight sync."""
+        """Join the NCCL process group for weight sync.
+
+        Called concurrently with Explorer's setup_weight_sync_group.
+        Only rank 0 creates the process group and completes the sender
+        setup (GPU buffer allocation).
+
+        Args:
+            bucket_size_mb: Bucket size in MB for double-buffered transfer.
+                Set to 0 to fall back to per-tensor broadcast.
+        """
         if torch.distributed.get_rank() == 0:
             self.logger.info(
                 f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
@@ -798,29 +833,55 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
                 world_size=world_size,
                 rank=0,
             )
+            # Complete sender setup: allocate GPU buffers and wire NCCL pg.
+            if self._weight_sender is not None and bucket_size_mb > 0:
+                bucket_size = bucket_size_mb * 1024 * 1024
+                self._weight_sender.setup(self._model_update_group, bucket_size)
+                self.logger.info(f"ModelWeightSender ready (bucket_size={bucket_size_mb}MB)")
+            else:
+                # bucket_size_mb=0 → per-tensor broadcast fallback.
+                if self._weight_sender is not None:
+                    self._weight_sender.finalize()
+                    self._weight_sender = None
+                self.logger.info("Per-tensor broadcast mode (bucket_size_mb=0)")
             self.logger.info("Trainer init_process_group done.")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def teardown_weight_sync_group(self):
-        """Destroy the NCCL process group for weight sync."""
-        if torch.distributed.get_rank() == 0 and self._model_update_group is not None:
-            self.logger.info("Tearing down weight sync group.")
-            torch.distributed.destroy_process_group(self._model_update_group)
-            self._model_update_group = None
+        """Destroy the NCCL process group and finalize the sender."""
+        if torch.distributed.get_rank() == 0:
+            if self._weight_sender is not None:
+                self._weight_sender.finalize()
+                self._weight_sender = None
+            if self._model_update_group is not None:
+                self.logger.info("Tearing down weight sync group.")
+                torch.distributed.destroy_process_group(self._model_update_group)
+                self._model_update_group = None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def sync_weight(self):
+        """Sync model weights to Explorer via NCCL.
+
+        Uses :class:`ModelWeightSender` for bucketed double-buffered
+        transfer when available.  Falls back to per-tensor broadcast
+        when the sender was not created (``bucket_size_mb=0``).
+        """
         aggressive_empty_cache(force_sync=True)
         set_expandable_segments(False)
 
         if self._is_offload_param:
             load_megatron_model_to_gpu(self.actor_module)
-        for name, weight in self._get_tensor_generator():
-            if torch.distributed.get_rank() == 0:
-                torch.distributed.broadcast(weight, 0, group=self._model_update_group)
-            del weight
+
         if torch.distributed.get_rank() == 0:
+            if self._weight_sender is not None:
+                self._weight_sender.send_sync(self._get_tensor_generator())
+            else:
+                # Per-tensor broadcast fallback (bucket_size_mb=0).
+                for _, weight in self._get_tensor_generator():
+                    torch.distributed.broadcast(weight, 0, group=self._model_update_group)
+                    del weight
             torch.cuda.synchronize()
+
         if self._is_offload_param:
             offload_megatron_model_to_cpu(self.actor_module)
         torch.distributed.barrier()

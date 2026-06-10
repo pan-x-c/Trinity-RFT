@@ -462,6 +462,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
             world_size=world_size,
             group_name=group_name,
             timeout=timeout,
+            bucket_size_mb=bucket_size_mb,
         )
 
     async def teardown_weight_sync_group(self):

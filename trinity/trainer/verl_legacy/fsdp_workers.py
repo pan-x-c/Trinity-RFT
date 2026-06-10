@@ -92,6 +92,7 @@ from verl.workers.sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManage
 
 from trinity.common.config import AlgorithmConfig
 from trinity.common.patch import kimi_vl_monkey_patch_decorator
+from trinity.common.weight_transfer import ModelWeightSender
 from trinity.trainer.verl_legacy.fsdp_checkpoint_manager import FSDPCheckpointManager
 from trinity.trainer.verl_legacy.monkey_patch import apply_monkey_patch
 from trinity.trainer.verl_legacy.utils import apply_fsdp2
@@ -793,6 +794,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         get_torch_device().empty_cache()
 
+        self._weight_sender = None
         self._cache_state_dict_meta()
 
     def _cache_state_dict_meta(self):
@@ -831,11 +833,34 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def get_weight_sync_info(self):
-        """Return (addr, port, state_dict_meta) from rank 0. Other ranks return None."""
+        """Return weight sync rendezvous info from rank 0.
+
+        Creates a lightweight :class:`ModelWeightSender` (ZMQ bind only,
+        no GPU allocation) and returns a 5-tuple
+        ``(addr, port, meta, zmq_ip, zmq_port)``.
+
+        The sender's GPU buffers are allocated later in
+        :meth:`setup_weight_sync_group` when ``bucket_size_mb`` is known.
+        Other ranks return None.
+        """
         if torch.distributed.get_rank() == 0:
             master_address, master_port = self.get_available_master_addr_port()
-            self.logger.info(f"Weight sync info: {master_address}:{master_port}")
-            return master_address, int(master_port), self.state_dict_meta
+
+            # Lightweight sender creation (ZMQ bind only, no GPU buffers).
+            self._weight_sender = ModelWeightSender()
+            zmq = self._weight_sender.zmq_info
+
+            self.logger.info(
+                f"Weight sync info: {master_address}:{master_port}, "
+                f"ZMQ: {zmq['zmq_ip']}:{zmq['zmq_port']}"
+            )
+            return (
+                master_address,
+                int(master_port),
+                self.state_dict_meta,
+                zmq["zmq_ip"],
+                zmq["zmq_port"],
+            )
         return None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
@@ -846,10 +871,17 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         world_size: int,
         group_name: str,
         timeout: int,
+        bucket_size_mb: int = 500,
     ):
         """Join the NCCL process group for weight sync.
 
         Called concurrently with Explorer's setup_weight_sync_group.
+        Only rank 0 creates the process group and completes the sender
+        setup (GPU buffer allocation).
+
+        Args:
+            bucket_size_mb: Bucket size in MB for double-buffered transfer.
+                Set to 0 to fall back to per-tensor broadcast.
         """
         if torch.distributed.get_rank() == 0:
             self.logger.info(
@@ -864,35 +896,81 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 world_size=world_size,
                 rank=0,
             )
+            # Complete sender setup: allocate GPU buffers and wire NCCL pg.
+            if self._weight_sender is not None and bucket_size_mb > 0:
+                bucket_size = bucket_size_mb * 1024 * 1024
+                self._weight_sender.setup(self._model_update_group, bucket_size)
+                self.logger.info(f"ModelWeightSender ready (bucket_size={bucket_size_mb}MB)")
+            else:
+                # bucket_size_mb=0 → per-tensor broadcast fallback.
+                if self._weight_sender is not None:
+                    self._weight_sender.finalize()
+                    self._weight_sender = None
+                self.logger.info("Per-tensor broadcast mode (bucket_size_mb=0)")
             self.logger.info("Trainer init_process_group done.")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def teardown_weight_sync_group(self):
-        """Destroy the NCCL process group for weight sync."""
-        if torch.distributed.get_rank() == 0 and self._model_update_group is not None:
-            self.logger.info("Tearing down weight sync group.")
-            torch.distributed.destroy_process_group(self._model_update_group)
-            self._model_update_group = None
+        """Destroy the NCCL process group and finalize the sender."""
+        if torch.distributed.get_rank() == 0:
+            if self._weight_sender is not None:
+                self._weight_sender.finalize()
+                self._weight_sender = None
+            if self._model_update_group is not None:
+                self.logger.info("Tearing down weight sync group.")
+                torch.distributed.destroy_process_group(self._model_update_group)
+                self._model_update_group = None
+
+    def _per_tensor_params_fsdp1(self):
+        """Yield ``(name, param)`` for FSDP1 with ``summon_full_params``.
+
+        Each module's ``summon_full_params.__enter__`` is a FSDP collective
+        (all-gather), so all trainer ranks must iterate in lock-step.
+        """
+        for name_prefix, module in self.named_modules:
+            with FSDP.summon_full_params(module, recurse=False):
+                for name, param in module.named_parameters():
+                    if isinstance(param, FlatParameter):
+                        continue
+                    realname = name_prefix[len(FSDP_PREFIX) :] + "." + name if name_prefix else name
+                    yield realname, param
+                param = None
+
+    def _per_tensor_params_fsdp2(self):
+        """Yield ``(name, param)`` for FSDP2 via ``full_tensor()``."""
+        for name, param in self.actor_module_fsdp.named_parameters():
+            full_param = param.full_tensor().detach().to(device=get_device_id())
+            yield name, full_param
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def sync_weight(self):
+        """Sync model weights to Explorer via NCCL.
+
+        Uses :class:`ModelWeightSender` for bucketed double-buffered
+        transfer when available.  Falls back to per-tensor broadcast
+        when the sender was not created (``bucket_size_mb=0``).
+
+        Non-rank-0 trainer workers consume the generator to participate
+        in FSDP all-gather (for FSDP1 ``summon_full_params``).
+        """
         with self._fsdp_offload_context():
             if self.config.actor.strategy == "fsdp":
-                for name_prefix, module in self.named_modules:
-                    with FSDP.summon_full_params(module, recurse=False):
-                        if torch.distributed.get_rank() == 0:
-                            for name, param in module.named_parameters():
-                                if isinstance(param, FlatParameter):
-                                    continue
-                                torch.distributed.broadcast(
-                                    param, 0, group=self._model_update_group
-                                )
-                        param = None
+                gen = self._per_tensor_params_fsdp1()
             else:  # fsdp2
-                for _, param in self.actor_module_fsdp.named_parameters():
-                    full_param = param.full_tensor().detach().to(device=get_device_id())
-                    if torch.distributed.get_rank() == 0:
-                        torch.distributed.broadcast(full_param, 0, group=self._model_update_group)
+                gen = self._per_tensor_params_fsdp2()
+
+            if torch.distributed.get_rank() == 0:
+                if self._weight_sender is not None:
+                    self._weight_sender.send_sync(gen)
+                else:
+                    # Per-tensor broadcast fallback (bucket_size_mb=0).
+                    for _, param in gen:
+                        torch.distributed.broadcast(param, 0, group=self._model_update_group)
+            else:
+                # Consume generator to participate in FSDP all-gather.
+                for _ in gen:
+                    pass
+
             if torch.distributed.get_rank() == 0:
                 torch.cuda.synchronize()
 

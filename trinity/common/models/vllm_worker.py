@@ -53,7 +53,6 @@ class WorkerExtension:
 
         assert torch.distributed.is_initialized(), "default torch process group must be initialized"
         assert group_name != "", "group name must not be empty"
-        self._state_dict_meta = None
         self._weight_update_rank = rank + rank_offset
         self.logger.info(
             f"vLLM starting init_process_group:\n"
@@ -107,8 +106,8 @@ class WorkerExtension:
                 )
 
     def set_state_dict_meta(self, state_dict_meta: list):
-        """Set the state_dict meta for NCCL weight sync."""
-        self._state_dict_meta = state_dict_meta
+        """No-op — kept for interface compatibility with SGLang."""
+        pass
 
     def get_weight_sender_zmq_info(self):
         """Return Sender's ZMQ info for Receiver setup (Phase 2).
@@ -159,10 +158,11 @@ class WorkerExtension:
     def update_weight(self):
         """Broadcast weight to all vllm workers from source rank 0 (actor model).
 
-        Uses bucketed double-buffered transfer when a
-        :class:`ModelWeightSender` (rank 0) or :class:`ModelWeightReceiver`
-        (rank 1+) has been set up for intra-explorer sync.  Otherwise
-        falls back to per-tensor ``broadcast``.
+        Three paths:
+        1. **Sender** (rank 0, multi-worker): bucketed broadcast + local load.
+        2. **Receiver** (rank 1+, multi-worker): bucketed receive.
+        3. **Single-worker** (world_size=1): direct load from state_dict,
+           no broadcast needed.
         """
         state_dict = None
         if self._weight_update_rank == 0:
@@ -207,24 +207,13 @@ class WorkerExtension:
                     is_checkpoint_format=True,
                 )
         else:
-            # Fallback: per-tensor broadcast (original path).
-            if self._state_dict_meta is None:
-                self._state_dict_meta = ray.get(self.synchronizer.get_state_dict_meta.remote())
-
-            def _weight_iterator():
-                for name, dtype_str, shape in self._state_dict_meta:
-                    if self._weight_update_rank == 0:
-                        weight = state_dict[name]
-                        weight = weight.to(self.device)
-                    else:
-                        dtype = getattr(torch, dtype_str)
-                        weight = torch.empty(shape, dtype=dtype, device=self.device)
-                    torch.distributed.broadcast(weight, 0, group=self._model_update_group)
-                    yield (name, weight)
-
+            # Single-worker (world_size=1): direct load, no broadcast needed.
+            assert state_dict is not None
             with set_current_vllm_config(self.model_runner.vllm_config):
                 self.model_runner.reload_weights(
-                    weights_iterator=_weight_iterator(),
+                    weights_iterator=(
+                        (name, param.to(self.device)) for name, param in state_dict.items()
+                    ),
                     is_checkpoint_format=True,
                 )
 
@@ -234,13 +223,12 @@ class WorkerExtension:
     def update_weight_nccl(self):
         """Receive weights via bucketed NCCL broadcast (ModelWeightReceiver).
 
-        Uses ``receive_sync()`` because vLLM's ``reload_weights`` expects a
-        synchronous iterator.  Falls back to the legacy ``update_weight()``
-        if the receiver was not set up (e.g. ZMQ metadata was not provided).
+        Both verl and verl_legacy trainers now provide ZMQ metadata,
+        so a Receiver is always available for NCCL weight sync.
         """
-        if not hasattr(self, "_weight_receiver") or self._weight_receiver is None:
-            return self.update_weight()
-
+        assert (
+            self._weight_receiver is not None
+        ), "ModelWeightReceiver must be set up for NCCL weight sync"
         weights_iter = self._weight_receiver.receive_sync()
 
         from vllm.config import set_current_vllm_config
