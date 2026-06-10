@@ -720,7 +720,6 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
         log_gpu_memory_usage("After init_model finish", logger=self.logger)
 
         self._weight_sender = None
-        self._cache_state_dict_meta()
 
     def _get_tensor_generator(self):
         """
@@ -747,34 +746,13 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
             )
         return per_tensor_param
 
-    def _cache_state_dict_meta(self):
-        """Cache state_dict meta at init time for lightweight get_weight_sync_info."""
-        if not self._is_actor:
-            return
-        aggressive_empty_cache(force_sync=True)
-        set_expandable_segments(False)
-        self.state_dict_meta = []
-
-        if self._is_offload_param:
-            load_megatron_model_to_gpu(self.actor_module)
-        for name, weight in self._get_tensor_generator():
-            self.state_dict_meta.append(
-                (name, str(weight.dtype).split(".")[-1], tuple(weight.shape))
-            )
-            del weight
-        if self._is_offload_param:
-            offload_megatron_model_to_cpu(self.actor_module)
-        torch.distributed.barrier()
-        torch.cuda.empty_cache()
-        self.logger.info(f"Cached state_dict meta: {len(self.state_dict_meta)} parameters")
-
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def get_weight_sync_info(self):
         """Return weight sync rendezvous info from rank 0.
 
         Creates a lightweight :class:`ModelWeightSender` (ZMQ bind only,
-        no GPU allocation) and returns a 5-tuple
-        ``(addr, port, meta, zmq_ip, zmq_port)``.
+        no GPU allocation) and returns a 4-tuple
+        ``(addr, port, zmq_ip, zmq_port)``.
 
         The sender's GPU buffers are allocated later in
         :meth:`setup_weight_sync_group` when ``bucket_size_mb`` is known.
@@ -794,7 +772,6 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
             return (
                 master_address,
                 int(master_port),
-                self.state_dict_meta,
                 zmq["zmq_ip"],
                 zmq["zmq_port"],
             )
@@ -809,6 +786,7 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
         group_name: str,
         timeout: int,
         bucket_size_mb: int = 500,
+        per_tensor: bool = False,
     ):
         """Join the NCCL process group for weight sync.
 
@@ -819,6 +797,8 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
         Args:
             bucket_size_mb: Bucket size in MB for double-buffered transfer.
                 Set to 0 to fall back to per-tensor broadcast.
+            per_tensor: When True, use per-tensor NCCL broadcasts with
+                ZMQ metadata batching instead of GPU double buffers.
         """
         if torch.distributed.get_rank() == 0:
             self.logger.info(
@@ -836,8 +816,13 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
             # Complete sender setup: allocate GPU buffers and wire NCCL pg.
             if self._weight_sender is not None and bucket_size_mb > 0:
                 bucket_size = bucket_size_mb * 1024 * 1024
-                self._weight_sender.setup(self._model_update_group, bucket_size)
-                self.logger.info(f"ModelWeightSender ready (bucket_size={bucket_size_mb}MB)")
+                self._weight_sender.setup(
+                    self._model_update_group, bucket_size, per_tensor=per_tensor
+                )
+                mode_str = "per-tensor" if per_tensor else "bucketed"
+                self.logger.info(
+                    f"ModelWeightSender ready ({mode_str}, bucket_size={bucket_size_mb}MB)"
+                )
             else:
                 # bucket_size_mb=0 → per-tensor broadcast fallback.
                 if self._weight_sender is not None:

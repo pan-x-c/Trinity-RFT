@@ -170,15 +170,6 @@ class Explorer:
         await asyncio.gather(*refs)
         self.logger.info("Intra-explorer bucketed weight transfer setup complete.")
 
-    async def set_state_dict_meta(self, state_dict_meta: List):
-        """Set the state_dict meta on all model workers for NCCL weight sync.
-
-        Must be called after setup_weight_sync_group and before the first
-        sync_model_weights call.
-        """
-        refs = [model.set_state_dict_meta(state_dict_meta) for model in self.models]
-        await asyncio.gather(*refs)
-
     async def teardown_weight_sync_group(self):
         """Destroy the NCCL process group on all model workers."""
         refs = [model.teardown_process_group() for model in self.models]

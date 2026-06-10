@@ -83,7 +83,6 @@ class vLLMRolloutModel(BaseInferenceModel):
         self.logprobs_no_prefix_cache = True
         self.processor = None
         self.mm_render = None
-        self.state_dict_meta = None
         self.model_version = 0  # TODO: resume the value from the checkpoint
         self.api_server_host = None
         self.api_server_port = None
@@ -600,13 +599,6 @@ class vLLMRolloutModel(BaseInferenceModel):
                 zmq_port,
                 bucket_size_mb,
             ),
-        )
-
-    async def set_state_dict_meta(self, state_dict_meta: List):
-        """Set the state_dict meta for NCCL weight sync."""
-        return await self._collective_rpc(
-            "set_state_dict_meta",
-            args=(state_dict_meta,),
         )
 
     async def get_weight_sender_zmq_info(self):

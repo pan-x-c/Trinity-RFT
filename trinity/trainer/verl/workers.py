@@ -49,7 +49,6 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         self._algo_config: Optional[AlgorithmConfig] = None
         self._ray_namespace: Optional[str] = None
         self._model_update_group = None
-        self._state_dict_meta_list = None
         self._coordinator: Optional[CheckpointCoordinator] = None
         self._weight_sender: Optional[ModelWeightSender] = None
 
@@ -102,8 +101,6 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                     use_fused_kernels=use_fused_kernels,
                     fused_kernels_backend=fused_kernels_backend,
                 )
-
-        self._cache_state_dict_meta()
 
     def _maybe_patch_lora_fsdp2(self):
         """Monkey-patch veRL engine to align LoRA param dtypes for FSDP2.
@@ -257,23 +254,6 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         finally:
             checkpoint_manager.checkpoint_save_contents = original_contents
 
-    def _cache_state_dict_meta(self):
-        """Cache state_dict meta (names, dtypes, shapes) from get_per_tensor_param.
-
-        Uses the same parameter source as sync_weight_nccl to ensure dtype
-        and shape are consistent with what is actually broadcast.
-        """
-        if self.actor is None:
-            return
-        per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
-        self._state_dict_meta_list = [
-            (name, str(param.dtype).split(".")[-1], tuple(param.shape))
-            for name, param in per_tensor_param
-        ]
-        self.logger.info(
-            f"Cached state_dict meta: {len(self._state_dict_meta_list or [])} parameters"
-        )
-
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def set_trinity_config(self, algo_config: AlgorithmConfig, ray_namespace: str):
         """Set Trinity-specific runtime config on the worker.
@@ -293,13 +273,11 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """Return weight sync rendezvous info from rank 0.
 
         Creates a lightweight :class:`ModelWeightSender` (ZMQ bind only,
-        no GPU allocation) and returns a 5-tuple
-        ``(addr, port, meta, zmq_ip, zmq_port)``.
+        no GPU allocation) and returns a 4-tuple
+        ``(addr, port, zmq_ip, zmq_port)``.
 
         The sender's GPU buffers are allocated later in
         :meth:`setup_weight_sync_group` when ``bucket_size_mb`` is known.
-
-        Uses cached meta from init_model() — no parameter materialization.
         Other ranks return None.
         """
         if torch.distributed.get_rank() == 0:
@@ -316,7 +294,6 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             return (
                 addr,
                 int(port),
-                self._state_dict_meta_list,
                 zmq["zmq_ip"],
                 zmq["zmq_port"],
             )
@@ -331,6 +308,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         group_name: str,
         timeout: int,
         bucket_size_mb: int = 500,
+        per_tensor: bool = False,
     ):
         """Join the NCCL process group for weight sync.
 
@@ -341,6 +319,8 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         Args:
             bucket_size_mb: Bucket size in MB for double-buffered transfer.
                 Set to 0 to fall back to per-tensor broadcast.
+            per_tensor: When True, use per-tensor NCCL broadcasts with
+                ZMQ metadata batching instead of GPU double buffers.
         """
         if torch.distributed.get_rank() == 0:
             self.logger.info(
@@ -358,8 +338,13 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             # Complete sender setup: allocate GPU buffers and wire NCCL pg.
             if self._weight_sender is not None and bucket_size_mb > 0:
                 bucket_size = bucket_size_mb * 1024 * 1024
-                self._weight_sender.setup(self._model_update_group, bucket_size)
-                self.logger.info(f"ModelWeightSender ready (bucket_size={bucket_size_mb}MB)")
+                self._weight_sender.setup(
+                    self._model_update_group, bucket_size, per_tensor=per_tensor
+                )
+                mode_str = "per-tensor" if per_tensor else "bucketed"
+                self.logger.info(
+                    f"ModelWeightSender ready ({mode_str}, bucket_size={bucket_size_mb}MB)"
+                )
             else:
                 # bucket_size_mb=0 → per-tensor broadcast fallback.
                 if self._weight_sender is not None:

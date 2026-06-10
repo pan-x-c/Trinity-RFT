@@ -91,10 +91,6 @@ class InferenceModel(ABC):
         """Destroy the process group for model weight synchronization."""
         pass
 
-    async def set_state_dict_meta(self, state_dict_meta: List):
-        """Set the state_dict meta for NCCL weight sync."""
-        pass
-
     async def get_weight_sender_zmq_info(self):
         """Return Sender ZMQ info for intra-explorer weight transfer setup."""
         return None
@@ -852,10 +848,6 @@ class ModelWrapper:
     async def teardown_process_group(self):
         """Destroy the process group for model weight synchronization."""
         await self.model.teardown_process_group.remote()
-
-    async def set_state_dict_meta(self, state_dict_meta: List):
-        """Set the state_dict meta for NCCL weight sync."""
-        await self.model.set_state_dict_meta.remote(state_dict_meta)
 
     async def get_weight_sender_zmq_info(self):
         """Return Sender ZMQ info from the driver worker."""

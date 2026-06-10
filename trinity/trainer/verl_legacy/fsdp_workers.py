@@ -795,49 +795,14 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         get_torch_device().empty_cache()
 
         self._weight_sender = None
-        self._cache_state_dict_meta()
-
-    def _cache_state_dict_meta(self):
-        """Cache state_dict meta at init time for lightweight get_weight_sync_info."""
-        if not self._is_actor:
-            return
-        model = self.actor_module_fsdp
-        self.named_modules = []
-        self.state_dict_meta = []
-        with self._fsdp_offload_context():
-            if self.config.actor.strategy == "fsdp":
-                for name, module in model.named_modules():
-                    if isinstance(module, FSDP):
-                        self.named_modules.append((name, module))
-                for name_prefix, module in self.named_modules:
-                    with FSDP.summon_full_params(module, recurse=False):
-                        for name, param in module.named_parameters():
-                            if isinstance(param, FlatParameter):
-                                continue
-                            realname = (
-                                name_prefix[len(FSDP_PREFIX) :] + "." + name
-                                if name_prefix
-                                else name
-                            )
-                            self.state_dict_meta.append(
-                                (realname, str(param.dtype).split(".")[-1], tuple(param.shape))
-                            )
-                        param = None
-                    get_torch_device().empty_cache()
-            else:  # fsdp2
-                for name, param in model.named_parameters():
-                    self.state_dict_meta.append(
-                        (name, str(param.dtype).split(".")[-1], tuple(param.shape))
-                    )
-        self.logger.info(f"Cached state_dict meta: {len(self.state_dict_meta)} parameters")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def get_weight_sync_info(self):
         """Return weight sync rendezvous info from rank 0.
 
         Creates a lightweight :class:`ModelWeightSender` (ZMQ bind only,
-        no GPU allocation) and returns a 5-tuple
-        ``(addr, port, meta, zmq_ip, zmq_port)``.
+        no GPU allocation) and returns a 4-tuple
+        ``(addr, port, zmq_ip, zmq_port)``.
 
         The sender's GPU buffers are allocated later in
         :meth:`setup_weight_sync_group` when ``bucket_size_mb`` is known.
@@ -857,7 +822,6 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             return (
                 master_address,
                 int(master_port),
-                self.state_dict_meta,
                 zmq["zmq_ip"],
                 zmq["zmq_port"],
             )
@@ -872,6 +836,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         group_name: str,
         timeout: int,
         bucket_size_mb: int = 500,
+        per_tensor: bool = False,
     ):
         """Join the NCCL process group for weight sync.
 
@@ -882,6 +847,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         Args:
             bucket_size_mb: Bucket size in MB for double-buffered transfer.
                 Set to 0 to fall back to per-tensor broadcast.
+            per_tensor: When True, use per-tensor NCCL broadcasts with
+                ZMQ metadata batching instead of GPU double buffers.
         """
         if torch.distributed.get_rank() == 0:
             self.logger.info(
@@ -899,8 +866,13 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             # Complete sender setup: allocate GPU buffers and wire NCCL pg.
             if self._weight_sender is not None and bucket_size_mb > 0:
                 bucket_size = bucket_size_mb * 1024 * 1024
-                self._weight_sender.setup(self._model_update_group, bucket_size)
-                self.logger.info(f"ModelWeightSender ready (bucket_size={bucket_size_mb}MB)")
+                self._weight_sender.setup(
+                    self._model_update_group, bucket_size, per_tensor=per_tensor
+                )
+                mode_str = "per-tensor" if per_tensor else "bucketed"
+                self.logger.info(
+                    f"ModelWeightSender ready ({mode_str}, bucket_size={bucket_size_mb}MB)"
+                )
             else:
                 # bucket_size_mb=0 → per-tensor broadcast fallback.
                 if self._weight_sender is not None:

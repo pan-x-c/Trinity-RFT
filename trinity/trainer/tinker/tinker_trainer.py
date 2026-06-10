@@ -356,7 +356,7 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
         raise NotImplementedError("Tinker trainer does not support NCCL sync")
 
     async def get_weight_sync_info(self):
-        return None, None, []
+        return None, None
 
     async def setup_weight_sync_group(
         self,
@@ -366,6 +366,7 @@ class TinkerTrainerWrapper(TrainEngineWrapper):
         group_name,
         timeout,
         bucket_size_mb=500,
+        per_tensor=False,
     ):
         pass
 

@@ -75,12 +75,12 @@ class Trainer:
         await self.synchronizer.set_trainer_status.remote(RunningStatus.RUNNING)
         self.logger.info("Trainer is ready.")
 
-    async def get_weight_sync_info(self) -> Optional[Tuple[str, int, List]]:
+    async def get_weight_sync_info(self) -> Optional[Tuple[str, int, str, int]]:
         """Get rendezvous info for NCCL weight sync group setup.
 
-        Returns (master_address, master_port, state_dict_meta, zmq_ip,
-        zmq_port) from the trainer's GPU worker rank 0.  Called by
-        Synchronizer before coordinating NCCL group creation.
+        Returns ``(master_address, master_port, zmq_ip, zmq_port)`` from
+        the trainer's GPU worker rank 0.  Called by Synchronizer before
+        coordinating NCCL group creation.
 
         The returned zmq_ip/zmq_port come from a lightweight
         :class:`ModelWeightSender` (ZMQ bind only, no GPU allocation).
@@ -96,12 +96,15 @@ class Trainer:
         group_name: str,
         timeout: int,
         bucket_size_mb: int = 500,
+        per_tensor: bool = False,
     ) -> None:
         """Join the NCCL weight sync group. Called by Synchronizer.
 
         Args:
             bucket_size_mb: Bucket size in MB for double-buffered transfer.
                 Set to 0 to fall back to per-tensor broadcast.
+            per_tensor: When True, use per-tensor NCCL broadcasts with
+                ZMQ metadata batching instead of GPU double buffers.
         """
         await self.engine.setup_weight_sync_group(
             master_address,
@@ -110,6 +113,7 @@ class Trainer:
             group_name,
             timeout,
             bucket_size_mb=bucket_size_mb,
+            per_tensor=per_tensor,
         )
 
     async def teardown_weight_sync_group(self) -> None:
@@ -355,7 +359,7 @@ class TrainEngineWrapper(ABC):
         """Only save the model state dict for Synchronizer.  (For `CHECKPOINT` sync method)"""
 
     @abstractmethod
-    async def get_weight_sync_info(self) -> Optional[Tuple[str, int, List]]:
+    async def get_weight_sync_info(self) -> Optional[Tuple[str, int, str, int]]:
         """Get rendezvous info for NCCL group setup."""
 
     @abstractmethod
@@ -367,6 +371,7 @@ class TrainEngineWrapper(ABC):
         group_name: str,
         timeout: int,
         bucket_size_mb: int = 500,
+        per_tensor: bool = False,
     ) -> None:
         """Join the NCCL weight sync group."""
 

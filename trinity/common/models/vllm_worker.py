@@ -105,10 +105,6 @@ class WorkerExtension:
                     f"bucket_size={bucket_size_mb}MB)"
                 )
 
-    def set_state_dict_meta(self, state_dict_meta: list):
-        """No-op — kept for interface compatibility with SGLang."""
-        pass
-
     def get_weight_sender_zmq_info(self):
         """Return Sender's ZMQ info for Receiver setup (Phase 2).
 

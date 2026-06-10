@@ -1,26 +1,29 @@
 # -*- coding: utf-8 -*-
-"""NCCL-based double-buffered weight transfer.
+"""NCCL-based weight transfer with ZMQ metadata side-channel.
 
-Implements :class:`ModelWeightSender` (trainer side) and
-:class:`ModelWeightReceiver` (rollout/inference side) using a double-buffered
-bucket pipeline over ``torch.distributed.broadcast`` with a ZMQ PUB/SUB
-metadata side-channel.
+Provides three classes for weight synchronization between trainer and
+rollout/inference workers:
 
-The double-buffer algorithm overlaps NCCL communication with bucket
-filling/consumption:
+* :class:`ModelWeightSender` — trainer-side sender supporting two modes:
 
-* **Sender**: fills bucket A while broadcasting bucket B, then swaps.
-* **Receiver**: consumes bucket A (yielding tensors) while receiving bucket B.
+  - **Bucket mode** (default): double-buffered GPU buckets over NCCL
+    broadcast, overlapping communication with bucket filling.
+  - **Per-tensor mode** (``per_tensor=True``): individual NCCL broadcasts
+    per tensor with ZMQ-batched metadata.  No GPU buffers are allocated.
+    Designed for backends (e.g. SGLang) that manage NCCL reception
+    internally via HTTP API.
 
-Both ``send()`` and ``receive()`` are async.  The receiver also provides a
-``receive_sync()`` convenience wrapper for callers that need a plain
-synchronous iterator (e.g. vLLM's ``reload_weights``).
+* :class:`ModelWeightReceiver` — rollout-side receiver with GPU double
+  buffers.  Pairs with the Sender's bucket mode.
 
-Usage::
+* :class:`ModelWeightMetadataReceiver` — lightweight metadata-only receiver
+  (ZMQ SUB, no GPU).  Pairs with the Sender's per-tensor mode for backends
+  that handle NCCL reception internally.
+
+Usage (bucket mode)::
 
     # --- Trainer (rank 0) ---
     sender = ModelWeightSender()
-    zmq_info = sender.zmq_info        # {"zmq_ip": ..., "zmq_port": ...}
     sender.setup(pg, bucket_size=500_000_000)
     await sender.send(engine.get_per_tensor_param()[0])
     sender.finalize()
@@ -30,6 +33,20 @@ Usage::
     async for name, tensor in receiver.receive():
         model.load_weight(name, tensor)
     receiver.finalize()
+
+Usage (per-tensor mode, e.g. SGLang)::
+
+    # --- Trainer (rank 0) ---
+    sender = ModelWeightSender()
+    sender.setup(pg, bucket_size=500_000_000, per_tensor=True)
+    sender.send_sync(engine.get_per_tensor_param()[0])
+    sender.finalize()
+
+    # --- SGLang control plane ---
+    meta_receiver = ModelWeightMetadataReceiver(zmq_ip, zmq_port)
+    for batch, is_last in meta_receiver.receive():
+        api_client.update_weights_from_distributed(batch)
+    meta_receiver.finalize()
 """
 from __future__ import annotations
 
@@ -150,6 +167,7 @@ class ModelWeightSender:
         self._pg: Optional[torch.distributed.ProcessGroup] = None
         self._send_buf: Optional[torch.Tensor] = None
         self._recv_buf: Optional[torch.Tensor] = None
+        self._per_tensor: bool = False
         self._topic = "bucket_metadata"
 
         # Bind ZMQ PUB server for metadata broadcast.
@@ -176,8 +194,9 @@ class ModelWeightSender:
         self,
         pg: torch.distributed.ProcessGroup,
         bucket_size: int,
+        per_tensor: bool = False,
     ) -> None:
-        """Allocate GPU double buffers and wire the NCCL process group.
+        """Wire the NCCL process group and configure the transfer mode.
 
         Must be called after the NCCL process group has been created
         (via ``init_process_group``).
@@ -185,32 +204,55 @@ class ModelWeightSender:
         Args:
             pg: The NCCL process group connecting trainer rank 0 to all
                 rollout workers.
-            bucket_size: Size of each GPU buffer in bytes.  Two buffers
-                are allocated (double buffering), so total GPU overhead
-                is ``2 * bucket_size``.
+            bucket_size: In **bucket mode**, each GPU buffer size in bytes
+                (two buffers allocated, total overhead = ``2 * bucket_size``).
+                In **per-tensor mode**, the byte threshold for batching
+                ZMQ metadata messages (no GPU buffers allocated).
+            per_tensor: When ``True``, use per-tensor NCCL broadcasts
+                with ZMQ metadata batching instead of GPU double buffers.
+                Designed for backends (e.g. SGLang) that manage NCCL
+                reception internally.
         """
         self.bucket_size = bucket_size
         self._pg = pg
-        self._send_buf = torch.empty(bucket_size, dtype=torch.uint8, device="cuda")
-        self._recv_buf = torch.empty(bucket_size, dtype=torch.uint8, device="cuda")
+        self._per_tensor = per_tensor
+        if not per_tensor:
+            self._send_buf = torch.empty(bucket_size, dtype=torch.uint8, device="cuda")
+            self._recv_buf = torch.empty(bucket_size, dtype=torch.uint8, device="cuda")
 
     @torch.no_grad()
     async def send(
         self,
         weights: Iterable[Tuple[str, torch.Tensor]],
     ) -> None:
-        """Send all weights via double-buffered NCCL broadcast.
+        """Send all weights via NCCL broadcast.
 
-        The method iterates over *weights*, packs tensor chunks into
-        fixed-size buckets, and broadcasts each bucket.  While one bucket
-        is being broadcast (in a background thread), the next bucket is
-        filled concurrently.
+        Dispatches to bucketed or per-tensor mode based on the
+        ``per_tensor`` flag set during :meth:`setup`.
 
         Args:
             weights: Iterable of ``(name, tensor)`` pairs — typically from
                 ``engine.get_per_tensor_param()`` or a ``state_dict.items()``.
         """
         assert self._pg is not None, "Call setup() first"
+        if self._per_tensor:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._send_per_tensor_impl, weights)
+        else:
+            await self._send_bucketed(weights)
+
+    @torch.no_grad()
+    async def _send_bucketed(
+        self,
+        weights: Iterable[Tuple[str, torch.Tensor]],
+    ) -> None:
+        """Send all weights via double-buffered NCCL broadcast (bucket mode).
+
+        Iterates over *weights*, packs tensor chunks into fixed-size
+        buckets, and broadcasts each bucket.  While one bucket is being
+        broadcast (in a background thread), the next bucket is filled
+        concurrently.
+        """
         assert self._send_buf is not None, "Call setup() first"
 
         send_buf = self._send_buf
@@ -271,6 +313,62 @@ class ModelWeightSender:
         elapsed = time.time() - start_time
         self.logger.info(f"ModelWeightSender: send completed in {elapsed:.2f}s")
 
+    # -- Per-tensor mode ---------------------------------------------------
+
+    @torch.no_grad()
+    def _send_per_tensor_impl(
+        self,
+        weights: Iterable[Tuple[str, torch.Tensor]],
+    ) -> None:
+        """Per-tensor send: ZMQ metadata batching + individual NCCL broadcasts.
+
+        Accumulates tensors until the total byte count reaches
+        ``bucket_size``, then sends a single ZMQ metadata message
+        followed by individual ``broadcast`` calls for each tensor
+        in the batch.  Tensors are ``.clone()``-d to prevent dangling
+        references when the source is an FSDP ``summon_full_params``
+        generator.
+        """
+        start_time = time.time()
+        batch_meta: list = []
+        batch_tensors: list = []
+        batch_bytes = 0
+        total_tensors = 0
+
+        for name, tensor in weights:
+            dtype_str = str(tensor.dtype).replace("torch.", "")
+            shape = tuple(tensor.shape)
+            batch_meta.append((name, dtype_str, shape))
+            batch_tensors.append(tensor.detach().clone())
+            batch_bytes += tensor.nbytes
+
+            if batch_bytes >= self.bucket_size:
+                self._flush_per_tensor_batch(batch_meta, batch_tensors, is_last=False)
+                total_tensors += len(batch_tensors)
+                batch_meta, batch_tensors, batch_bytes = [], [], 0
+
+        # Final batch (always sent, even if empty, to deliver is_last=True).
+        self._flush_per_tensor_batch(batch_meta, batch_tensors, is_last=True)
+        total_tensors += len(batch_tensors)
+
+        elapsed = time.time() - start_time
+        self.logger.info(
+            f"ModelWeightSender: per-tensor send completed in "
+            f"{elapsed:.2f}s ({total_tensors} tensors)"
+        )
+
+    def _flush_per_tensor_batch(
+        self,
+        batch_meta: list,
+        batch_tensors: list,
+        is_last: bool,
+    ) -> None:
+        """Send ZMQ metadata message, then broadcast each tensor individually."""
+        self._socket.send_string(self._topic, flags=zmq.SNDMORE)
+        self._socket.send_pyobj({"tensor_meta": batch_meta, "is_last": is_last})
+        for tensor in batch_tensors:
+            torch.distributed.broadcast(tensor.contiguous(), src=0, group=self._pg)
+
     @torch.no_grad()
     def send_sync(
         self,
@@ -278,14 +376,19 @@ class ModelWeightSender:
     ) -> None:
         """Synchronous wrapper around :meth:`send`.
 
-        Runs the async send in a dedicated event loop.  Safe to call from
-        synchronous contexts (e.g. vLLM ``collective_rpc`` handlers).
+        In **per-tensor mode**, calls the synchronous implementation
+        directly.  In **bucket mode**, runs the async send in a
+        dedicated event loop.  Safe to call from synchronous contexts
+        (e.g. vLLM ``collective_rpc`` handlers).
         """
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(self.send(weights))
-        finally:
-            loop.close()
+        if self._per_tensor:
+            self._send_per_tensor_impl(weights)
+        else:
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(self.send(weights))
+            finally:
+                loop.close()
 
     def finalize(self) -> None:
         """Release GPU buffers and close the ZMQ socket."""
@@ -490,3 +593,71 @@ class ModelWeightReceiver:
             self._zmq_context = None
 
         torch.cuda.empty_cache()
+
+
+class ModelWeightMetadataReceiver:
+    """Receives weight metadata via ZMQ for per-tensor NCCL broadcast.
+
+    Simplified counterpart of :class:`ModelWeightReceiver` for backends
+    (e.g. SGLang) that manage NCCL reception internally.  Only subscribes
+    to the :class:`ModelWeightSender`'s ZMQ PUB socket for batched tensor
+    metadata; no GPU buffers are allocated and no NCCL operations are
+    performed.
+
+    Pairs with :class:`ModelWeightSender` in per-tensor mode
+    (``setup(pg, bucket_size, per_tensor=True)``).
+
+    Args:
+        zmq_ip: The sender's IP address (from ``sender.zmq_info``).
+        zmq_port: The sender's ZMQ port (from ``sender.zmq_info``).
+    """
+
+    def __init__(self, zmq_ip: str, zmq_port: int) -> None:
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self._topic = "bucket_metadata"
+
+        # Connect ZMQ SUB socket to the sender's PUB server.
+        self._zmq_context: zmq.Context = zmq.Context()
+        self._socket: zmq.Socket = self._zmq_context.socket(zmq.SUB)
+
+        if _is_ipv6(zmq_ip):
+            address = f"tcp://[{zmq_ip}]:{zmq_port}"
+            self._socket.setsockopt(zmq.IPV6, 1)
+        else:
+            address = f"tcp://{zmq_ip}:{zmq_port}"
+
+        self._socket.connect(address)
+        self._socket.setsockopt_string(zmq.SUBSCRIBE, self._topic)
+        self.logger.info(f"ModelWeightMetadataReceiver ZMQ SUB connected to {address}")
+
+    def receive(self) -> Iterator[Tuple[list, bool]]:
+        """Yield ``(batch_meta, is_last)`` pairs from the Sender.
+
+        Each ``batch_meta`` is a list of ``(name, dtype_str, shape)``
+        tuples describing the tensors that will be broadcast in the
+        next round of per-tensor NCCL broadcasts.
+
+        The caller should trigger backend-specific NCCL reception
+        (e.g. via HTTP API) for each batch.
+
+        Yields:
+            ``(batch_meta, is_last)`` where *batch_meta* is
+            ``List[Tuple[str, str, Tuple]]`` and *is_last* is ``bool``.
+        """
+        while True:
+            self._socket.recv_string()  # topic filter
+            metadata = self._socket.recv_pyobj()
+            tensor_meta = metadata["tensor_meta"]
+            is_last = metadata["is_last"]
+            yield tensor_meta, is_last
+            if is_last:
+                break
+
+    def finalize(self) -> None:
+        """Close the ZMQ socket."""
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
+        if self._zmq_context is not None:
+            self._zmq_context.term()
+            self._zmq_context = None

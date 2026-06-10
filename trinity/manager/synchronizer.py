@@ -4,7 +4,7 @@ import asyncio
 import os
 import shutil
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import ray
 
@@ -275,51 +275,23 @@ class Synchronizer:
         """Return the current model state and its version."""
         return self.model_state_dict, self.model_version
 
-    async def get_state_dict_meta(self):
-        """
-        Return metadata about the model state (names, data types, shapes).
-
-        Returns:
-            List of tuples: (name, dtype, shape).
-        """
-        if self.model_state_dict is None:
-            return None
-        if isinstance(self.model_state_dict, tuple):
-            async with self._ready_condition:
-                await self._ready_condition.wait_for(
-                    lambda: not isinstance(self.model_state_dict, tuple)
-                )
-        update_weight_args_list = []
-        for name, param in self.model_state_dict.items():
-            update_weight_args_list.append(
-                (name, str(param.dtype).split(".")[-1], tuple(param.shape))
-            )
-        return update_weight_args_list
-
-    async def setup_weight_sync_group(
-        self, master_address: str, master_port: int, state_dict_meta: List = None
-    ):
-        """
-        Notify the explorer actor to setup weight sync group.
+    async def setup_weight_sync_group(self, master_address: str, master_port: int):
+        """Notify the explorer actor to setup weight sync group.
 
         This is used to initialize NCCL-based synchronization for distributed training.
 
         Args:
             master_address: IP address of the master node.
             master_port: Port used for synchronization.
-            state_dict_meta: Metadata of the model parameters.
         """
         explorer = ray.get_actor(self.config.explorer.name, namespace=self.config.ray_namespace)
         await explorer.setup_weight_sync_group.remote(master_address, master_port)
-        if state_dict_meta is not None:
-            await explorer.set_state_dict_meta.remote(state_dict_meta)
 
     async def coordinate_weight_sync_setup(self, timeout: int = None):
         """Orchestrate NCCL weight sync group setup between Trainer and Explorer.
 
-        1. Get rendezvous info (addr/port/meta) from Trainer
+        1. Get rendezvous info (addr/port + ZMQ) from Trainer
         2. Both Trainer and Explorer join the NCCL group concurrently
-        3. Set state_dict_meta on Explorer for weight sync
         """
         trainer = ray.get_actor(self.config.trainer.name, namespace=self.config.ray_namespace)
         explorer = ray.get_actor(self.config.explorer.name, namespace=self.config.ray_namespace)
@@ -327,13 +299,16 @@ class Synchronizer:
         bucket_size_mb = self.config.synchronizer.weight_transfer_bucket_size_mb
         sync_info = await trainer.get_weight_sync_info.remote()
 
-        # verl trainer returns 5-tuple (with ZMQ metadata from lightweight
-        # sender); legacy/tinker trainers return 3-tuple.
-        if len(sync_info) == 5:
-            addr, port, meta, zmq_ip, zmq_port = sync_info
+        # verl trainer returns 4-tuple (with ZMQ metadata from lightweight
+        # sender); tinker trainer returns 2-tuple.
+        if len(sync_info) == 4:
+            addr, port, zmq_ip, zmq_port = sync_info
         else:
-            addr, port, meta = sync_info
+            addr, port = sync_info
             zmq_ip, zmq_port = None, None
+
+        # Use per-tensor mode for SGLang (which manages NCCL internally).
+        per_tensor = self.config.explorer.rollout_model.engine_type == "sglang"
 
         world_size = self.config.synchronizer.explorer_world_size + 1  # type: ignore
         timeout = timeout or self.config.synchronizer.sync_timeout
@@ -343,6 +318,7 @@ class Synchronizer:
             f"Coordinating weight sync setup: {addr}:{port}, world_size={world_size}"
             + (f", ZMQ: {zmq_ip}:{zmq_port}" if zmq_ip else "")
             + f", bucket_size={bucket_size_mb}MB"
+            + (", per_tensor=True" if per_tensor else "")
         )
         await asyncio.gather(
             trainer.setup_weight_sync_group.remote(
@@ -352,6 +328,7 @@ class Synchronizer:
                 group_name,
                 timeout,
                 bucket_size_mb=bucket_size_mb,
+                per_tensor=per_tensor,
             ),
             explorer.setup_weight_sync_group.remote(
                 addr,
@@ -364,7 +341,6 @@ class Synchronizer:
                 bucket_size_mb=bucket_size_mb,
             ),
         )
-        await explorer.set_state_dict_meta.remote(meta)
         self.logger.info("Weight sync group setup complete.")
 
     async def coordinate_weight_sync_teardown(self):

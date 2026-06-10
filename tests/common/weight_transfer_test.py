@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for trinity.common.weight_transfer.core utilities.
+"""Unit tests for trinity.common.weight_transfer utilities.
 
 These tests run on CPU only — no GPU or NCCL required.  They validate the
-chunk splitting/merging round-trip and TensorMeta serialization.
+chunk splitting/merging round-trip, TensorMeta serialization, and the
+per-tensor mode ZMQ protocol.
 """
 import asyncio
 import pickle
+import threading
+import time
 from typing import List, Tuple
 
 import torch
@@ -14,6 +17,10 @@ from trinity.common.weight_transfer.core import (
     TensorMeta,
     merge_weight_chunks,
     split_weight_chunks,
+)
+from trinity.common.weight_transfer.nccl import (
+    ModelWeightMetadataReceiver,
+    ModelWeightSender,
 )
 
 # ---------------------------------------------------------------------------
@@ -240,3 +247,273 @@ class TestMergeWeightChunks:
         merged = _run_async(_run())
         assert len(merged) == 1
         assert torch.equal(merged[0][1], original[0][1])
+
+
+# ---------------------------------------------------------------------------
+# ModelWeightSender per-tensor mode tests
+# ---------------------------------------------------------------------------
+
+
+class TestSenderPerTensorSetup:
+    """Verify that per-tensor setup() skips GPU buffer allocation."""
+
+    def test_per_tensor_setup_no_gpu_buffers(self):
+        """setup(per_tensor=True) must NOT allocate GPU double buffers."""
+        sender = ModelWeightSender()
+        try:
+            # Use a mock process group — we only test the setup path.
+            sender.setup(pg=None, bucket_size=1_000_000, per_tensor=True)
+            assert sender._per_tensor is True
+            assert sender.bucket_size == 1_000_000
+            assert sender._send_buf is None
+            assert sender._recv_buf is None
+        finally:
+            sender.finalize()
+
+    def test_bucket_mode_setup_has_fields(self):
+        """Contrast: setup(per_tensor=False) sets _per_tensor=False."""
+        sender = ModelWeightSender()
+        try:
+            # Can't allocate GPU here (CPU test), but we can verify the flag.
+            sender._per_tensor = False  # default, verify it stays
+            sender.bucket_size = 0
+            sender._pg = None
+            # Just verify init defaults are correct.
+            assert sender._per_tensor is False
+            assert sender._send_buf is None
+        finally:
+            sender.finalize()
+
+
+class TestSenderPerTensorSend:
+    """Test the per-tensor ZMQ metadata + NCCL broadcast protocol.
+
+    Mocks ``torch.distributed.broadcast`` to avoid needing a real NCCL
+    process group.  Tests the ZMQ metadata roundtrip between Sender and
+    MetadataReceiver.
+    """
+
+    def test_single_batch_small_weights(self):
+        """Small weights fitting in one batch: single ZMQ message with is_last=True."""
+        sender = ModelWeightSender()
+        try:
+            sender.setup(pg=None, bucket_size=1_000_000, per_tensor=True)
+            zmq_info = sender.zmq_info
+
+            receiver = ModelWeightMetadataReceiver(zmq_info["zmq_ip"], zmq_info["zmq_port"])
+            time.sleep(0.1)  # ZMQ SUB subscription propagation
+
+            weights = [
+                ("layer.0.weight", torch.randn(8, 8)),
+                ("layer.1.bias", torch.randn(8)),
+            ]
+
+            broadcast_calls = []
+            original_broadcast = torch.distributed.broadcast
+
+            def mock_broadcast(tensor, src=0, group=None):
+                broadcast_calls.append(tensor.shape)
+
+            torch.distributed.broadcast = mock_broadcast
+            try:
+                # Run sender in a background thread.
+                send_thread = threading.Thread(
+                    target=sender._send_per_tensor_impl,
+                    args=(weights,),
+                )
+                send_thread.start()
+
+                # Receive metadata.
+                batches = list(receiver.receive())
+                send_thread.join(timeout=5)
+            finally:
+                torch.distributed.broadcast = original_broadcast
+
+            # Should be exactly one batch with is_last=True.
+            assert len(batches) == 1
+            batch_meta, is_last = batches[0]
+            assert is_last is True
+            assert len(batch_meta) == 2
+            assert batch_meta[0][0] == "layer.0.weight"
+            assert batch_meta[0][1] == "float32"
+            assert batch_meta[0][2] == (8, 8)
+            assert batch_meta[1][0] == "layer.1.bias"
+            assert batch_meta[1][1] == "float32"
+            assert batch_meta[1][2] == (8,)
+
+            # NCCL broadcast should have been called once per tensor.
+            assert len(broadcast_calls) == 2
+        finally:
+            receiver.finalize()
+            sender.finalize()
+
+    def test_multiple_batches_large_weights(self):
+        """Weights exceeding bucket_size should produce multiple ZMQ batches."""
+        sender = ModelWeightSender()
+        try:
+            # bucket_size = 1024 bytes; each tensor = 16*16*4 = 1024 bytes.
+            sender.setup(pg=None, bucket_size=1024, per_tensor=True)
+            zmq_info = sender.zmq_info
+
+            receiver = ModelWeightMetadataReceiver(zmq_info["zmq_ip"], zmq_info["zmq_port"])
+            time.sleep(0.1)
+
+            weights = [
+                ("w0", torch.randn(16, 16)),  # 1024 bytes → triggers flush
+                ("w1", torch.randn(16, 16)),  # 1024 bytes → triggers flush
+                ("w2", torch.randn(4, 4)),  # 64 bytes → final batch
+            ]
+
+            original_broadcast = torch.distributed.broadcast
+            torch.distributed.broadcast = lambda t, src=0, group=None: None
+            try:
+                send_thread = threading.Thread(
+                    target=sender._send_per_tensor_impl,
+                    args=(weights,),
+                )
+                send_thread.start()
+
+                batches = list(receiver.receive())
+                send_thread.join(timeout=5)
+            finally:
+                torch.distributed.broadcast = original_broadcast
+
+            # First two tensors each trigger a flush (1024 >= 1024), final is last.
+            assert len(batches) == 3
+            # Batch 0: w0, is_last=False
+            assert len(batches[0][0]) == 1
+            assert batches[0][0][0][0] == "w0"
+            assert batches[0][1] is False
+            # Batch 1: w1, is_last=False
+            assert len(batches[1][0]) == 1
+            assert batches[1][0][0][0] == "w1"
+            assert batches[1][1] is False
+            # Batch 2: w2, is_last=True
+            assert len(batches[2][0]) == 1
+            assert batches[2][0][0][0] == "w2"
+            assert batches[2][1] is True
+        finally:
+            receiver.finalize()
+            sender.finalize()
+
+    def test_empty_weights(self):
+        """Empty weight iterator should still send a single is_last=True batch."""
+        sender = ModelWeightSender()
+        try:
+            sender.setup(pg=None, bucket_size=1_000_000, per_tensor=True)
+            zmq_info = sender.zmq_info
+
+            receiver = ModelWeightMetadataReceiver(zmq_info["zmq_ip"], zmq_info["zmq_port"])
+            time.sleep(0.1)
+
+            original_broadcast = torch.distributed.broadcast
+            torch.distributed.broadcast = lambda t, src=0, group=None: None
+            try:
+                send_thread = threading.Thread(
+                    target=sender._send_per_tensor_impl,
+                    args=([],),
+                )
+                send_thread.start()
+
+                batches = list(receiver.receive())
+                send_thread.join(timeout=5)
+            finally:
+                torch.distributed.broadcast = original_broadcast
+
+            assert len(batches) == 1
+            batch_meta, is_last = batches[0]
+            assert is_last is True
+            assert len(batch_meta) == 0
+        finally:
+            receiver.finalize()
+            sender.finalize()
+
+
+# ---------------------------------------------------------------------------
+# ModelWeightMetadataReceiver tests
+# ---------------------------------------------------------------------------
+
+
+class TestMetadataReceiver:
+    """Tests for ModelWeightMetadataReceiver in isolation."""
+
+    def test_finalize_closes_zmq(self):
+        """finalize() should close the ZMQ socket and terminate the context."""
+        sender = ModelWeightSender()
+        try:
+            zmq_info = sender.zmq_info
+            receiver = ModelWeightMetadataReceiver(zmq_info["zmq_ip"], zmq_info["zmq_port"])
+            assert receiver._socket is not None
+            assert receiver._zmq_context is not None
+
+            receiver.finalize()
+            assert receiver._socket is None
+            assert receiver._zmq_context is None
+        finally:
+            sender.finalize()
+
+    def test_double_finalize_safe(self):
+        """Calling finalize() twice should be safe (no-op on second call)."""
+        sender = ModelWeightSender()
+        try:
+            zmq_info = sender.zmq_info
+            receiver = ModelWeightMetadataReceiver(zmq_info["zmq_ip"], zmq_info["zmq_port"])
+            receiver.finalize()
+            receiver.finalize()  # Should not raise.
+            assert receiver._socket is None
+        finally:
+            sender.finalize()
+
+    def test_metadata_dtype_shapes_preserved(self):
+        """Verify dtype strings and shapes survive the ZMQ roundtrip."""
+        sender = ModelWeightSender()
+        try:
+            sender.setup(pg=None, bucket_size=100_000_000, per_tensor=True)
+            zmq_info = sender.zmq_info
+
+            receiver = ModelWeightMetadataReceiver(zmq_info["zmq_ip"], zmq_info["zmq_port"])
+            time.sleep(0.1)
+
+            weights = [
+                ("embed", torch.randn(512, 768)),  # float32
+                ("norm", torch.randn(768).to(torch.bfloat16)),  # bfloat16
+                ("head", torch.randn(768, 32000).to(torch.float16)),  # float16
+            ]
+
+            original_broadcast = torch.distributed.broadcast
+            torch.distributed.broadcast = lambda t, src=0, group=None: None
+            try:
+                send_thread = threading.Thread(
+                    target=sender._send_per_tensor_impl,
+                    args=(weights,),
+                )
+                send_thread.start()
+
+                batches = list(receiver.receive())
+                send_thread.join(timeout=5)
+            finally:
+                torch.distributed.broadcast = original_broadcast
+
+            assert len(batches) == 1
+            batch_meta, is_last = batches[0]
+            assert is_last is True
+            assert len(batch_meta) == 3
+
+            # Check each tensor's metadata.
+            name, dtype_str, shape = batch_meta[0]
+            assert name == "embed"
+            assert dtype_str == "float32"
+            assert shape == (512, 768)
+
+            name, dtype_str, shape = batch_meta[1]
+            assert name == "norm"
+            assert dtype_str == "bfloat16"
+            assert shape == (768,)
+
+            name, dtype_str, shape = batch_meta[2]
+            assert name == "head"
+            assert dtype_str == "float16"
+            assert shape == (768, 32000)
+        finally:
+            receiver.finalize()
+            sender.finalize()

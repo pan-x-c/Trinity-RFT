@@ -8,10 +8,15 @@ Public API:
 * :class:`TensorMeta` — per-chunk metadata carried alongside bucket data.
 """
 from trinity.common.weight_transfer.core import TensorMeta
-from trinity.common.weight_transfer.nccl import ModelWeightReceiver, ModelWeightSender
+from trinity.common.weight_transfer.nccl import (
+    ModelWeightMetadataReceiver,
+    ModelWeightReceiver,
+    ModelWeightSender,
+)
 
 __all__ = [
     "ModelWeightSender",
     "ModelWeightReceiver",
+    "ModelWeightMetadataReceiver",
     "TensorMeta",
 ]

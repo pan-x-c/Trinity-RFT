@@ -455,6 +455,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
         group_name: str,
         timeout: int,
         bucket_size_mb: int = 500,
+        per_tensor: bool = False,
     ):
         self.actor_rollout_wg.setup_weight_sync_group(
             master_address=master_address,
@@ -463,6 +464,7 @@ class VerlPPOTrainerWrapper(RayPPOTrainer, TrainEngineWrapper):
             group_name=group_name,
             timeout=timeout,
             bucket_size_mb=bucket_size_mb,
+            per_tensor=per_tensor,
         )
 
     async def teardown_weight_sync_group(self):
