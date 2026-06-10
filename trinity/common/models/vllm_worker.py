@@ -151,34 +151,57 @@ class WorkerExtension:
             torch.distributed.destroy_process_group(self._model_update_group)
             self._model_update_group = None
 
+    def _load_state_dict_from_disk(self):
+        """Load model weights from disk using the latest model path.
+
+        Uses :func:`load_state_dict` to auto-detect the format (safetensors,
+        FSDP shards, HuggingFace, or Megatron) and returns a ``dict``.
+        """
+        model_path = ray.get(self.synchronizer.get_latest_model_path.remote())
+        from trinity.common.models.utils import load_state_dict
+
+        result = load_state_dict(model_path)
+        if isinstance(result, tuple):
+            return self._resolve_checkpoint_ref(*result)
+        return result
+
+    def _resolve_checkpoint_ref(self, method, checkpoint_dir):
+        """Resolve a ``(method, path)`` checkpoint reference to a state dict."""
+        if method == "megatron":
+            if self._checkpoint_converter is None:
+                from trinity.common.models.utils import get_megatron_converter
+
+                self._checkpoint_converter = get_megatron_converter(checkpoint_dir)
+            return self._checkpoint_converter.get_state_dict(checkpoint_dir)
+        elif method == "huggingface":
+            from trinity.common.models.utils import load_huggingface_state_dict
+
+            return load_huggingface_state_dict(checkpoint_dir)
+        else:
+            raise NotImplementedError(f"{method} is not supported")
+
     def update_weight(self):
         """Broadcast weight to all vllm workers from source rank 0 (actor model).
 
-        Three paths:
+        Rank 0 obtains the state dict (from disk or from Synchronizer), then
+        distributes it to all workers:
+
         1. **Sender** (rank 0, multi-worker): bucketed broadcast + local load.
         2. **Receiver** (rank 1+, multi-worker): bucketed receive.
-        3. **Single-worker** (world_size=1): direct load from state_dict,
-           no broadcast needed.
+        3. **Single-worker** (world_size=1): direct load, no broadcast needed.
         """
         state_dict = None
         if self._weight_update_rank == 0:
-            state_dict, model_version = ray.get(self.synchronizer.get_model_state_dict.remote())
-            if isinstance(state_dict, tuple):
-                # currently only megatron return a tuple
-                method, checkpoint_dir = state_dict
-                if method == "megatron":
-                    if self._checkpoint_converter is None:
-                        from trinity.common.models.utils import get_megatron_converter
-
-                        self._checkpoint_converter = get_megatron_converter(checkpoint_dir)
-                    state_dict = self._checkpoint_converter.get_state_dict(checkpoint_dir)
-                elif method == "huggingface":
-                    from trinity.common.models.utils import load_huggingface_state_dict
-
-                    state_dict = load_huggingface_state_dict(checkpoint_dir)
-                else:
-                    raise NotImplementedError(f"{method} is not supported")
-                ray.get(self.synchronizer.set_model_state_dict.remote(state_dict, model_version))
+            result, model_version = ray.get(self.synchronizer.get_model_state_dict.remote())
+            if result is None:
+                # CHECKPOINT mode: load directly from disk (safetensors / FSDP / HF / Megatron)
+                state_dict = self._load_state_dict_from_disk()
+            elif isinstance(result, tuple):
+                # Legacy: (method, checkpoint_dir) reference for lazy loading
+                state_dict = self._resolve_checkpoint_ref(*result)
+            else:
+                # MEMORY mode: state_dict provided directly by Synchronizer
+                state_dict = result
 
         from vllm.config import set_current_vllm_config
 

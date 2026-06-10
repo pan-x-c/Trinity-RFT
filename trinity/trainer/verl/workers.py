@@ -12,6 +12,7 @@ Key additions over the base class:
 - get_weight_sync_info / setup_weight_sync_group / teardown_weight_sync_group:
   NCCL weight sync group lifecycle for Explorer↔Trainer
 """
+import os
 from contextlib import contextmanager
 from typing import Optional
 
@@ -403,26 +404,40 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
     def save_state_dict(self, local_path, global_step=0):
         """Save model state dict for checkpoint-based weight sync.
 
-        On rank 0, saving is offloaded to a background thread via the
-        CheckpointCoordinator, which also notifies CheckpointMonitor so the
-        iteration file is only updated after the save completes.
+        Uses ``get_per_tensor_param()`` to gather full tensors from all
+        ranks (FSDP all-gather / DTensor full_tensor), then saves them as
+        a single safetensors file on rank 0.  Non-rank-0 workers consume
+        the generator to participate in collective operations but do not
+        save.
+
+        On rank 0, the actual file I/O is offloaded to a background thread
+        via :class:`CheckpointCoordinator`, which notifies
+        :class:`CheckpointMonitor` so ``latest_state_dict_iteration.txt``
+        is only updated after the save completes.
         """
         coordinator = self._get_coordinator()
-        strategy = self.config.actor.strategy
-        if strategy.startswith("fsdp"):
-            from trinity.trainer.verl.fsdp_engine import fsdp_save_state_dict
+        rank = torch.distributed.get_rank()
 
-            fsdp_save_state_dict(
-                self.actor.engine, local_path, global_step, coordinator, logger=self.logger
-            )
-        elif strategy.startswith("megatron"):
-            from trinity.trainer.verl.megatron_engine import megatron_save_state_dict
+        per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
+        state_dict = {}
+        for name, weight in per_tensor_param:
+            if rank == 0:
+                state_dict[name] = weight.cpu().detach()
+            del weight
 
-            megatron_save_state_dict(
-                self.actor.engine, local_path, global_step, coordinator, logger=self.logger
+        if rank == 0:
+
+            def _save():
+                from safetensors.torch import save_file
+
+                os.makedirs(local_path, exist_ok=True)
+                save_file(state_dict, os.path.join(local_path, "model.safetensors"))
+
+            coordinator.save_async("model_state_dict", _save, global_step, is_state_dict=True)
+            self.logger.info(
+                f"Actor state_dict save initiated: path={local_path}, step={global_step}"
             )
-        else:
-            raise ValueError(f"Unsupported strategy for save_state_dict: {strategy}")
+
         self._save_lora(local_path)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)

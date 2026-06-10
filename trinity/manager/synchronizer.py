@@ -38,7 +38,6 @@ class Synchronizer:
         self.model_version = 0
         self.model_path = None
         self.checkpoint_shard_counter = defaultdict(lambda: 0)
-        self.ref_count = 0
         self._modules = {module_ref}
         self._modules_lock = asyncio.Lock()
         asyncio.create_task(self._check_modules())
@@ -91,8 +90,6 @@ class Synchronizer:
             )
 
     async def _find_verl_latest_state_dict(self) -> None:
-        from trinity.common.models.utils import load_state_dict
-
         default_local_dir = self.config.checkpoint_job_dir
         local_latest_state_dict_iteration = os.path.join(
             default_local_dir, "latest_state_dict_iteration.txt"
@@ -105,25 +102,20 @@ class Synchronizer:
                         latest_model_version = int(f.read().strip())
                 except (IOError, ValueError) as e:
                     self.logger.warning(f"Failed to read or parse state dict iteration file: {e}")
+                    await asyncio.sleep(1)
                     continue
                 if latest_model_version > current_model_version:
                     self.logger.info(
-                        f"Synchronizer has found a new model state dict at step {latest_model_version}."
+                        f"Synchronizer detected new model version at step {latest_model_version}."
                     )
-                    model_state_dict = (
-                        load_state_dict(
-                            os.path.join(
-                                default_local_dir, f"global_step_{latest_model_version}", "actor"
-                            ),
-                            self.config.trainer,
-                        )
-                        if not self.enable_lora
-                        else {}
+                    model_path = os.path.join(
+                        default_local_dir, f"global_step_{latest_model_version}", "actor"
                     )
-                    self.logger.info(
-                        f"Synchronizer has loaded model state dict from checkpoint {latest_model_version}."
+                    # Don't load state_dict — let vLLM workers load directly from disk.
+                    model_state_dict = {} if self.enable_lora else None
+                    await self.set_model_state_dict(
+                        model_state_dict, latest_model_version, model_path=model_path
                     )
-                    await self.set_model_state_dict(model_state_dict, latest_model_version)
                     # remove the previous checkpoints to save disk space
                     await self._remove_previous_state_dict(current_model_version)
             await asyncio.sleep(1)
@@ -209,7 +201,10 @@ class Synchronizer:
         self, step_num: Optional[int] = None, world_size: Optional[int] = None
     ) -> int:
         """
-        Load and set the model state dictionary from a checkpoint at a specific step.
+        Set the model version from a checkpoint at a specific step.
+
+        Does not load the actual model weights — vLLM workers load directly
+        from disk via :meth:`get_latest_model_path`.
 
         Args:
             step_num: Training step number corresponding to the checkpoint.
@@ -218,10 +213,7 @@ class Synchronizer:
         Returns:
             The updated model version (step number).
         """
-        from trinity.common.models.utils import (
-            get_checkpoint_dir_with_step_num,
-            load_state_dict,
-        )
+        from trinity.common.models.utils import get_checkpoint_dir_with_step_num
 
         if world_size is not None:  # Used when trainer updates the model
             assert step_num is not None
@@ -239,33 +231,36 @@ class Synchronizer:
             step_num=step_num,
         )
         if checkpoint_step_num != self.model_version:
-            model_state_dict = (
-                load_state_dict(
-                    os.path.join(checkpoint_dir, "actor"),
-                    self.config.trainer,
-                )
-                if not self.enable_lora
-                else {}
+            # Don't load weights — let vLLM workers load directly from disk.
+            # LoRA weights are stored in 'lora_adapter' subfolder and loaded separately.
+            model_state_dict = {} if self.enable_lora else None
+            model_path = os.path.join(checkpoint_dir, "actor")
+            await self.set_model_state_dict(
+                model_state_dict, checkpoint_step_num, model_path=model_path
             )
-            # lora weights are stored in 'lora_adapter' subfolder and cannot be loaded directly
-            await self.set_model_state_dict(model_state_dict, checkpoint_step_num)
         return checkpoint_step_num
 
     async def set_model_state_dict(
-        self, model_state_dict: Union[dict, None, str, Tuple[str, str]], trainer_step: int
+        self,
+        model_state_dict: Union[dict, None, str, Tuple[str, str]],
+        trainer_step: int,
+        model_path: Optional[str] = None,
     ):
         """
         Set the new model state and update the version.
 
         Args:
-            model_state_dict: The PyTorch model state dictionary.
+            model_state_dict: The PyTorch model state dictionary, or ``None``
+                when using disk-based loading (CHECKPOINT mode).
             trainer_step: Step number associated with this model version.
+            model_path: Path to model weights on disk. If not provided,
+                defaults to ``global_step_{trainer_step}/actor`` under
+                ``checkpoint_job_dir``.
         """
         async with self._ready_condition:
             self.model_state_dict = model_state_dict
             self.model_version = trainer_step
-            # TODO: check model_path for different trainer types
-            self.model_path = os.path.join(
+            self.model_path = model_path or os.path.join(
                 self.config.checkpoint_job_dir, f"global_step_{trainer_step}", "actor"
             )
             self.logger.info(f"Set model state dict version to {trainer_step}.")
