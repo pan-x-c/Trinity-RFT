@@ -153,8 +153,8 @@ class Explorer:
         """Set up intra-explorer bucketed weight transfer (Phase 2).
 
         After the intra-explorer NCCL group is created, worker 0 has a
-        :class:`ModelWeightSender`.  This method retrieves its ZMQ info
-        and creates :class:`ModelWeightReceiver` on all other workers.
+        :class:`NCCLSender`.  This method retrieves its ZMQ info
+        and creates :class:`NCCLReceiver` on all other workers.
 
         Skipped when worker 0 did not create a Sender (e.g. single-worker
         explorer or ``bucket_size_mb=0``).

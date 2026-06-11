@@ -303,10 +303,10 @@ class SGLangRolloutModel(BaseInferenceModel):
 
         # Set up metadata receiver for inline ZMQ-based weight sync.
         if zmq_ip is not None and zmq_port is not None:
-            from trinity.common.weight_transfer import ModelWeightMetadataReceiver
+            from trinity.common.weight_transfer import SGLangNCCLReceiver
 
-            self._metadata_receiver = ModelWeightMetadataReceiver(zmq_ip, zmq_port)
-            self.logger.info(f"ModelWeightMetadataReceiver ready (ZMQ: {zmq_ip}:{zmq_port})")
+            self._metadata_receiver = SGLangNCCLReceiver(zmq_ip, zmq_port)
+            self.logger.info(f"SGLangNCCLReceiver ready (ZMQ: {zmq_ip}:{zmq_port})")
 
         return resp
 

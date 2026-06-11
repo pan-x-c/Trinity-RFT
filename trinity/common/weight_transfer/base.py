@@ -8,8 +8,9 @@ reassembling them on the receiver side.
 Ported from veRL's checkpoint_engine/base.py with all external dependencies
 removed — only requires torch.
 """
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import AsyncGenerator, Generator, Iterable, Tuple, Union
+from typing import Generator, Iterable, Iterator, Tuple, Union
 
 import torch
 
@@ -38,23 +39,18 @@ class TensorMeta:
     """Byte offset of this chunk within the bucket buffer. Set by the sender."""
 
 
-async def _ensure_async_iterator(iterable):
-    """Convert a sync or async iterable to an async iterator."""
-    if hasattr(iterable, "__aiter__"):
-        async for item in iterable:
-            yield item
-    else:
-        for item in iterable:
-            yield item
+# ---------------------
+# Chunk splitting
+# ---------------------
 
 
-async def split_weight_chunks(
+def split_weight_chunks(
     weights: Union[
         Generator[Tuple[str, torch.Tensor], None, None],
         Iterable[Tuple[str, torch.Tensor]],
     ],
     bucket_size: int,
-) -> AsyncGenerator[Tuple[TensorMeta, torch.Tensor], None]:
+) -> Iterator[Tuple[TensorMeta, torch.Tensor]]:
     """Split weight tensors into bucket-sized byte chunks.
 
     Each weight tensor is viewed as a flat uint8 buffer and sliced into
@@ -63,15 +59,15 @@ async def split_weight_chunks(
     ``chunk_offset``).
 
     Args:
-        weights: An iterable (sync or async) yielding ``(name, tensor)``
-            pairs — e.g. from ``engine.get_per_tensor_param()``.
+        weights: An iterable yielding ``(name, tensor)`` pairs — e.g. from
+            ``engine.get_per_tensor_param()`` or ``state_dict.items()``.
         bucket_size: Maximum bucket size in bytes.
 
     Yields:
         ``(TensorMeta, chunk_view)`` where *chunk_view* is a uint8 tensor
         slice of the flattened weight.
     """
-    async for name, weight in _ensure_async_iterator(weights):
+    for name, weight in weights:
         buffer = weight.view(-1).view(torch.uint8)
         chunk_offset = 0
         while chunk_offset < weight.nbytes:
@@ -88,10 +84,15 @@ async def split_weight_chunks(
             chunk_offset += chunk_size
 
 
-async def merge_weight_chunks(
-    chunks: AsyncGenerator[Tuple[TensorMeta, torch.Tensor], None],
+# --------------------
+# Chunk merging
+# --------------------
+
+
+def merge_weight_chunks(
+    chunks: Iterable[Tuple[TensorMeta, torch.Tensor]],
     bucket_size: int,
-) -> AsyncGenerator[Tuple[str, torch.Tensor], None]:
+) -> Iterator[Tuple[str, torch.Tensor]]:
     """Reassemble weight tensors from bucket chunks.
 
     Inverse of :func:`split_weight_chunks`.  Small tensors (fitting in a
@@ -100,8 +101,8 @@ async def merge_weight_chunks(
     buffer and yielded once all chunks arrive.
 
     Args:
-        chunks: An async generator yielding ``(TensorMeta, chunk_bytes)``
-            pairs, where *chunk_bytes* is a uint8 tensor.
+        chunks: An iterable yielding ``(TensorMeta, chunk_bytes)`` pairs,
+            where *chunk_bytes* is a uint8 tensor.
         bucket_size: The bucket size used during splitting.
 
     Yields:
@@ -112,7 +113,7 @@ async def merge_weight_chunks(
     merge_buffer: torch.Tensor | None = None
     merge_offset: int = 0
 
-    async for tensor_meta, chunk in _ensure_async_iterator(chunks):
+    for tensor_meta, chunk in chunks:
         assert chunk.dtype == torch.uint8, f"Chunk dtype must be uint8, but got {chunk.dtype}"
         nbytes = tensor_meta.shape.numel() * tensor_meta.dtype.itemsize
 
@@ -151,3 +152,85 @@ async def merge_weight_chunks(
                 None,
                 0,
             )
+
+
+# ---------------------------------------------------------------------------
+# Unified sender/receiver interfaces for weight transfer backends.
+# ---------------------------------------------------------------------------
+
+
+class BaseSender(ABC):
+    """Unified sender interface for model weight tensors.
+
+    Lifecycle::
+
+        sender = ConcreteSender()
+        sender.prepare()                              # transport setup
+        sender.send(weights)                          # can be called repeatedly
+        sender.finalize()                             # optional cleanup
+    """
+
+    def prepare(self) -> None:
+        """Set up the sender.  Called before sending any weights.
+
+        Idempotent: calling ``prepare()`` on an already-prepared sender
+        is a no-op.  Must register any transport-specific info with the
+        Synchronizer so that a paired Receiver can discover it.
+        """
+
+    @abstractmethod
+    def send(self, weights: Iterable[Tuple[str, torch.Tensor]]) -> None:
+        """Send all weights synchronously.
+
+        Args:
+            weights: Iterable of ``(name, tensor)`` pairs.  The sender
+                **must** consume the entire iterable (non-rank-0 workers
+                need to drive collective operations in FSDP/Megatron).
+        """
+
+    def finalize(self) -> None:
+        """Release transport resources (GPU buffers, sockets, etc.).
+
+        Default is a no-op.  Subclasses override as needed.
+        """
+
+
+class BaseReceiver(ABC):
+    """Unified receiver interface for model weight tensors.
+
+    Lifecycle::
+
+        receiver = ConcreteReceiver()
+        receiver.prepare()                              # transport setup
+        for name, tensor in receiver.receive():         # can be called repeatedly
+            model.load_weight(name, tensor)
+        receiver.finalize()                             # optional cleanup
+    """
+
+    def prepare(self) -> None:
+        """Set up the receiver.  Called before receiving any weights.
+
+        Idempotent: calling ``prepare()`` on an already-prepared receiver
+        is a no-op.  Must retrieve transport-specific info from the
+        Synchronizer.
+        """
+
+    @abstractmethod
+    def receive(self) -> Iterable[Tuple[str, torch.Tensor]]:
+        """Receive all weights.  Yields ``(name, tensor)`` pairs.
+
+        For backends that handle tensor reception internally (e.g. SGLang),
+        ``tensor`` will be ``None``.  The caller should check and skip
+        direct weight loading in that case.
+
+        Returns:
+            An iterable of ``(name, tensor)`` pairs where *tensor* may
+            be ``None`` for backends that manage tensor reception
+            internally.
+        """
+
+    def finalize(self) -> None:
+        """Release transport resources.
+
+        Default is a no-op.  Subclasses override as needed.
+        """

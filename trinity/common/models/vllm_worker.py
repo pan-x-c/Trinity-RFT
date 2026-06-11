@@ -7,7 +7,7 @@ import torch
 import torch.distributed
 
 from trinity.common.models.vllm_patch.worker_patch import patch_vllm_prompt_logprobs
-from trinity.common.weight_transfer import ModelWeightReceiver, ModelWeightSender
+from trinity.common.weight_transfer import NCCLReceiver, NCCLSender
 from trinity.manager.synchronizer import Synchronizer
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
@@ -83,24 +83,24 @@ class WorkerExtension:
             bucket_size = bucket_size_mb * 1024 * 1024
             if zmq_ip is not None and zmq_port is not None:
                 # NCCL mode: all workers are Receivers (Sender is on Trainer).
-                self._weight_receiver = ModelWeightReceiver(
+                self._weight_receiver = NCCLReceiver(
                     pg=self._model_update_group,
                     bucket_size=bucket_size,
                     zmq_ip=zmq_ip,
                     zmq_port=zmq_port,
                 )
                 self.logger.info(
-                    f"ModelWeightReceiver ready "
+                    f"NCCLReceiver ready "
                     f"(ZMQ: {zmq_ip}:{zmq_port}, bucket_size={bucket_size_mb}MB)"
                 )
             elif self._weight_update_rank == 0 and world_size > 1:
                 # CHECKPOINT/MEMORY mode: rank 0 creates a Sender for
                 # bucketed intra-explorer broadcast.  Receivers on rank 1+
                 # are created in a second phase via setup_weight_receiver().
-                self._weight_sender = ModelWeightSender()
-                self._weight_sender.setup(self._model_update_group, bucket_size)
+                self._weight_sender = NCCLSender()
+                self._weight_sender.prepare(self._model_update_group, bucket_size)
                 self.logger.info(
-                    f"Intra-explorer ModelWeightSender ready "
+                    f"Intra-explorer NCCLSender ready "
                     f"(ZMQ: {self._weight_sender.zmq_info}, "
                     f"bucket_size={bucket_size_mb}MB)"
                 )
@@ -116,7 +116,7 @@ class WorkerExtension:
         return None
 
     def setup_weight_receiver(self, zmq_ip, zmq_port, bucket_size_mb):
-        """Create :class:`ModelWeightReceiver` on non-rank-0 workers.
+        """Create :class:`NCCLReceiver` on non-rank-0 workers.
 
         Phase 2 of intra-explorer bucketed weight transfer setup.
         Called after ``init_process_group`` has created the NCCL group
@@ -128,14 +128,14 @@ class WorkerExtension:
             and bucket_size_mb > 0
             and self._weight_receiver is None
         ):
-            self._weight_receiver = ModelWeightReceiver(
+            self._weight_receiver = NCCLReceiver(
                 pg=self._model_update_group,
                 bucket_size=bucket_size_mb * 1024 * 1024,
                 zmq_ip=zmq_ip,
                 zmq_port=zmq_port,
             )
             self.logger.info(
-                f"Intra-explorer ModelWeightReceiver ready "
+                f"Intra-explorer NCCLReceiver ready "
                 f"(ZMQ: {zmq_ip}:{zmq_port}, bucket_size={bucket_size_mb}MB)"
             )
 
@@ -209,7 +209,7 @@ class WorkerExtension:
             # Rank 0 with intra-explorer Sender: bucketed broadcast to
             # other workers, then load into own model directly.
             assert state_dict is not None
-            self._weight_sender.send_sync(state_dict.items())
+            self._weight_sender.send(state_dict.items())
             with set_current_vllm_config(self.model_runner.vllm_config):
                 self.model_runner.reload_weights(
                     weights_iterator=(
@@ -219,7 +219,7 @@ class WorkerExtension:
                 )
         elif self._weight_receiver is not None:
             # Rank 1+ with intra-explorer Receiver: bucketed receive.
-            weights_iter = self._weight_receiver.receive_sync()
+            weights_iter = self._weight_receiver.receive()
             with set_current_vllm_config(self.model_runner.vllm_config):
                 self.model_runner.reload_weights(
                     weights_iterator=weights_iter,
@@ -240,15 +240,13 @@ class WorkerExtension:
         torch.cuda.empty_cache()
 
     def update_weight_nccl(self):
-        """Receive weights via bucketed NCCL broadcast (ModelWeightReceiver).
+        """Receive weights via bucketed NCCL broadcast (NCCLReceiver).
 
         Both verl and verl_legacy trainers now provide ZMQ metadata,
         so a Receiver is always available for NCCL weight sync.
         """
-        assert (
-            self._weight_receiver is not None
-        ), "ModelWeightReceiver must be set up for NCCL weight sync"
-        weights_iter = self._weight_receiver.receive_sync()
+        assert self._weight_receiver is not None, "NCCLReceiver must be set up for NCCL weight sync"
+        weights_iter = self._weight_receiver.receive()
 
         from vllm.config import set_current_vllm_config
 

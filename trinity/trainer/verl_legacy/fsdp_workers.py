@@ -92,7 +92,7 @@ from verl.workers.sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManage
 
 from trinity.common.config import AlgorithmConfig
 from trinity.common.patch import kimi_vl_monkey_patch_decorator
-from trinity.common.weight_transfer import ModelWeightSender
+from trinity.common.weight_transfer import NCCLSender
 from trinity.trainer.verl_legacy.fsdp_checkpoint_manager import FSDPCheckpointManager
 from trinity.trainer.verl_legacy.monkey_patch import apply_monkey_patch
 from trinity.trainer.verl_legacy.utils import apply_fsdp2
@@ -804,7 +804,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
     def get_weight_sync_info(self):
         """Return weight sync rendezvous info from rank 0.
 
-        Creates a lightweight :class:`ModelWeightSender` (ZMQ bind only,
+        Creates a lightweight :class:`NCCLSender` (ZMQ bind only,
         no GPU allocation) and returns a 4-tuple
         ``(addr, port, zmq_ip, zmq_port)``.
 
@@ -816,7 +816,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             master_address, master_port = self.get_available_master_addr_port()
 
             # Lightweight sender creation (ZMQ bind only, no GPU buffers).
-            self._weight_sender = ModelWeightSender()
+            self._weight_sender = NCCLSender()
             zmq = self._weight_sender.zmq_info
 
             self.logger.info(
@@ -870,13 +870,11 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             # Complete sender setup: allocate GPU buffers and wire NCCL pg.
             if self._weight_sender is not None and bucket_size_mb > 0:
                 bucket_size = bucket_size_mb * 1024 * 1024
-                self._weight_sender.setup(
+                self._weight_sender.prepare(
                     self._model_update_group, bucket_size, per_tensor=per_tensor
                 )
                 mode_str = "per-tensor" if per_tensor else "bucketed"
-                self.logger.info(
-                    f"ModelWeightSender ready ({mode_str}, bucket_size={bucket_size_mb}MB)"
-                )
+                self.logger.info(f"NCCLSender ready ({mode_str}, bucket_size={bucket_size_mb}MB)")
             else:
                 # bucket_size_mb=0 → per-tensor broadcast fallback.
                 if self._weight_sender is not None:
@@ -941,7 +939,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
     def sync_weight(self):
         """Sync model weights to Explorer via NCCL.
 
-        Uses :class:`ModelWeightSender` for bucketed double-buffered
+        Uses :class:`NCCLSender` for bucketed double-buffered
         transfer when available.  Falls back to per-tensor broadcast
         when the sender was not created (``bucket_size_mb=0``).
 
@@ -956,7 +954,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
             if torch.distributed.get_rank() == 0:
                 if self._weight_sender is not None:
-                    self._weight_sender.send_sync(gen)
+                    self._weight_sender.send(gen)
                 else:
                     # Per-tensor broadcast fallback (bucket_size_mb=0).
                     for _, param in gen:

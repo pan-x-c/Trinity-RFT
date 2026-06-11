@@ -83,7 +83,7 @@ class Trainer:
         coordinating NCCL group creation.
 
         The returned zmq_ip/zmq_port come from a lightweight
-        :class:`ModelWeightSender` (ZMQ bind only, no GPU allocation).
+        :class:`NCCLSender` (ZMQ bind only, no GPU allocation).
         GPU buffers are allocated later in :meth:`setup_weight_sync_group`.
         """
         return await self.engine.get_weight_sync_info()

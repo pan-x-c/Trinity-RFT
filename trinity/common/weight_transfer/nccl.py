@@ -4,7 +4,7 @@
 Provides three classes for weight synchronization between trainer and
 rollout/inference workers:
 
-* :class:`ModelWeightSender` — trainer-side sender supporting two modes:
+* :class:`NCCLSender` — trainer-side sender supporting two modes:
 
   - **Bucket mode** (default): double-buffered GPU buckets over NCCL
     broadcast, overlapping communication with bucket filling.
@@ -13,7 +13,7 @@ rollout/inference workers:
     Designed for backends (e.g. SGLang) that manage NCCL reception
     internally via HTTP API.
 
-* :class:`ModelWeightReceiver` — rollout-side receiver with GPU double
+* :class:`NCCLReceiver` — rollout-side receiver with GPU double
   buffers.  Pairs with the Sender's bucket mode.
 
 * :class:`ModelWeightMetadataReceiver` — lightweight metadata-only receiver
@@ -23,23 +23,23 @@ rollout/inference workers:
 Usage (bucket mode)::
 
     # --- Trainer (rank 0) ---
-    sender = ModelWeightSender()
-    sender.setup(pg, bucket_size=500_000_000)
-    await sender.send(engine.get_per_tensor_param()[0])
+    sender = NCCLSender()
+    sender.prepare(pg, bucket_size=500_000_000)
+    sender.send(engine.get_per_tensor_param()[0])
     sender.finalize()
 
     # --- Rollout (rank 1+) ---
-    receiver = ModelWeightReceiver(pg, 500_000_000, zmq_ip, zmq_port)
-    async for name, tensor in receiver.receive():
+    receiver = NCCLReceiver(pg, 500_000_000, zmq_ip, zmq_port)
+    for name, tensor in receiver.receive():
         model.load_weight(name, tensor)
     receiver.finalize()
 
 Usage (per-tensor mode, e.g. SGLang)::
 
     # --- Trainer (rank 0) ---
-    sender = ModelWeightSender()
-    sender.setup(pg, bucket_size=500_000_000, per_tensor=True)
-    sender.send_sync(engine.get_per_tensor_param()[0])
+    sender = NCCLSender()
+    sender.prepare(pg, bucket_size=500_000_000, per_tensor=True)
+    sender.send(engine.get_per_tensor_param()[0])
     sender.finalize()
 
     # --- SGLang control plane ---
@@ -50,53 +50,27 @@ Usage (per-tensor mode, e.g. SGLang)::
 """
 from __future__ import annotations
 
-import asyncio
-import logging
-import queue
 import threading
 import time
-from typing import AsyncGenerator, Dict, Iterable, Iterator, Optional, Tuple
+from typing import Dict, Iterable, Iterator, Optional, Tuple
 
 import torch
 import torch.distributed
 import zmq
 
-from trinity.common.weight_transfer.core import (
+from trinity.common.weight_transfer.base import (
+    BaseReceiver,
+    BaseSender,
     TensorMeta,
     merge_weight_chunks,
     split_weight_chunks,
 )
-
-
-def _get_local_ip() -> str:
-    """Get the node's IP address, preferring Ray if available."""
-    try:
-        import ray
-
-        return ray.util.get_node_ip_address().strip("[]")
-    except Exception:
-        import socket
-
-        return socket.gethostbyname(socket.gethostname())
-
-
-def _get_free_port(ip: str) -> int:
-    """Find an available TCP port."""
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((ip, 0))
-        return s.getsockname()[1]
-
-
-def _is_ipv6(ip: str) -> bool:
-    """Check if an IP address is IPv6."""
-    import ipaddress
-
-    try:
-        return isinstance(ipaddress.ip_address(ip), ipaddress.IPv6Address)
-    except ValueError:
-        return False
+from trinity.utils.distributed import (
+    get_address_and_port,
+    get_endpoint,
+    is_ipv6_address,
+)
+from trinity.utils.log import get_logger
 
 
 class _BroadcastFuture:
@@ -122,8 +96,8 @@ class _BroadcastFuture:
         self._socket = socket
         self._topic = topic
 
-        self._loop = asyncio.get_running_loop()
-        self._future = self._loop.run_in_executor(None, self._run)
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
 
     def _run(self):
         """Execute ZMQ metadata exchange + NCCL broadcast (runs in thread)."""
@@ -136,13 +110,13 @@ class _BroadcastFuture:
 
         torch.distributed.broadcast(self._bucket, src=0, group=self._pg)
 
-    async def wait(self) -> Optional[Dict]:
+    def wait(self) -> Optional[Dict]:
         """Wait for the broadcast to complete, return received metadata."""
-        await self._future
+        self._thread.join()
         return self._metadata
 
 
-class ModelWeightSender:
+class NCCLSender(BaseSender):
     """Sends model weights via double-buffered NCCL broadcast.
 
     Sits on the trainer side (NCCL rank 0).  Accepts weight tensors from
@@ -153,7 +127,7 @@ class ModelWeightSender:
 
     1. ``__init__()`` — lightweight: only binds a ZMQ PUB socket for
        the metadata side-channel.  No GPU memory is allocated.
-    2. ``setup(pg, bucket_size)`` — heavy: allocates GPU double buffers
+    2. ``prepare(pg, bucket_size)`` — heavy: allocates GPU double buffers
        and wires the NCCL process group.
 
     This split exists because the ZMQ port must be known *before* the
@@ -163,7 +137,7 @@ class ModelWeightSender:
 
     def __init__(self) -> None:
         self.bucket_size: int = 0
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = get_logger(self.__class__.__name__)
         self._pg: Optional[torch.distributed.ProcessGroup] = None
         self._send_buf: Optional[torch.Tensor] = None
         self._recv_buf: Optional[torch.Tensor] = None
@@ -171,26 +145,21 @@ class ModelWeightSender:
         self._topic = "bucket_metadata"
 
         # Bind ZMQ PUB server for metadata broadcast.
-        self._zmq_ip = _get_local_ip()
-        self._zmq_port = _get_free_port(self._zmq_ip)
+        self._zmq_ip, self._zmq_port = get_address_and_port()
         self._zmq_context: zmq.Context = zmq.Context()
         self._socket: zmq.Socket = self._zmq_context.socket(zmq.PUB)
-
-        if _is_ipv6(self._zmq_ip):
-            address = f"tcp://[{self._zmq_ip}]:{self._zmq_port}"
+        if is_ipv6_address(self._zmq_ip):
             self._socket.setsockopt(zmq.IPV6, 1)
-        else:
-            address = f"tcp://{self._zmq_ip}:{self._zmq_port}"
-
+        address = f"tcp://{get_endpoint(self._zmq_ip, self._zmq_port)}"
         self._socket.bind(address)
-        self.logger.info(f"ModelWeightSender ZMQ PUB bound to {address}")
+        self.logger.info(f"NCCLSender ZMQ PUB bound to {address}")
 
     @property
     def zmq_info(self) -> Dict[str, object]:
         """ZMQ connection info for receivers: ``{zmq_ip, zmq_port}``."""
         return {"zmq_ip": self._zmq_ip, "zmq_port": self._zmq_port}
 
-    def setup(
+    def prepare(
         self,
         pg: torch.distributed.ProcessGroup,
         bucket_size: int,
@@ -221,39 +190,38 @@ class ModelWeightSender:
             self._recv_buf = torch.empty(bucket_size, dtype=torch.uint8, device="cuda")
 
     @torch.no_grad()
-    async def send(
+    def send(
         self,
         weights: Iterable[Tuple[str, torch.Tensor]],
     ) -> None:
         """Send all weights via NCCL broadcast.
 
         Dispatches to bucketed or per-tensor mode based on the
-        ``per_tensor`` flag set during :meth:`setup`.
+        ``per_tensor`` flag set during :meth:`prepare`.
 
         Args:
             weights: Iterable of ``(name, tensor)`` pairs — typically from
                 ``engine.get_per_tensor_param()`` or a ``state_dict.items()``.
         """
-        assert self._pg is not None, "Call setup() first"
+        assert self._pg is not None, "Call prepare() first"
         if self._per_tensor:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self._send_per_tensor_impl, weights)
+            self._send_per_tensor_impl(weights)
         else:
-            await self._send_bucketed(weights)
+            self._send_bucketed(weights)
 
     @torch.no_grad()
-    async def _send_bucketed(
+    def _send_bucketed(
         self,
         weights: Iterable[Tuple[str, torch.Tensor]],
     ) -> None:
-        """Send all weights via double-buffered NCCL broadcast (bucket mode).
+        """Send all weights via double-buffered NCCL broadcast.
 
         Iterates over *weights*, packs tensor chunks into fixed-size
         buckets, and broadcasts each bucket.  While one bucket is being
         broadcast (in a background thread), the next bucket is filled
         concurrently.
         """
-        assert self._send_buf is not None, "Call setup() first"
+        assert self._send_buf is not None, "Call prepare() first"
 
         send_buf = self._send_buf
         recv_buf = self._recv_buf
@@ -263,14 +231,14 @@ class ModelWeightSender:
         bucket_meta: Dict[str, TensorMeta] = {}
         offset = 0
 
-        async for tensor_meta, chunk in split_weight_chunks(weights, self.bucket_size):
+        for tensor_meta, chunk in split_weight_chunks(weights, self.bucket_size):
             # If chunk doesn't fit in current bucket, flush it.
             if offset + tensor_meta.chunk_size > self.bucket_size:
                 torch.cuda.synchronize()
 
                 # Wait for the previous broadcast to finish.
                 if broadcast_op is not None:
-                    await broadcast_op.wait()
+                    broadcast_op.wait()
 
                 # Launch broadcast for the current (full) bucket.
                 broadcast_op = _BroadcastFuture(
@@ -298,7 +266,7 @@ class ModelWeightSender:
         # Flush the final (possibly partial) bucket.
         torch.cuda.synchronize()
         if broadcast_op is not None:
-            await broadcast_op.wait()
+            broadcast_op.wait()
 
         broadcast_op = _BroadcastFuture(
             is_sender=True,
@@ -308,10 +276,10 @@ class ModelWeightSender:
             socket=self._socket,
             topic=self._topic,
         )
-        await broadcast_op.wait()
+        broadcast_op.wait()
 
         elapsed = time.time() - start_time
-        self.logger.info(f"ModelWeightSender: send completed in {elapsed:.2f}s")
+        self.logger.info(f"NCCLSender: send completed in {elapsed:.2f}s")
 
     # -- Per-tensor mode ---------------------------------------------------
 
@@ -353,8 +321,7 @@ class ModelWeightSender:
 
         elapsed = time.time() - start_time
         self.logger.info(
-            f"ModelWeightSender: per-tensor send completed in "
-            f"{elapsed:.2f}s ({total_tensors} tensors)"
+            f"NCCLSender: per-tensor send completed in " f"{elapsed:.2f}s ({total_tensors} tensors)"
         )
 
     def _flush_per_tensor_batch(
@@ -368,27 +335,6 @@ class ModelWeightSender:
         self._socket.send_pyobj({"tensor_meta": batch_meta, "is_last": is_last})
         for tensor in batch_tensors:
             torch.distributed.broadcast(tensor.contiguous(), src=0, group=self._pg)
-
-    @torch.no_grad()
-    def send_sync(
-        self,
-        weights: Iterable[Tuple[str, torch.Tensor]],
-    ) -> None:
-        """Synchronous wrapper around :meth:`send`.
-
-        In **per-tensor mode**, calls the synchronous implementation
-        directly.  In **bucket mode**, runs the async send in a
-        dedicated event loop.  Safe to call from synchronous contexts
-        (e.g. vLLM ``collective_rpc`` handlers).
-        """
-        if self._per_tensor:
-            self._send_per_tensor_impl(weights)
-        else:
-            loop = asyncio.new_event_loop()
-            try:
-                loop.run_until_complete(self.send(weights))
-            finally:
-                loop.close()
 
     def finalize(self) -> None:
         """Release GPU buffers and close the ZMQ socket."""
@@ -405,11 +351,11 @@ class ModelWeightSender:
         torch.cuda.empty_cache()
 
 
-class ModelWeightReceiver:
+class NCCLReceiver(BaseReceiver):
     """Receives model weights via double-buffered NCCL broadcast.
 
     Sits on the rollout/inference side (NCCL rank 1+).  Receives buckets
-    from :class:`ModelWeightSender` and yields individual weight tensors.
+    from :class:`NCCLSender` and yields individual weight tensors.
 
     All initialization is done in ``__init__``: GPU buffer allocation,
     NCCL process group wiring, and ZMQ SUB connection.
@@ -430,7 +376,7 @@ class ModelWeightReceiver:
         zmq_port: int,
     ) -> None:
         self.bucket_size = bucket_size
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = get_logger(self.__class__.__name__)
         self._pg = pg
         self._topic = "bucket_metadata"
 
@@ -441,19 +387,15 @@ class ModelWeightReceiver:
         # Connect ZMQ SUB socket to the sender's PUB server.
         self._zmq_context: zmq.Context = zmq.Context()
         self._socket: zmq.Socket = self._zmq_context.socket(zmq.SUB)
-
-        if _is_ipv6(zmq_ip):
-            address = f"tcp://[{zmq_ip}]:{zmq_port}"
+        if is_ipv6_address(zmq_ip):
             self._socket.setsockopt(zmq.IPV6, 1)
-        else:
-            address = f"tcp://{zmq_ip}:{zmq_port}"
-
+        address = f"tcp://{get_endpoint(zmq_ip, zmq_port)}"
         self._socket.connect(address)
         self._socket.setsockopt_string(zmq.SUBSCRIBE, self._topic)
-        self.logger.info(f"ModelWeightReceiver ZMQ SUB connected to {address}")
+        self.logger.info(f"NCCLReceiver ZMQ SUB connected to {address}")
 
     @torch.no_grad()
-    async def receive(self) -> AsyncGenerator[Tuple[str, torch.Tensor], None]:
+    def receive(self) -> Iterator[Tuple[str, torch.Tensor]]:
         """Receive all weights via double-buffered NCCL broadcast.
 
         Yields ``(name, tensor)`` pairs as they are fully received and
@@ -463,12 +405,11 @@ class ModelWeightReceiver:
         The method overlaps NCCL reception of the next bucket with
         consumption (yielding) of the current bucket's tensors.
         """
-        async for name, weight in merge_weight_chunks(self._receive_chunks(), self.bucket_size):
-            yield name, weight
+        yield from merge_weight_chunks(self._receive_chunks(), self.bucket_size)
 
-    async def _receive_chunks(
+    def _receive_chunks(
         self,
-    ) -> AsyncGenerator[Tuple[TensorMeta, torch.Tensor], None]:
+    ) -> Iterator[Tuple[TensorMeta, torch.Tensor]]:
         """Receive raw bucket chunks with double-buffering."""
         assert self._pg is not None
         assert self._recv_buf is not None
@@ -489,7 +430,7 @@ class ModelWeightReceiver:
             socket=self._socket,
             topic=self._topic,
         )
-        metadata = await broadcast_op.wait()
+        metadata = broadcast_op.wait()
         assert metadata is not None, "Receiver must get metadata from sender"
         total_bytes += self.bucket_size
         total_params += len(metadata["bucket_meta"])
@@ -514,7 +455,7 @@ class ModelWeightReceiver:
                 yield tensor_meta, tensor
 
             # 3. Wait for next bucket.
-            metadata = await broadcast_op.wait()
+            metadata = broadcast_op.wait()
             assert metadata is not None, "Receiver must get metadata from sender"
             total_bytes += self.bucket_size
             total_params += len(metadata["bucket_meta"])
@@ -531,54 +472,9 @@ class ModelWeightReceiver:
         elapsed = time.time() - start_time
         bandwidth = total_bytes / elapsed / (1024 * 1024 * 1024) if elapsed > 0 else 0
         self.logger.debug(
-            f"ModelWeightReceiver: received {total_params} params in "
+            f"NCCLReceiver: received {total_params} params in "
             f"{elapsed:.2f}s ({bandwidth:.2f} GB/s)"
         )
-
-    def receive_sync(self) -> Iterator[Tuple[str, torch.Tensor]]:
-        """Synchronous wrapper around :meth:`receive`.
-
-        Runs the async receive loop in a dedicated thread with its own
-        event loop, feeding items into a :class:`queue.Queue` that the
-        returned iterator drains.  This is safe to call from synchronous
-        contexts (e.g. vLLM's ``reload_weights``).
-
-        Yields:
-            ``(name, tensor)`` pairs identical to :meth:`receive`.
-        """
-        q: queue.Queue = queue.Queue()
-        sentinel = object()
-        error_holder: list = []
-
-        def _run():
-            loop = asyncio.new_event_loop()
-            try:
-
-                async def _drain():
-                    async for item in self.receive():
-                        q.put(item)
-                    q.put(sentinel)
-
-                loop.run_until_complete(_drain())
-            except Exception as e:
-                error_holder.append(e)
-                q.put(sentinel)
-            finally:
-                loop.close()
-
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
-
-        while True:
-            item = q.get()
-            if item is sentinel:
-                break
-            yield item
-
-        t.join()
-
-        if error_holder:
-            raise error_holder[0]
 
     def finalize(self) -> None:
         """Release GPU buffers and close the ZMQ socket."""
@@ -595,17 +491,17 @@ class ModelWeightReceiver:
         torch.cuda.empty_cache()
 
 
-class ModelWeightMetadataReceiver:
+class SGLangNCCLReceiver(BaseReceiver):
     """Receives weight metadata via ZMQ for per-tensor NCCL broadcast.
 
-    Simplified counterpart of :class:`ModelWeightReceiver` for backends
+    Simplified counterpart of :class:`NCCLReceiver` for backends
     (e.g. SGLang) that manage NCCL reception internally.  Only subscribes
-    to the :class:`ModelWeightSender`'s ZMQ PUB socket for batched tensor
+    to the :class:`NCCLSender`'s ZMQ PUB socket for batched tensor
     metadata; no GPU buffers are allocated and no NCCL operations are
     performed.
 
-    Pairs with :class:`ModelWeightSender` in per-tensor mode
-    (``setup(pg, bucket_size, per_tensor=True)``).
+    Pairs with :class:`NCCLSender` in per-tensor mode
+    (``prepare(pg, bucket_size, per_tensor=True)``).
 
     Args:
         zmq_ip: The sender's IP address (from ``sender.zmq_info``).
@@ -613,22 +509,18 @@ class ModelWeightMetadataReceiver:
     """
 
     def __init__(self, zmq_ip: str, zmq_port: int) -> None:
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = get_logger(self.__class__.__name__)
         self._topic = "bucket_metadata"
 
         # Connect ZMQ SUB socket to the sender's PUB server.
         self._zmq_context: zmq.Context = zmq.Context()
         self._socket: zmq.Socket = self._zmq_context.socket(zmq.SUB)
-
-        if _is_ipv6(zmq_ip):
-            address = f"tcp://[{zmq_ip}]:{zmq_port}"
+        if is_ipv6_address(zmq_ip):
             self._socket.setsockopt(zmq.IPV6, 1)
-        else:
-            address = f"tcp://{zmq_ip}:{zmq_port}"
-
+        address = f"tcp://{get_endpoint(zmq_ip, zmq_port)}"
         self._socket.connect(address)
         self._socket.setsockopt_string(zmq.SUBSCRIBE, self._topic)
-        self.logger.info(f"ModelWeightMetadataReceiver ZMQ SUB connected to {address}")
+        self.logger.info(f"SGLangNCCLReceiver ZMQ SUB connected to {address}")
 
     def receive(self) -> Iterator[Tuple[list, bool]]:
         """Yield ``(batch_meta, is_last)`` pairs from the Sender.
