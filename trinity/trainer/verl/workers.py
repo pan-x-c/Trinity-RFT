@@ -52,6 +52,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         self._model_update_group = None
         self._coordinator: Optional[CheckpointCoordinator] = None
         self._weight_sender: Optional[ModelWeightSender] = None
+        self._state_dict_meta: list | None = None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def init_model(self):
@@ -102,6 +103,29 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                     use_fused_kernels=use_fused_kernels,
                     fused_kernels_backend=fused_kernels_backend,
                 )
+
+        # Pre-collect state dict metadata for exact safetensors header sizing.
+        # This iterates get_per_tensor_param() once at init time so that all
+        # subsequent save_state_dict calls can reserve header space exactly.
+        self._cache_state_dict_meta()
+
+    def _cache_state_dict_meta(self):
+        """Collect and cache state-dict metadata for exact safetensors header sizing.
+
+        This is a one-time cost paid during ``init_model``; all subsequent
+        checkpoint saves reuse the cached metadata.
+        """
+        from trinity.common.models.streaming_safetensors import collect_state_dict_meta
+
+        if self.actor is None or not hasattr(self.actor, "engine"):
+            return
+
+        per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
+        self._state_dict_meta = collect_state_dict_meta(per_tensor_param)
+        self.logger.info(
+            f"Cached state_dict_meta: {len(self._state_dict_meta)} tensors, "
+            f"exact header sizing enabled for streaming writes"
+        )
 
     def _maybe_patch_lora_fsdp2(self):
         """Monkey-patch veRL engine to align LoRA param dtypes for FSDP2.
@@ -433,7 +457,12 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
                 for name, weight in per_tensor_param:
                     yield name, weight.cpu().detach()
 
-            tmp_path = save_safetensors_streaming(_rank0_iter(), filepath, rename=False)
+            tmp_path = save_safetensors_streaming(
+                _rank0_iter(),
+                filepath,
+                state_dict_meta=self._state_dict_meta,
+                rename=False,
+            )
 
             def _finalize():
                 fd = os.open(tmp_path, os.O_RDONLY)

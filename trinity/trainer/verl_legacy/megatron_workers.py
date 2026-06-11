@@ -721,6 +721,31 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
 
         self._weight_sender = None
 
+        # Pre-collect state dict metadata for exact safetensors header sizing.
+        if self._is_actor:
+            self._cache_state_dict_meta()
+
+    def _cache_state_dict_meta(self):
+        """Collect and cache state-dict metadata for exact safetensors header sizing.
+
+        This is a one-time cost paid during ``init_model``; all subsequent
+        checkpoint saves reuse the cached metadata.
+        """
+        from trinity.common.models.streaming_safetensors import collect_state_dict_meta
+
+        if self._is_offload_param:
+            load_megatron_model_to_gpu(self.actor_module)
+
+        try:
+            self._state_dict_meta = collect_state_dict_meta(self._get_tensor_generator())
+            self.logger.info(
+                f"Cached state_dict_meta: {len(self._state_dict_meta)} tensors, "
+                f"exact header sizing enabled for streaming writes"
+            )
+        finally:
+            if self._is_offload_param:
+                offload_megatron_model_to_cpu(self.actor_module)
+
     def _get_tensor_generator(self):
         """
         This part of the code is written by referring to the initialization of the `MegatronVLLMShardingManager` class
@@ -1088,7 +1113,12 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
                 for name, weight in self._get_tensor_generator():
                     yield name, weight.cpu().detach()
 
-            tmp_path = save_safetensors_streaming(_rank0_iter(), filepath, rename=False)
+            tmp_path = save_safetensors_streaming(
+                _rank0_iter(),
+                filepath,
+                state_dict_meta=self._state_dict_meta,
+                rename=False,
+            )
             self.checkpoint_mananager.finalize_safetensors_async(tmp_path, filepath, global_step)
         else:
             # Consume generator to participate in Megatron collectives.

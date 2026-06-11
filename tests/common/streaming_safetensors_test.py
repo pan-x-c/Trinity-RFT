@@ -10,7 +10,17 @@ import unittest
 import torch
 from safetensors.torch import load_file
 
-from trinity.common.models.streaming_safetensors import save_safetensors_streaming
+from trinity.common.models.streaming_safetensors import (
+    StateDictMeta,
+    _compute_exact_header_size,
+    collect_state_dict_meta,
+    save_safetensors_streaming,
+)
+
+
+def _meta_from_tensors(tensors: dict[str, torch.Tensor]) -> StateDictMeta:
+    """Build StateDictMeta from a dict of tensors (for test convenience)."""
+    return collect_state_dict_meta(tensors.items())
 
 
 class TestSaveSafetensorsStreaming(unittest.TestCase):
@@ -37,7 +47,9 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         }
         filepath = os.path.join(self.tmpdir, "model.safetensors")
 
-        save_safetensors_streaming(tensors.items(), filepath)
+        save_safetensors_streaming(
+            tensors.items(), filepath, state_dict_meta=_meta_from_tensors(tensors)
+        )
 
         loaded = load_file(filepath)
         self.assertEqual(set(loaded.keys()), set(tensors.keys()))
@@ -52,7 +64,9 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         }
         filepath = os.path.join(self.tmpdir, "bf16.safetensors")
 
-        save_safetensors_streaming(tensors.items(), filepath)
+        save_safetensors_streaming(
+            tensors.items(), filepath, state_dict_meta=_meta_from_tensors(tensors)
+        )
 
         loaded = load_file(filepath)
         for name, expected in tensors.items():
@@ -69,7 +83,9 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         }
         filepath = os.path.join(self.tmpdir, "mixed.safetensors")
 
-        save_safetensors_streaming(tensors.items(), filepath)
+        save_safetensors_streaming(
+            tensors.items(), filepath, state_dict_meta=_meta_from_tensors(tensors)
+        )
 
         loaded = load_file(filepath)
         self.assertEqual(set(loaded.keys()), set(tensors.keys()))
@@ -84,7 +100,9 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         }
         filepath = os.path.join(self.tmpdir, "empty.safetensors")
 
-        save_safetensors_streaming(tensors.items(), filepath)
+        save_safetensors_streaming(
+            tensors.items(), filepath, state_dict_meta=_meta_from_tensors(tensors)
+        )
 
         loaded = load_file(filepath)
         self.assertEqual(loaded["empty"].shape, (0, 64))
@@ -95,7 +113,9 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         tensors = {"only": torch.randn(1024, dtype=torch.float32)}
         filepath = os.path.join(self.tmpdir, "single.safetensors")
 
-        save_safetensors_streaming(tensors.items(), filepath)
+        save_safetensors_streaming(
+            tensors.items(), filepath, state_dict_meta=_meta_from_tensors(tensors)
+        )
 
         loaded = load_file(filepath)
         torch.testing.assert_close(loaded["only"], tensors["only"])
@@ -108,20 +128,19 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         """Accepts a lazy generator, not just a dict.items()."""
         filepath = os.path.join(self.tmpdir, "gen.safetensors")
 
-        def gen():
-            for i in range(5):
-                yield f"param_{i}", torch.randn(32, 32, dtype=torch.bfloat16)
-
         # We need to capture the generated tensors for comparison.
         reference = {}
+        # Pre-build meta so the streaming writer can size the header exactly.
+        meta: StateDictMeta = [(f"param_{i}", "BF16", [32, 32]) for i in range(5)]
 
         def gen_with_capture():
             for i in range(5):
                 t = torch.randn(32, 32, dtype=torch.bfloat16)
-                reference[f"param_{i}"] = t.clone()
-                yield f"param_{i}", t
+                name = f"param_{i}"
+                reference[name] = t.clone()
+                yield name, t
 
-        save_safetensors_streaming(gen_with_capture(), filepath)
+        save_safetensors_streaming(gen_with_capture(), filepath, state_dict_meta=meta)
 
         loaded = load_file(filepath)
         self.assertEqual(set(loaded.keys()), set(reference.keys()))
@@ -137,7 +156,12 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         filepath = os.path.join(self.tmpdir, "model.safetensors")
         tensors = {"w": torch.randn(8, 8)}
 
-        result = save_safetensors_streaming(tensors.items(), filepath, rename=False)
+        result = save_safetensors_streaming(
+            tensors.items(),
+            filepath,
+            state_dict_meta=_meta_from_tensors(tensors),
+            rename=False,
+        )
 
         self.assertEqual(result, filepath + ".tmp")
         self.assertTrue(os.path.exists(filepath + ".tmp"))
@@ -148,43 +172,60 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         torch.testing.assert_close(loaded["w"], tensors["w"])
 
     # ------------------------------------------------------------------
-    # Header overflow fallback
+    # collect_state_dict_meta helper
     # ------------------------------------------------------------------
 
-    def test_header_overflow_fallback(self):
-        """When estimated_tensor_count is too low, the rewrite fallback kicks in."""
-        # Use a very small estimate to force overflow.
-        tensors = {f"very_long_tensor_name_{i:04d}": torch.randn(4) for i in range(200)}
-        filepath = os.path.join(self.tmpdir, "overflow.safetensors")
+    def test_collect_state_dict_meta(self):
+        """collect_state_dict_meta correctly extracts name/dtype/shape."""
+        tensors = {
+            "w1": torch.randn(4, 8, dtype=torch.float32),
+            "w2": torch.randn(16, dtype=torch.bfloat16),
+            "w3": torch.randn(2, 3, dtype=torch.float16),
+        }
+        meta = collect_state_dict_meta(tensors.items())
+        self.assertEqual(len(meta), 3)
+        self.assertEqual(meta[0], ("w1", "F32", [4, 8]))
+        self.assertEqual(meta[1], ("w2", "BF16", [16]))
+        self.assertEqual(meta[2], ("w3", "F16", [2, 3]))
 
-        save_safetensors_streaming(
-            tensors.items(),
-            filepath,
-            estimated_tensor_count=1,  # way too small
-        )
+    # ------------------------------------------------------------------
+    # Exact header sizing via state_dict_meta
+    # ------------------------------------------------------------------
+
+    def test_exact_header_sizing(self):
+        """With exact meta, a large number of tensors is sized precisely."""
+        tensors = {f"very_long_tensor_name_{i:04d}": torch.randn(4) for i in range(500)}
+        meta = _meta_from_tensors(tensors)
+        filepath = os.path.join(self.tmpdir, "exact_header.safetensors")
+
+        save_safetensors_streaming(tensors.items(), filepath, state_dict_meta=meta)
 
         loaded = load_file(filepath)
         self.assertEqual(set(loaded.keys()), set(tensors.keys()))
-        for name, expected in tensors.items():
-            torch.testing.assert_close(loaded[name], expected)
 
-    def test_header_overflow_fallback_with_rename_false(self):
-        """Header overflow should still succeed when the caller finalizes the temp file."""
-        tensors = {f"very_long_tensor_name_{i:04d}": torch.randn(4) for i in range(200)}
-        filepath = os.path.join(self.tmpdir, "overflow_async.safetensors")
+        # Verify header was sized exactly — no padding beyond alignment.
+        exact_size = _compute_exact_header_size(meta)
+        with open(filepath, "rb") as f:
+            actual_header_size = struct.unpack("<Q", f.read(8))[0]
+        self.assertEqual(actual_header_size, exact_size)
 
-        tmp_path = save_safetensors_streaming(
-            tensors.items(),
-            filepath,
-            estimated_tensor_count=1,
-            rename=False,
-        )
+    def test_meta_mixed_dtypes(self):
+        """state_dict_meta works with mixed dtypes."""
+        tensors = {
+            "fp32": torch.randn(16, dtype=torch.float32),
+            "bf16": torch.randn(16, dtype=torch.bfloat16),
+            "fp16": torch.randn(16, dtype=torch.float16),
+        }
+        meta: StateDictMeta = [
+            ("fp32", "F32", [16]),
+            ("bf16", "BF16", [16]),
+            ("fp16", "F16", [16]),
+        ]
+        filepath = os.path.join(self.tmpdir, "meta_mixed.safetensors")
 
-        self.assertEqual(tmp_path, filepath + ".tmp")
-        self.assertTrue(os.path.exists(tmp_path))
+        save_safetensors_streaming(tensors.items(), filepath, state_dict_meta=meta)
 
-        loaded = load_file(tmp_path)
-        self.assertEqual(set(loaded.keys()), set(tensors.keys()))
+        loaded = load_file(filepath)
         for name, expected in tensors.items():
             torch.testing.assert_close(loaded[name], expected)
 
@@ -200,7 +241,9 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
         }
         filepath = os.path.join(self.tmpdir, "header.safetensors")
 
-        save_safetensors_streaming(tensors.items(), filepath)
+        save_safetensors_streaming(
+            tensors.items(), filepath, state_dict_meta=_meta_from_tensors(tensors)
+        )
 
         with open(filepath, "rb") as f:
             header_size = struct.unpack("<Q", f.read(8))[0]
@@ -233,8 +276,16 @@ class TestSaveSafetensorsStreaming(unittest.TestCase):
             yield "bad", torch.randn(4, dtype=torch.complex64)
 
         filepath = os.path.join(self.tmpdir, "bad.safetensors")
+        meta: StateDictMeta = [("bad", "CF64", [4])]  # dummy meta
         with self.assertRaises(ValueError):
-            save_safetensors_streaming(gen(), filepath)
+            save_safetensors_streaming(gen(), filepath, state_dict_meta=meta)
+
+    def test_missing_state_dict_meta_raises(self):
+        """Calling without state_dict_meta should raise TypeError."""
+        tensors = {"w": torch.randn(8, 8)}
+        filepath = os.path.join(self.tmpdir, "no_meta.safetensors")
+        with self.assertRaises(TypeError):
+            save_safetensors_streaming(tensors.items(), filepath)  # type: ignore[call-arg]
 
 
 if __name__ == "__main__":

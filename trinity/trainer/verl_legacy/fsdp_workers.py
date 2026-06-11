@@ -796,6 +796,10 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         self._weight_sender = None
 
+        # Pre-collect state dict metadata for exact safetensors header sizing.
+        if self._is_actor:
+            self._cache_state_dict_meta()
+
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def get_weight_sync_info(self):
         """Return weight sync rendezvous info from rank 0.
@@ -892,6 +896,25 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 self.logger.info("Tearing down weight sync group.")
                 torch.distributed.destroy_process_group(self._model_update_group)
                 self._model_update_group = None
+
+    def _cache_state_dict_meta(self):
+        """Collect and cache state-dict metadata for exact safetensors header sizing.
+
+        This is a one-time cost paid during ``init_model``; all subsequent
+        checkpoint saves reuse the cached metadata.
+        """
+        from trinity.common.models.streaming_safetensors import collect_state_dict_meta
+
+        with self._fsdp_offload_context():
+            if self.config.actor.strategy == "fsdp":
+                gen = self._per_tensor_params_fsdp1()
+            else:  # fsdp2
+                gen = self._per_tensor_params_fsdp2()
+            self._state_dict_meta = collect_state_dict_meta(gen)
+        self.logger.info(
+            f"Cached state_dict_meta: {len(self._state_dict_meta)} tensors, "
+            f"exact header sizing enabled for streaming writes"
+        )
 
     def _per_tensor_params_fsdp1(self):
         """Yield ``(name, param)`` for FSDP1 with ``summon_full_params``.
@@ -1200,7 +1223,12 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                     for name, weight in gen:
                         yield name, weight.cpu().detach()
 
-                tmp_path = save_safetensors_streaming(_rank0_iter(), filepath, rename=False)
+                tmp_path = save_safetensors_streaming(
+                    _rank0_iter(),
+                    filepath,
+                    state_dict_meta=self._state_dict_meta,
+                    rename=False,
+                )
                 self.checkpoint_manager.finalize_safetensors_async(tmp_path, filepath, global_step)
             else:
                 # Consume generator to participate in FSDP all-gather.
