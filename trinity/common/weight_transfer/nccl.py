@@ -159,7 +159,7 @@ class NCCLSender(BaseSender):
         """ZMQ connection info for receivers: ``{zmq_ip, zmq_port}``."""
         return {"zmq_ip": self._zmq_ip, "zmq_port": self._zmq_port}
 
-    def prepare(
+    def prepare(  # type: ignore [override]
         self,
         pg: torch.distributed.ProcessGroup,
         bucket_size: int,
@@ -522,7 +522,7 @@ class SGLangNCCLReceiver(BaseReceiver):
         self._socket.setsockopt_string(zmq.SUBSCRIBE, self._topic)
         self.logger.info(f"SGLangNCCLReceiver ZMQ SUB connected to {address}")
 
-    def receive(self) -> Iterator[Tuple[list, bool]]:
+    def receive(self) -> Iterator[Tuple[list, bool]]:  # type: ignore [override]
         """Yield ``(batch_meta, is_last)`` pairs from the Sender.
 
         Each ``batch_meta`` is a list of ``(name, dtype_str, shape)``

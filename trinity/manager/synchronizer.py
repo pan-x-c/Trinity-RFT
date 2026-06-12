@@ -43,7 +43,7 @@ class Synchronizer:
         self.sync_method = config.synchronizer.sync_method
         self.world_size = config.synchronizer.explorer_world_size
         if self.sync_method == SyncMethod.NCCL:
-            self.world_size += 1 # include trainer in world size for NCCL sync
+            self.world_size += 1  # type: ignore [operator]
         asyncio.create_task(self._check_modules())
         if (
             self.config.mode != "bench"

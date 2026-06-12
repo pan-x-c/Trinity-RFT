@@ -283,11 +283,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.trainer.max_checkpoints_to_keep = 2
         self.config.algorithm.optimizer.lr = 1e-5
         if self.offloading:
-            if self.strategy == "fsdp":
-                self.config.trainer.param_offload = True
-                self.config.trainer.optimizer_offload = True
-            else:
-                self.config.trainer.offload_policy = True
+            self.config.trainer.offload_policy = True
         self.config.check_and_update()
         both(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
@@ -308,6 +304,15 @@ class TestTrainerGSM8K(BaseTrainerCase):
         time_metrics = parser.metric_list("time")
         self.assertGreater(len(time_metrics), 0)
         self.assertEqual(parser.metric_max_step(time_metrics[0]), 4)
+        # check checkpoint exists
+        checkpoint_step_4, step_num = get_checkpoint_dir_with_step_num(
+            checkpoint_root_path=self.config.checkpoint_job_dir,
+            trainer_type=self.config.trainer.trainer_type,
+        )
+        self.assertEqual(step_num, 4)
+        self.assertIsNotNone(checkpoint_step_4)
+        hf_files = os.listdir(os.path.join(checkpoint_step_4, "actor", "huggingface"))
+        self.assertGreater(len(hf_files), 0)
         # TODO: used for real testing
         # rewards = parser.metric_values("critic/rewards/mean")
         # self.assertTrue(0.4 < rewards[0] < 0.55)
