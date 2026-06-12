@@ -7,7 +7,9 @@ rollout/inference workers:
 * :class:`NCCLSender` — trainer-side sender supporting two modes:
 
   - **Bucket mode** (default): double-buffered GPU buckets over NCCL
-    broadcast, overlapping communication with bucket filling.
+    broadcast, overlapping bucket filling with network transfer.  Uses
+    async NCCL broadcasts (``async_op=True``) and per-stream CUDA events
+    so that the copy stream and NCCL's internal stream run concurrently.
   - **Per-tensor mode** (``per_tensor=True``): individual NCCL broadcasts
     per tensor with ZMQ-batched metadata.  No GPU buffers are allocated.
     Designed for backends (e.g. SGLang) that manage NCCL reception
@@ -216,41 +218,61 @@ class NCCLSender(BaseSender):
     ) -> None:
         """Send all weights via double-buffered NCCL broadcast.
 
-        Iterates over *weights*, packs tensor chunks into fixed-size
-        buckets, and broadcasts each bucket.  While one bucket is being
-        broadcast (in a background thread), the next bucket is filled
-        concurrently.
+        Uses two GPU buffers and async NCCL to overlap bucket filling with
+        network transfer.
+
+        Design:
+
+        * A :class:`torch.cuda.Event` (``fill_done``) is recorded on the
+          default CUDA stream after each batch of ``copy_()`` calls.
+          ``fill_done.synchronize()`` waits **only** for the copy stream,
+          leaving NCCL's internal stream free to proceed concurrently — unlike
+          ``torch.cuda.synchronize()`` which would wait for all streams and
+          kill fill-broadcast overlap.
+        * ``torch.distributed.broadcast(..., async_op=True)`` launches the
+          NCCL collective without blocking the CPU, returning a ``Work``
+          handle.  The handle (``prev_bcast_work``) is waited on at the
+          *next* bucket boundary, just before overwriting the buffer that
+          was being broadcast, guaranteeing correctness without serialising
+          the fill and broadcast phases.
         """
         assert self._send_buf is not None, "Call prepare() first"
 
         send_buf = self._send_buf
         recv_buf = self._recv_buf
-        broadcast_op: Optional[_BroadcastFuture] = None
 
         start_time = time.time()
         bucket_meta: Dict[str, TensorMeta] = {}
         offset = 0
 
+        # CUDA event to track copy_ completion on the default stream only.
+        fill_done = torch.cuda.Event()
+        # Work handle for the previous async broadcast (None until the first
+        # bucket is dispatched).
+        prev_bcast_work: Optional[torch.distributed.Work] = None
+
         for tensor_meta, chunk in split_weight_chunks(weights, self.bucket_size):
-            # If chunk doesn't fit in current bucket, flush it.
             if offset + tensor_meta.chunk_size > self.bucket_size:
-                torch.cuda.synchronize()
+                # --- Flush the full bucket ---
 
-                # Wait for the previous broadcast to finish.
-                if broadcast_op is not None:
-                    broadcast_op.wait()
+                # Wait for copy_ ops into send_buf to finish (copy stream only).
+                fill_done.record()
+                fill_done.synchronize()
 
-                # Launch broadcast for the current (full) bucket.
-                broadcast_op = _BroadcastFuture(
-                    is_sender=True,
-                    pg=self._pg,
-                    bucket=send_buf,
-                    metadata={"bucket_meta": bucket_meta, "is_last": False},
-                    socket=self._socket,
-                    topic=self._topic,
+                # Confirm the *previous* broadcast finished so recv_buf
+                # (about to become the new send_buf) is safe to overwrite.
+                if prev_bcast_work is not None:
+                    prev_bcast_work.wait()
+
+                # Publish metadata, then launch async broadcast of send_buf.
+                self._socket.send_string(self._topic, flags=zmq.SNDMORE)
+                self._socket.send_pyobj({"bucket_meta": bucket_meta, "is_last": False})
+                prev_bcast_work = torch.distributed.broadcast(
+                    send_buf, src=0, group=self._pg, async_op=True
                 )
 
-                # Swap buffers: fill the other one while this broadcasts.
+                # Swap buffers.  recv_buf is safe to fill because
+                # prev_bcast_work.wait() above confirmed NCCL is done with it.
                 send_buf, recv_buf = recv_buf, send_buf
                 bucket_meta = {}
                 offset = 0
@@ -263,20 +285,18 @@ class NCCLSender(BaseSender):
             send_buf[offset : offset + tensor_meta.chunk_size].copy_(chunk)
             offset += tensor_meta.chunk_size
 
-        # Flush the final (possibly partial) bucket.
-        torch.cuda.synchronize()
-        if broadcast_op is not None:
-            broadcast_op.wait()
+        # --- Flush the final (possibly partial) bucket ---
+        fill_done.record()
+        fill_done.synchronize()
+        if prev_bcast_work is not None:
+            prev_bcast_work.wait()
 
-        broadcast_op = _BroadcastFuture(
-            is_sender=True,
-            pg=self._pg,
-            bucket=send_buf,
-            metadata={"bucket_meta": bucket_meta, "is_last": True},
-            socket=self._socket,
-            topic=self._topic,
+        self._socket.send_string(self._topic, flags=zmq.SNDMORE)
+        self._socket.send_pyobj({"bucket_meta": bucket_meta, "is_last": True})
+        bcast_work = torch.distributed.broadcast(
+            send_buf, src=0, group=self._pg, async_op=True
         )
-        broadcast_op.wait()
+        bcast_work.wait()
 
         elapsed = time.time() - start_time
         self.logger.info(f"NCCLSender: send completed in {elapsed:.2f}s")
