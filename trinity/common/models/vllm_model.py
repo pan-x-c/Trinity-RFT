@@ -18,6 +18,7 @@ from trinity.common.models.mm_utils import (
     vLLMMultiModalRender,
 )
 from trinity.common.models.model import BaseInferenceModel
+from trinity.common.models.utils import get_checkpoint_dir_with_step_num
 from trinity.common.models.vllm_patch import get_vllm_version
 
 
@@ -111,10 +112,22 @@ class vLLMRolloutModel(BaseInferenceModel):
         """Prepare the model for inference."""
         import vllm
         from vllm.config import WeightTransferConfig
+        from vllm.distributed.weight_transfer.factory import WeightTransferEngineFactory
+
+        from trinity.common.models.vllm_extension import CheckpointWeightTransferEngine
 
         async with self.async_lock:
             if self._prepared:
                 return
+
+            WeightTransferEngineFactory.register_engine(
+                "checkpoint",
+                CheckpointWeightTransferEngine,
+            )
+            weight_transfer_config = WeightTransferConfig(
+                backend="nccl" if self.config.sync_method == SyncMethod.NCCL else "checkpoint"
+            )
+
             rope_params = defaultdict(dict)
             if self.config.rope_scaling is not None:
                 rope_params["rope_parameters"] = self.config.rope_scaling
@@ -153,7 +166,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 nnodes=self.config.nnodes,
                 node_rank=self.config.node_rank,
                 async_scheduling=False,
-                weight_transfer_config=WeightTransferConfig(backend="nccl"),
+                weight_transfer_config=weight_transfer_config,
                 **rope_kwargs,
                 **self.config.lora_kwargs,
             )
@@ -531,7 +544,11 @@ class vLLMRolloutModel(BaseInferenceModel):
             )
 
     async def sync_model_weights(
-        self, model_version: int, sync_method: SyncMethod, timeout: float = 1200
+        self,
+        model_version: int,
+        method: SyncMethod,
+        timeout: float = 1200,
+        **kwargs,
     ) -> int:
         """Sync model weights to vLLM."""
         if self.config.node_rank != 0:
@@ -561,15 +578,20 @@ class vLLMRolloutModel(BaseInferenceModel):
         await self.async_llm.reset_prefix_cache(reset_running_requests=False)
 
         await self.async_llm.start_weight_update(is_checkpoint_format=True)
-        await self.async_llm.update_weights(
-            WeightTransferUpdateRequest(
-                update_info=dict(
-                    names=[meta[0] for meta in self.state_dict_meta],
-                    dtype_names=[meta[1] for meta in self.state_dict_meta],
-                    shapes=[meta[2] for meta in self.state_dict_meta],
+        if method == SyncMethod.NCCL:
+            update_info = dict(
+                names=[meta[0] for meta in self.state_dict_meta],
+                dtype_names=[meta[1] for meta in self.state_dict_meta],
+                shapes=[meta[2] for meta in self.state_dict_meta],
+                packed=True,
+            )
+        elif method == SyncMethod.CHECKPOINT:
+            update_info = dict(
+                checkpoint_path=get_checkpoint_dir_with_step_num(
+                    checkpoint_root_path=self.config.check
                 )
             )
-        )
+        await self.async_llm.update_weights(WeightTransferUpdateRequest(update_info=update_info))
         await self.async_llm.finish_weight_update()
         await self.async_llm.resume_generation()
         self.model_version = model_version

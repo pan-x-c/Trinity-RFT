@@ -682,6 +682,7 @@ class ExplorerConfigValidator(ConfigValidator):
             config.algorithm.enable_router_replay
         )
         config.explorer.rollout_model.ray_namespace = config.ray_namespace
+        config.explorer.rollout_model.sync_method = config.synchronizer.sync_method
         if (
             config.mode == "colocate"
             and config.explorer.rollout_model.gpu_memory_utilization > 0.25

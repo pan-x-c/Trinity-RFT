@@ -93,7 +93,11 @@ class InferenceModel(ABC):
 
     @abstractmethod
     async def sync_model_weights(
-        self, model_version: int, method: SyncMethod, timeout: float = 1200
+        self,
+        model_version: int,
+        method: SyncMethod,
+        timeout: float = 1200,
+        **kwargs,
     ) -> int:
         """Sync the model with the latest model_version."""
 
@@ -838,10 +842,14 @@ class ModelWrapper:
         await self.model.set_state_dict_meta.remote(state_dict_meta)
 
     async def sync_model_weights(
-        self, model_version: int, method: SyncMethod, timeout: int = 1200
+        self,
+        model_version: int,
+        method: SyncMethod,
+        timeout: int = 1200,
+        **kwargs,
     ) -> None:
         """Sync the model weights"""
-        await self.model.sync_model_weights.remote(model_version, method, timeout=timeout)
+        await self.model.sync_model_weights.remote(model_version, method, timeout=timeout, **kwargs)
         if self._engine_type == "tinker":
             # update the model path after syncing weights for tinker engine
             self._model_path = await self.model.get_model_path.remote()

@@ -205,51 +205,28 @@ class Synchronizer:
         """Check if any explorer is require sync."""
         return self.explorer_status_counts[RunningStatus.REQUIRE_SYNC] > 0
 
-    async def set_model_state_dict_with_step_num(
-        self, step_num: Optional[int] = None, world_size: Optional[int] = None
-    ) -> int:
+    async def get_state_dict_info(
+        self,
+        step_num: Optional[int] = None,
+    ) -> tuple[int, str]:
         """
-        Load and set the model state dictionary from a checkpoint at a specific step.
+        Get the model state dict info for a specific checkpoint step number.
 
         Args:
             step_num: Training step number corresponding to the checkpoint.
-            world_size: Number of shards expected for this checkpoint.
+                If None, it means to get the latest checkpoint.
 
         Returns:
-            The updated model version (step number).
+            A tuple containing the updated model version (step number) and the path to the model state dict.
         """
-        from trinity.common.models.utils import (
-            get_checkpoint_dir_with_step_num,
-            load_state_dict,
-        )
-
-        if world_size is not None:  # Used when trainer updates the model
-            assert step_num is not None
-            assert self.checkpoint_shard_counter[step_num] < world_size, "World size mismatch!"
-            self.checkpoint_shard_counter[step_num] += 1
-            self.logger.info(
-                f"Synchronizer has received {self.checkpoint_shard_counter[step_num]} out of {world_size} shards from the checkpoint {step_num}."
-            )
-            if self.checkpoint_shard_counter[step_num] < world_size:
-                return step_num
+        from trinity.common.models.utils import get_checkpoint_dir_with_step_num
 
         checkpoint_dir, checkpoint_step_num = get_checkpoint_dir_with_step_num(
             checkpoint_root_path=self.config.checkpoint_job_dir,
             trainer_type=self.config.trainer.trainer_type,
             step_num=step_num,
         )
-        if checkpoint_step_num != self.model_version:
-            model_state_dict = (
-                load_state_dict(
-                    os.path.join(checkpoint_dir, "actor"),
-                    self.config.trainer,
-                )
-                if not self.enable_lora
-                else {}
-            )
-            # lora weights are stored in 'lora_adapter' subfolder and cannot be loaded directly
-            await self.set_model_state_dict(model_state_dict, checkpoint_step_num)
-        return checkpoint_step_num
+        return checkpoint_step_num, os.path.join(checkpoint_dir, "actor")
 
     async def set_model_state_dict(
         self, model_state_dict: Union[dict, None, str, Tuple[str, str]], trainer_step: int

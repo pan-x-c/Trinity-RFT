@@ -13,6 +13,7 @@ Key additions over the base class:
 - get_weight_sync_info / setup_weight_sync_group / teardown_weight_sync_group:
   NCCL weight sync group lifecycle for Explorer↔Trainer
 """
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Optional
@@ -28,6 +29,7 @@ from trinity.manager.synchronizer import Synchronizer
 from trinity.trainer.verl.checkpoint import CheckpointCoordinator
 from trinity.trainer.verl.losses import build_trinity_loss
 from trinity.utils.distributed import WeightTransferEngine
+from trinity.utils.stream_saver import save_safetensors_streaming
 from trinity.utils.log import get_logger
 
 
@@ -388,22 +390,57 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         CheckpointCoordinator, which also notifies CheckpointMonitor so the
         iteration file is only updated after the save completes.
         """
+        """Save model state dict for checkpoint-based weight sync.
+
+        Uses ``get_per_tensor_param()`` to gather full tensors from all
+        ranks (FSDP all-gather / DTensor full_tensor), then **streams**
+        them to a safetensors file one tensor at a time on rank 0.
+        Non-rank-0 workers consume the generator to participate in
+        collective operations but do not save.
+
+        The streaming write goes through the OS page cache (fast memcpy).
+        After the main-thread write completes, ``fsync`` + atomic rename
+        are offloaded to a background thread via
+        :class:`CheckpointCoordinator` so that the training loop is not
+        blocked by disk I/O.
+        """
         coordinator = self._get_coordinator()
-        strategy = self.config.actor.strategy
-        if strategy.startswith("fsdp"):
-            from trinity.trainer.verl.fsdp_engine import fsdp_save_state_dict
+        rank = torch.distributed.get_rank()
 
-            fsdp_save_state_dict(
-                self.actor.engine, local_path, global_step, coordinator, logger=self.logger
+        per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
+
+        if rank == 0:
+            os.makedirs(local_path, exist_ok=True)
+            filepath = os.path.join(local_path, "model.safetensors")
+
+            def _rank0_iter():
+                for name, weight in per_tensor_param:
+                    yield name, weight.cpu().detach()
+
+            tmp_path = save_safetensors_streaming(
+                _rank0_iter(),
+                filepath,
+                state_dict_meta=self._state_dict_meta_list,
+                rename=False,
             )
-        elif strategy.startswith("megatron"):
-            from trinity.trainer.verl.megatron_engine import megatron_save_state_dict
 
-            megatron_save_state_dict(
-                self.actor.engine, local_path, global_step, coordinator, logger=self.logger
+            def _finalize():
+                fd = os.open(tmp_path, os.O_RDONLY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+                os.replace(tmp_path, filepath)
+
+            coordinator.save_async("model_state_dict", _finalize, global_step, is_state_dict=True)
+            self.logger.info(
+                f"Actor state_dict save initiated: path={local_path}, step={global_step}"
             )
         else:
-            raise ValueError(f"Unsupported strategy for save_state_dict: {strategy}")
+            # Consume generator to participate in FSDP all-gather.
+            for _ in per_tensor_param:
+                pass
+
         self._save_lora(local_path)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)

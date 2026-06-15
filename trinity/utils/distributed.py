@@ -162,6 +162,7 @@ class VLLMWeightTransferEngine(WeightTransferEngine):
             iterator=iterator,
             trainer_args=NCCLTrainerSendWeightsArgs(
                 group=self._model_update_group,
+                packed=True,
             ),
         )
 
