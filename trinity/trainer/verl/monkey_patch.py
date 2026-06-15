@@ -43,5 +43,6 @@ def save_checkpoint(
 def patch_verl_engine(engine):
     if engine is None:
         return
-    if isinstance(engine, FSDPEngine):
+    if isinstance(engine, FSDPEngine) and not getattr(engine, "_patched", False):
         engine.save_checkpoint = MethodType(save_checkpoint, engine)
+        setattr(engine, "_patched", True)
