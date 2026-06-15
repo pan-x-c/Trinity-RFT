@@ -100,8 +100,8 @@ def init_process_group(
     _world.pg_group_ranks[pg] = {i: i for i in range(world_size)}
     return pg
 
-class WeightTransferEngine:
 
+class WeightTransferEngine:
     @abstractmethod
     def sync_weight(self, iterator):
         """Perform the weight sync."""
@@ -111,7 +111,9 @@ class WeightTransferEngine:
         """Tear down the weight sync group."""
 
     @staticmethod
-    def create(engine_type: str, master_address: str, master_port: int, world_size: int, group_name: str):
+    def create(
+        engine_type: str, master_address: str, master_port: int, world_size: int, group_name: str
+    ):
         """Factory method to create the appropriate weight transfer engine based on the rollout engine type."""
         if engine_type == "vllm":
             return VLLMWeightTransferEngine(
@@ -129,6 +131,7 @@ class WeightTransferEngine:
             )
         else:
             raise ValueError(f"Unsupported engine type: {engine_type}")
+
 
 class VLLMWeightTransferEngine(WeightTransferEngine):
     """A helper class to manage NCCL weight synchronization using vLLM's API."""
@@ -151,8 +154,8 @@ class VLLMWeightTransferEngine(WeightTransferEngine):
     def sync_weight(self, iterator):
         """Perform the NCCL weight sync using vLLM's API."""
         from vllm.distributed.weight_transfer.nccl_engine import (
-            NCCLWeightTransferEngine,
             NCCLTrainerSendWeightsArgs,
+            NCCLWeightTransferEngine,
         )
 
         NCCLWeightTransferEngine.trainer_send_weights(

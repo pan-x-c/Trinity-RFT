@@ -278,7 +278,9 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         )
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def set_trinity_config(self, algo_config: AlgorithmConfig, rollout_engine_type: str, ray_namespace: str):
+    def set_trinity_config(
+        self, algo_config: AlgorithmConfig, rollout_engine_type: str, ray_namespace: str
+    ):
         """Set Trinity-specific runtime config on the worker.
 
         This is called by VERLTrainer after worker initialization to inject:
@@ -357,11 +359,6 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         Broadcasts full model parameters from rank 0 (trainer) to all
         Explorer ranks via the NCCL process group.
         """
-        from vllm.distributed.weight_transfer.nccl_engine import (
-            NCCLTrainerSendWeightsArgs,
-            NCCLWeightTransferEngine,
-        )
-
         per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
         weight_iterator = self._rank0_iterator_wrapper(per_tensor_param)
         if torch.distributed.get_rank() == 0:
