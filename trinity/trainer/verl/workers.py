@@ -29,8 +29,8 @@ from trinity.manager.synchronizer import Synchronizer
 from trinity.trainer.verl.checkpoint import CheckpointCoordinator
 from trinity.trainer.verl.losses import build_trinity_loss
 from trinity.utils.distributed import WeightTransferEngine
-from trinity.utils.stream_saver import save_safetensors_streaming
 from trinity.utils.log import get_logger
+from trinity.utils.stream_saver import save_safetensors_streaming
 
 
 class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):

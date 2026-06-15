@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import struct
+from collections.abc import Sequence
 from typing import Iterable, NamedTuple
 
 import torch
@@ -46,6 +47,7 @@ class TensorMeta(NamedTuple):
 
 # A full state-dict's worth of tensor metadata.
 StateDictMeta = list[TensorMeta]
+StateDictMetaItem = TensorMeta | tuple[str, str | torch.dtype, Sequence[int]]
 
 # ---------------------------------------------------------------------------
 # Dtype mapping (PyTorch → safetensors string / element size)
@@ -78,6 +80,45 @@ DTYPE_ELEMENT_SIZE: dict[str, int] = {
 }
 
 
+def _normalize_meta_dtype(dtype: str | torch.dtype) -> str:
+    """Convert supported dtype representations to safetensors dtype strings."""
+    if isinstance(dtype, torch.dtype):
+        dtype_str = DTYPE_TO_SAFETENSORS.get(dtype)
+        if dtype_str is None:
+            raise ValueError(f"Unsupported dtype {dtype} in state_dict_meta.")
+        return dtype_str
+
+    if dtype in DTYPE_ELEMENT_SIZE:
+        return dtype
+
+    upper_dtype = dtype.upper()
+    if upper_dtype in DTYPE_ELEMENT_SIZE:
+        return upper_dtype
+
+    torch_dtype = getattr(torch, dtype.split(".")[-1], None)
+    if isinstance(torch_dtype, torch.dtype):
+        dtype_str = DTYPE_TO_SAFETENSORS.get(torch_dtype)
+        if dtype_str is None:
+            raise ValueError(f"Unsupported dtype {dtype} in state_dict_meta.")
+        return dtype_str
+
+    raise ValueError(f"Unsupported dtype {dtype} in state_dict_meta.")
+
+
+def _normalize_state_dict_meta(meta: Iterable[StateDictMetaItem]) -> StateDictMeta:
+    """Normalize external metadata tuples to the internal TensorMeta format."""
+    normalized_meta: StateDictMeta = []
+    for name, dtype, shape in meta:
+        normalized_meta.append(
+            TensorMeta(
+                name=name,
+                dtype=_normalize_meta_dtype(dtype),
+                shape=list(shape),
+            )
+        )
+    return normalized_meta
+
+
 def _tensor_to_bytes(tensor: torch.Tensor) -> bytes:
     """Convert a CPU tensor to its raw bytes in C-contiguous order."""
     t = tensor.detach().contiguous()
@@ -91,16 +132,17 @@ def _tensor_to_bytes(tensor: torch.Tensor) -> bytes:
         return t.view(torch.uint8).numpy().tobytes()
 
 
-def _compute_exact_header_size(meta: StateDictMeta) -> int:
+def _compute_exact_header_size(meta: Iterable[StateDictMetaItem]) -> int:
     """Compute the exact safetensors header JSON size from pre-collected metadata.
 
     Builds a full header dict (with placeholder data_offsets) just to measure
     the serialised JSON length, then aligns to 8 bytes as required by the
     safetensors format.
     """
+    normalized_meta = _normalize_state_dict_meta(meta)
     header: dict[str, dict] = {}
     data_offset = 0
-    for name, dtype_str, shape in meta:
+    for name, dtype_str, shape in normalized_meta:
         element_size = DTYPE_ELEMENT_SIZE.get(dtype_str, 0)
         nbytes = 1
         for s in shape:
@@ -119,7 +161,7 @@ def _compute_exact_header_size(meta: StateDictMeta) -> int:
 def save_safetensors_streaming(
     tensor_iter: Iterable[tuple[str, torch.Tensor]],
     filepath: str | os.PathLike,
-    state_dict_meta: StateDictMeta,
+    state_dict_meta: Iterable[StateDictMetaItem],
     *,
     rename: bool = True,
 ) -> str:
@@ -134,7 +176,9 @@ def save_safetensors_streaming(
             ``filepath + ".tmp"``; if *rename* is ``True`` the temp file is
             atomically renamed to *filepath* before returning.
         state_dict_meta: Pre-collected ``(name, dtype, shape)`` metadata for
-            every tensor that *tensor_iter* will yield.  The header space is
+            every tensor that *tensor_iter* will yield. Supports both the
+            internal :class:`TensorMeta` format and plain tuples such as
+            ``(name, "bfloat16", (hidden, hidden))``. The header space is
             computed **exactly** from this metadata, so the header will
             always fit the reserved space without any rewrite.
             Callers should collect this once during initialization via
@@ -150,9 +194,10 @@ def save_safetensors_streaming(
     """
     filepath = str(filepath)
     tmp_path = filepath + ".tmp"
+    normalized_state_dict_meta = _normalize_state_dict_meta(state_dict_meta)
 
     # --- Exact header sizing from pre-collected metadata ---
-    max_header_size = _compute_exact_header_size(state_dict_meta)
+    max_header_size = _compute_exact_header_size(normalized_state_dict_meta)
     # Align to 8 bytes (safetensors convention).
     max_header_size = ((max_header_size + 7) // 8) * 8
 

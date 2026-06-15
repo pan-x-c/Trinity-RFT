@@ -182,7 +182,8 @@ class Explorer:
 
     async def _checkpoint_weights_update(self, step_num: Optional[int] = None) -> int:
         self.logger.info(f"Start to update model weights from checkpoint at step {step_num}.")
-        step_num, checkpoint_path = await self.synchronizer.get_state_dict_info.remote(step_num)
+        if step_num is None:
+            step_num = await self.synchronizer.get_latest_model_version.remote()
         if step_num is None or step_num <= self.model_version:
             self.logger.warning(
                 f"No new checkpoint found for step {step_num}. Current model version: {self.model_version}."
@@ -194,7 +195,6 @@ class Explorer:
                     step_num,
                     self.config.synchronizer.sync_method,
                     timeout=self.config.synchronizer.sync_timeout,
-                    checkpoint_path=checkpoint_path,
                 )
                 for model in self.models
             ]

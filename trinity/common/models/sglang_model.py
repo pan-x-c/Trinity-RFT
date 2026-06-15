@@ -544,7 +544,6 @@ class SGLangRolloutModel(BaseInferenceModel):
         model_version: int,
         method: SyncMethod,
         timeout: float = 1200,
-        **kwargs,
     ) -> int:
         if self.config.node_rank != 0:
             self.logger.warning(
@@ -580,7 +579,9 @@ class SGLangRolloutModel(BaseInferenceModel):
                 )
             self.model_version = model_version
         elif method == SyncMethod.CHECKPOINT:
-            model_path = kwargs.get("checkpoint_path", None)
+            model_path = os.path.join(
+                self.config.checkpoint_job_dir, f"global_step_{model_version}", "actor"
+            )
             if model_path is None:
                 raise ValueError("checkpoint_path must be provided for CHECKPOINT sync method")
             if model_path is not None:

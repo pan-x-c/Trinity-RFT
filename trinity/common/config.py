@@ -591,6 +591,7 @@ class InferenceModelConfig:
     ray_namespace: Optional[str] = None
     ray_actor_name: Optional[str] = None
     sync_method: Optional[SyncMethod] = None
+    checkpoint_job_dir: Optional[str] = None
     cuda_visible_devices: Optional[str] = None
 
     # ! DO NOT SET, automatically set from model.lora_configs

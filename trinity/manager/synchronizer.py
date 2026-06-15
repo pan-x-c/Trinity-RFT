@@ -91,8 +91,6 @@ class Synchronizer:
             )
 
     async def _find_verl_latest_state_dict(self) -> None:
-        from trinity.common.models.utils import load_state_dict
-
         default_local_dir = self.config.checkpoint_job_dir
         local_latest_state_dict_iteration = os.path.join(
             default_local_dir, "latest_state_dict_iteration.txt"
@@ -110,20 +108,7 @@ class Synchronizer:
                     self.logger.info(
                         f"Synchronizer has found a new model state dict at step {latest_model_version}."
                     )
-                    model_state_dict = (
-                        load_state_dict(
-                            os.path.join(
-                                default_local_dir, f"global_step_{latest_model_version}", "actor"
-                            ),
-                            self.config.trainer,
-                        )
-                        if not self.enable_lora
-                        else {}
-                    )
-                    self.logger.info(
-                        f"Synchronizer has loaded model state dict from checkpoint {latest_model_version}."
-                    )
-                    await self.set_model_state_dict(model_state_dict, latest_model_version)
+                    await self.set_model_state_dict(None, latest_model_version)
                     # remove the previous checkpoints to save disk space
                     await self._remove_previous_state_dict(current_model_version)
             await asyncio.sleep(1)
@@ -204,29 +189,6 @@ class Synchronizer:
     def explorer_requires_sync(self) -> bool:
         """Check if any explorer is require sync."""
         return self.explorer_status_counts[RunningStatus.REQUIRE_SYNC] > 0
-
-    async def get_state_dict_info(
-        self,
-        step_num: Optional[int] = None,
-    ) -> tuple[int, str]:
-        """
-        Get the model state dict info for a specific checkpoint step number.
-
-        Args:
-            step_num: Training step number corresponding to the checkpoint.
-                If None, it means to get the latest checkpoint.
-
-        Returns:
-            A tuple containing the updated model version (step number) and the path to the model state dict.
-        """
-        from trinity.common.models.utils import get_checkpoint_dir_with_step_num
-
-        checkpoint_dir, checkpoint_step_num = get_checkpoint_dir_with_step_num(
-            checkpoint_root_path=self.config.checkpoint_job_dir,
-            trainer_type=self.config.trainer.trainer_type,
-            step_num=step_num,
-        )
-        return checkpoint_step_num, os.path.join(checkpoint_dir, "actor")
 
     async def set_model_state_dict(
         self, model_state_dict: Union[dict, None, str, Tuple[str, str]], trainer_step: int

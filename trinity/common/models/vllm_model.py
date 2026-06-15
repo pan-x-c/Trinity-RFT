@@ -18,7 +18,6 @@ from trinity.common.models.mm_utils import (
     vLLMMultiModalRender,
 )
 from trinity.common.models.model import BaseInferenceModel
-from trinity.common.models.utils import get_checkpoint_dir_with_step_num
 from trinity.common.models.vllm_patch import get_vllm_version
 
 
@@ -112,18 +111,11 @@ class vLLMRolloutModel(BaseInferenceModel):
         """Prepare the model for inference."""
         import vllm
         from vllm.config import WeightTransferConfig
-        from vllm.distributed.weight_transfer.factory import WeightTransferEngineFactory
-
-        from trinity.common.models.vllm_extension import CheckpointWeightTransferEngine
 
         async with self.async_lock:
             if self._prepared:
                 return
 
-            WeightTransferEngineFactory.register_engine(
-                "checkpoint",
-                CheckpointWeightTransferEngine,
-            )
             weight_transfer_config = WeightTransferConfig(
                 backend="nccl" if self.config.sync_method == SyncMethod.NCCL else "checkpoint"
             )
@@ -140,7 +132,7 @@ class vLLMRolloutModel(BaseInferenceModel):
             engine_args = vllm.AsyncEngineArgs(
                 model=self.config.model_path,
                 enforce_eager=self.config.enforce_eager,
-                worker_extension_cls="trinity.common.models.vllm_worker.WorkerExtension",
+                worker_cls="trinity.common.models.vllm_worker.TrinityGPUWorker",
                 tensor_parallel_size=self.config.tensor_parallel_size,
                 seed=self.config.seed,
                 distributed_executor_backend="mp",
@@ -548,7 +540,6 @@ class vLLMRolloutModel(BaseInferenceModel):
         model_version: int,
         method: SyncMethod,
         timeout: float = 1200,
-        **kwargs,
     ) -> int:
         """Sync model weights to vLLM."""
         if self.config.node_rank != 0:
@@ -586,11 +577,10 @@ class vLLMRolloutModel(BaseInferenceModel):
                 packed=True,
             )
         elif method == SyncMethod.CHECKPOINT:
-            update_info = dict(
-                checkpoint_path=get_checkpoint_dir_with_step_num(
-                    checkpoint_root_path=self.config.check
-                )
+            checkpoint_path = os.path.join(
+                self.config.checkpoint_job_dir, f"global_step_{model_version}", "actor"  # type: ignore
             )
+            update_info = dict(checkpoint_path=checkpoint_path)
         await self.async_llm.update_weights(WeightTransferUpdateRequest(update_info=update_info))
         await self.async_llm.finish_weight_update()
         await self.async_llm.resume_generation()

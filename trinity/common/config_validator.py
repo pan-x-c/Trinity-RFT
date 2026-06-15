@@ -683,6 +683,7 @@ class ExplorerConfigValidator(ConfigValidator):
         )
         config.explorer.rollout_model.ray_namespace = config.ray_namespace
         config.explorer.rollout_model.sync_method = config.synchronizer.sync_method
+        config.explorer.rollout_model.checkpoint_job_dir = config.checkpoint_job_dir
         if (
             config.mode == "colocate"
             and config.explorer.rollout_model.gpu_memory_utilization > 0.25

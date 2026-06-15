@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """Extensions for vLLM."""
-import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -25,38 +24,7 @@ from vllm.distributed.weight_transfer.packed_tensor import (
     unpack_tensor,
 )
 
-from trinity.common.models.vllm_patch.worker_patch import patch_vllm_prompt_logprobs
-
-
-def _suppress_layerwise_reload_warnings() -> None:
-    """Silence benign vLLM layerwise reload warnings during weight sync."""
-    try:
-        logger = logging.getLogger("vllm.model_executor.model_loader.reload.layerwise")
-        if logger is not None:
-            logger.setLevel(logging.ERROR)
-    except Exception:  # pragma: no cover - best-effort suppression
-        pass
-
-
-class WorkerExtension:
-    def apply_patches(self):
-        """Apply necessary patches to vLLM."""
-        from verl.utils.vllm.patch import patch_vllm_moe_model_weight_loader
-
-        patch_vllm_moe_model_weight_loader(self.model_runner.model)
-        patch_vllm_prompt_logprobs(self.model_runner)
-        _suppress_layerwise_reload_warnings()
-
-
-def load_state_dict(checkpoint_path: str) -> Iterator[tuple[str, torch.Tensor]]:
-    """Load checkpoint tensors as ``(name, tensor)`` pairs.
-
-    Replace this placeholder with your checkpoint reader. Rank 0 is the only
-    rank that calls this function; other ranks receive tensors over NCCL.
-    """
-    raise NotImplementedError(
-        "Provide a load_state_dict(checkpoint_path) implementation for " f"{checkpoint_path!r}."
-    )
+from trinity.common.models.utils import load_state_dict_iterator
 
 
 @dataclass
@@ -145,7 +113,7 @@ class CheckpointWeightTransferEngine(
     ) -> None:
         assert self.model_update_group is not None
 
-        iterator = load_state_dict(update_info.checkpoint_path)
+        iterator = load_state_dict_iterator(checkpoint_dir=update_info.checkpoint_path)
 
         def post_iter_func(item: tuple[str, torch.Tensor]) -> torch.Tensor:
             tensor = item[1]
@@ -226,3 +194,17 @@ class CheckpointWeightTransferEngine(
             "inference rank 0. Call update_weights with a checkpoint_path "
             "instead of trainer_send_weights."
         )
+
+
+def register_checkpoint_weight_transfer_engine() -> None:
+    """Register Trinity's checkpoint weight transfer backend with vLLM."""
+    from vllm.distributed.weight_transfer.factory import WeightTransferEngineFactory
+
+    if "checkpoint" in WeightTransferEngineFactory._registry:
+        return
+
+    WeightTransferEngineFactory.register_engine(
+        name="checkpoint",
+        module_path_or_cls="trinity.common.models.vllm_extension",
+        class_name="CheckpointWeightTransferEngine",
+    )
