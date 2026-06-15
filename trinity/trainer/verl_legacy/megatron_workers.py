@@ -93,6 +93,7 @@ from trinity.trainer.verl_legacy.megatron_checkpoint_manager import (
 from trinity.trainer.verl_legacy.utils import patch_rope_theta_in_hf_config
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
+from trinity.utils.stream_saver import save_safetensors_streaming
 
 
 class MegatronWorker(Worker):
@@ -1025,15 +1026,36 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
         checkpoint_path,
         global_step=0,
     ):
+        rank = torch.distributed.get_rank()
+        aggressive_empty_cache(force_sync=True)
+        set_expandable_segments(False)
         if self._is_offload_param:
             load_megatron_model_to_gpu(self.actor_module)
-        self.checkpoint_mananager.save_state_dict(
-            local_path=checkpoint_path,
-            global_step=global_step,
-        )
-        torch.distributed.barrier()
+        if rank == 0:
+            os.makedirs(checkpoint_path, exist_ok=True)
+            filepath = os.path.join(checkpoint_path, "model.safetensors")
+
+            def _rank0_iter():
+                for name, weight in self._get_tensor_generator():
+                    yield name, weight.cpu().detach()
+
+            save_safetensors_streaming(
+                _rank0_iter(),
+                filepath,
+                state_dict_meta=self.state_dict_meta,
+                rename=True,
+            )
+            self.logger.info(
+                f"[Megatron] state_dict saved: path={checkpoint_path}, step={global_step}"
+                " (optimizer/extra skipped)"
+            )
+        else:
+            for _ in self._get_tensor_generator():
+                pass
         if self._is_offload_param:
             offload_megatron_model_to_cpu(self.actor_module)
+        torch.distributed.barrier()
+        torch.cuda.empty_cache()
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(

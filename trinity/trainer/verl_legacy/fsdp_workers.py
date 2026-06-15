@@ -20,6 +20,7 @@ import builtins
 import datetime
 import json
 import os
+import struct
 import warnings
 from contextlib import contextmanager
 from dataclasses import asdict
@@ -97,6 +98,12 @@ from trinity.trainer.verl_legacy.monkey_patch import apply_monkey_patch
 from trinity.trainer.verl_legacy.utils import apply_fsdp2
 from trinity.utils.distributed import init_process_group
 from trinity.utils.log import get_logger
+from trinity.utils.stream_saver import (
+    DTYPE_TO_SAFETENSORS,
+    _compute_exact_header_size,
+    _tensor_to_bytes,
+    save_safetensors_streaming,
+)
 
 
 def _align_trainable_param_dtype(module: torch.nn.Module, target_dtype: torch.dtype) -> None:
@@ -1130,13 +1137,83 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         global_step=0,
     ):
         assert self._is_actor
+        rank = torch.distributed.get_rank()
 
         with self._fsdp_offload_context():
-            self.checkpoint_manager.save_state_dict(
-                local_path=local_path,
-                global_step=global_step,
-            )
-            dist.barrier()
+            if self.config.actor.strategy == "fsdp":
+                # FSDP1: inline write inside each summon_full_params context
+                if rank == 0:
+                    os.makedirs(local_path, exist_ok=True)
+                    filepath = os.path.join(local_path, "model.safetensors")
+                    tmp_path = filepath + ".tmp"
+                    header_size = _compute_exact_header_size(self.state_dict_meta)
+                    header: dict = {}
+                    data_offset = 0
+                    out_f = open(tmp_path, "w+b")
+                    out_f.write(b"\x00" * (8 + header_size))
+
+                for name_prefix, module in self.named_modules:
+                    with FSDP.summon_full_params(module, recurse=False):
+                        if rank == 0:
+                            for name, param in module.named_parameters():
+                                if isinstance(param, FlatParameter):
+                                    continue
+                                realname = (
+                                    name_prefix[len(FSDP_PREFIX) :] + "." + name
+                                    if name_prefix
+                                    else name
+                                )
+                                raw = _tensor_to_bytes(param.cpu())
+                                nbytes = len(raw)
+                                dtype_str = DTYPE_TO_SAFETENSORS[param.dtype]
+                                header[realname] = {
+                                    "dtype": dtype_str,
+                                    "shape": list(param.shape),
+                                    "data_offsets": [data_offset, data_offset + nbytes],
+                                }
+                                out_f.write(raw)
+                                data_offset += nbytes
+                                del raw
+                    get_torch_device().empty_cache()
+
+                if rank == 0:
+                    header_json = json.dumps(header, separators=(",", ":")).encode("utf-8")
+                    padded = header_json + b" " * (header_size - len(header_json))
+                    out_f.seek(0)
+                    out_f.write(struct.pack("<Q", header_size))
+                    out_f.write(padded)
+                    out_f.close()
+                    os.replace(tmp_path, filepath)
+                    self.logger.info(
+                        f"[FSDP] state_dict saved: path={local_path}, step={global_step}"
+                    )
+
+            else:
+                # FSDP2: generator approach; full_tensor() is a per-tensor collective
+                def _fsdp2_iter():
+                    for name, param in self.actor_module_fsdp.named_parameters():
+                        yield name, param.full_tensor().detach().to(device=get_device_id())
+
+                if rank == 0:
+                    os.makedirs(local_path, exist_ok=True)
+                    filepath = os.path.join(local_path, "model.safetensors")
+
+                    def _rank0_iter():
+                        for name, full_param in _fsdp2_iter():
+                            yield name, full_param.cpu()
+
+                    save_safetensors_streaming(
+                        _rank0_iter(),
+                        filepath,
+                        state_dict_meta=self.state_dict_meta,
+                        rename=True,
+                    )
+                    self.logger.info(
+                        f"[FSDP] state_dict saved: path={local_path}, step={global_step}"
+                    )
+                else:
+                    for _ in _fsdp2_iter():
+                        pass
 
             self._save_lora(local_path)
 
