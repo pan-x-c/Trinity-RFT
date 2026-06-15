@@ -77,7 +77,6 @@ class InferenceModel(ABC):
         rank_offset: int,
         world_size: int,
         group_name: str,
-        explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
     ):
@@ -816,7 +815,6 @@ class ModelWrapper:
         rank_offset: int,
         world_size: int,
         group_name: str,
-        explorer_name: str,
         timeout: int = 1200,
     ):
         """Initialize the process group for model weight synchronization."""
@@ -827,7 +825,6 @@ class ModelWrapper:
             rank_offset=rank_offset,
             world_size=world_size,
             group_name=group_name,
-            explorer_name=explorer_name,
             backend="nccl",
             timeout=timeout,
         )

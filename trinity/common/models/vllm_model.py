@@ -574,13 +574,6 @@ class vLLMRolloutModel(BaseInferenceModel):
         await self.async_llm.resume_generation()
         self.model_version = model_version
         return model_version
-        # await self.async_llm.reset_prefix_cache(reset_running_requests=True)
-        # await self._collective_rpc("update_weight", timeout=timeout)
-        # self.logger.info(
-        #     f"Synchronized model to version {model_version} using method {sync_method}."
-        # )
-        # self.model_version = model_version
-        # return model_version
 
     async def init_process_group(
         self,
@@ -589,9 +582,8 @@ class vLLMRolloutModel(BaseInferenceModel):
         rank_offset: int,
         world_size: int,
         group_name: str,
-        explorer_name: str,
         backend: str = "nccl",
-        timeout: int = 1200,
+        timeout: float = 1200,
     ):
         from vllm.distributed.weight_transfer.base import WeightTransferInitRequest
 
@@ -601,6 +593,13 @@ class vLLMRolloutModel(BaseInferenceModel):
                 f"Current node_rank={self.config.node_rank}, skipping initialization and returning."
             )
             return
+        self.logger.info(
+            "vLLM starting init_process_group:\n"
+            f"  > address={master_address}:{master_port}\n"
+            f"  > rank_offset={rank_offset}\n"
+            f"  > world_size={world_size}\n"
+            f"  > group_name={group_name}\n"
+        )
         await self.async_llm.init_weight_transfer_engine(
             WeightTransferInitRequest(
                 init_info=dict(
@@ -611,14 +610,11 @@ class vLLMRolloutModel(BaseInferenceModel):
                 )
             )
         )
+        self.logger.info("vLLM init_process_group finished.")
 
     async def set_state_dict_meta(self, state_dict_meta: List):
         """Set the state_dict meta for NCCL weight sync."""
         self.state_dict_meta = state_dict_meta
-        # return await self._collective_rpc(
-        #     "set_state_dict_meta",
-        #     args=(state_dict_meta,),
-        # )
 
     async def run_api_server(self) -> bool:
         """Run the OpenAI API server in a Ray actor.
