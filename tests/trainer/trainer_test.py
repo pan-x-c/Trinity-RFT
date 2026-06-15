@@ -65,7 +65,7 @@ class BaseTrainerCase(RayUnittestBase):
         self.config.buffer.total_epochs = 2
         self.config.buffer.batch_size = 4
         self.config.model.model_path = get_model_path()
-        self.config.explorer.rollout_model.engine_type = "vllm_async"
+        self.config.explorer.rollout_model.engine_type = "vllm"
         self.config.algorithm.repeat_times = 3
         self.config.project = "Trainer-unittest"
         self.config.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -792,7 +792,7 @@ class TestTrainerCheckpointSave(unittest.TestCase):
         self.config.buffer.total_steps = 6
         self.config.buffer.batch_size = 4
         self.config.model.model_path = get_model_path()
-        self.config.explorer.rollout_model.engine_type = "vllm_async"
+        self.config.explorer.rollout_model.engine_type = "vllm"
         self.config.algorithm.repeat_times = 3
         self.config.project = "Trainer-unittest"
         self.config.name = f"trainer-{datetime.now().strftime('%Y%m%d%H%M%S')}"

@@ -179,7 +179,6 @@ class SGLangClient:
             "abort_all_requests": abort_all_requests,
             "weight_version": weight_version,
             "is_async": is_async,
-            "format": "safetensors",
             "torch_empty_cache": True,
         }
         response = await self._server_call(
@@ -579,9 +578,7 @@ class SGLangRolloutModel(BaseInferenceModel):
                 )
             self.model_version = model_version
         elif method == SyncMethod.CHECKPOINT:
-            model_path = os.path.join(
-                self.config.checkpoint_job_dir, f"global_step_{model_version}", "actor"
-            )
+            model_path = await self.synchronizer.get_latest_model_path.remote(use_huggingface=True)
             if model_path is None:
                 raise ValueError("checkpoint_path must be provided for CHECKPOINT sync method")
             if model_path is not None:
