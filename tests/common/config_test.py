@@ -11,7 +11,12 @@ from unittest.mock import patch
 import torch
 
 from tests.tools import get_template_config, get_unittest_dataset_config
-from trinity.common.config import InferenceModelConfig, load_config
+from trinity.common.config import (
+    InferenceModelConfig,
+    LaunchMode,
+    infer_launch_mode,
+    load_config,
+)
 from trinity.common.constants import SyncMethod
 from trinity.common.models.model import InferenceModel
 from trinity.trainer.trainer import is_verl_legacy
@@ -414,3 +419,103 @@ class TestConfig(unittest.TestCase):
     def tearDown(self):
         if os.path.exists(CHECKPOINT_ROOT_DIR):
             shutil.rmtree(CHECKPOINT_ROOT_DIR, ignore_errors=True)
+
+
+class TestLaunchMode(unittest.TestCase):
+    """Test cases for LaunchMode enum and infer_launch_mode function."""
+
+    def test_single_node_default(self):
+        """nnodes=1 should always be SINGLE_NODE regardless of DP size."""
+        self.assertEqual(infer_launch_mode(1, 1), LaunchMode.SINGLE_NODE)
+        self.assertEqual(infer_launch_mode(1, 2), LaunchMode.SINGLE_NODE)
+        self.assertEqual(infer_launch_mode(1, 4), LaunchMode.SINGLE_NODE)
+
+    def test_headless_mode(self):
+        """nnodes>1 with DP=1 should be HEADLESS (cross-node TP/PP)."""
+        self.assertEqual(infer_launch_mode(2, 1), LaunchMode.HEADLESS)
+        self.assertEqual(infer_launch_mode(4, 1), LaunchMode.HEADLESS)
+
+    def test_independent_mode(self):
+        """nnodes>1 with DP>1 should be INDEPENDENT (per-node independent engines)."""
+        self.assertEqual(infer_launch_mode(2, 2), LaunchMode.INDEPENDENT)
+        self.assertEqual(infer_launch_mode(4, 4), LaunchMode.INDEPENDENT)
+        self.assertEqual(infer_launch_mode(2, 3), LaunchMode.INDEPENDENT)
+
+    def test_launch_mode_values(self):
+        """LaunchMode enum values should be stable strings."""
+        self.assertEqual(LaunchMode.SINGLE_NODE.value, "single_node")
+        self.assertEqual(LaunchMode.HEADLESS.value, "headless")
+        self.assertEqual(LaunchMode.INDEPENDENT.value, "independent")
+
+    def test_launch_mode_string_comparison(self):
+        """LaunchMode should support string comparison since it inherits from str."""
+        self.assertEqual(LaunchMode.SINGLE_NODE, "single_node")
+        self.assertEqual(LaunchMode.HEADLESS, "headless")
+        self.assertEqual(LaunchMode.INDEPENDENT, "independent")
+
+    def test_inference_model_config_has_launch_mode_fields(self):
+        """InferenceModelConfig should have launch_mode and data_parallel_rank fields."""
+        config = InferenceModelConfig()
+        self.assertIsNone(config.launch_mode)
+        self.assertEqual(config.data_parallel_rank, 0)
+
+
+class TestMultinodeValidation(unittest.TestCase):
+    """Test cases for multi-node inference validation with LaunchMode."""
+
+    def _make_config(
+        self, nnodes=1, dp=1, tp=1, pp=1, engine_type="vllm", gpu_per_node=8, node_num=4
+    ):
+        config = get_template_config()
+        config.cluster.gpu_per_node = gpu_per_node
+        config.cluster.node_num = node_num
+        config.explorer.rollout_model.engine_type = engine_type
+        config.explorer.rollout_model.nnodes = nnodes
+        config.explorer.rollout_model.data_parallel_size = dp
+        config.explorer.rollout_model.tensor_parallel_size = tp
+        config.explorer.rollout_model.pipeline_parallel_size = pp
+        config.explorer.rollout_model.engine_num = 1
+        return config
+
+    def test_single_node_no_validation_error(self):
+        """nnodes=1 should pass validation without errors."""
+        config = self._make_config(nnodes=1, dp=2, tp=2, pp=1)
+        config.check_and_update()
+        self.assertEqual(config.explorer.rollout_model.launch_mode, LaunchMode.SINGLE_NODE.value)
+
+    def test_headless_mode_valid(self):
+        """HEADLESS mode with correct nnodes should pass."""
+        config = self._make_config(nnodes=2, dp=1, tp=8, pp=1, gpu_per_node=8)
+        config.check_and_update()
+        self.assertEqual(config.explorer.rollout_model.launch_mode, LaunchMode.HEADLESS.value)
+
+    def test_headless_mode_wrong_nnodes(self):
+        """HEADLESS mode with wrong nnodes should fail."""
+        config = self._make_config(nnodes=3, dp=1, tp=8, pp=1, gpu_per_node=8, node_num=8)
+        with self.assertRaises(ValueError):
+            config.check_and_update()
+
+    def test_independent_mode_valid(self):
+        """INDEPENDENT mode with nnodes=dp_size and TP*PP<=gpu_per_node should pass."""
+        config = self._make_config(nnodes=2, dp=2, tp=4, pp=1, gpu_per_node=8)
+        config.check_and_update()
+        self.assertEqual(config.explorer.rollout_model.launch_mode, LaunchMode.INDEPENDENT.value)
+
+    def test_independent_mode_wrong_nnodes(self):
+        """INDEPENDENT mode with nnodes != dp_size should fail."""
+        config = self._make_config(nnodes=3, dp=2, tp=2, pp=1, gpu_per_node=8)
+        with self.assertRaises(ValueError):
+            config.check_and_update()
+
+    def test_independent_mode_tp_too_large(self):
+        """INDEPENDENT mode with TP*PP > gpu_per_node should fail."""
+        config = self._make_config(nnodes=2, dp=2, tp=16, pp=1, gpu_per_node=8)
+        with self.assertRaises(ValueError):
+            config.check_and_update()
+
+    def test_sglang_cross_node_dp_rejected(self):
+        """SGLang with nnodes>1 and DP>1 should be rejected."""
+        config = self._make_config(nnodes=2, dp=2, tp=2, pp=1, engine_type="sglang")
+        with self.assertRaises(ValueError) as ctx:
+            config.check_and_update()
+        self.assertIn("SGLang", str(ctx.exception))

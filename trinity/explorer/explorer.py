@@ -113,8 +113,8 @@ class Explorer:
     ):
         await self._wait_for_models_ready()
         base_offset = 1 if self.use_nccl_sync else 0
-        gpu_num_per_model: int = self.config.explorer.rollout_model.gpu_num
-        world_size = world_size or len(self.models) * gpu_num_per_model + base_offset
+        gpu_per_engine: int = self.config.explorer.rollout_model.gpu_per_engine
+        world_size = world_size or len(self.models) * gpu_per_engine + base_offset
         timeout = timeout or self.config.synchronizer.sync_timeout
         group_name = group_name or self.config.synchronizer.group_name
         self.logger.info(
@@ -127,7 +127,7 @@ class Explorer:
             model.init_process_group(
                 master_address=master_address,
                 master_port=master_port,
-                rank_offset=i * gpu_num_per_model + base_offset,
+                rank_offset=i * gpu_per_engine + base_offset,
                 world_size=world_size,
                 group_name=group_name,
                 explorer_name=self.config.explorer.name,
@@ -155,7 +155,7 @@ class Explorer:
         """Setup process group for each model, only used in serve mode."""
         await self._wait_for_models_ready()
         refs = []
-        world_size = self.config.explorer.rollout_model.gpu_num
+        world_size = self.config.explorer.rollout_model.gpu_per_engine
         for model in self.models:
             master_address, master_port = await model.get_available_address_async(random_port=True)
             self.logger.info(
