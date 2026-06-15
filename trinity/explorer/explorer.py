@@ -136,7 +136,6 @@ class Explorer:
                 + base_offset,
                 world_size=world_size,
                 group_name=group_name,
-                explorer_name=self.config.explorer.name,
                 timeout=timeout,
             )
             for i, model in enumerate(self.models)
@@ -176,7 +175,6 @@ class Explorer:
                     rank_offset=0,
                     world_size=world_size,
                     group_name=self.config.synchronizer.group_name,
-                    explorer_name=self.config.explorer.name,
                     timeout=self.config.synchronizer.sync_timeout,
                 )
             )

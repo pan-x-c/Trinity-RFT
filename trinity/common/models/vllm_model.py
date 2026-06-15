@@ -110,6 +110,7 @@ class vLLMRolloutModel(BaseInferenceModel):
     async def prepare(self) -> None:
         """Prepare the model for inference."""
         import vllm
+        from vllm.config import WeightTransferConfig
 
         async with self.async_lock:
             if self._prepared:
@@ -152,6 +153,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 nnodes=self.config.nnodes,
                 node_rank=self.config.node_rank,
                 async_scheduling=False,
+                weight_transfer_config=WeightTransferConfig(backend="nccl"),
                 **rope_kwargs,
                 **self.config.lora_kwargs,
             )
@@ -552,11 +554,24 @@ class vLLMRolloutModel(BaseInferenceModel):
             await self.async_llm.add_lora(self.get_lora_request(self.default_lora_path))
             self.model_version = model_version
             return model_version
-        await self.async_llm.reset_prefix_cache(reset_running_requests=True)
-        await self._collective_rpc("update_weight", timeout=timeout)
-        self.logger.info(
-            f"Synchronized model to version {model_version} using method {sync_method}."
+
+        from vllm.distributed.weight_transfer.base import WeightTransferUpdateRequest
+
+        await self.async_llm.pause_generation(mode="keep", clear_cache=False)
+        await self.async_llm.reset_prefix_cache(reset_running_requests=False)
+
+        await self.async_llm.start_weight_update(is_checkpoint_format=True)
+        await self.async_llm.update_weights(
+            WeightTransferUpdateRequest(
+                update_info=dict(
+                    names=[meta[0] for meta in self.state_dict_meta],
+                    dtype_names=[meta[1] for meta in self.state_dict_meta],
+                    shapes=[meta[2] for meta in self.state_dict_meta],
+                )
+            )
         )
+        await self.async_llm.finish_weight_update()
+        await self.async_llm.resume_generation()
         self.model_version = model_version
         return model_version
 
@@ -567,37 +582,39 @@ class vLLMRolloutModel(BaseInferenceModel):
         rank_offset: int,
         world_size: int,
         group_name: str,
-        explorer_name: str,
         backend: str = "nccl",
-        timeout: int = 1200,
+        timeout: float = 1200,
     ):
+        from vllm.distributed.weight_transfer.base import WeightTransferInitRequest
+
         if self.config.node_rank != 0:
             self.logger.warning(
                 "init_process_group should only be called on the main node (node_rank=0). "
                 f"Current node_rank={self.config.node_rank}, skipping initialization and returning."
             )
             return
-        return await self._collective_rpc(
-            "init_process_group",
-            args=(
-                master_address,
-                master_port,
-                rank_offset,
-                world_size,
-                group_name,
-                backend,
-                timeout,
-                explorer_name,
-                self.ray_namespace,
-            ),
+        self.logger.info(
+            "vLLM starting init_process_group:\n"
+            f"  > address={master_address}:{master_port}\n"
+            f"  > rank_offset={rank_offset}\n"
+            f"  > world_size={world_size}\n"
+            f"  > group_name={group_name}\n"
         )
+        await self.async_llm.init_weight_transfer_engine(
+            WeightTransferInitRequest(
+                init_info=dict(
+                    master_address=master_address,
+                    master_port=master_port,
+                    rank_offset=rank_offset,
+                    world_size=world_size,
+                )
+            )
+        )
+        self.logger.info("vLLM init_process_group finished.")
 
     async def set_state_dict_meta(self, state_dict_meta: List):
         """Set the state_dict meta for NCCL weight sync."""
-        return await self._collective_rpc(
-            "set_state_dict_meta",
-            args=(state_dict_meta,),
-        )
+        self.state_dict_meta = state_dict_meta
 
     async def run_api_server(self) -> bool:
         """Run the OpenAI API server in a Ray actor.

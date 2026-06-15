@@ -267,7 +267,6 @@ class SGLangRolloutModel(BaseInferenceModel):
         rank_offset: int,
         world_size: int,
         group_name: str,
-        explorer_name: str,
         backend: str = "nccl",
         timeout: int = 1200,
     ):
@@ -285,7 +284,8 @@ class SGLangRolloutModel(BaseInferenceModel):
             "SGLang starting init_process_group:\n"
             f"  > address={master_address}:{master_port}\n"
             f"  > rank_offset={rank_offset}\n"
-            f"  > world_size={world_size}"
+            f"  > world_size={world_size}\n"
+            f"  > group_name={group_name}\n"
         )
         self.group_name = group_name
         resp = await self.api_client.init_weights_update_group(

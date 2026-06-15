@@ -6,12 +6,14 @@ thin extension that adds Trinity-specific hooks on top of veRL's unified
 engine-based training worker.
 
 Key additions over the base class:
-- set_trinity_config(): injects Trinity's pluggable loss function and Ray namespace
+- set_trinity_config(): injects Trinity's pluggable loss function, rollout engine type
+  and Ray namespace
 - save_state_dict / upload_state_dict / sync_weight_nccl: Trinity-specific
   checkpoint and weight sync methods that delegate to strategy-specific helpers
 - get_weight_sync_info / setup_weight_sync_group / teardown_weight_sync_group:
   NCCL weight sync group lifecycle for Explorer↔Trainer
 """
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Optional
 
@@ -25,7 +27,7 @@ from trinity.common.config import AlgorithmConfig
 from trinity.manager.synchronizer import Synchronizer
 from trinity.trainer.verl.checkpoint import CheckpointCoordinator
 from trinity.trainer.verl.losses import build_trinity_loss
-from trinity.utils.distributed import init_process_group
+from trinity.utils.distributed import WeightTransferEngine
 from trinity.utils.log import get_logger
 
 
@@ -33,7 +35,8 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
     """Extends veRL's ActorRolloutRefWorker with Trinity-specific hooks.
 
     Additions over the base class:
-    - set_trinity_config(): injects Trinity's pluggable loss function and Ray namespace
+    - set_trinity_config(): injects Trinity's pluggable loss function, rollout engine
+      type and Ray namespace
     - save_state_dict / upload_state_dict: checkpoint and memory-based weight sync
     - sync_weight_nccl: NCCL-based weight broadcast for Explorer↔Trainer
     - get_weight_sync_info / setup_weight_sync_group / teardown_weight_sync_group:
@@ -273,7 +276,9 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         )
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def set_trinity_config(self, algo_config: AlgorithmConfig, ray_namespace: str):
+    def set_trinity_config(
+        self, algo_config: AlgorithmConfig, rollout_engine_type: str, ray_namespace: str
+    ):
         """Set Trinity-specific runtime config on the worker.
 
         This is called by VERLTrainer after worker initialization to inject:
@@ -282,6 +287,7 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """
         self._algo_config = algo_config
         self._ray_namespace = ray_namespace
+        self._rollout_engine_type = rollout_engine_type
         if self.actor is not None:
             loss_fn = build_trinity_loss(algo_config)
             self.actor.set_loss_fn(loss_fn)
@@ -318,14 +324,12 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             self.logger.info(
                 f"Trainer init_process_group {master_address}:{master_port} ({world_size})."
             )
-            self._model_update_group = init_process_group(
-                host=master_address,
-                port=int(master_port),
-                group_name=group_name,
-                backend="nccl",
-                timeout=timeout,
+            self.weight_transfer_engine = WeightTransferEngine.create(
+                engine_type=self._rollout_engine_type,
+                master_address=master_address,
+                master_port=master_port,
                 world_size=world_size,
-                rank=0,
+                group_name=group_name,
             )
             self.logger.info("Trainer init_process_group done.")
 
@@ -334,8 +338,17 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         """Destroy the NCCL process group for weight sync."""
         if torch.distributed.get_rank() == 0 and self._model_update_group is not None:
             self.logger.info("Tearing down weight sync group.")
-            torch.distributed.destroy_process_group(self._model_update_group)
+            self.weight_transfer_engine.teardown()
             self._model_update_group = None
+
+    def _rank0_iterator_wrapper(
+        self, per_tensor_param: Iterator[tuple[str, torch.Tensor]]
+    ) -> Iterator[tuple[str, torch.Tensor]]:
+        """Advance distributed parameter gathering on every rank, yielding only on rank 0."""
+        is_rank0 = torch.distributed.get_rank() == 0
+        for name, param in per_tensor_param:
+            if is_rank0:
+                yield name, param
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def sync_weight_nccl(self):
@@ -345,9 +358,17 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         Explorer ranks via the NCCL process group.
         """
         per_tensor_param, _ = self.actor.engine.get_per_tensor_param()
-        for _, param in per_tensor_param:
-            if torch.distributed.get_rank() == 0:
-                torch.distributed.broadcast(param, src=0, group=self._model_update_group)
+        weight_iterator = self._rank0_iterator_wrapper(per_tensor_param)
+        if torch.distributed.get_rank() == 0:
+            self.logger.info("Starting NCCL weight sync broadcast.")
+            self.weight_transfer_engine.sync_weight(
+                iterator=weight_iterator,
+            )
+            torch.cuda.synchronize()
+            self.logger.info("Finished NCCL weight sync broadcast.")
+        else:
+            for _ in weight_iterator:
+                pass
 
     def _get_coordinator(self) -> CheckpointCoordinator:
         if self._coordinator is None:
