@@ -4,6 +4,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import ray
 import torch
 
 if TYPE_CHECKING:
@@ -35,6 +36,8 @@ class CheckpointWeightTransferInitInfo(WeightTransferInitInfo):
     master_port: int
     rank_offset: int
     world_size: int
+    sync_method: str
+    namespace: str
 
 
 @dataclass
@@ -90,6 +93,9 @@ class CheckpointWeightTransferEngine(
             init_info.world_size,
             device=device,
         )
+        self._sync_method = init_info.sync_method
+        self._namespace = init_info.namespace
+        self._synchronizer = None
 
     def receive_weights(
         self,
@@ -106,6 +112,13 @@ class CheckpointWeightTransferEngine(
         else:
             self._consume_checkpoint_weights(load_weights)
 
+    def _get_synchronizer(self):
+        if self._synchronizer is None:
+            from trinity.manager.synchronizer import Synchronizer
+
+            self._synchronizer = Synchronizer.get_actor(namespace=self._namespace)
+        return self._synchronizer
+
     def _produce_checkpoint_weights(
         self,
         update_info: CheckpointWeightTransferUpdateInfo,
@@ -113,7 +126,14 @@ class CheckpointWeightTransferEngine(
     ) -> None:
         assert self.model_update_group is not None
 
-        iterator = load_state_dict_iterator(checkpoint_dir=update_info.checkpoint_path)
+        if self._sync_method == "checkpoint":
+            iterator = load_state_dict_iterator(checkpoint_dir=update_info.checkpoint_path)
+        elif self._sync_method == "memory":
+            synchronizer = self._get_synchronizer()
+            iterator = (
+                ray.get(weight_ref)
+                for weight_ref in synchronizer.get_model_state_dict_iterator.remote()
+            )
 
         def post_iter_func(item: tuple[str, torch.Tensor]) -> torch.Tensor:
             tensor = item[1]

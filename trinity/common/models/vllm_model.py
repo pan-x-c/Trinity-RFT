@@ -612,15 +612,17 @@ class vLLMRolloutModel(BaseInferenceModel):
             f"  > world_size={world_size}\n"
             f"  > group_name={group_name}\n"
         )
+        init_info = dict(
+            master_address=master_address,
+            master_port=master_port,
+            rank_offset=rank_offset,
+            world_size=world_size,
+        )
+        if self.config.sync_method != SyncMethod.NCCL:
+            init_info["namespace"] = self.ray_namespace
+            init_info["sync_method"] = self.config.sync_method.value
         await self.async_llm.init_weight_transfer_engine(
-            WeightTransferInitRequest(
-                init_info=dict(
-                    master_address=master_address,
-                    master_port=master_port,
-                    rank_offset=rank_offset,
-                    world_size=world_size,
-                )
-            )
+            WeightTransferInitRequest(init_info=init_info)
         )
         self.logger.info("vLLM init_process_group finished.")
 

@@ -4,7 +4,7 @@ import asyncio
 import os
 import shutil
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 
@@ -191,7 +191,7 @@ class Synchronizer:
         return self.explorer_status_counts[RunningStatus.REQUIRE_SYNC] > 0
 
     async def set_model_state_dict(
-        self, model_state_dict: Union[dict, None, str, Tuple[str, str]], trainer_step: int
+        self, model_state_dict: Union[dict, None, str], trainer_step: int
     ):
         """
         Set the new model state and update the version.
@@ -213,6 +213,15 @@ class Synchronizer:
     def get_model_state_dict(self):
         """Return the current model state and its version."""
         return self.model_state_dict, self.model_version
+
+    def get_model_state_dict_iterator(self) -> Iterator[Tuple[str, object]]:
+        """Yield the current in-memory model state for Ray streaming consumers."""
+        if self.model_state_dict is None:
+            return
+        if not isinstance(self.model_state_dict, dict):
+            raise ValueError("Model state dict is not in expected format (dict).")
+        for item in self.model_state_dict.items():
+            yield item
 
     async def get_state_dict_meta(self):
         """
