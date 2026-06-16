@@ -3,7 +3,7 @@
 import asyncio
 import os
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union, Literal
 
 import numpy as np
 import torch
@@ -58,9 +58,9 @@ class vLLMRolloutModel(BaseInferenceModel):
         if self.config.enable_runtime_lora_updating:
             os.environ["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] = "1"
         self.tokenization_kwargs = {
-            "truncate_prompt_tokens": config.max_prompt_tokens
-            if config.enable_prompt_truncation
-            else None
+            "truncate_prompt_tokens": (
+                config.max_prompt_tokens if config.enable_prompt_truncation else None
+            )
         }
         self.default_sampling_params = vllm.SamplingParams(
             n=1,
@@ -137,8 +137,6 @@ class vLLMRolloutModel(BaseInferenceModel):
                 tensor_parallel_size=self.config.tensor_parallel_size,
                 pipeline_parallel_size=self.config.pipeline_parallel_size,
                 data_parallel_size=self.config.data_parallel_size,
-                data_parallel_size_local=self.config.data_parallel_size // self.config.nnodes,
-                data_parallel_start_rank=self.config.node_rank * (self.config.data_parallel_size // self.config.nnodes),
                 enable_expert_parallel=self.config.enable_expert_parallel,
                 seed=self.config.seed,
                 distributed_executor_backend="mp",
@@ -163,7 +161,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 logprobs_mode="processed_logprobs",
                 nnodes=self.config.nnodes,
                 node_rank=self.config.node_rank,
-                async_scheduling=False,
+                async_scheduling=True,
                 **rope_kwargs,
                 **self.config.lora_kwargs,
                 **self.config.extra_engine_args,
@@ -173,6 +171,8 @@ class vLLMRolloutModel(BaseInferenceModel):
             if self.master_addr is not None and self.master_port is not None:
                 engine_args.master_addr = self.master_addr
                 engine_args.master_port = self.master_port
+            if self.config.enable_expert_parallel:
+                engine_args.compilation_config.pass_config.fuse_allreduce_rms = False
             if self.config.node_rank == 0:
                 self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
                 await self._collective_rpc("apply_patches")
