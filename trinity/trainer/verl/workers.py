@@ -52,7 +52,6 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         self._is_rollout = False  # Disable rollout in Trainer
         self._algo_config: Optional[AlgorithmConfig] = None
         self._ray_namespace: Optional[str] = None
-        self._model_update_group = None
         self._state_dict_meta_list = None
         self._coordinator: Optional[CheckpointCoordinator] = None
 
@@ -338,10 +337,10 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def teardown_weight_sync_group(self):
         """Destroy the NCCL process group for weight sync."""
-        if torch.distributed.get_rank() == 0 and self._model_update_group is not None:
+        if torch.distributed.get_rank() == 0 and self.weight_transfer_engine is not None:
             self.logger.info("Tearing down weight sync group.")
             self.weight_transfer_engine.teardown()
-            self._model_update_group = None
+            self.weight_transfer_engine = None
 
     def _rank0_iterator_wrapper(
         self, per_tensor_param: Iterator[tuple[str, torch.Tensor]]
