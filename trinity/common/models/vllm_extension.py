@@ -2,7 +2,7 @@
 """Extensions for vLLM."""
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import ray
 import torch
@@ -44,7 +44,7 @@ class CheckpointWeightTransferInitInfo(WeightTransferInitInfo):
 class CheckpointWeightTransferUpdateInfo(WeightTransferUpdateInfo):
     """Update info for loading a checkpoint from disk."""
 
-    checkpoint_path: str
+    checkpoint_path: Optional[str] = None
     packed_buffer_size_bytes: int = DEFAULT_PACKED_BUFFER_SIZE_BYTES
     packed_num_buffers: int = DEFAULT_PACKED_NUM_BUFFERS
 
@@ -127,6 +127,8 @@ class CheckpointWeightTransferEngine(
         assert self.model_update_group is not None
 
         if self._sync_method == "checkpoint":
+            if update_info.checkpoint_path is None:
+                raise ValueError("checkpoint_path must be provided for checkpoint sync method")
             iterator = load_state_dict_iterator(checkpoint_dir=update_info.checkpoint_path)
         elif self._sync_method == "memory":
             synchronizer = self._get_synchronizer()

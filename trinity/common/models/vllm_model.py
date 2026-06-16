@@ -569,6 +569,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         await self.async_llm.reset_prefix_cache(reset_running_requests=False)
 
         await self.async_llm.start_weight_update(is_checkpoint_format=True)
+        update_info = {}
         if method == SyncMethod.NCCL:
             update_info = dict(
                 names=[meta[0] for meta in self.state_dict_meta],

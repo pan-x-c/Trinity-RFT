@@ -578,9 +578,8 @@ class SGLangRolloutModel(BaseInferenceModel):
                 )
             self.model_version = model_version
         elif method == SyncMethod.CHECKPOINT:
+            # TODO: this branch is buggy, which only supports hf format checkpoints
             model_path = await self.synchronizer.get_latest_model_path.remote(use_huggingface=True)
-            if model_path is None:
-                raise ValueError("checkpoint_path must be provided for CHECKPOINT sync method")
             if model_path is not None:
                 await self.api_client.update_weights_from_disk(
                     model_path=model_path,
