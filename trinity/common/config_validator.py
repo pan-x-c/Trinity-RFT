@@ -312,15 +312,13 @@ class RayClusterConfigValidator(ConfigValidator):
         for model_config in model_configs:
             if model_config.engine_type in ["tinker", "external"]:
                 model_config.gpu_per_engine = 0
+                model_config.nnodes = 1
                 continue
 
             model_config.gpu_per_engine = (
                 model_config.data_parallel_size
                 * model_config.tensor_parallel_size
                 * model_config.pipeline_parallel_size
-            )
-            print(
-                f"check engine with dp={model_config.data_parallel_size}, tp={model_config.tensor_parallel_size}, pp={model_config.pipeline_parallel_size}, gpu_per_engine={model_config.gpu_per_engine}"
             )
 
             if model_config.gpu_per_engine > config.cluster.gpu_per_node:
