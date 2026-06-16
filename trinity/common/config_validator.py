@@ -12,9 +12,7 @@ from omegaconf import OmegaConf
 from trinity.common.config import (
     Config,
     ExperienceBufferConfig,
-    LaunchMode,
     TasksetConfig,
-    infer_launch_mode,
     set_if_none,
 )
 from trinity.common.constants import StorageType, SyncMethod, SyncStyle
@@ -324,8 +322,6 @@ class RayClusterConfigValidator(ConfigValidator):
                 raise ValueError(f"`nnodes` must be >= 1, but got {model_config.nnodes}.")
 
             if model_config.nnodes == 1:
-                # Set launch_mode on config for downstream use
-                model_config.launch_mode = LaunchMode.SINGLE_NODE.value
                 continue
 
             if (
@@ -341,51 +337,6 @@ class RayClusterConfigValidator(ConfigValidator):
                     f"`nnodes` ({model_config.nnodes}) cannot exceed cluster.node_num "
                     f"({config.cluster.node_num})."
                 )
-
-            launch_mode = infer_launch_mode(model_config.nnodes, model_config.data_parallel_size)
-            model_config.launch_mode = launch_mode.value
-
-            if launch_mode == LaunchMode.INDEPENDENT:
-                # Cross-node DP: each DP rank runs as an independent engine on its own node(s)
-                if model_config.engine_type == "sglang":
-                    raise ValueError(
-                        "SGLang does not support cross-node data parallelism. "
-                        "SGLang's DP is implemented via local subprocesses and cannot span multiple nodes. "
-                        "Please set nnodes=1 for SGLang with DP>1, or use vLLM for cross-node DP."
-                    )
-                # In INDEPENDENT mode, TP*PP must fit within a single node
-                tp_pp = model_config.tensor_parallel_size * model_config.pipeline_parallel_size
-                if tp_pp > config.cluster.gpu_per_node:
-                    raise ValueError(
-                        f"INDEPENDENT mode requires TP*PP ({tp_pp}) <= cluster.gpu_per_node "
-                        f"({config.cluster.gpu_per_node}). For cross-node TP/PP with DP, "
-                        f"this hybrid configuration is not yet supported."
-                    )
-                # nnodes must equal DP size * number of nodes per instance
-                # Since each instance fits in one node, nnodes must equal DP size
-                required_nnodes = model_config.data_parallel_size
-                if model_config.nnodes != required_nnodes:
-                    raise ValueError(
-                        f"In INDEPENDENT mode, `nnodes` ({model_config.nnodes}) must equal "
-                        f"`data_parallel_size` ({required_nnodes}), because each DP rank runs "
-                        f"as an independent engine on a separate node."
-                    )
-
-            elif launch_mode == LaunchMode.HEADLESS:
-                # Cross-node TP/PP: single engine spanning multiple nodes
-                tp_pp = model_config.tensor_parallel_size * model_config.pipeline_parallel_size
-                if tp_pp % config.cluster.gpu_per_node != 0:
-                    raise ValueError(
-                        f"TP*PP ({tp_pp}) must be an integer multiple of "
-                        f"cluster.gpu_per_node ({config.cluster.gpu_per_node}) "
-                        f"when using HEADLESS mode."
-                    )
-                required_nnodes = tp_pp // config.cluster.gpu_per_node
-                if model_config.nnodes != required_nnodes:
-                    raise ValueError(
-                        f"In HEADLESS mode, `nnodes` ({model_config.nnodes}) must equal "
-                        f"(TP*PP) // gpu_per_node ({required_nnodes})."
-                    )
 
 
 class AlgorithmConfigValidator(ConfigValidator):
@@ -772,19 +723,12 @@ class ExplorerConfigValidator(ConfigValidator):
             raise ValueError(f"Invalid explorer.concurrent_mode: {config.explorer.concurrent_mode}")
         if config.explorer.concurrent_mode in ["asynchronous", "multi-threading"]:
             batch_size = config.buffer.batch_size
-            # Use effective engine count (accounts for INDEPENDENT mode's DP expansion)
-            effective_engine_num = config.explorer.rollout_model.engine_num
-            if config.explorer.rollout_model.launch_mode == LaunchMode.INDEPENDENT.value:
-                effective_engine_num = (
-                    config.explorer.rollout_model.engine_num
-                    * config.explorer.rollout_model.data_parallel_size
-                )
-            max_runner_per_model = math.ceil(batch_size / effective_engine_num)
+            max_runner_per_model = math.ceil(batch_size / config.explorer.rollout_model.engine_num)
             if config.explorer.runner_per_model > max_runner_per_model:
                 self.logger.warning(
                     f"explorer.runner_per_model ({config.explorer.runner_per_model}) is too large "
                     f"for concurrent_mode '{config.explorer.concurrent_mode}' with batch_size "
-                    f"({batch_size}) and effective_engine_num ({effective_engine_num}). "
+                    f"({batch_size}) and rollout_model.engine_num ({config.explorer.rollout_model.engine_num}). "
                     f"It is set to {max_runner_per_model}."
                 )
                 config.explorer.runner_per_model = max_runner_per_model

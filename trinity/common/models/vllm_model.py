@@ -10,7 +10,7 @@ import torch
 from packaging.version import parse as parse_version
 from transformers import AutoProcessor
 
-from trinity.common.config import InferenceModelConfig, LaunchMode, infer_launch_mode
+from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
 from trinity.common.models.mm_utils import (
@@ -130,32 +130,15 @@ class vLLMRolloutModel(BaseInferenceModel):
             else:
                 rope_kwargs = {}
 
-            launch_mode = infer_launch_mode(self.config.nnodes, self.config.data_parallel_size)
-
-            # Compute engine args based on launch mode
-            if launch_mode == LaunchMode.INDEPENDENT:
-                # Each actor is an independent engine with no internal DP
-                dp_size = 1
-                vllm_nnodes = 1
-                vllm_node_rank = 0
-            elif launch_mode == LaunchMode.HEADLESS:
-                # Cross-node TP/PP: use configured nnodes and node_rank
-                dp_size = self.config.data_parallel_size
-                vllm_nnodes = self.config.nnodes
-                vllm_node_rank = self.config.node_rank
-            else:
-                # SINGLE_NODE: all parallelism within one actor
-                dp_size = self.config.data_parallel_size
-                vllm_nnodes = 1
-                vllm_node_rank = 0
-
             engine_args = vllm.AsyncEngineArgs(
                 model=self.config.model_path,
                 enforce_eager=self.config.enforce_eager,
                 worker_extension_cls="trinity.common.models.vllm_worker.WorkerExtension",
                 tensor_parallel_size=self.config.tensor_parallel_size,
                 pipeline_parallel_size=self.config.pipeline_parallel_size,
-                data_parallel_size=dp_size,
+                data_parallel_size=self.config.data_parallel_size,
+                data_parallel_size_local=self.config.data_parallel_size // self.config.nnodes,
+                data_parallel_start_rank=self.config.node_rank * (self.config.data_parallel_size // self.config.nnodes),
                 enable_expert_parallel=self.config.enable_expert_parallel,
                 seed=self.config.seed,
                 distributed_executor_backend="mp",
@@ -178,36 +161,29 @@ class vLLMRolloutModel(BaseInferenceModel):
                 enable_log_requests=self.config.enable_log_requests,
                 enable_lora=self.config.enable_lora,
                 logprobs_mode="processed_logprobs",
-                nnodes=vllm_nnodes,
-                node_rank=vllm_node_rank,
+                nnodes=self.config.nnodes,
+                node_rank=self.config.node_rank,
                 async_scheduling=False,
                 **rope_kwargs,
                 **self.config.lora_kwargs,
                 **self.config.extra_engine_args,
             )
 
-            if launch_mode != LaunchMode.HEADLESS:
-                # INDEPENDENT & SINGLE_NODE
-                # Each actor creates a full independent engine
+            # Cross-node TP/PP: primary node vs headless nodes
+            if self.master_addr is not None and self.master_port is not None:
+                engine_args.master_addr = self.master_addr
+                engine_args.master_port = self.master_port
+            if self.config.node_rank == 0:
                 self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
                 await self._collective_rpc("apply_patches")
                 await self.run_api_server()
-            else:  # HEADLESS
-                # Cross-node TP/PP: primary node vs headless nodes
-                if self.master_addr is not None and self.master_port is not None:
-                    engine_args.master_addr = self.master_addr
-                    engine_args.master_port = self.master_port
-                if self.config.node_rank == 0:
-                    self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
-                    await self._collective_rpc("apply_patches")
-                    await self.run_api_server()
-                else:
-                    # Headless executor for cross-node TP/PP
-                    from vllm.v1.executor.multiproc_executor import MultiprocExecutor
+            else:
+                # Headless executor for cross-node TP/PP
+                from vllm.v1.executor.multiproc_executor import MultiprocExecutor
 
-                    vllm_config = engine_args.create_engine_config(headless=True)
-                    self.headless_executor = MultiprocExecutor(vllm_config, monitor_workers=False)
-                    self.headless_executor.start_worker_monitor()
+                vllm_config = engine_args.create_engine_config(headless=True)
+                self.headless_executor = MultiprocExecutor(vllm_config, monitor_workers=False)
+                self.headless_executor.start_worker_monitor()
             self._prepared = True
 
     async def chat(self, messages: List[Dict], lora_request=None, **kwargs) -> Sequence[Experience]:

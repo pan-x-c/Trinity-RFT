@@ -30,28 +30,6 @@ from trinity.utils.log import get_logger
 logger = get_logger(__name__)
 
 
-class LaunchMode(str, Enum):
-    """Launch mode for inference engines, automatically inferred from nnodes and data_parallel_size.
-
-    SINGLE_NODE: All parallelism within a single Ray actor (nnodes=1).
-    HEADLESS: Cross-node TP/PP with node0 driving and node1+ as headless executors (nnodes>1, DP=1).
-    INDEPENDENT: Each node runs an independent engine instance with external LB (nnodes>1, DP>1).
-    """
-
-    SINGLE_NODE = "single_node"
-    HEADLESS = "headless"
-    INDEPENDENT = "independent"
-
-
-def infer_launch_mode(nnodes: int, data_parallel_size: int) -> LaunchMode:
-    """Infer the launch mode from nnodes and data_parallel_size."""
-    if nnodes <= 1:
-        return LaunchMode.SINGLE_NODE
-    if data_parallel_size > 1:
-        return LaunchMode.INDEPENDENT
-    return LaunchMode.HEADLESS
-
-
 def set_if_none(obj, attr, val):
     if getattr(obj, attr, None) is None:
         setattr(obj, attr, val)
@@ -612,8 +590,6 @@ class InferenceModelConfig:
     nnodes: int = 1
     # ! DO NOT SET
     node_rank: int = 0
-    # ! DO NOT SET, automatically inferred from nnodes and data_parallel_size
-    launch_mode: Optional[str] = None
     # ! DO NOT SET, used in INDEPENDENT mode to assign DP rank to each engine
     data_parallel_rank: int = 0
     enable_return_routed_experts: bool = False
