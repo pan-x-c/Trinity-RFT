@@ -423,5 +423,5 @@ class TestSynchronizerStateDictIterator(unittest.TestCase):
         synchronizer = object.__new__(Synchronizer)
         synchronizer.model_state_dict = ("huggingface", "/tmp/mock")
 
-        with self.assertRaisesRegex(TypeError, "materialized in-memory weights"):
+        with self.assertRaisesRegex(ValueError, "Model state dict is not in expected format"):
             list(synchronizer.get_model_state_dict_iterator())
