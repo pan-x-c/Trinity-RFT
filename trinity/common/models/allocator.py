@@ -15,10 +15,7 @@ from ray.util.placement_group import (
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-from trinity.common.config import (
-    ExplorerConfig,
-    InferenceModelConfig,
-)
+from trinity.common.config import ExplorerConfig, InferenceModelConfig
 from trinity.common.models.model import ModelWrapper
 from trinity.utils.log import get_logger
 

@@ -11,10 +11,7 @@ from unittest.mock import patch
 import torch
 
 from tests.tools import get_template_config, get_unittest_dataset_config
-from trinity.common.config import (
-    InferenceModelConfig,
-    load_config,
-)
+from trinity.common.config import InferenceModelConfig, load_config
 from trinity.common.constants import SyncMethod
 from trinity.common.models.model import InferenceModel
 from trinity.trainer.trainer import is_verl_legacy
@@ -120,10 +117,9 @@ class TestConfig(unittest.TestCase):
         config.cluster.gpu_per_node = 4
         config.explorer.rollout_model.engine_type = "vllm"
         config.explorer.rollout_model.engine_num = 1
-        config.explorer.rollout_model.tensor_parallel_size = 8
-        config.explorer.rollout_model.nnodes = 3
+        config.explorer.rollout_model.tensor_parallel_size = 16
 
-        with self.assertRaisesRegex(ValueError, "cannot exceed cluster.node_num"):
+        with self.assertRaisesRegex(ValueError, "is less than"):
             config.check_and_update()
 
     def test_multinode_vllm_requires_full_node_occupancy(self):
@@ -136,35 +132,7 @@ class TestConfig(unittest.TestCase):
         config.explorer.rollout_model.tensor_parallel_size = 6
         config.explorer.rollout_model.nnodes = 2
 
-        with self.assertRaisesRegex(ValueError, "integer multiple of cluster.gpu_per_node"):
-            config.check_and_update()
-
-    def test_multinode_vllm_requires_matching_nnodes_for_full_nodes(self):
-        config = get_template_config()
-        config.mode = "explore"
-        config.cluster.node_num = 4
-        config.cluster.gpu_per_node = 4
-        config.explorer.rollout_model.engine_type = "vllm"
-        config.explorer.rollout_model.engine_num = 1
-        config.explorer.rollout_model.tensor_parallel_size = 8
-        config.explorer.rollout_model.nnodes = 4
-
-        with self.assertRaisesRegex(
-            ValueError, "must equal tensor_parallel_size // cluster.gpu_per_node"
-        ):
-            config.check_and_update()
-
-    def test_multinode_inference_is_rejected_for_non_vllm_sglang_engines(self):
-        config = get_template_config()
-        config.mode = "explore"
-        config.cluster.node_num = 2
-        config.cluster.gpu_per_node = 4
-        config.explorer.rollout_model.engine_type = "tinker"
-        config.explorer.rollout_model.engine_num = 1
-        config.explorer.rollout_model.tensor_parallel_size = 4
-        config.explorer.rollout_model.nnodes = 2
-
-        with self.assertRaisesRegex(ValueError, "only supported for"):
+        with self.assertRaisesRegex(ValueError, "to be a multiple of"):
             config.check_and_update()
 
     def test_load_default_config(self):
@@ -417,4 +385,3 @@ class TestConfig(unittest.TestCase):
     def tearDown(self):
         if os.path.exists(CHECKPOINT_ROOT_DIR):
             shutil.rmtree(CHECKPOINT_ROOT_DIR, ignore_errors=True)
-

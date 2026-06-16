@@ -586,9 +586,8 @@ class InferenceModelConfig:
     # For external API-based engine
     external_model_config: ExternalModelConfig = field(default_factory=ExternalModelConfig)
 
-    # for multi-node setup
+    # ! DO NOT SET, for multi node setup
     nnodes: int = 1
-    # ! DO NOT SET
     node_rank: int = 0
     # ! DO NOT SET, used in INDEPENDENT mode to assign DP rank to each engine
     data_parallel_rank: int = 0
