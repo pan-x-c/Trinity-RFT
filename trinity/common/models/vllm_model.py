@@ -107,6 +107,9 @@ class vLLMRolloutModel(BaseInferenceModel):
         )
         await self._initialize_tokenizer()
 
+    def _use_data_parallel_mode(self) -> bool:
+        return self.config.data_parallel_size > 1 and self.config.nnodes > 1
+
     async def prepare(self) -> None:
         """Prepare the model for inference.
 
@@ -130,7 +133,7 @@ class vLLMRolloutModel(BaseInferenceModel):
             else:
                 rope_kwargs = {}
 
-            if self.config.data_parallel_size > 1 and self.config.nnodes > 1:
+            if self._use_data_parallel_mode():
                 engine_args = dict(
                     model=self.config.model_path,
                     enforce_eager=self.config.enforce_eager,
@@ -138,6 +141,8 @@ class vLLMRolloutModel(BaseInferenceModel):
                     tensor_parallel_size=self.config.tensor_parallel_size,
                     pipeline_parallel_size=self.config.pipeline_parallel_size,
                     data_parallel_size=self.config.data_parallel_size,
+                    data_parallel_size_local=self.config.data_parallel_size // self.config.nnodes,
+                    data_parallel_start_rank=self.config.node_rank * (self.config.data_parallel_size // self.config.nnodes),
                     enable_expert_parallel=self.config.enable_expert_parallel,
                     seed=self.config.seed,
                     distributed_executor_backend="mp",
@@ -206,26 +211,33 @@ class vLLMRolloutModel(BaseInferenceModel):
                 )
 
             engine_args = vllm.AsyncEngineArgs(
-
+                **engine_args,
             )
 
             # Cross-node TP/PP: primary node vs headless nodes
-            if self.master_addr is not None and self.master_port is not None:
-                engine_args.master_addr = self.master_addr
-                engine_args.master_port = self.master_port
             if self.config.enable_expert_parallel:
                 engine_args.compilation_config.pass_config.fuse_allreduce_rms = False
-            if self.config.node_rank == 0:
+            if self._use_data_parallel_mode():
+                engine_args.data_parallel_address = self.master_addr
+                engine_args.data_parallel_rpc_port = self.master_port
                 self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
                 await self._collective_rpc("apply_patches")
                 await self.run_api_server()
             else:
-                # Headless executor for cross-node TP/PP
-                from vllm.v1.executor.multiproc_executor import MultiprocExecutor
+                if self.master_addr is not None and self.master_port is not None:
+                    engine_args.master_addr = self.master_addr
+                    engine_args.master_port = self.master_port
+                if self.config.node_rank == 0:
+                    self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
+                    await self._collective_rpc("apply_patches")
+                    await self.run_api_server()
+                else:
+                    # Headless executor for cross-node TP/PP
+                    from vllm.v1.executor.multiproc_executor import MultiprocExecutor
 
-                vllm_config = engine_args.create_engine_config(headless=True)
-                self.headless_executor = MultiprocExecutor(vllm_config, monitor_workers=False)
-                self.headless_executor.start_worker_monitor()
+                    vllm_config = engine_args.create_engine_config(headless=True)
+                    self.headless_executor = MultiprocExecutor(vllm_config, monitor_workers=False)
+                    self.headless_executor.start_worker_monitor()
             self._prepared = True
 
     async def chat(self, messages: List[Dict], lora_request=None, **kwargs) -> Sequence[Experience]:
