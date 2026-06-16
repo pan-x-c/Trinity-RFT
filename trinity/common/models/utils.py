@@ -271,12 +271,12 @@ def load_state_dict(
 
     1. **safetensors** — ``model.safetensors`` produced by the unified
        ``save_state_dict`` path.  Loaded directly and returned as a dict.
-    2. **FSDP shards** — ``model_world_size_N_rank_M.pt`` files.  Merged
-       via :func:`load_fsdp_state_dict_from_verl_checkpoint` and returned
-       as a dict.
-    3. **HuggingFace weights** — detected by :func:`has_huggingface_model_weights`
+    2. **HuggingFace weights** — detected by :func:`has_huggingface_model_weights`
        in either a ``huggingface/`` subdirectory or the directory itself.
        Returns ``("huggingface", path)`` for lazy loading by the caller.
+    3. **FSDP shards** — ``model_world_size_N_rank_M.pt`` files.  Merged
+       via :func:`load_fsdp_state_dict_from_verl_checkpoint` and returned
+       as a dict.
     4. **Megatron dist checkpoint** — fallback.  Returns
        ``("megatron", checkpoint_dir)`` for lazy loading via converter.
 
@@ -297,16 +297,16 @@ def load_state_dict(
 
         return load_file(safetensors_path, device="cpu")
 
-    # 2. FSDP shards → merge
-    if glob.glob(os.path.join(checkpoint_dir, "model_world_size_*_rank_*.pt")):
-        return load_fsdp_state_dict_from_verl_checkpoint(checkpoint_dir)
-
-    # 3. HuggingFace weights in huggingface/ subdirectory
+    # 2. HuggingFace weights in huggingface/ subdirectory
     huggingface_dir = os.path.join(checkpoint_dir, "huggingface")
     if has_huggingface_model_weights(huggingface_dir):
         return load_huggingface_state_dict(huggingface_dir, trust_remote_code=trust_remote_code)
 
-    # 5. Megatron dist_ckpt (fallback)
+    # 3. FSDP shards → merge
+    if glob.glob(os.path.join(checkpoint_dir, "model_world_size_*_rank_*.pt")):
+        return load_fsdp_state_dict_from_verl_checkpoint(checkpoint_dir)
+
+    # 4. Megatron dist_ckpt (fallback)
     return get_megatron_converter(checkpoint_dir).get_state_dict(checkpoint_dir)
 
 
