@@ -240,10 +240,11 @@ class Trainer:
                             "NCCL weight sync failed (Explorer may have exited);"
                             f" continuing with stale weights:\n{traceback.format_exc()}"
                         )
-            elif self.sync_method == SyncMethod.CHECKPOINT:
-                await self.engine.save_state_dict()
-            elif self.sync_method == SyncMethod.MEMORY:
-                await self.engine.upload_state_dict()
+            elif self.train_step_num > 0:
+                if self.sync_method == SyncMethod.CHECKPOINT:
+                    await self.engine.save_state_dict()
+                elif self.sync_method == SyncMethod.MEMORY:
+                    await self.engine.upload_state_dict()
             self.last_sync_step = self.train_step_num
             self.last_sync_time = time.time()
         self.logger.info(f"Trainer sync_weights at step {self.train_step_num} finished.")
