@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from typing import Dict
 
 import numpy as np
-import pandas as pd
 
 try:
     import wandb
@@ -55,10 +54,6 @@ class Monitor(ABC):
         self.config = config
 
     @abstractmethod
-    def log_table(self, table_name: str, experiences_table: pd.DataFrame, step: int):
-        """Log a table"""
-
-    @abstractmethod
     def log(self, data: dict, step: int, commit: bool = False) -> None:
         """Log metrics."""
 
@@ -106,9 +101,6 @@ class TensorboardMonitor(Monitor):
         self.logger = SummaryWriter(self.tensorboard_dir)
         self.console_logger = get_logger(__name__, in_ray_actor=True)
 
-    def log_table(self, table_name: str, experiences_table: pd.DataFrame, step: int):
-        pass
-
     def log(self, data: dict, step: int, commit: bool = False) -> None:
         """Log metrics."""
         for key in data:
@@ -147,10 +139,6 @@ class WandbMonitor(Monitor):
             save_code=False,
         )
         self.console_logger = get_logger(__name__, in_ray_actor=True)
-
-    def log_table(self, table_name: str, experiences_table: pd.DataFrame, step: int):
-        experiences_table = wandb.Table(dataframe=experiences_table)
-        self.log(data={table_name: experiences_table}, step=step)
 
     def log(self, data: dict, step: int, commit: bool = False) -> None:
         """Log metrics."""
@@ -201,10 +189,6 @@ class MlflowMonitor(Monitor):
         )
         mlflow.log_params(config.flatten())
         self.console_logger = get_logger(__name__, in_ray_actor=True)
-
-    def log_table(self, table_name: str, experiences_table: pd.DataFrame, step: int):
-        experiences_table["step"] = step
-        mlflow.log_table(data=experiences_table, artifact_file=f"{table_name}.json")
 
     def log(self, data: dict, step: int, commit: bool = False) -> None:
         """Log metrics."""
@@ -288,10 +272,6 @@ class SwanlabMonitor(Monitor):
 
         self.logger = swanlab.init(**init_kwargs)
         self.console_logger = get_logger(__name__, in_ray_actor=True)
-
-    def log_table(self, table_name: str, experiences_table: pd.DataFrame, step: int):
-        # Not support log table yet
-        pass
 
     def log(self, data: dict, step: int, commit: bool = False) -> None:
         """Log metrics."""

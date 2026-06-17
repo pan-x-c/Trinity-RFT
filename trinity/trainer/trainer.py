@@ -11,7 +11,6 @@ import traceback
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
 
-import pandas as pd
 import ray
 
 from trinity.algorithm import SAMPLE_STRATEGY
@@ -146,8 +145,6 @@ class Trainer:
                         # and updated latest_state_dict_iteration.txt.
                         self.last_sync_step = self.train_step_num
                         self.last_sync_time = time.time()
-                if self.config.trainer.enable_preview:
-                    self._log_experiences(repr_samples)
                 self.monitor.log(metrics, self.train_step_num)
             except StopAsyncIteration:
                 self.logger.info("No more samples to train. Stopping training.")
@@ -243,14 +240,6 @@ class Trainer:
             self.last_sync_time = time.time()
         self.logger.info(f"Trainer sync_weights at step {self.train_step_num} finished.")
         return metrics
-
-    def _log_experiences(self, samples: List[Dict]) -> None:
-        self._sample_exps_to_log.extend(samples)
-        if self.train_step_num % self.config.synchronizer.sync_interval == 0:
-            self.monitor.log_table(
-                "rollout_examples", pd.DataFrame(self._sample_exps_to_log), self.train_step_num
-            )
-            self._sample_exps_to_log.clear()
 
     async def save_checkpoint(
         self, block_until_saved: bool = False, save_as_hf: bool = False
