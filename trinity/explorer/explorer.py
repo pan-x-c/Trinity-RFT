@@ -89,6 +89,10 @@ class Explorer:
         self._pending_async_sync: bool = False
         self._async_watch_stopped: bool = False
         self._async_watch_task: Optional[asyncio.Task] = None
+        # FULLY_ASYNC: ordered queue of submitted-but-not-yet-finalized training step numbers.
+        # Used to drain the oldest batch when the in-flight window is full and to drain
+        # all remaining batches at sync time via finish_current_steps().
+        self._inflight_train_steps: deque[int] = deque()
         self.logger.info("Finished initializing Explorer.")
 
     async def _wait_for_models_ready(self) -> None:
@@ -328,19 +332,48 @@ class Explorer:
         self.explore_step_num += 1
         if self.rollout_coordinator is None:
             return False
+        # FULLY_ASYNC: when the in-flight window is full, wait for the oldest batch to
+        # finish before submitting a new one.  This provides rolling backpressure without
+        # waiting for a sync-interval boundary.
+        if (
+            self.sync_style == SyncStyle.FULLY_ASYNC
+            and len(self._inflight_train_steps) >= self.config.explorer.max_inflight_batches
+        ):
+            oldest_step = self._inflight_train_steps.popleft()
+            self.logger.debug(
+                f"FULLY_ASYNC: at capacity, draining oldest batch (step {oldest_step})."
+            )
+            await self._finish_explore_step(step=oldest_step, model_version=self.model_version)
         await self.rollout_coordinator.submit_batch.remote(
             batch_id=self.explore_step_num,
             tasks=tasks,
             batch_type="train",
             min_wait_num=self.min_wait_num,
         )
+        if self.sync_style == SyncStyle.FULLY_ASYNC:
+            self._inflight_train_steps.append(self.explore_step_num)
         return True
 
     async def finish_current_steps(self) -> None:
         if self.rollout_coordinator is not None:
-            end_step = self.explore_step_num  # capture before any await to avoid asyncio race
-            await self._finish_steps(self.last_monitored_step + 1, end_step, self.model_version)
-            self.last_monitored_step = end_step
+            if self.sync_style == SyncStyle.FULLY_ASYNC:
+                # Drain all remaining in-flight batches in submission order.
+                end_step = self.explore_step_num
+                while self._inflight_train_steps:
+                    step = self._inflight_train_steps.popleft()
+                    await self._finish_explore_step(step=step, model_version=self.model_version)
+                    await self._finish_eval_step(step=step)
+                self.last_monitored_step = end_step
+                # Record sync-interval elapsed time (mirrors _finish_steps behaviour).
+                if self.explore_start_time is not None:
+                    metric = {"explore/time/sync_interval": time.time() - self.explore_start_time}
+                    self.explore_start_time = None
+                    if self.monitor is not None:
+                        self.monitor.log(metric, step=end_step)
+            else:
+                end_step = self.explore_step_num  # capture before any await to avoid asyncio race
+                await self._finish_steps(self.last_monitored_step + 1, end_step)
+                self.last_monitored_step = end_step
 
     async def _watch_trainer_sync_signal(self) -> None:
         """Background polling task for FULLY_ASYNC and TRAINER_DRIVEN+NCCL modes.
@@ -354,21 +387,18 @@ class Explorer:
                 ready = await self.synchronizer.trainer_requires_weight_sync.remote()
                 if ready is None:
                     break  # trainer stopped
-                if ready and not self._pending_async_sync:
-                    self._pending_async_sync = True
+                if ready:
+                    await self._nccl_weights_update()
             else:
                 # Non-NCCL (FULLY_ASYNC only): detect an incremented model version.
                 new_version = await self.synchronizer.get_latest_model_version.remote()
-                if new_version > self.model_version and not self._pending_async_sync:
-                    self._pending_async_sync = True
+                if new_version > self.model_version:
+                    await self._pull_latest_weights()
             await asyncio.sleep(0.5)
 
     async def need_sync(self) -> bool:
         if self.sync_style == SyncStyle.FULLY_ASYNC:
-            if self._pending_async_sync:
-                self._pending_async_sync = False  # consume flag
-                await self.finish_current_steps()
-                return True
+            # Fully async mode calls weight sync directly, without need_sync check
             return False
         if self.explore_step_num <= self.sync_offset:
             return False
@@ -378,7 +408,8 @@ class Explorer:
                 require_sync = await self.synchronizer.trainer_requires_weight_sync.remote()
             else:
                 require_sync = True
-        return require_sync
+            return require_sync
+        return False
 
     def need_eval(self) -> bool:
         return self.explore_step_num % self.config.explorer.eval_interval == 0
@@ -472,10 +503,10 @@ class Explorer:
 
         await self.save_checkpoint()
 
-    async def _finish_steps(self, start_step: int, end_step: int, model_version: int) -> None:
+    async def _finish_steps(self, start_step: int, end_step: int) -> None:
         for step in range(start_step, end_step + 1):
             self.logger.info(f"Waiting for step {step}")
-            await self._finish_explore_step(step=step, model_version=model_version)
+            await self._finish_explore_step(step=step)
             await self._finish_eval_step(step=step)
 
         # Record the time: read_task + explore_step (>=1) + eval (if any)
@@ -485,11 +516,11 @@ class Explorer:
             if self.monitor is not None:
                 self.monitor.log(metric, step=end_step)
 
-    async def _finish_explore_step(self, step: int, model_version: int) -> None:
+    async def _finish_explore_step(self, step: int) -> None:
         if self.rollout_coordinator is None:
             return
 
-        metric = {"rollout/model_version": model_version}
+        metric = {"rollout/model_version": self.model_version}
         with Timer(metric, "explorer/time/wait_explore_step"):
             result = await self.rollout_coordinator.finalize_train_batch.remote(step)
         if self.taskset is not None:

@@ -64,10 +64,6 @@ class RolloutCoordinator:
         self.pending_batches: Dict[BatchId, BatchState] = {}
         self.running = False
         self.detailed_stats = getattr(getattr(config, "monitor", None), "detailed_stats", False)
-        max_inflight = getattr(config.explorer, "max_inflight_batches", None)
-        self._batch_capacity: Optional[asyncio.Semaphore] = (
-            asyncio.Semaphore(max_inflight) if max_inflight is not None else None
-        )
 
     async def prepare(self) -> None:
         """Initialize the owned pipeline and scheduler."""
@@ -118,13 +114,7 @@ class RolloutCoordinator:
         batch_type: BatchType,
         min_wait_num: Optional[int] = None,
     ) -> None:
-        """Register a new batch and schedule its tasks.
-
-        When `max_inflight_batches` is configured, this call blocks until a slot
-        becomes available, providing backpressure against the Explorer's main loop.
-        """
-        if self._batch_capacity is not None:
-            await self._batch_capacity.acquire()
+        """Register a new batch and schedule its tasks."""
         existing_state = self.pending_batches.get(batch_id)
         if existing_state is not None and existing_state.state not in {
             BatchLifecycleState.FINALIZED,
@@ -212,8 +202,6 @@ class RolloutCoordinator:
         batch_state.state = BatchLifecycleState.ABORTED
         batch_state.final_result = self._build_batch_result(batch_state, pipeline_metrics={})
         self.pending_batches.pop(batch_id, None)
-        if self._batch_capacity is not None:
-            self._batch_capacity.release()
 
     async def process_experiences(self, payloads: list[bytes]) -> dict:
         """Process one batch of experience payloads through the pipeline."""
@@ -306,8 +294,6 @@ class RolloutCoordinator:
         batch_state.state = BatchLifecycleState.FINALIZED
         batch_state.final_result = self._build_batch_result(batch_state, pipeline_metrics)
         self.pending_batches.pop(batch_state.batch_id, None)
-        if self._batch_capacity is not None:
-            self._batch_capacity.release()
         return dict(batch_state.final_result)
 
     def _get_active_batch_state(self, batch_state: BatchState) -> BatchLifecycleState:

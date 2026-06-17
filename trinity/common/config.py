@@ -785,10 +785,7 @@ class ExplorerConfig:
     runner_state_report_interval: int = 0
 
     # Maximum number of train batches that RolloutCoordinator can hold simultaneously.
-    # None means no explicit limit; the sync_interval naturally bounds in-flight batches
-    # for non-FULLY_ASYNC modes.  For FULLY_ASYNC (which has no interval-based throttle),
-    # set this to a small positive integer (e.g. 2) to prevent unbounded batch accumulation.
-    max_inflight_batches: Optional[int] = None
+    max_inflight_batches: int = 2
 
 
 @dataclass
