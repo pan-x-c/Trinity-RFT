@@ -28,6 +28,7 @@ from tests.tools import (
 from trinity.buffer import get_buffer_reader
 from trinity.buffer.operators import ExperienceOperatorV1
 from trinity.cli.launcher import explore, run_stage
+from trinity.common.constants import SyncStyle
 from trinity.common.config import (
     ExperienceBufferConfig,
     InferenceModelConfig,
@@ -118,6 +119,7 @@ def _build_fake_coordinator_explorer():
     explorer.explore_step_num = 0
     explorer.model_version = 7
     explorer.detailed_stats = False
+    explorer.sync_style = SyncStyle.FIXED
     explorer.config = SimpleNamespace(
         explorer=SimpleNamespace(
             over_rollout=SimpleNamespace(return_partial_tasks=False),
