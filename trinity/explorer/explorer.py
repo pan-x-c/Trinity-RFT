@@ -85,6 +85,10 @@ class Explorer:
         self.sync_style = config.synchronizer.sync_style
         self.eval_start_time = None
         self.explore_start_time = None
+        # FULLY_ASYNC: background sync watcher task
+        self._pending_async_sync: bool = False
+        self._async_watch_stopped: bool = False
+        self._async_watch_task: Optional[asyncio.Task] = None
         self.logger.info("Finished initializing Explorer.")
 
     async def _wait_for_models_ready(self) -> None:
@@ -262,6 +266,9 @@ class Explorer:
                 await self.eval()
 
             await self.synchronizer.set_explorer_status.remote(RunningStatus.RUNNING)
+            if self.sync_style == SyncStyle.FULLY_ASYNC:
+                self._async_watch_task = asyncio.create_task(self._watch_trainer_sync_signal())
+                self.logger.info("FULLY_ASYNC: trainer sync watcher task started.")
             self.logger.info("Explorer is ready.")
         except Exception as e:
             self.logger.error(f"Error during explorer preparation: {traceback.format_exc()}")
@@ -331,12 +338,43 @@ class Explorer:
 
     async def finish_current_steps(self) -> None:
         if self.rollout_coordinator is not None:
+            end_step = self.explore_step_num  # capture before any await to avoid asyncio race
             await self._finish_steps(
-                self.last_monitored_step + 1, self.explore_step_num, self.model_version
+                self.last_monitored_step + 1, end_step, self.model_version
             )
-            self.last_monitored_step = self.explore_step_num
+            self.last_monitored_step = end_step
+
+    async def _watch_trainer_sync_signal(self) -> None:
+        """FULLY_ASYNC: event-driven background task that watches for Trainer sync signals.
+
+        Blocks on the Synchronizer's condition variable (no polling) and sets a flag
+        when a new signal arrives.  The main explore loop consumes the flag in
+        need_sync() before each weight synchronization.
+        """
+        while not self._async_watch_stopped:
+            if self.sync_method == SyncMethod.NCCL:
+                ready = await self.synchronizer.wait_for_trainer_requires_sync.remote()
+                if not ready:
+                    break  # trainer stopped
+            else:
+                new_version = await self.synchronizer.watch_new_model_version.remote(
+                    self.model_version
+                )
+                if new_version is None:
+                    break  # trainer stopped
+
+            self._pending_async_sync = True
+            # Wait for main loop to consume the flag before watching the next signal.
+            while self._pending_async_sync and not self._async_watch_stopped:
+                await asyncio.sleep(0.05)
 
     async def need_sync(self) -> bool:
+        if self.sync_style == SyncStyle.FULLY_ASYNC:
+            if self._pending_async_sync:
+                self._pending_async_sync = False  # consume flag
+                await self.finish_current_steps()
+                return True
+            return False
         if self.explore_step_num <= self.sync_offset:
             return False
         require_sync = False
@@ -496,6 +534,14 @@ class Explorer:
             self.monitor.log(metric, step)
 
     async def shutdown(self) -> None:
+        # Stop the FULLY_ASYNC background watcher before tearing down models.
+        self._async_watch_stopped = True
+        if self._async_watch_task is not None and not self._async_watch_task.done():
+            self._async_watch_task.cancel()
+            try:
+                await self._async_watch_task
+            except asyncio.CancelledError:
+                pass
         if self.rollout_coordinator:
             await self.rollout_coordinator.shutdown.remote()
             self.rollout_coordinator = None

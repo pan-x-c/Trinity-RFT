@@ -602,6 +602,7 @@ class InferenceModelConfig:
     sync_method: Optional[SyncMethod] = None
     checkpoint_job_dir: Optional[str] = None
     cuda_visible_devices: Optional[str] = None
+    abort_requests_on_weight_sync: bool = False
 
     # ! DO NOT SET, automatically set from model.lora_configs
     enable_lora: bool = False
@@ -782,6 +783,12 @@ class ExplorerConfig:
     dynamic_timeout: DynamicTimeoutConfig = field(default_factory=DynamicTimeoutConfig)
     # report runner state every `runner_state_report_interval` seconds, 0 to disable
     runner_state_report_interval: int = 0
+
+    # Maximum number of train batches that RolloutCoordinator can hold simultaneously.
+    # None means no explicit limit; the sync_interval naturally bounds in-flight batches
+    # for non-FULLY_ASYNC modes.  For FULLY_ASYNC (which has no interval-based throttle),
+    # set this to a small positive integer (e.g. 2) to prevent unbounded batch accumulation.
+    max_inflight_batches: Optional[int] = None
 
 
 @dataclass

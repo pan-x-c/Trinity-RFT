@@ -201,7 +201,7 @@ class Trainer:
 
     async def need_sync(self) -> bool:
         """Whether to sync the model weight."""
-        if self.sync_style in {SyncStyle.FIXED, SyncStyle.TRAINER_DRIVEN}:
+        if self.sync_style in {SyncStyle.FIXED, SyncStyle.TRAINER_DRIVEN, SyncStyle.FULLY_ASYNC}:
             return (
                 self.last_sync_step != self.train_step_num
                 and self.train_step_num % self.sync_interval == 0
