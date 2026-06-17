@@ -268,7 +268,7 @@ class Explorer:
             await self.synchronizer.set_explorer_status.remote(RunningStatus.RUNNING)
             if self.sync_style == SyncStyle.FULLY_ASYNC:
                 self._async_watch_task = asyncio.create_task(self._watch_trainer_sync_signal())
-                self.logger.info("FULLY_ASYNC: trainer sync watcher task started.")
+                self.logger.info("Trainer sync watcher task started.")
             self.logger.info("Explorer is ready.")
         except Exception as e:
             self.logger.error(f"Error during explorer preparation: {traceback.format_exc()}")
@@ -339,34 +339,29 @@ class Explorer:
     async def finish_current_steps(self) -> None:
         if self.rollout_coordinator is not None:
             end_step = self.explore_step_num  # capture before any await to avoid asyncio race
-            await self._finish_steps(
-                self.last_monitored_step + 1, end_step, self.model_version
-            )
+            await self._finish_steps(self.last_monitored_step + 1, end_step, self.model_version)
             self.last_monitored_step = end_step
 
     async def _watch_trainer_sync_signal(self) -> None:
-        """FULLY_ASYNC: event-driven background task that watches for Trainer sync signals.
+        """Background polling task for FULLY_ASYNC and TRAINER_DRIVEN+NCCL modes.
 
-        Blocks on the Synchronizer's condition variable (no polling) and sets a flag
-        when a new signal arrives.  The main explore loop consumes the flag in
-        need_sync() before each weight synchronization.
+        Polls the Synchronizer at a fixed interval and sets _pending_async_sync when
+        the Trainer signals readiness for weight synchronization.  The caller-side
+        polling approach keeps the Synchronizer methods simple and non-blocking.
         """
         while not self._async_watch_stopped:
             if self.sync_method == SyncMethod.NCCL:
-                ready = await self.synchronizer.wait_for_trainer_requires_sync.remote()
-                if not ready:
+                ready = await self.synchronizer.trainer_requires_weight_sync.remote()
+                if ready is None:
                     break  # trainer stopped
+                if ready and not self._pending_async_sync:
+                    self._pending_async_sync = True
             else:
-                new_version = await self.synchronizer.watch_new_model_version.remote(
-                    self.model_version
-                )
-                if new_version is None:
-                    break  # trainer stopped
-
-            self._pending_async_sync = True
-            # Wait for main loop to consume the flag before watching the next signal.
-            while self._pending_async_sync and not self._async_watch_stopped:
-                await asyncio.sleep(0.05)
+                # Non-NCCL (FULLY_ASYNC only): detect an incremented model version.
+                new_version = await self.synchronizer.get_latest_model_version.remote()
+                if new_version > self.model_version and not self._pending_async_sync:
+                    self._pending_async_sync = True
+            await asyncio.sleep(0.5)
 
     async def need_sync(self) -> bool:
         if self.sync_style == SyncStyle.FULLY_ASYNC:
@@ -377,11 +372,10 @@ class Explorer:
             return False
         if self.explore_step_num <= self.sync_offset:
             return False
-        require_sync = False
         if (self.explore_step_num - self.sync_offset) % self.sync_interval == 0:
             await self.finish_current_steps()
             if self.sync_style == SyncStyle.TRAINER_DRIVEN and self.sync_method == SyncMethod.NCCL:
-                require_sync = await self.synchronizer.trainer_requires_sync.remote()
+                require_sync = await self.synchronizer.trainer_requires_weight_sync.remote()
             else:
                 require_sync = True
         return require_sync

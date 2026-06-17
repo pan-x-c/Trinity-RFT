@@ -159,8 +159,16 @@ class Synchronizer:
             if status == RunningStatus.STOPPED:
                 self._ready_condition.notify_all()
 
-    def trainer_requires_sync(self) -> bool:
-        """Check if the trainer is require sync."""
+    def trainer_requires_weight_sync(self) -> Optional[bool]:
+        """Non-blocking trainer sync-readiness probe.
+
+        Returns:
+            True  -- trainer is in REQUIRE_SYNC state (ready for weight transfer).
+            False -- trainer is RUNNING (not yet requesting a sync).
+            None  -- trainer has STOPPED; the caller should terminate its watch loop.
+        """
+        if self.trainer_status == RunningStatus.STOPPED:
+            return None
         return self.trainer_status == RunningStatus.REQUIRE_SYNC
 
     async def set_explorer_status(
@@ -364,36 +372,6 @@ class Synchronizer:
             if self.model_path and use_huggingface:
                 return os.path.join(self.model_path, "huggingface")
             return self.model_path
-
-    async def wait_for_trainer_requires_sync(self) -> bool:
-        """Block until trainer_status becomes REQUIRE_SYNC or STOPPED (for FULLY_ASYNC + NCCL).
-
-        Returns True if the trainer wants to sync, False if the trainer has stopped.
-        """
-        async with self._ready_condition:
-            await self._ready_condition.wait_for(
-                lambda: self.trainer_status
-                in {RunningStatus.REQUIRE_SYNC, RunningStatus.STOPPED}
-            )
-            return self.trainer_status == RunningStatus.REQUIRE_SYNC
-
-    async def watch_new_model_version(self, current_version: int) -> Optional[int]:
-        """Block until model_version > current_version (for FULLY_ASYNC + non-NCCL).
-
-        Returns the new model version, or None if the trainer stopped before a new
-        version became available.
-        """
-        async with self._ready_condition:
-            await self._ready_condition.wait_for(
-                lambda: self.model_version > current_version
-                or self.trainer_status == RunningStatus.STOPPED
-            )
-            if (
-                self.trainer_status == RunningStatus.STOPPED
-                and self.model_version <= current_version
-            ):
-                return None
-            return self.model_version
 
     async def ready_to_nccl_sync(self, module: str, trainer_step: int) -> Union[int, None]:
         """
