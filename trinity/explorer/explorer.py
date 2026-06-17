@@ -86,10 +86,8 @@ class Explorer:
         self.eval_start_time = None
         self.explore_start_time = None
         # FULLY_ASYNC: background sync watcher task
-        self._pending_async_sync: bool = False
         self._async_watch_stopped: bool = False
         self._async_watch_task: Optional[asyncio.Task] = None
-        # FULLY_ASYNC: ordered queue of submitted-but-not-yet-finalized training step numbers.
         # Used to drain the oldest batch when the in-flight window is full and to drain
         # all remaining batches at sync time via finish_current_steps().
         self._inflight_train_steps: deque[int] = deque()
@@ -368,19 +366,24 @@ class Explorer:
         polling approach keeps the Synchronizer methods simple and non-blocking.
         """
         while not self._async_watch_stopped:
-            if self.sync_method == SyncMethod.NCCL:
-                ready = await self.synchronizer.trainer_requires_weight_sync.remote()
-                if ready is None:
-                    break  # trainer stopped
-                if ready:
-                    await self._nccl_weights_update()
-                    await self.save_checkpoint()
-            else:
-                # Non-NCCL (FULLY_ASYNC only): detect an incremented model version.
-                new_version = await self.synchronizer.get_latest_model_version.remote()
-                if new_version > self.model_version:
-                    await self._pull_latest_weights()
-                    await self.save_checkpoint()
+            try:
+                if self.sync_method == SyncMethod.NCCL:
+                    ready = await self.synchronizer.trainer_requires_weight_sync.remote()
+                    if ready is None:
+                        break  # trainer stopped
+                    if ready:
+                        await self._nccl_weights_update()
+                        await self.save_checkpoint()
+                else:
+                    # Non-NCCL (FULLY_ASYNC only): detect an incremented model version.
+                    new_version = await self.synchronizer.get_latest_model_version.remote()
+                    if new_version > self.model_version:
+                        await self._pull_latest_weights()
+                        await self.save_checkpoint()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger.error(f"Trainer sync watcher task error:\n{traceback.format_exc()}")
             await asyncio.sleep(0.5)
 
     async def need_sync(self) -> bool:
@@ -392,7 +395,7 @@ class Explorer:
         if (self.explore_step_num - self.sync_offset) % self.sync_interval == 0:
             await self.finish_current_steps()
             if self.sync_style == SyncStyle.TRAINER_DRIVEN and self.sync_method == SyncMethod.NCCL:
-                require_sync = await self.synchronizer.trainer_requires_weight_sync.remote()
+                require_sync = bool(await self.synchronizer.trainer_requires_weight_sync.remote())
             else:
                 require_sync = True
             return require_sync
