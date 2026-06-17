@@ -343,7 +343,7 @@ class Explorer:
             self.logger.debug(
                 f"FULLY_ASYNC: at capacity, draining oldest batch (step {oldest_step})."
             )
-            await self._finish_explore_step(step=oldest_step, model_version=self.model_version)
+            await self._finish_explore_step(step=oldest_step)
         await self.rollout_coordinator.submit_batch.remote(
             batch_id=self.explore_step_num,
             tasks=tasks,
@@ -357,23 +357,12 @@ class Explorer:
     async def finish_current_steps(self) -> None:
         if self.rollout_coordinator is not None:
             if self.sync_style == SyncStyle.FULLY_ASYNC:
-                # Drain all remaining in-flight batches in submission order.
-                end_step = self.explore_step_num
-                while self._inflight_train_steps:
-                    step = self._inflight_train_steps.popleft()
-                    await self._finish_explore_step(step=step, model_version=self.model_version)
-                    await self._finish_eval_step(step=step)
-                self.last_monitored_step = end_step
-                # Record sync-interval elapsed time (mirrors _finish_steps behaviour).
-                if self.explore_start_time is not None:
-                    metric = {"explore/time/sync_interval": time.time() - self.explore_start_time}
-                    self.explore_start_time = None
-                    if self.monitor is not None:
-                        self.monitor.log(metric, step=end_step)
-            else:
-                end_step = self.explore_step_num  # capture before any await to avoid asyncio race
-                await self._finish_steps(self.last_monitored_step + 1, end_step)
-                self.last_monitored_step = end_step
+                # Async mode doesn't wait for any steps, just ignore the pending steps and move forward
+                return
+            await self._finish_steps(
+                self.last_monitored_step + 1, self.explore_step_num, self.model_version
+            )
+            self.last_monitored_step = self.explore_step_num
 
     async def _watch_trainer_sync_signal(self) -> None:
         """Background polling task for FULLY_ASYNC and TRAINER_DRIVEN+NCCL modes.
@@ -389,11 +378,13 @@ class Explorer:
                     break  # trainer stopped
                 if ready:
                     await self._nccl_weights_update()
+                    await self.save_checkpoint()
             else:
                 # Non-NCCL (FULLY_ASYNC only): detect an incremented model version.
                 new_version = await self.synchronizer.get_latest_model_version.remote()
                 if new_version > self.model_version:
                     await self._pull_latest_weights()
+                    await self.save_checkpoint()
             await asyncio.sleep(0.5)
 
     async def need_sync(self) -> bool:
@@ -416,10 +407,11 @@ class Explorer:
 
     async def eval(self):
         """Evaluation on all evaluation data samples."""
-        self.eval_start_time = time.time()
         if len(self.config.buffer.explorer_input.eval_tasksets) == 0:
-            self.logger.warning("No evaluation data samples. Skip evaluation.")
+            self.logger.info("No evaluation data samples. Skip evaluation.")
             return
+
+        self.eval_start_time = time.time()
         self.logger.info(f"Evaluation at step {self.explore_step_num} started.")
 
         if self.config.buffer.explorer_input.default_eval_workflow_type:
