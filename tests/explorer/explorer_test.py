@@ -28,13 +28,12 @@ from tests.tools import (
 from trinity.buffer import get_buffer_reader
 from trinity.buffer.operators import ExperienceOperatorV1
 from trinity.cli.launcher import explore, run_stage
-from trinity.common.constants import SyncStyle
 from trinity.common.config import (
     ExperienceBufferConfig,
     InferenceModelConfig,
     OperatorConfig,
 )
-from trinity.common.constants import StorageType
+from trinity.common.constants import StorageType, SyncStyle
 from trinity.explorer.explorer import Explorer
 from trinity.explorer.proxy.client import TrinityClient
 from trinity.manager.state_manager import StateManager
