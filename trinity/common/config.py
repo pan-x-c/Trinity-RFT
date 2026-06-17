@@ -520,6 +520,16 @@ class InferenceModelConfig:
     engine_type: str = "vllm"
     engine_num: int = 1
     tensor_parallel_size: int = 1
+    data_parallel_size: int = 1
+    pipeline_parallel_size: int = 1
+    enable_expert_parallel: bool = False
+
+    # ! DO NOT SET
+    # It will be inferred as tensor_parallel_size * data_parallel_size * pipeline_parallel_size.
+    gpu_per_engine: int = 0
+
+    # Extra engine-specific initialization args for inference backends.
+    extra_engine_args: Dict[str, Any] = field(default_factory=dict)
     use_v1: bool = True
     enforce_eager: bool = False
     enable_prefix_caching: bool = True
@@ -576,9 +586,8 @@ class InferenceModelConfig:
     # For external API-based engine
     external_model_config: ExternalModelConfig = field(default_factory=ExternalModelConfig)
 
-    # for multi-node setup
+    # ! DO NOT SET, for multi node setup
     nnodes: int = 1
-    # ! DO NOT SET
     node_rank: int = 0
     enable_return_routed_experts: bool = False
 

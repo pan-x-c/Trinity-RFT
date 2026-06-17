@@ -151,7 +151,7 @@ class RayClusterConfigValidator(ConfigValidator):
                 p for p in [config.project, config.group, config.name] if p
             )
 
-        if config.model.tinker.enable or config.model.external_model.enable:
+        if config.model.tinker.enable:
             return
 
         # check cluster infomation
@@ -236,11 +236,11 @@ class RayClusterConfigValidator(ConfigValidator):
 
         if config.mode != "train":
             cluster.rollout_gpu_num = (
-                config.explorer.rollout_model.tensor_parallel_size
+                config.explorer.rollout_model.gpu_per_engine
                 * config.explorer.rollout_model.engine_num
             )
             cluster.auxiliary_model_gpu_num = sum(
-                model.tensor_parallel_size * model.engine_num
+                model.gpu_per_engine * model.engine_num
                 for model in config.explorer.auxiliary_models
             )
         cluster.explorer_gpu_num = cluster.rollout_gpu_num + cluster.auxiliary_model_gpu_num
@@ -261,9 +261,9 @@ class RayClusterConfigValidator(ConfigValidator):
                 raise ValueError(
                     "In colocate mode, `explorer.rollout_model.engine_num` must be set to 1."
                 )
-            if config.explorer.rollout_model.tensor_parallel_size != 1:
+            if config.explorer.rollout_model.gpu_per_engine != 1:
                 raise ValueError(
-                    "In colocate mode, `explorer.rollout_model.tensor_parallel_size` must be set to 1."
+                    "In colocate mode, `explorer.rollout_model.gpu_per_engine` must be set to 1."
                 )
             if len(config.explorer.auxiliary_models) > 0:
                 raise ValueError("In colocate mode, auxiliary models are not supported.")
@@ -293,7 +293,7 @@ class RayClusterConfigValidator(ConfigValidator):
                         "Trainer must use an integer number of nodes, "
                         f"but got trainer_gpu_num ({cluster.trainer_gpu_num}) "
                         f"with gpu_per_node ({cluster.gpu_per_node}). "
-                        "Please change `engine_num` or `tensor_parallel_size` in explorer config."
+                        "Please change `engine_num` or parallelism settings in explorer config."
                     )
                 cluster.trainer_node_num = cluster.trainer_gpu_num // cluster.gpu_per_node
                 cluster.trainer_gpu_num_per_node = cluster.gpu_per_node
@@ -301,45 +301,53 @@ class RayClusterConfigValidator(ConfigValidator):
     def _validate_multinode_inference_models(self, config: Config) -> None:
         """Validate per-engine multi-node inference settings.
 
-        For now, cross-node inference engines are only supported for vLLM-backed
-        rollout and auxiliary models.
+        Cross-node inference engines are supported for vLLM and SGLang.
+        The validation is based on the inferred launch mode:
+        - SINGLE_NODE: each actor runs a self-contained engine.
+          When nnodes>1 and DP>1, the allocator expands into engine_num*DP actors.
+        - HEADLESS: cross-node TP/PP, nnodes = (TP*PP) / gpu_per_node (DP=1 only).
         """
 
         model_configs = [config.explorer.rollout_model, *config.explorer.auxiliary_models]
         for model_config in model_configs:
-            if model_config.nnodes == 1:
+            if model_config.engine_type in ["tinker", "external"]:
+                model_config.gpu_per_engine = 0
+                model_config.nnodes = 1
                 continue
 
-            if (
-                not model_config.engine_type.startswith("vllm")
-                and model_config.engine_type != "sglang"
-            ):
-                raise ValueError(
-                    "Multi-node inference is only supported for vLLM and SGLang engines."
-                )
+            model_config.gpu_per_engine = (
+                model_config.data_parallel_size
+                * model_config.tensor_parallel_size
+                * model_config.pipeline_parallel_size
+            )
 
-            if model_config.nnodes < 1:
-                raise ValueError(f"`nnodes` must be >= 1, but got {model_config.nnodes}.")
+            if model_config.gpu_per_engine > config.cluster.gpu_per_node:
+                # multi node engine
+                if model_config.gpu_per_engine % config.cluster.gpu_per_node != 0:
+                    raise ValueError(
+                        f"Multi-node inference requires gpu_per_engine to be a multiple of "
+                        f"cluster.gpu_per_node ({config.cluster.gpu_per_node}), but got "
+                        f"gpu_per_engine={model_config.gpu_per_engine}."
+                    )
+                model_config.nnodes = model_config.gpu_per_engine // config.cluster.gpu_per_node
+            else:
+                model_config.nnodes = 1
 
-            if model_config.nnodes > config.cluster.node_num:
-                raise ValueError(
-                    f"`nnodes` ({model_config.nnodes}) cannot exceed cluster.node_num "
-                    f"({config.cluster.node_num})."
-                )
-
-            if model_config.tensor_parallel_size % config.cluster.gpu_per_node != 0:
-                raise ValueError(
-                    f"tensor_parallel_size ({model_config.tensor_parallel_size}) must be an "
-                    f"integer multiple of cluster.gpu_per_node ({config.cluster.gpu_per_node}) "
-                    "when `nnodes > 1`, because each cross-node engine must occupy full nodes."
-                )
-
-            required_nnodes = model_config.tensor_parallel_size // config.cluster.gpu_per_node
-            if model_config.nnodes != required_nnodes:
-                raise ValueError(
-                    f"`nnodes` ({model_config.nnodes}) must equal tensor_parallel_size // "
-                    f"cluster.gpu_per_node ({required_nnodes}) when `nnodes > 1`."
-                )
+            # vllm specific check
+            if model_config.engine_type.startswith("vllm"):
+                # vllm only support single node data parallel
+                if model_config.data_parallel_size > 1 and model_config.nnodes > 1:
+                    raise ValueError("vLLM does not support data parallelism in multi-node setups.")
+            elif model_config.engine_type == "sglang":
+                # sglang requires tensor_parallel_size % data_parallel_size == 0
+                # see sglang/srt/server_args.py for details
+                if model_config.tensor_parallel_size % model_config.data_parallel_size != 0:
+                    raise ValueError(
+                        f"SGLang inference requires tensor_parallel_size "
+                        f"to be a multiple of data_parallel_size, but got "
+                        f"tensor_parallel_size={model_config.tensor_parallel_size} and "
+                        f"data_parallel_size={model_config.data_parallel_size}."
+                    )
 
 
 class AlgorithmConfigValidator(ConfigValidator):
@@ -697,6 +705,7 @@ class ExplorerConfigValidator(ConfigValidator):
         if config.mode == "serve":
             # in 'serve' mode, we always enable openai api for rollout model
             config.explorer.rollout_model.enable_openai_api = True
+        self._validate_inference_parallel_config(config.explorer.rollout_model, "rollout_model")
         # auxiliary models
         for aux_model in config.explorer.auxiliary_models:
             if not aux_model.model_path:
@@ -706,6 +715,7 @@ class ExplorerConfigValidator(ConfigValidator):
             aux_model.enable_openai_api = True
             for args in model_args:
                 set_if_none(aux_model, args, getattr(config.model, args))
+            self._validate_inference_parallel_config(aux_model, "auxiliary_model")
 
         if (
             config.explorer.over_rollout.ratio > 0.0
@@ -735,6 +745,22 @@ class ExplorerConfigValidator(ConfigValidator):
                     f"It is set to {max_runner_per_model}."
                 )
                 config.explorer.runner_per_model = max_runner_per_model
+
+    def _validate_inference_parallel_config(self, model_config, model_name: str) -> None:
+        if model_config.engine_type in {"tinker", "external"}:
+            model_config.tensor_parallel_size = 0
+            model_config.data_parallel_size = 0
+            model_config.pipeline_parallel_size = 0
+            model_config.enable_expert_parallel = False
+            model_config.gpu_per_engine = 0
+            model_config.nnodes = 1
+            model_config.node_rank = 0
+            return
+
+        for key in ["tensor_parallel_size", "data_parallel_size", "pipeline_parallel_size"]:
+            value = getattr(model_config, key)
+            if value < 1:
+                raise ValueError(f"`{model_name}.{key}` must be >= 1, but got {value}.")
 
     def _validate_lora(self, config: Config) -> None:
         """Process and validate LoRA configuration settings.

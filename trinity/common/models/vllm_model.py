@@ -42,7 +42,7 @@ class vLLMRolloutModel(BaseInferenceModel):
 
         self.vllm_version = get_vllm_version()
         self.use_v1 = config.use_v1
-        if config.tensor_parallel_size != 1:
+        if config.gpu_per_engine != 1:
             os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
             os.environ["VLLM_RAY_BUNDLE_INDICES"] = config.bundle_indices
         if self.vllm_version >= parse_version("0.22.0"):
@@ -58,9 +58,9 @@ class vLLMRolloutModel(BaseInferenceModel):
         if self.config.enable_runtime_lora_updating:
             os.environ["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] = "1"
         self.tokenization_kwargs = {
-            "truncate_prompt_tokens": config.max_prompt_tokens
-            if config.enable_prompt_truncation
-            else None
+            "truncate_prompt_tokens": (
+                config.max_prompt_tokens if config.enable_prompt_truncation else None
+            )
         }
         self.default_sampling_params = vllm.SamplingParams(
             n=1,
@@ -107,8 +107,17 @@ class vLLMRolloutModel(BaseInferenceModel):
         )
         await self._initialize_tokenizer()
 
+    def _use_data_parallel_mode(self) -> bool:
+        return self.config.data_parallel_size > 1 and self.config.nnodes > 1
+
     async def prepare(self) -> None:
-        """Prepare the model for inference."""
+        """Prepare the model for inference.
+
+        Branches by launch mode:
+        - SINGLE_NODE: create full AsyncLLMEngine with all DP/TP/PP via mp backend.
+          When nnodes>1 and DP>1, each actor is a self-contained engine (dp_size=1).
+        - HEADLESS: node_rank=0 creates full engine, node_rank>0 runs headless executor.
+        """
         import vllm
         from vllm.config import WeightTransferConfig
 
@@ -129,11 +138,15 @@ class vLLMRolloutModel(BaseInferenceModel):
                 rope_kwargs = {"hf_overrides": rope_params}
             else:
                 rope_kwargs = {}
+
             engine_args = vllm.AsyncEngineArgs(
                 model=self.config.model_path,
                 enforce_eager=self.config.enforce_eager,
                 worker_cls="trinity.common.models.vllm_worker.TrinityGPUWorker",
                 tensor_parallel_size=self.config.tensor_parallel_size,
+                pipeline_parallel_size=self.config.pipeline_parallel_size,
+                data_parallel_size=self.config.data_parallel_size,
+                enable_expert_parallel=self.config.enable_expert_parallel,
                 seed=self.config.seed,
                 distributed_executor_backend="mp",
                 max_model_len=self.config.max_model_len,
@@ -157,11 +170,17 @@ class vLLMRolloutModel(BaseInferenceModel):
                 logprobs_mode="processed_logprobs",
                 nnodes=self.config.nnodes,
                 node_rank=self.config.node_rank,
-                async_scheduling=False,
+                async_scheduling=True,
                 weight_transfer_config=weight_transfer_config,
                 **rope_kwargs,
                 **self.config.lora_kwargs,
+                **self.config.extra_engine_args,
             )
+
+            # Cross-node TP/PP: primary node vs headless nodes
+            if self.config.tensor_parallel_size > 1 and self.config.nnodes > 1:
+                engine_args.compilation_config.pass_config.fuse_allreduce_rms = False
+
             if self.master_addr is not None and self.master_port is not None:
                 engine_args.master_addr = self.master_addr
                 engine_args.master_port = self.master_port
@@ -170,7 +189,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 await self._collective_rpc("apply_patches")
                 await self.run_api_server()
             else:
-                # use run_headless
+                # Headless executor for cross-node TP/PP
                 from vllm.v1.executor.multiproc_executor import MultiprocExecutor
 
                 vllm_config = engine_args.create_engine_config(headless=True)

@@ -4,7 +4,7 @@ import asyncio
 import os
 import time
 from logging import Logger
-from typing import Callable, Coroutine, Dict, List, Optional
+from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 import uvicorn
 from fastapi import FastAPI, Response
@@ -281,6 +281,10 @@ def get_api_server(
     port: int,
     model_path: Optional[str],
     tensor_parallel_size: int,
+    data_parallel_size: int,
+    pipeline_parallel_size: int,
+    enable_expert_parallel: bool,
+    extra_engine_args: Optional[Dict[str, Any]],
     dtype: str,
     served_model_name: Optional[str],
     mem_fraction_static: float,
@@ -300,12 +304,17 @@ def get_api_server(
     if model_path is None:
         raise ValueError("model_path must be provided when launching the SGLang API server.")
 
-    server_args = ServerArgs(
+    server_args_kwargs: Dict[str, Any] = dict(
         host=host,
         port=port,
         model_path=model_path,
         tp_size=tensor_parallel_size,
+        dp_size=data_parallel_size,
+        pp_size=pipeline_parallel_size,
+        ep_size=tensor_parallel_size if enable_expert_parallel else 1,
         dtype=dtype,
+        enable_dp_attention=data_parallel_size > 1,
+        enable_dp_lm_head=data_parallel_size > 1,
         served_model_name=served_model_name,
         mem_fraction_static=mem_fraction_static,
         trust_remote_code=trust_remote_code,
@@ -324,6 +333,9 @@ def get_api_server(
         enable_symm_mem=True,
         device="cuda",
     )
+    if extra_engine_args:
+        server_args_kwargs.update(extra_engine_args)
+    server_args = ServerArgs(**server_args_kwargs)
 
     os.environ["SGLANG_BLOCK_NONZERO_RANK_CHILDREN"] = "0"
 
