@@ -407,7 +407,7 @@ class WorkflowRunner:
                 if not hasattr(exp, "info") or exp.info is None:
                     exp.info = {}
                 exp.info["model_version"] = model_version
-                exp.info["model_version_delta"] = model_version_after - model_version
+                exp.info["model_version_drift"] = model_version_after - model_version
                 exp.info["use_count"] = 0
                 exp.info["task_index"] = task.index
 

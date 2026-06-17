@@ -1522,7 +1522,9 @@ class GPUMemoryValidator(ConfigValidator):
         Raises:
             ValueError: If estimated memory usage exceeds safe limits and suggestions are not bypassed.
         """
-        if config.trainer.trainer_config is None:
+        from trinity.trainer import is_verl_legacy
+
+        if config.trainer.trainer_config is None or not is_verl_legacy():
             self.logger.info("GPU memory check skipped: trainer_config is not set.")
             return
 
