@@ -344,6 +344,7 @@ class Explorer:
                 f"FULLY_ASYNC: at capacity, draining oldest batch (step {oldest_step})."
             )
             await self._finish_explore_step(step=oldest_step)
+            self.last_monitored_step = oldest_step
         await self.rollout_coordinator.submit_batch.remote(
             batch_id=self.explore_step_num,
             tasks=tasks,
@@ -356,9 +357,6 @@ class Explorer:
 
     async def finish_current_steps(self) -> None:
         if self.rollout_coordinator is not None:
-            if self.sync_style == SyncStyle.FULLY_ASYNC:
-                # Async mode doesn't wait for any steps, just ignore the pending steps and move forward
-                return
             await self._finish_steps(
                 self.last_monitored_step + 1, self.explore_step_num, self.model_version
             )

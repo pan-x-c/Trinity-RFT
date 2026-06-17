@@ -229,9 +229,17 @@ class Trainer:
                     "trainer", self.train_step_num
                 )
                 if result is None:
-                    self.logger.error("Trainer sync_weights failed.")
+                    self.logger.warning(
+                        "NCCL weight sync skipped: Explorer has stopped or is unreachable."
+                    )
                 else:
-                    self.engine.sync_weight_nccl()
+                    try:
+                        self.engine.sync_weight_nccl()
+                    except Exception:
+                        self.logger.warning(
+                            "NCCL weight sync failed (Explorer may have exited);"
+                            f" continuing with stale weights:\n{traceback.format_exc()}"
+                        )
             elif self.sync_method == SyncMethod.CHECKPOINT:
                 await self.engine.save_state_dict()
             elif self.sync_method == SyncMethod.MEMORY:

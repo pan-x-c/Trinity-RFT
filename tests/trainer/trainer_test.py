@@ -1757,6 +1757,8 @@ class FullAsyncNCCLTest(BaseTrainerCase):
         self.config.algorithm.repeat_times = 4
         self.config.buffer.batch_size = 4
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
+        self.config.explorer.rollout_model.tensor_parallel_size = 2
+        self.config.explorer.rollout_model.engine_num = 1
         self.config.synchronizer.sync_interval = 1
         self.config.synchronizer.sync_method = SyncMethod.NCCL
         self.config.synchronizer.sync_style = SyncStyle.FULLY_ASYNC

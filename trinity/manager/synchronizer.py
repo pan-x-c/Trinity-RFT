@@ -193,6 +193,11 @@ class Synchronizer:
         if status not in self.explorer_status_counts:
             self.explorer_status_counts[status] = 0
         self.explorer_status_counts[status] += 1
+        # Wake any NCCL-sync waiters so they can immediately detect Explorer exit
+        # without having to wait for the full sync_timeout.
+        if status == RunningStatus.STOPPED:
+            async with self._ready_condition:
+                self._ready_condition.notify_all()
 
     def explorer_requires_sync(self) -> bool:
         """Check if any explorer is require sync."""
