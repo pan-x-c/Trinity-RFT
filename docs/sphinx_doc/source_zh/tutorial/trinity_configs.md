@@ -488,8 +488,9 @@ synchronizer:
 - `sync_timeout`: 同步超时时间。
 - `sync_style`: 同步风格。选项：
   - `fixed`: explorer 和 trainer 每隔 `sync_interval` 步同步一次权重。
-  - `explorer_driven`: explorer 在完成 `sync_interval` 步后通知 trainer 同步权重，而不管此时 trainer 已完成多少步。
-  - `trainer_driven`: trainer 在完成 `sync_interval` 步后通知 explorer 同步权重，而不管此时 explorer 已完成多少步。
+  - `explorer_driven`: explorer 在完成 `sync_interval` 步后通知 trainer 同步权重，trainer 在收到通知且进入同步点时进行权重同步。
+  - `trainer_driven`: trainer 在完成 `sync_interval` 步后通知 explorer 同步权重，explorer 在收到通知且进入同步点时进行权重同步。
+  - `fully_async`: trainer 在完成 `sync_interval` 步后通知 explorer 同步权重，explorer 在收到通知后立即同步权重，而不等待下一个同步点。
 
 ---
 
