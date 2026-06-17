@@ -357,9 +357,7 @@ class Explorer:
 
     async def finish_current_steps(self) -> None:
         if self.rollout_coordinator is not None:
-            await self._finish_steps(
-                self.last_monitored_step + 1, self.explore_step_num
-            )
+            await self._finish_steps(self.last_monitored_step + 1, self.explore_step_num)
             self.last_monitored_step = self.explore_step_num
 
     async def _watch_trainer_sync_signal(self) -> None:
