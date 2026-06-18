@@ -37,7 +37,14 @@ def _resolve_from_config(config_path: str) -> tuple[str, str, str]:
             "so no input database is produced."
         )
     save_path = pipeline_cfg.input_save_path
-    if not save_path or not is_database_url(save_path):
+    if save_path is None:
+        # save_input is on but no path given: the pipeline writes a SQLite DB
+        # under the buffer cache dir. Resolve the same default so `view` works
+        # without a full config validation pass.
+        from trinity.buffer.pipelines.experience_pipeline import default_input_save_path
+
+        save_path = default_input_save_path(config)
+    if not is_database_url(save_path):
         raise typer.BadParameter(
             f"Cannot view from {config_path}: "
             "data_processor.experience_pipeline.input_save_path "
@@ -48,9 +55,45 @@ def _resolve_from_config(config_path: str) -> tuple[str, str, str]:
     if not tokenizer_path:
         raise typer.BadParameter(f"Cannot view from {config_path}: model.model_path is not set.")
 
+    _warn_if_renamed(config)
+
     # Mirrors ExperiencePipeline: the SQL input writer is created with table
     # name "pipeline_input" (see trinity/buffer/pipelines/experience_pipeline.py).
     return save_path, "pipeline_input", tokenizer_path
+
+
+def _warn_if_renamed(config) -> None:
+    """Warn if the resolved path may not match where the DB was actually written.
+
+    At run time, ``GlobalConfigValidator`` auto-renames an experiment (appending a
+    timestamp to ``name``) when ``continue_from_checkpoint`` is False and the job
+    directory already exists and is non-empty. Since ``view`` resolves the clean
+    (pre-rename) path, the database in that case lives under a timestamped sibling
+    ``<name>_<timestamp>/`` and the clean path may be stale or point at a different run.
+    """
+    import glob
+
+    job_dir = config.get_checkpoint_job_dir()
+    if config.continue_from_checkpoint or not os.path.isdir(job_dir) or not os.listdir(job_dir):
+        return
+
+    parent = os.path.dirname(job_dir)
+    candidates = sorted(
+        d for d in glob.glob(os.path.join(parent, f"{config.name}_*")) if os.path.isdir(d)
+    )
+    hint = ""
+    if candidates:
+        hint = " Likely candidate(s): " + ", ".join(os.path.basename(d) for d in candidates)
+
+    typer.secho(
+        "Warning: experiment was likely auto-renamed at run time "
+        "(continue_from_checkpoint=False and the job directory already exists). "
+        f"The resolved database path is under {job_dir!r}, but the actual database "
+        f"is probably under a timestamped sibling {config.name}_<timestamp>/.{hint} "
+        "Pass --url directly at the database file to avoid ambiguity.",
+        fg=typer.colors.YELLOW,
+        err=True,
+    )
 
 
 def view_command(
