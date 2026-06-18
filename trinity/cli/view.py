@@ -14,7 +14,7 @@ def _resolve_db_url(url: str) -> str:
     """
     if "://" in url:
         return url
-    return "sqlite:///" + os.path.abspath(url)
+    return "sqlite:///" + os.path.abspath(os.path.expanduser(url))
 
 
 def _resolve_from_config(config_path: str) -> tuple[str, str, str]:
@@ -89,7 +89,7 @@ def _warn_if_renamed(config) -> None:
         "Warning: experiment was likely auto-renamed at run time "
         "(continue_from_checkpoint=False and the job directory already exists). "
         f"The resolved database path is under {job_dir!r}, but the actual database "
-        f"is probably under a timestamped sibling {config.name}_<timestamp>/.{hint} "
+        f"is probably under a timestamped sibling {config.name}_<timestamp>/{hint} "
         "Pass --url directly at the database file to avoid ambiguity.",
         fg=typer.colors.YELLOW,
         err=True,
