@@ -150,13 +150,14 @@ trinity run --config grpo_gsm8k/gsm8k.yaml 2>&1 | tee debug.log
 
 **A:** 可以使用 `trinity view` 命令启动一个基于 Streamlit 的可视化界面，浏览探索阶段产生的 experience 数据，包括 prompt、response、reward、metrics 以及 token 级别（每个 token 的 log-prob）的详细信息。
 
-该功能要求 experience pipeline 实际写入 SQL 数据库，请确保配置中已设置：
+该功能要求 experience pipeline 实际写入 SQL 数据库。只需开启 `save_input`——当未设置 `input_save_path` 时，pipeline 会自动写入到 `<checkpoint_job_dir>/buffer/explorer_output.db`：
 
 ```yaml
 data_processor:
   experience_pipeline:
     save_input: true
-    input_save_path: sqlite:////path/to/your/debug_buffer.db
+    # input_save_path 可选，默认为
+    # <checkpoint_job_dir>/buffer/explorer_output.db
 ```
 
 然后指向配置文件启动查看器（数据库 URL、表名、tokenizer 会自动推导）：

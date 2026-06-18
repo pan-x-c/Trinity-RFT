@@ -157,13 +157,14 @@ Please refer to {ref}`Workflow Development Guide <Workflows>` section for detail
 
 **A:** You can use the `trinity view` command to launch a Streamlit-based viewer that lets you browse the experience data produced during exploration, including the prompt, response, reward, metrics, and token-level details (with per-token log-probs).
 
-This requires the experience pipeline to actually write a SQL database. Make sure your config has the following set:
+This requires the experience pipeline to actually write a SQL database. Just enable `save_input` — when `input_save_path` is left unset, the pipeline automatically writes to a SQLite database at `<checkpoint_job_dir>/buffer/explorer_output.db`:
 
 ```yaml
 data_processor:
   experience_pipeline:
     save_input: true
-    input_save_path: sqlite:////path/to/your/debug_buffer.db
+    # input_save_path is optional; defaults to
+    # <checkpoint_job_dir>/buffer/explorer_output.db
 ```
 
 Then run the viewer, pointing it at the config file (the database URL, table name, and tokenizer are inferred automatically):
