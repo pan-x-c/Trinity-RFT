@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Dict
 
 import numpy as np
+import pandas as pd
 
 try:
     import wandb
@@ -52,6 +53,10 @@ class Monitor(ABC):
         self.name = name
         self.role = role
         self.config = config
+
+    def log_table(self, table_name: str, experiences_table: pd.DataFrame, step: int):
+        """Log a table"""
+        pass
 
     @abstractmethod
     def log(self, data: dict, step: int, commit: bool = False) -> None:
@@ -140,6 +145,10 @@ class WandbMonitor(Monitor):
         )
         self.console_logger = get_logger(__name__, in_ray_actor=True)
 
+    def log_table(self, table_name: str, experiences_table: pd.DataFrame, step: int):
+        experiences_table = wandb.Table(dataframe=experiences_table)
+        self.log(data={table_name: experiences_table}, step=step)
+
     def log(self, data: dict, step: int, commit: bool = False) -> None:
         """Log metrics."""
         self.logger.log(data, step=step, commit=commit)
@@ -189,6 +198,10 @@ class MlflowMonitor(Monitor):
         )
         mlflow.log_params(config.flatten())
         self.console_logger = get_logger(__name__, in_ray_actor=True)
+
+    def log_table(self, table_name: str, experiences_table: pd.DataFrame, step: int):
+        experiences_table["step"] = step
+        mlflow.log_table(data=experiences_table, artifact_file=f"{table_name}.json")
 
     def log(self, data: dict, step: int, commit: bool = False) -> None:
         """Log metrics."""

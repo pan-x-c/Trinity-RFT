@@ -602,7 +602,6 @@ class InferenceModelConfig:
     sync_method: Optional[SyncMethod] = None
     checkpoint_job_dir: Optional[str] = None
     cuda_visible_devices: Optional[str] = None
-    abort_requests_on_weight_sync: bool = False
 
     # ! DO NOT SET, automatically set from model.lora_configs
     enable_lora: bool = False
@@ -807,7 +806,7 @@ class TrainerConfig:
     trainer_type: str = "verl"
     trainer_strategy: str = "fsdp2"  # "fsdp", "fsdp2" or "megatron"
     save_interval: int = 0
-    enable_preview: bool = True  # enable rollout preview in wandb
+    enable_preview: bool = False  # enable rollout preview in wandb
     total_steps: Optional[
         int
     ] = None  # total training steps, training stops when reaching this step, None means no limit
