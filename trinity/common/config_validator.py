@@ -1204,15 +1204,10 @@ class BufferConfigValidator(ConfigValidator):
             "serve",
             "colocate",
         }:
-            if experience_pipeline.save_input and experience_pipeline.input_save_path is None:
-                experience_pipeline.input_save_path = self._default_storage_path(
-                    config, StorageType.SQL.value, "explorer_output"
-                )
-                self.logger.info(
-                    "Auto set `data_processor.experience_pipeline.input_save_path` "
-                    f"to {experience_pipeline.input_save_path}"
-                )
-
+            # NOTE: the default for `experience_pipeline.input_save_path` is
+            # resolved by ExperiencePipeline._init_input_storage (the component
+            # that actually creates the database), so that callers without a
+            # full validation pass (e.g. `trinity view`) resolve the same path.
             if config.service.data_juicer is not None:
                 for operator in experience_pipeline.operators:
                     if operator.name == "data_juicer":
