@@ -1234,7 +1234,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm"
         self.config.explorer.rollout_model.engine_num = 1
-        self.config.explorer.rollout_model.tensor_parallel_size = 2
+        self.config.explorer.rollout_model.tensor_parallel_size = 4
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.explorer.rollout_model.enable_history = True
@@ -1257,7 +1257,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
             master_address=master_addr,
             master_port=master_port,
             rank_offset=0,
-            world_size=2,
+            world_size=4,
             group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
         )
 
@@ -1285,7 +1285,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
         checkpoint_path = get_checkpoint_path()
         shutil.rmtree(os.path.join(checkpoint_path, "unittest"), ignore_errors=True)
 
-    async def test_chat_during_weight_sync(self):
+    async def test_chat_during_weight_sync(self):  # noqa: C901
         # Use the diverse GSM8K math questions as prompts so each request hits
         # different content rather than repeating one fixed prompt.
         questions = _load_gsm8k_questions()
@@ -1322,7 +1322,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                 messages=messages,
                 n=1,
                 temperature=temperature,
-                max_tokens=512,
+                max_tokens=2048,
             )
             version_after = await self.model_wrapper.model_version_async
             content = response.choices[0].message.content
@@ -1355,7 +1355,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
         submitter_task = asyncio.create_task(submitter())
 
         # Let a couple of requests actually start before triggering the sync.
-        await asyncio.sleep(1)
+        await asyncio.sleep(10)
         # Trigger the (slow) weight sync while chat requests keep flowing.
         await self.model_wrapper.sync_model_weights(self._target_version, SyncMethod.CHECKPOINT)
         sync_done.set()
@@ -1476,7 +1476,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                                 # ANSI red: \033[91m ... \033[0m
                                 red_token = f"\033[91m{repr(token_text)}\033[0m"
                                 print(
-                                    f"      [{i+1}] position={idx.item()}, "
+                                    f"      [{i + 1}] position={idx.item()}, "
                                     f"token={red_token} (id={token_id}): "
                                     f"original={orig_val:.6f}, recomputed={recomp_val:.6f}, "
                                     f"diff={diff_val.item():.6f}, tolerance={tol_val:.6f}"
