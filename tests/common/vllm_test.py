@@ -26,7 +26,6 @@ from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME, SyncMethod
 from trinity.common.models.allocator import Allocator
 from trinity.common.models.model import ModelWrapper
 from trinity.manager.synchronizer import Synchronizer
-from trinity.utils.distributed import get_available_port
 
 DEBUG = False
 
@@ -1365,7 +1364,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
 
         # Extract all experiences from history to match with interrupted requests
         all_experiences = self.model_wrapper.extract_experience_from_history()
-        
+
         # Print interrupted responses that spanned the weight sync boundary
         if interrupted_contents:
             print(
@@ -1374,7 +1373,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                 f"(model_version changed during generation)\n"
                 f"{'=' * 60}"
             )
-            
+
             # Match interrupted requests with their experiences and verify logprobs consistency
             for idx, item in enumerate(interrupted_contents):
                 print(
@@ -1383,25 +1382,25 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                     f"  Question: {item['question'][:120]}...\n"
                     f"  Response: {item['content']}\n"
                 )
-                
+
                 # Find matching experience by comparing response text
                 matching_exp = None
                 for exp in all_experiences:
-                    if exp.response_text == item['content']:
+                    if exp.response_text == item["content"]:
                         matching_exp = exp
                         break
-                
+
                 if matching_exp:
-                    print(f"  Original Experience Data:")
+                    print("  Original Experience Data:")
                     print(f"    - logprobs_shape: {matching_exp.logprobs.shape}")
                     print(f"    - prompt_length: {matching_exp.prompt_length}")
                     print(f"    - total_tokens: {len(matching_exp.tokens)}")
-                    
+
                     # Recompute logprobs on the original tokens (prompt + response) using
                     # the post-sync model. This verifies that the weight sync did not
                     # corrupt the model: the same token sequence should yield nearly
                     # identical logprobs before and after the sync.
-                    print(f"  Recomputing logprobs on original tokens after weight sync...")
+                    print("  Recomputing logprobs on original tokens after weight sync...")
                     recomputed_logprobs = self.model_wrapper.logprobs(
                         matching_exp.tokens.tolist(), temperature=temperature
                     )
@@ -1410,16 +1409,18 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                     # The experience stores only the response portion, i.e. from index
                     # (prompt_length - 1) onwards.
                     original_response_logprobs = matching_exp.logprobs
-                    recomputed_response_logprobs = recomputed_logprobs[matching_exp.prompt_length - 1:]
-                    
-                    print(f"  Logprobs Comparison:")
-                    
+                    recomputed_response_logprobs = recomputed_logprobs[
+                        matching_exp.prompt_length - 1 :
+                    ]
+
+                    print("  Logprobs Comparison:")
+
                     self.assertEqual(
                         original_response_logprobs.shape,
                         recomputed_response_logprobs.shape,
                         "logprobs shape mismatch between original and recomputed",
                     )
-                    
+
                     # Use torch.allclose with tolerances similar to test_logprobs_api
                     logprobs_similar = torch.allclose(
                         original_response_logprobs,
@@ -1428,39 +1429,43 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                         atol=1e-3,
                     )
                     print(f"    - logprobs_similar (rtol=0.4, atol=1e-3): {logprobs_similar}")
-                    
+
                     if logprobs_similar:
-                        print(f"    ✓ Logprobs are consistent after weight sync")
+                        print("    ✓ Logprobs are consistent after weight sync")
                     else:
-                        print(f"    ✗ Logprobs differ after weight sync")
-                        abs_diff = torch.abs(original_response_logprobs - recomputed_response_logprobs)
+                        print("    ✗ Logprobs differ after weight sync")
+                        abs_diff = torch.abs(
+                            original_response_logprobs - recomputed_response_logprobs
+                        )
                         mean_diff = torch.mean(abs_diff).item()
                         max_diff = torch.max(abs_diff).item()
                         print(f"    - mean_abs_diff: {mean_diff:.6f}")
                         print(f"    - max_abs_diff: {max_diff:.6f}")
-                        
+
                         # Find positions where the difference exceeds tolerance
                         # torch.allclose uses: |a - b| <= atol + rtol * |b|
                         tolerance = 1e-3 + 0.4 * torch.abs(recomputed_response_logprobs)
                         mismatch_mask = abs_diff > tolerance
                         mismatch_indices = torch.where(mismatch_mask)[0]
-                        
-                        print(f"    - num_mismatched_positions: {len(mismatch_indices)} / {len(original_response_logprobs)}")
-                        
+
+                        print(
+                            f"    - num_mismatched_positions: {len(mismatch_indices)} / {len(original_response_logprobs)}"
+                        )
+
                         if len(mismatch_indices) > 0:
                             # Load tokenizer to decode mismatched tokens
-                            _tokenizer = AutoTokenizer.from_pretrained(
-                                self.config.model.model_path
-                            )
+                            _tokenizer = AutoTokenizer.from_pretrained(self.config.model.model_path)
                             # response tokens start at prompt_length in matching_exp.tokens
-                            response_tokens = matching_exp.tokens[matching_exp.prompt_length:]
-                            
-                            print(f"    - Top 5 largest mismatches:")
+                            response_tokens = matching_exp.tokens[matching_exp.prompt_length :]
+
+                            print("    - Top 5 largest mismatches:")
                             # Get top 5 largest differences
                             top_k = min(5, len(mismatch_indices))
                             top_diffs, top_indices = torch.topk(abs_diff[mismatch_mask], top_k)
-                            
-                            for i, (diff_val, idx) in enumerate(zip(top_diffs, mismatch_indices[top_indices])):
+
+                            for i, (diff_val, idx) in enumerate(
+                                zip(top_diffs, mismatch_indices[top_indices])
+                            ):
                                 orig_val = original_response_logprobs[idx].item()
                                 recomp_val = recomputed_response_logprobs[idx].item()
                                 tol_val = tolerance[idx].item()
@@ -1470,13 +1475,15 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                                 token_text = _tokenizer.decode([token_id])
                                 # ANSI red: \033[91m ... \033[0m
                                 red_token = f"\033[91m{repr(token_text)}\033[0m"
-                                print(f"      [{i+1}] position={idx.item()}, "
-                                      f"token={red_token} (id={token_id}): "
-                                      f"original={orig_val:.6f}, recomputed={recomp_val:.6f}, "
-                                      f"diff={diff_val.item():.6f}, tolerance={tol_val:.6f}")
-                            
+                                print(
+                                    f"      [{i+1}] position={idx.item()}, "
+                                    f"token={red_token} (id={token_id}): "
+                                    f"original={orig_val:.6f}, recomputed={recomp_val:.6f}, "
+                                    f"diff={diff_val.item():.6f}, tolerance={tol_val:.6f}"
+                                )
+
                             # Print the full response text with mismatched tokens highlighted in red
-                            print(f"    - Response text with mismatched tokens highlighted in red:")
+                            print("    - Response text with mismatched tokens highlighted in red:")
                             highlighted_parts = []
                             mismatch_set = set(mismatch_indices.tolist())
                             for pos in range(len(response_tokens)):
@@ -1496,7 +1503,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                         else "",
                     )
                 else:
-                    print(f"  [WARNING] No matching experience found in history")
+                    print("  [WARNING] No matching experience found in history")
 
             print(f"{'=' * 60}\n")
         else:

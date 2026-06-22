@@ -34,9 +34,11 @@ def setup_server_in_ray(args, logger):
     logger.info("vLLM API server version %s", VLLM_VERSION)
     if get_vllm_version() < parse_version("0.23.0"):
         from vllm.entrypoints.utils import log_non_default_args
+
         log_non_default_args(args)
     else:
         from vllm.entrypoints.serve.utils.api_utils import log_non_default_args
+
         log_non_default_args(args)
 
     if args.tool_parser_plugin and len(args.tool_parser_plugin) > 3:
