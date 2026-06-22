@@ -1235,7 +1235,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
         self.config.model.model_path = get_model_path()
         self.config.explorer.rollout_model.engine_type = "vllm"
         self.config.explorer.rollout_model.engine_num = 1
-        self.config.explorer.rollout_model.tensor_parallel_size = 4
+        self.config.explorer.rollout_model.tensor_parallel_size = 2
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.explorer.rollout_model.enable_history = True
@@ -1258,7 +1258,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
             master_address=master_addr,
             master_port=master_port,
             rank_offset=0,
-            world_size=4,
+            world_size=2,
             group_name=ROLLOUT_WEIGHT_SYNC_GROUP_NAME,
         )
 
@@ -1297,6 +1297,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
         # in flight for the *entire* sync window — topping up as requests finish
         # until `sync_model_weights` returns.
         concurrency = 4
+        temperature = 1.0
         contents: list[str] = []
         interrupted_contents: list[dict] = []  # responses that spanned the weight sync boundary
         errors: list[BaseException] = []
@@ -1321,8 +1322,8 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                 model=self.model_id,
                 messages=messages,
                 n=1,
-                temperature=0.8,
-                max_tokens=1024,
+                temperature=temperature,
+                max_tokens=512,
             )
             version_after = await self.model_wrapper.model_version_async
             content = response.choices[0].message.content
@@ -1402,7 +1403,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                     # identical logprobs before and after the sync.
                     print(f"  Recomputing logprobs on original tokens after weight sync...")
                     recomputed_logprobs = self.model_wrapper.logprobs(
-                        matching_exp.tokens.tolist(), temperature=0.8
+                        matching_exp.tokens.tolist(), temperature=temperature
                     )
                     # logprobs() returns shape (num_tokens - 1,), where logprobs[i] is
                     # the log-probability of token[i+1] given token[:i+1].
@@ -1424,9 +1425,9 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                         original_response_logprobs,
                         recomputed_response_logprobs,
                         rtol=0.4,
-                        atol=1e-2,
+                        atol=1e-3,
                     )
-                    print(f"    - logprobs_similar (rtol=0.4, atol=1e-2): {logprobs_similar}")
+                    print(f"    - logprobs_similar (rtol=0.4, atol=1e-3): {logprobs_similar}")
                     
                     if logprobs_similar:
                         print(f"    ✓ Logprobs are consistent after weight sync")
@@ -1440,7 +1441,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                         
                         # Find positions where the difference exceeds tolerance
                         # torch.allclose uses: |a - b| <= atol + rtol * |b|
-                        tolerance = 1e-2 + 0.4 * torch.abs(recomputed_response_logprobs)
+                        tolerance = 1e-3 + 0.4 * torch.abs(recomputed_response_logprobs)
                         mismatch_mask = abs_diff > tolerance
                         mismatch_indices = torch.where(mismatch_mask)[0]
                         
@@ -1485,15 +1486,15 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                                 else:
                                     highlighted_parts.append(token_text)
                             print(f"      {''.join(highlighted_parts)}")
-                    
-                    # self.assertTrue(
-                    #     logprobs_similar,
-                    #     f"Logprobs for interrupted request {idx + 1} are not consistent "
-                    #     f"after weight sync (mean_diff={mean_diff:.6f}, max_diff={max_diff:.6f}, "
-                    #     f"num_mismatched={len(mismatch_indices) if not logprobs_similar else 0})"
-                    #     if not logprobs_similar
-                    #     else "",
-                    # )
+
+                    self.assertTrue(
+                        logprobs_similar,
+                        f"Logprobs for interrupted request {idx + 1} are not consistent "
+                        f"after weight sync (mean_diff={mean_diff:.6f}, max_diff={max_diff:.6f}, "
+                        f"num_mismatched={len(mismatch_indices) if not logprobs_similar else 0})"
+                        if not logprobs_similar
+                        else "",
+                    )
                 else:
                     print(f"  [WARNING] No matching experience found in history")
 
