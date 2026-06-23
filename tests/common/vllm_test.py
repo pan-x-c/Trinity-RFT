@@ -1242,6 +1242,9 @@ class TestConcurrentSyncWeights(VLLMTestBase):
         # weights as the running model, so the swap is a semantic no-op and the
         # test isolates the concurrency behavior rather than the weight values.
         self.config.explorer.rollout_model.sync_method = SyncMethod.CHECKPOINT
+        self.config.explorer.rollout_model.extra_engine_args = {
+            "attention_backend": "FLASHINFER",
+        }
         # A throwaway checkpoint root for this test run.
         self.config.checkpoint_root_dir = get_checkpoint_path()
         self.config.check_and_update()
