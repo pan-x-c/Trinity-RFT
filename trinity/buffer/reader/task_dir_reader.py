@@ -1,8 +1,7 @@
-"""Harbor taskset reader."""
+"""Directory-backed taskset reader."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -11,49 +10,10 @@ from trinity.buffer.schema.formatter import TaskFormatter
 from trinity.common.config import StorageConfig
 
 
-def _ensure_harbor_importable() -> None:
-    try:
-        import harbor  # noqa: F401
-
-        return
-    except ImportError as exc:
-        raise ImportError(
-            "HarborReader requires the `harbor` package to be installed in the "
-            "current Python environment."
-        ) from exc
-
-
-@dataclass(frozen=True)
-class HarborTaskEntry:
-    index: int
-    task_id: str
-    harbor_task_name: str
-    harbor_task_short_name: str
-    harbor_task_path: str
-    harbor_dataset_name: str
-    harbor_source_type: str = "local"
-    harbor_has_steps: bool = False
-    harbor_environment_os: str = "linux"
-    harbor_metadata: dict | None = None
-
-    def to_sample(self) -> dict:
-        return {
-            "task_id": self.task_id,
-            "harbor_task_name": self.harbor_task_name,
-            "harbor_task_short_name": self.harbor_task_short_name,
-            "harbor_task_path": self.harbor_task_path,
-            "harbor_dataset_name": self.harbor_dataset_name,
-            "harbor_source_type": self.harbor_source_type,
-            "harbor_has_steps": self.harbor_has_steps,
-            "harbor_environment_os": self.harbor_environment_os,
-            "harbor_metadata": self.harbor_metadata or {},
-        }
-
-
-class _HarborTaskBatchReader:
+class _TaskDirBatchReader:
     def __init__(
         self,
-        entries: list[HarborTaskEntry],
+        task_dirs: list[Path],
         name: str,
         default_batch_size: int,
         total_epochs: int = 1,
@@ -61,10 +21,10 @@ class _HarborTaskBatchReader:
         drop_last: bool = True,
         total_steps: Optional[int] = None,
     ):
-        self.entries = entries
-        self.dataset_size = len(entries)
+        self.task_dirs = task_dirs
+        self.dataset_size = len(task_dirs)
         if self.dataset_size == 0:
-            raise ValueError(f"Harbor dataset [{name}] is empty and cannot be read.")
+            raise ValueError(f"Task directory dataset [{name}] is empty and cannot be read.")
         self.name = name
         self.default_batch_size = default_batch_size
         self.drop_last = drop_last
@@ -75,6 +35,17 @@ class _HarborTaskBatchReader:
         else:
             self.total_samples = self.dataset_size * total_epochs
 
+    def _sample_for_index(self, index: int) -> dict:
+        task_dir = self.task_dirs[index]
+        task_name = task_dir.name
+        return {
+            "task_id": f"{self.name}:{index}:{task_name}",
+            "task_name": task_name,
+            "task_dir": str(task_dir),
+            "taskset_name": self.name,
+            "source_type": "task_dir",
+        }
+
     def read_batch(self, batch_size: int) -> Tuple[List[dict], List[int]]:
         batch, indices = [], []
         while len(batch) < batch_size:
@@ -84,7 +55,7 @@ class _HarborTaskBatchReader:
                 raise StopIteration
 
             index = self.current_offset % self.dataset_size
-            batch.append(self.entries[index].to_sample())
+            batch.append(self._sample_for_index(index))
             indices.append(index)
             self.current_offset += 1
 
@@ -94,33 +65,33 @@ class _HarborTaskBatchReader:
         batch = []
         for i in indices:
             if not 0 <= i < self.dataset_size:
-                raise IndexError(f"Harbor task index {i} out of range.")
+                raise IndexError(f"Task directory index {i} out of range.")
             if self.current_offset >= self.total_samples:
                 if not self.drop_last and len(batch) > 0:
                     break
                 raise StopIteration
-            batch.append(self.entries[int(i)].to_sample())
+            batch.append(self._sample_for_index(int(i)))
             self.current_offset += 1
         return batch
 
 
-class HarborReader(BufferReader):
-    """Read local Harbor task directories as Trinity workflow tasks.
+class TaskDirReader(BufferReader):
+    """Read folder-style tasksets as Trinity workflow tasks.
 
-    The reader keeps Harbor task directories as the source of truth. Each
-    Trinity raw task is an index record pointing at a Harbor task directory.
+    This reader is intentionally format-agnostic. It is useful for datasets where
+    every task is represented by a directory, such as Harbor-style benchmark
+    tasks. The workflow owns task parsing; the reader only provides task paths.
     """
 
-    def __init__(self, config: StorageConfig):
-        _ensure_harbor_importable()
+    INDEX_FILENAME = "index.txt"
 
+    def __init__(self, config: StorageConfig):
         self.config = config
         self.name = config.name
         self.read_batch_size = config.batch_size
         self.formatter = TaskFormatter(config)
-        self.entries = self._discover_local_tasks(config)
-        self.dataset = _HarborTaskBatchReader(
-            self.entries,
+        self.dataset = _TaskDirBatchReader(
+            self._discover_task_dirs(config),
             name=config.name,
             default_batch_size=self.read_batch_size,
             total_epochs=config.total_epochs if not config.is_eval else 1,
@@ -140,52 +111,46 @@ class HarborReader(BufferReader):
         else:
             self.selector = None
 
-    def _discover_local_tasks(self, config: StorageConfig) -> list[HarborTaskEntry]:
+    def _discover_task_dirs(self, config: StorageConfig) -> list[Path]:
         if config.path is None:
-            raise ValueError("HarborReader requires `path` to be configured.")
-
-        from harbor.models.task.task import Task as HarborTask
+            raise ValueError("TaskDirReader requires `path` to be configured.")
 
         root = Path(config.path).expanduser().resolve()
         if not root.exists():
-            raise FileNotFoundError(f"Harbor taskset path does not exist: {root}")
+            raise FileNotFoundError(f"Task directory dataset path does not exist: {root}")
         if not root.is_dir():
-            raise ValueError(f"Harbor taskset path must be a directory: {root}")
+            raise ValueError(f"Task directory dataset path must be a directory: {root}")
 
-        disable_verification = config.workflow_args.get("harbor_disable_task_verification", False)
-        candidate_dirs = (
-            [root]
-            if HarborTask.is_valid_dir(root, disable_verification=disable_verification)
-            else sorted(root.iterdir())
+        index_file = root / self.INDEX_FILENAME
+        if index_file.exists():
+            return self._discover_indexed_task_dirs(root, index_file)
+
+        return sorted(
+            path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
         )
-        entries: list[HarborTaskEntry] = []
 
-        for candidate in candidate_dirs:
-            if not candidate.is_dir():
+    def _discover_indexed_task_dirs(self, root: Path, index_file: Path) -> list[Path]:
+        task_dirs = []
+        for line_number, line in enumerate(index_file.read_text().splitlines(), start=1):
+            task_path = line.strip()
+            if not task_path or task_path.startswith("#"):
                 continue
-            if not HarborTask.is_valid_dir(
-                candidate,
-                disable_verification=disable_verification,
-            ):
-                continue
-            harbor_task = HarborTask(candidate)
-            harbor_task_name = harbor_task.name
-            task_id = f"{config.name}:{len(entries)}:{harbor_task_name}"
-            entries.append(
-                HarborTaskEntry(
-                    index=len(entries),
-                    task_id=task_id,
-                    harbor_task_name=harbor_task_name,
-                    harbor_task_short_name=harbor_task.short_name,
-                    harbor_task_path=str(harbor_task.task_dir),
-                    harbor_dataset_name=config.name,
-                    harbor_has_steps=harbor_task.has_steps,
-                    harbor_environment_os=harbor_task.config.environment.os.value,
-                    harbor_metadata=dict(harbor_task.config.metadata),
+
+            relative_path = Path(task_path)
+            if relative_path.is_absolute() or ".." in relative_path.parts:
+                raise ValueError(
+                    f"Task directory index entry must stay under dataset root: "
+                    f"{index_file}:{line_number}"
                 )
-            )
 
-        return entries
+            resolved_path = (root / relative_path).resolve()
+            if not resolved_path.is_dir():
+                raise FileNotFoundError(
+                    f"Task directory index entry is not a directory: "
+                    f"{index_file}:{line_number} -> {resolved_path}"
+                )
+            task_dirs.append(resolved_path)
+        return task_dirs
 
     async def read(self, batch_size: Optional[int] = None, **kwargs):
         try:
@@ -205,8 +170,8 @@ class HarborReader(BufferReader):
         for sample, index in zip(samples, indices):
             task = self.formatter.format(sample)
             task.index["index"] = int(index)
-            task.index["harbor_task_name"] = sample["harbor_task_name"]
-            task.index["harbor_task_path"] = sample["harbor_task_path"]
+            task.index["task_name"] = sample["task_name"]
+            task.index["task_dir"] = sample["task_dir"]
             tasks.append(task)
         return tasks
 

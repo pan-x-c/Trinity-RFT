@@ -67,7 +67,7 @@ class StorageType(CaseInsensitiveEnum):
     SQL = "sql"
     QUEUE = "queue"
     FILE = "file"
-    HARBOR = "harbor"
+    TASK_DIR = "task_dir"
 
 
 class SyncMethodEnumMeta(CaseInsensitiveEnumMeta):
