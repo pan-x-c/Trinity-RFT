@@ -72,8 +72,8 @@ RUN . /opt/venv/bin/activate && MAX_JOBS=${BUILD_JOBS} \
     git+https://github.com/NVIDIA/apex.git
 
 # Install SGLang
-RUN . /opt/venv/bin/activate && uv pip install sglang==0.5.12 --prerelease=allow && \
-    uv pip install transformers==5.13.0
+RUN . /opt/venv/bin/activate && uv pip install sglang==0.5.13 --prerelease=allow && \
+    uv pip install transformers==5.12.1
 
 # Set Env variables
 # ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64
