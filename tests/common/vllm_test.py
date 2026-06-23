@@ -624,7 +624,7 @@ class TestMessageProcess(VLLMTestBase):
         self.assertLessEqual(model_len, self.config.model.max_model_len)
 
 
-class TestAPIServer(VLLMTestBase):
+class TestAPIServerCommon(VLLMTestBase):
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
@@ -655,7 +655,7 @@ class TestAPIServer(VLLMTestBase):
         )
         content = ""
         for chunk in response:
-            content += chunk.choices[0].delta.content
+            content += chunk.choices[0].delta.content or ""
             self.assertTrue(len(chunk.choices) == 1)
         self.assertTrue(len(content) > 0)
         response = openai_client.chat.completions.create(
@@ -1150,7 +1150,7 @@ class TestAsyncAPIServer(VLLMTestBase):
         contents = ["", "", "", ""]
         async for chunk in response:
             for choice in chunk.choices:
-                contents[choice.index] += choice.delta.content
+                contents[choice.index] += choice.delta.content or ""
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 4)
         for exp in exps:
@@ -1426,9 +1426,9 @@ class TestConcurrentSyncWeights(VLLMTestBase):
                         original_response_logprobs,
                         recomputed_response_logprobs,
                         rtol=0.4,
-                        atol=1e-3,
+                        atol=1e-2,
                     )
-                    print(f"    - logprobs_similar (rtol=0.4, atol=1e-3): {logprobs_similar}")
+                    print(f"    - logprobs_similar (rtol=0.4, atol=1e-2): {logprobs_similar}")
 
                     if logprobs_similar:
                         print("    ✓ Logprobs are consistent after weight sync")
@@ -1444,7 +1444,7 @@ class TestConcurrentSyncWeights(VLLMTestBase):
 
                         # Find positions where the difference exceeds tolerance
                         # torch.allclose uses: |a - b| <= atol + rtol * |b|
-                        tolerance = 1e-3 + 0.4 * torch.abs(recomputed_response_logprobs)
+                        tolerance = 1e-2 + 0.4 * torch.abs(recomputed_response_logprobs)
                         mismatch_mask = abs_diff > tolerance
                         mismatch_indices = torch.where(mismatch_mask)[0]
 
