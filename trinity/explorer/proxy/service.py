@@ -3,8 +3,6 @@ import time
 from collections import deque
 from typing import Dict, List, Tuple
 
-import torch
-
 from trinity.common.constants import RunningStatus, SyncMethod
 from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
@@ -39,7 +37,6 @@ class ExplorerService:
             or f"sqlite:///{explorer.config.buffer.cache_dir}/proxy_history.db",
             table_name="proxy_history",
         )
-        self.total_experience_count = 0
         self.ready_experience_count = 0
 
     async def serve(self) -> None:
@@ -132,36 +129,8 @@ class ExplorerService:
         for i, model in enumerate(self.models):
             metrics[f"rollout/model_{i}/total_request_count"] = model.request_count
             metrics[f"rollout/model_{i}/model_version"] = model.model_version
-        metrics["rollout/total_experience_count"] = self.total_experience_count
         metrics["rollout/ready_experience_count"] = self.ready_experience_count
         return metrics
-
-    async def record_experience(self, response, model_version: int) -> None:
-        experiences = []
-        for choice in response["choices"]:
-            exp = Experience(
-                tokens=torch.cat(
-                    (
-                        torch.tensor(response["prompt_token_ids"], dtype=torch.int32),
-                        torch.tensor(choice["token_ids"], dtype=torch.int32),
-                    )
-                ),
-                logprobs=(
-                    torch.tensor(
-                        [logprob["logprob"] for logprob in choice["logprobs"]["content"]],
-                        dtype=torch.float32,
-                    )
-                    if "logprobs" in choice and choice["logprobs"] is not None
-                    else torch.tensor([], dtype=torch.float32)
-                ),
-                prompt_length=len(response["prompt_token_ids"]),
-            )
-            exp.eid.suffix = response["id"]
-            exp.info["model_version"] = model_version
-            experiences.append(exp)
-
-        self.total_experience_count += len(experiences)
-        await self.recorder.record_history(experiences)
 
     async def submit_experiences(self) -> None:
         async with self.commit_lock:

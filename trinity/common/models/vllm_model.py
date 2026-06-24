@@ -186,6 +186,11 @@ class vLLMRolloutModel(BaseInferenceModel):
                 engine_args.master_port = self.master_port
             if self.config.node_rank == 0:
                 self.async_llm = vllm.AsyncLLMEngine.from_engine_args(engine_args)
+                # Expose the current checkpoint version on the engine instance so
+                # the in-vLLM recorder (which only sees `engine_client`) can
+                # attribute experiences to the right policy without an extra
+                # launch-time parameter. Updated in sync_model_weights.
+                self.async_llm.trinity_model_version = self.model_version
                 await self._collective_rpc("apply_patches")
                 await self.run_api_server()
             else:
@@ -580,6 +585,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 await self.async_llm.remove_lora(lora_id)
             await self.async_llm.add_lora(self.get_lora_request(self.default_lora_path))
             self.model_version = model_version
+            self.async_llm.trinity_model_version = model_version
             return model_version
 
         from vllm.distributed.weight_transfer.base import WeightTransferUpdateRequest
@@ -605,6 +611,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         await self.async_llm.finish_weight_update()
         await self.async_llm.resume_generation()
         self.model_version = model_version
+        self.async_llm.trinity_model_version = model_version
         return model_version
 
     async def init_process_group(

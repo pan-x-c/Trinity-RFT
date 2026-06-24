@@ -591,6 +591,20 @@ class InferenceModelConfig:
     node_rank: int = 0
     enable_return_routed_experts: bool = False
 
+    # Turn on in-vLLM generation recording for the OpenAI API serving path: the
+    # engine wraps ``engine_client.generate`` and writes each finished turn as a
+    # Trinity ``Experience`` to the explorer proxy's shared SQL table
+    # (``proxy_history``), keyed by the request id (== OpenAI ``response.id``).
+    # When True, the Allocator forces ``enable_return_routed_experts`` and fills
+    # ``record_db_url`` from ``ExplorerConfig.db_url``. VLLMModel then mirrors
+    # the recording config onto the engine instance for the recorder to read.
+    # The capture width (top-k logprobs) reuses ``logprobs`` below (default 1).
+    enable_recording: bool = False
+    # SQL db url the recorder writes to (shared with the explorer proxy's
+    # HistoryRecorder). Populated by the Allocator from ExplorerConfig.db_url
+    # (with a cache_dir fallback) when enable_recording is on; None otherwise.
+    record_db_url: Optional[str] = None
+
     # Buffer size (MB) for batched NCCL weight sync. Controls peak GPU memory during sync.
     weight_sync_buffer_size: int = 1024  # MB
 

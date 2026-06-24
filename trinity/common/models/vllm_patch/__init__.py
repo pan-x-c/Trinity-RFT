@@ -106,7 +106,7 @@ def get_vllm_version():
     return vllm_version
 
 
-def _get_api_server_runner(vllm_version):
+def _get_api_server_runner(vllm_version, *, recording: bool = False):
     if vllm_version == VLLM_VERSION_0120:
         from trinity.common.models.vllm_patch.api_patch_v12 import (
             run_api_server_in_ray_actor_v12,
@@ -122,6 +122,16 @@ def _get_api_server_runner(vllm_version):
         return run_api_server_in_ray_actor_v13
 
     if VLLM_VERSION_0170 <= vllm_version:
+        # When generation recording is on, use the recording-enabled entry
+        # point (a superset of api_patch_v17 that wraps engine.generate and
+        # writes Experiences to the shared store). Otherwise stock api_patch_v17.
+        if recording:
+            from trinity.common.models.vllm_patch.recording import (
+                run_api_server_with_recording as _recording_runner,
+            )
+
+            return _recording_runner
+
         from trinity.common.models.vllm_patch.api_patch_v17 import (
             run_api_server_in_ray_actor_v17,
         )
@@ -142,20 +152,38 @@ def get_api_server(
     logger: Logger,
 ):
     vllm_version = get_vllm_version()
-
-    run_api_server_in_ray_actor = _get_api_server_runner(vllm_version)
-    logger.info(f"Using vLLM API patch for version {vllm.__version__}")
-    return asyncio.create_task(
-        run_api_server_in_ray_actor(
-            async_llm,
-            host=host,
-            port=port,
-            model_path=config.model_path,  # type: ignore [arg-type]
-            logger=logger,
-            enable_auto_tool_choice=config.enable_auto_tool_choice,
-            tool_call_parser=config.tool_call_parser,
-            reasoning_parser=config.reasoning_parser,
-            enable_log_requests=config.enable_log_requests,
-            chat_template=config.chat_template,
+    # Recording is driven by the config field (not env, not an engine attr):
+    # get_api_server already receives InferenceModelConfig, so it builds the
+    # static RecordingConfig here and threads it into the recording runner.
+    recording = bool(config.enable_recording) and vllm_version >= VLLM_VERSION_0170
+    if config.enable_recording and not recording:
+        logger.warning(
+            "enable_recording is on but vLLM %s < 0.17.0; recording disabled",
+            vllm.__version__,
         )
+
+    run_api_server_in_ray_actor = _get_api_server_runner(vllm_version, recording=recording)
+    logger.info(f"Using vLLM API patch for version {vllm.__version__}")
+    kwargs = dict(
+        host=host,
+        port=port,
+        model_path=config.model_path,  # type: ignore [arg-type]
+        logger=logger,
+        enable_auto_tool_choice=config.enable_auto_tool_choice,
+        tool_call_parser=config.tool_call_parser,
+        reasoning_parser=config.reasoning_parser,
+        enable_log_requests=config.enable_log_requests,
+        chat_template=config.chat_template,
     )
+    if recording:
+        from trinity.common.models.vllm_patch.recording import RecordingConfig
+
+        kwargs["recording_config"] = RecordingConfig(
+            db_url=config.record_db_url,
+            table="proxy_history",
+            topk=config.logprobs if config.logprobs else 1,
+        )
+    # The dynamic checkpoint version is read live off the engine instance
+    # (``async_llm.trinity_model_version``, mirrored by VLLMModel), so it is
+    # not part of the static config passed here.
+    return asyncio.create_task(run_api_server_in_ray_actor(async_llm, **kwargs))

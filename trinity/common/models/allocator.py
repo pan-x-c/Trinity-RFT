@@ -82,6 +82,17 @@ class Allocator:
         config = deepcopy(config)
         config.engine_id = engine_id
 
+        # In-vLLM recording: force routed_experts capture (the engine reads
+        # this at build time — see vllm_model.py) and carry the db_url on the
+        # config so VLLMModel can mirror the recording config onto the engine
+        # instance for the recorder to read. No env / runtime_env involved.
+        if config.enable_recording:
+            config.enable_return_routed_experts = True
+            if not config.record_db_url:
+                config.record_db_url = self.config.db_url or (
+                    f"sqlite:///{self.config.buffer.cache_dir}/proxy_history.db"
+                )
+
         actor_bundle_lists = []
         for node_id in range(config.nnodes):
             actor_name = self.get_actor_name(role, engine_id, node_id)
