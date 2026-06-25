@@ -2,25 +2,25 @@
 
 A ``RecordStore`` persists Trinity ``Experience`` objects in the vLLM API
 server process. The only backend is ``MemoryStore`` — in-process, keyed by the
-recording identity (``info["task_id"]`` = the API key / Ray-injected task id),
-falling back to ``eid.suffix`` (the vLLM ``request_id``) when no identity was
-supplied.
+recording identity (``info["record_key"]`` = the API key / Ray-injected record
+key), falling back to ``eid.suffix`` (the vLLM ``request_id``) when no identity
+was supplied.
 
-The consume side is ``update_reward_by_task_id``: it sets ``reward``/``run``/
-``task`` on every experience in a task-id group, pops the group, and returns
+The consume side is ``update_reward_by_record_key``: it sets ``reward``/``run``/
+``task`` on every experience in a record-key group, pops the group, and returns
 it. This is the in-memory replacement for the old SQL ``HistoryRecorder``-
 mediated join — the coordinator calls it (via ``/records/consume_task``) at
 finalize time, so heavy experience bytes cross the network exactly once (store
 → coordinator pipeline) and never through Ray.
 
 Keying: experiences are identified by ``eid.suffix`` (the vLLM ``request_id``)
-for traceability, but **grouped** by ``info["task_id"]`` so a whole task's
-worth of turns/samples can be reward-updated and consumed together.
+for traceability, but **grouped** by ``info["record_key"]`` so a whole reward
+unit's worth of turns/samples can be reward-updated and consumed together.
 
 Concurrency: ``append_turn`` is called from a single background flusher task;
-``update_reward_by_task_id`` is called from the ``/records/consume_task`` HTTP
-handler. Both run in the same asyncio loop, so the dict is single-writer-safe
-across these two without a lock.
+``update_reward_by_record_key`` is called from the ``/records/consume_task``
+HTTP handler. Both run in the same asyncio loop, so the dict is single-writer-
+safe across these two without a lock.
 """
 import abc
 from collections import defaultdict
@@ -30,8 +30,9 @@ from trinity.common.experience import Experience
 
 #: Attribute carrying the vLLM request id on each experience's ``info`` dict.
 _REQUEST_ID_INFO_KEY = "request_id"
-#: Attribute carrying the recording identity on each experience's ``info``.
-_TASK_ID_INFO_KEY = "task_id"
+#: Attribute carrying the recording identity (the MemoryStore group key) on
+#: each experience's ``info``.
+_RECORD_KEY_INFO_KEY = "record_key"
 
 
 class RecordStore(abc.ABC):
@@ -42,13 +43,13 @@ class RecordStore(abc.ABC):
         """Persist one completed experience."""
 
     @abc.abstractmethod
-    async def update_reward_by_task_id(
-        self, task_id: str, reward: float, run: int, task: str
+    async def update_reward_by_record_key(
+        self, record_key: str, reward: float, run: int, task: str
     ) -> list[Experience]:
         """Set reward/run/task on every experience in the group, pop and return it.
 
         Args:
-            task_id: The recording identity (group key). When the recorded
+            record_key: The recording identity (group key). When the recorded
                 experience had no identity, this is its ``eid.suffix``.
             reward: Reward to stamp on every experience in the group.
             run: Run id to stamp on ``eid.run``.
@@ -60,27 +61,27 @@ class RecordStore(abc.ABC):
         """
 
     @abc.abstractmethod
-    async def get_task(self, task_id: str) -> list[Experience]:
-        """Return all experiences for a task, in insertion order."""
+    async def get_task(self, record_key: str) -> list[Experience]:
+        """Return all experiences for a record key, in insertion order."""
 
     @abc.abstractmethod
-    async def get_turn(self, task_id: str, request_id: str) -> Optional[Experience]:
+    async def get_turn(self, record_key: str, request_id: str) -> Optional[Experience]:
         """Return a single experience, or None if not found."""
 
     @abc.abstractmethod
     async def list_tasks(self) -> list[str]:
-        """Return all known task ids."""
+        """Return all known record keys."""
 
     @abc.abstractmethod
-    async def delete_task(self, task_id: str) -> None:
-        """Drop all experiences for a task."""
+    async def delete_task(self, record_key: str) -> None:
+        """Drop all experiences for a record key."""
 
 
 class MemoryStore(RecordStore):
     """In-process store.
 
-    Groups experiences by recording identity (``info["task_id"]``) when an API
-    key / task id was supplied, otherwise each turn is keyed by its own
+    Groups experiences by recording identity (``info["record_key"]``) when an
+    API key / record key was supplied, otherwise each turn is keyed by its own
     ``eid.suffix`` (request_id) — so a missing identity never collapses
     distinct turns. ``get_turn`` resolves an individual turn by
     ``info["request_id"]``.
@@ -97,27 +98,27 @@ class MemoryStore(RecordStore):
 
     @staticmethod
     def _group_key(exp: Experience) -> str:
-        session = exp.info.get(_TASK_ID_INFO_KEY)
-        return session if session else exp.eid.suffix
+        record_key = exp.info.get(_RECORD_KEY_INFO_KEY)
+        return record_key if record_key else exp.eid.suffix
 
     async def append_turn(self, exp: Experience) -> None:
         self._records[self._group_key(exp)].append(exp)
 
-    async def update_reward_by_task_id(
-        self, task_id: str, reward: float, run: int, task: str
+    async def update_reward_by_record_key(
+        self, record_key: str, reward: float, run: int, task: str
     ) -> list[Experience]:
-        exps = self._records.pop(task_id, [])
+        exps = self._records.pop(record_key, [])
         for exp in exps:
             exp.reward = reward
             exp.eid.run = run
             exp.eid.task = task
         return exps
 
-    async def get_task(self, task_id: str) -> list[Experience]:
-        return list(self._records.get(task_id, []))
+    async def get_task(self, record_key: str) -> list[Experience]:
+        return list(self._records.get(record_key, []))
 
-    async def get_turn(self, task_id: str, request_id: str) -> Optional[Experience]:
-        for exp in self._records.get(task_id, []):
+    async def get_turn(self, record_key: str, request_id: str) -> Optional[Experience]:
+        for exp in self._records.get(record_key, []):
             if exp.info.get(_REQUEST_ID_INFO_KEY) == request_id:
                 return exp
         return None
@@ -125,5 +126,5 @@ class MemoryStore(RecordStore):
     async def list_tasks(self) -> list[str]:
         return list(self._records.keys())
 
-    async def delete_task(self, task_id: str) -> None:
-        self._records.pop(task_id, None)
+    async def delete_task(self, record_key: str) -> None:
+        self._records.pop(record_key, None)

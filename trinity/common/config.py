@@ -594,10 +594,16 @@ class InferenceModelConfig:
     # Turn on in-vLLM generation recording for the OpenAI API serving path: the
     # engine wraps ``engine_client.generate`` and writes each finished turn as a
     # Trinity ``Experience`` to the in-process ``MemoryStore``, keyed by the
-    # recording identity (``task_id``). When True, the Allocator forces
-    # ``enable_return_routed_experts``. VLLMModel mirrors the recording config
-    # onto the engine instance for the recorder to read. The capture width
-    # (top-k logprobs) reuses ``logprobs`` below (default 1).
+    # recording identity (``record_key``). This is the single switch for the
+    # recording flow — when on, the explorer also consumes from the store: the
+    # WorkflowRunner ships only a small reward map keyed by ``record_key`` and
+    # the RolloutCoordinator pulls heavy experiences via ``/records/consume_task``
+    # at finalize time. When off (default), runners ship serialized experiences
+    # through the scheduler as before (legacy path). When True, the Allocator
+    # forces ``enable_return_routed_experts``. VLLMModel mirrors the recording
+    # config onto the engine instance for the recorder to read. The capture
+    # width (top-k logprobs) reuses ``logprobs`` below (default 1). Requires
+    # ``enable_openai_api=True`` (the recording runner is the API server).
     enable_recording: bool = False
 
     # Buffer size (MB) for batched NCCL weight sync. Controls peak GPU memory during sync.
@@ -792,14 +798,6 @@ class ExplorerConfig:
 
     # Maximum number of train batches that RolloutCoordinator can hold simultaneously.
     max_inflight_batches: int = 2
-
-    # Use the in-vLLM recording flow: runners report only a small reward map
-    # (keyed by task id) and the coordinator pulls heavy experiences from each
-    # vLLM rank's MemoryStore via /records/consume_task at finalize time.
-    # Requires rollout_model.enable_recording=True and enable_openai_api=True.
-    # When False (default), runners ship serialized experiences through the
-    # scheduler as before (legacy path).
-    use_recorded_experience: bool = False
 
 
 @dataclass

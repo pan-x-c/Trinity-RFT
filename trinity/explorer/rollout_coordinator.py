@@ -76,9 +76,9 @@ class RolloutCoordinator:
         # recording path's per-rank /records/consume_task fan-out.
         self._rank_urls: Optional[Dict[int, str]] = None
 
-    def _use_recorded_experience(self) -> bool:
+    def _enable_recording(self) -> bool:
         """Whether the recording-consume path is active for train batches."""
-        return bool(self.config.explorer.use_recorded_experience)
+        return bool(self.config.explorer.rollout_model.enable_recording)
 
     def _resolve_rank_urls(self) -> Dict[int, str]:
         """Resolve each rollout engine's API server URL via named Ray actors.
@@ -319,7 +319,7 @@ class RolloutCoordinator:
 
             batch_state.state = BatchLifecycleState.FINALIZING
             try:
-                if self._use_recorded_experience():
+                if self._enable_recording():
                     pipeline_metrics = await self._consume_recorded_experiences(payload_chunks)
                 else:
                     pipeline_metrics = await self.process_experiences(payload_chunks)
@@ -335,9 +335,9 @@ class RolloutCoordinator:
         """Recording path: pull heavy experiences from each vLLM rank's store.
 
         ``payload_chunks`` are small pickle reward maps produced by the runners
-        (``{"engine_id": int, "updates": [{"task_id", "reward", "run", "task"}]}``).
+        (``{"engine_id": int, "updates": [{"record_key", "reward", "run", "task"}]}``).
         Group updates by engine, fan out ``POST /records/consume_task`` to each
-        rank (which drains its recorder, reward-stamps the matching task-id
+        rank (which drains its recorder, reward-stamps the matching record-key
         groups, pops them, and returns ``serialize_many`` bytes), deserialize,
         and feed the assembled experiences straight into the pipeline — no Ray
         serialization of heavy tensors, and reward is fused inside the store.
@@ -372,7 +372,7 @@ class RolloutCoordinator:
     async def _post_consume_task(
         self, client: httpx.AsyncClient, rank_url: str, updates: List[dict]
     ) -> bytes:
-        """POST a batch of task-id reward updates to one rank; return heavy bytes."""
+        """POST a batch of record-key reward updates to one rank; return heavy bytes."""
         try:
             resp = await client.post(
                 f"{rank_url}/records/consume_task",

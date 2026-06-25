@@ -118,11 +118,11 @@ class WorkflowRunner:
             )
         else:
             self.workflow_instance.reset(task)
-        self.workflow_instance.use_recorded_experience = self._use_recorded_experience()
+        self.workflow_instance.enable_recording = self._enable_recording()
         return self.workflow_instance
 
-    def _use_recorded_experience(self) -> bool:
-        return bool(self.config.explorer.use_recorded_experience)
+    def _enable_recording(self) -> bool:
+        return bool(self.config.explorer.rollout_model.enable_recording)
 
     async def _run_workflow(self, workflow_instance: Workflow) -> List[Experience]:
         if workflow_instance.asynchronous:
@@ -140,7 +140,7 @@ class WorkflowRunner:
             ),
             self.auxiliary_model_wrappers,
         )
-        wf.use_recorded_experience = self._use_recorded_experience()
+        wf.enable_recording = self._enable_recording()
         return wf
 
     def _build_execution_result(
@@ -430,14 +430,14 @@ class WorkflowRunner:
                 # (TODO: wire eval consume-and-discard so eval turns don't leak
                 # in the store). For now, return no payload.
                 return status, b""
-            elif self._use_recorded_experience():
+            elif self._enable_recording():
                 # Recording path: ship only the small reward map keyed by the
-                # per-sample task_id_key the workflow stamped on each exp. The
+                # per-sample record_key the workflow stamped on each exp. The
                 # heavy experiences live in the vLLM MemoryStore and are pulled
                 # by the coordinator at finalize time.
                 updates = [
                     {
-                        "task_id": exp.info.get("task_id_key") or exp.eid.suffix,
+                        "record_key": exp.info.get("record_key") or exp.eid.suffix,
                         "reward": exp.reward,
                         "run": exp.eid.run,
                         "task": str(task.task_id),

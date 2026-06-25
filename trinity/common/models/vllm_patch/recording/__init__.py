@@ -3,8 +3,8 @@ Designed for vllm >= 0.23.0.
 """
 from trinity.common.models.vllm_patch.recording.context import (
     RecordingIdentityMiddleware,
+    record_key_ctx,
     skip_recording_ctx,
-    task_id_ctx,
 )
 from trinity.common.models.vllm_patch.recording.models import build_experience
 from trinity.common.models.vllm_patch.recording.query import query_router
@@ -25,7 +25,7 @@ __all__ = [
     "build_experience",
     "patch_engine_for_recording",
     "query_router",
+    "record_key_ctx",
     "run_api_server_with_recording",
     "skip_recording_ctx",
-    "task_id_ctx",
 ]

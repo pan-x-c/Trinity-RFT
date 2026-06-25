@@ -288,7 +288,7 @@ class BaseInferenceModel(InferenceModel):
         # redundant — it re-tokenizes messages and runs an extra logprobs
         # forward (and fakes routed_experts), all of which build_experience
         # already captured at generation time into the MemoryStore. Redirect to
-        # a store lookup by the call's task_id_key once it's threaded here.
+        # a store lookup by the call's record_key once it's threaded here.
         """Convert a list of messages into an experience in async.
 
         Args:
@@ -526,24 +526,24 @@ class ModelWrapper:
 
     @_history_recorder
     def chat(
-        self, messages: List[dict], task_id_key: Optional[str] = None, **kwargs
+        self, messages: List[dict], record_key: Optional[str] = None, **kwargs
     ) -> List[Experience]:
         """Generate a list of experiences from a list of messages."""
         lora_request = self.get_lora_request()
         return ray.get(
             self.model.chat.remote(
-                messages, lora_request=lora_request, task_id_key=task_id_key, **kwargs
+                messages, lora_request=lora_request, record_key=record_key, **kwargs
             )
         )
 
     @_history_recorder
     async def chat_async(
-        self, messages: List[dict], task_id_key: Optional[str] = None, **kwargs
+        self, messages: List[dict], record_key: Optional[str] = None, **kwargs
     ) -> List[Experience]:
         """Generate a list of experiences from a list of messages in async."""
         lora_request = await self.get_lora_request_async()
         return await self.model.chat.remote(
-            messages, lora_request=lora_request, task_id_key=task_id_key, **kwargs
+            messages, lora_request=lora_request, record_key=record_key, **kwargs
         )
 
     def logprobs(self, tokens: List[int], temperature: Optional[float] = None) -> Tensor:

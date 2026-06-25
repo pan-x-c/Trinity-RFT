@@ -438,12 +438,12 @@ class SGLangRolloutModel(BaseInferenceModel):
         self,
         messages: List[dict],
         lora_request=None,
-        task_id_key: Optional[str] = None,
+        record_key: Optional[str] = None,
         **kwargs,
     ) -> Sequence[Experience]:
-        # ``task_id_key`` is the in-vLLM recorder's group key; SGLang does not
+        # ``record_key`` is the in-vLLM recorder's group key; SGLang does not
         # support recording, so accept and ignore it here.
-        del task_id_key
+        del record_key
         if self.tokenizer is None:
             await self._initialize_tokenizer()
 

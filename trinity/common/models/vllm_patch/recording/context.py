@@ -6,8 +6,13 @@ read the identity in an in-process ASGI middleware and stash it in a contextvar
 so the engine-level wrapper (which runs in the same async task as the serving
 handler) can recover it at record time.
 
+The identity value is the **record key** — the MemoryStore group key under
+which a whole reward unit's worth of turns (one sample / one episode) is
+recorded, and the key the runner later reports ``{record_key: reward}`` against
+so the coordinator can join the reward inside the store.
+
 No identity header on a request is fine: the recorder falls back to
-``request_id`` as the task id so nothing is silently dropped.
+``request_id`` as the record key so nothing is silently dropped.
 """
 from contextvars import ContextVar
 from typing import Optional
@@ -15,10 +20,10 @@ from typing import Optional
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-# The task id for the in-flight request, or None when the client did not send
-# a supported identity header (the recorder then uses request_id as a fallback
-# task id).
-task_id_ctx: ContextVar[Optional[str]] = ContextVar("trinity_recording_task_id", default=None)
+# The record key for the in-flight request (the MemoryStore group key), or None
+# when the client did not send a supported identity header (the recorder then
+# uses request_id as a fallback record key).
+record_key_ctx: ContextVar[Optional[str]] = ContextVar("trinity_recording_record_key", default=None)
 
 # Set around auxiliary engine.generate calls (logprobs recomputation,
 # convert_messages_to_experience) so the recorder skips them — those 1-token
@@ -43,7 +48,7 @@ def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     return token or None
 
 
-def get_recording_task_id(request: Request) -> Optional[str]:
+def get_recording_record_key(request: Request) -> Optional[str]:
     """Return the recording identity for a request.
 
     OpenAI-compatible API keys are used because every supported agent platform
@@ -53,16 +58,16 @@ def get_recording_task_id(request: Request) -> Optional[str]:
 
 
 class RecordingIdentityMiddleware(BaseHTTPMiddleware):
-    """Capture request identity into ``task_id_ctx`` for the request's lifetime.
+    """Capture request identity into ``record_key_ctx`` for the request's lifetime.
 
     Runs in-process (ASGI) — no extra network hop, no serialization cost beyond
     a contextvar set/reset.
     """
 
     async def dispatch(self, request: Request, call_next):
-        task_id = get_recording_task_id(request)
-        token = task_id_ctx.set(task_id)
+        record_key = get_recording_record_key(request)
+        token = record_key_ctx.set(record_key)
         try:
             return await call_next(request)
         finally:
-            task_id_ctx.reset(token)
+            record_key_ctx.reset(token)

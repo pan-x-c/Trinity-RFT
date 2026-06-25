@@ -20,8 +20,8 @@ from trinity.common.models.mm_utils import (
 from trinity.common.models.model import BaseInferenceModel
 from trinity.common.models.vllm_patch import get_vllm_version
 from trinity.common.models.vllm_patch.recording.context import (
+    record_key_ctx,
     skip_recording_ctx,
-    task_id_ctx,
 )
 
 
@@ -210,18 +210,18 @@ class vLLMRolloutModel(BaseInferenceModel):
         self,
         messages: List[Dict],
         lora_request=None,
-        task_id_key: Optional[str] = None,
+        record_key: Optional[str] = None,
         **kwargs,
     ) -> Sequence[Experience]:
         """Chat with the model with a list of messages in async.
 
         Args:
             messages (List[dict]): The input history messages.
-            task_id_key (Optional[str]): Recording identity for the in-vLLM
+            record_key (Optional[str]): Recording identity for the in-vLLM
                 recorder (the MemoryStore group key). Propagated to
-                ``generate`` via ``task_id_ctx`` so the recorder stamps it into
-                ``info["task_id"]`` without an HTTP hop. None leaves it to the
-                engine request id (fallback grouping).
+                ``generate`` via ``record_key_ctx`` so the recorder stamps it
+                into ``info["record_key"]`` without an HTTP hop. None leaves it
+                to the engine request id (fallback grouping).
             kwargs (dict): A dictionary of sampling parameters.
 
         Returns:
@@ -248,7 +248,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 "multi_modal_data": multi_modal_data or {},
             }
         return await self.generate(
-            prompt=prompt, lora_request=lora_request, task_id_key=task_id_key, **kwargs
+            prompt=prompt, lora_request=lora_request, record_key=record_key, **kwargs
         )
 
     def _extract_routed_experts(self, output: Any, output_index: int) -> Optional[torch.Tensor]:
@@ -276,15 +276,15 @@ class vLLMRolloutModel(BaseInferenceModel):
         self,
         prompt: Union[str, Dict],
         lora_request=None,
-        task_id_key: Optional[str] = None,
+        record_key: Optional[str] = None,
         **kwargs,
     ) -> Sequence[Experience]:
         """Generate a response from the provided prompt in async.
 
         Args:
             prompt (str): The input prompt.
-            task_id_key (Optional[str]): Recording identity propagated to the
-                in-vLLM recorder via ``task_id_ctx`` (see ``chat``).
+            record_key (Optional[str]): Recording identity propagated to the
+                in-vLLM recorder via ``record_key_ctx`` (see ``chat``).
             kwargs (dict): A dictionary of sampling parameters.
 
         Returns:
@@ -307,14 +307,14 @@ class vLLMRolloutModel(BaseInferenceModel):
 
         # Propagate the recording identity to the engine-level recorder (same
         # async task, same process) so the recorded experience is grouped under
-        # this task id in the MemoryStore.
-        task_id_token = task_id_ctx.set(task_id_key)
+        # this record key in the MemoryStore.
+        record_key_token = record_key_ctx.set(record_key)
         try:
             output = await self._generate_internal(
                 prompt=prompt, lora_request=lora_request, **kwargs
             )
         finally:
-            task_id_ctx.reset(task_id_token)
+            record_key_ctx.reset(record_key_token)
         if is_mm_prompt:
             if self.mm_render is None:
                 self.mm_render = vLLMMultiModalRender(

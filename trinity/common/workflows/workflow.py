@@ -90,12 +90,12 @@ class Workflow:
     is_async: bool = False  # whether the workflow runs in async mode. If true, `run_async()` must be implemented, else `run()` must be implemented.
 
     # When True, the workflow cooperates with the in-vLLM recorder: each chat
-    # call carries a per-sample ``task_id_key`` (the MemoryStore group key) so
-    # the runner can later report ``{task_id_key: reward}`` and the coordinator
+    # call carries a per-sample ``record_key`` (the MemoryStore group key) so
+    # the runner can later report ``{record_key: reward}`` and the coordinator
     # can join reward inside the store. Set by the WorkflowRunner from
-    # ``config.explorer.use_recorded_experience``. See ``SimpleWorkflow`` for
-    # the per-sample (n=1) loop this triggers.
-    use_recorded_experience: bool = False
+    # ``config.explorer.rollout_model.enable_recording``. See ``SimpleWorkflow``
+    # for the per-sample (n=1) loop this triggers.
+    enable_recording: bool = False
 
     def __init__(
         self,
@@ -227,14 +227,15 @@ class MultiTurnWorkflow(Workflow):
     def process_messages_to_experience(
         self, messages, reward, info={}, truncate_status=None
     ) -> Experience:
-        # TODO(recording): when use_recorded_experience is on, this client-side
+        # TODO(recording): when enable_recording is on, this client-side
         # conversion is redundant — the vLLM recorder's build_experience already
         # captured the authoritative heavy data (real logprobs without an extra
         # forward, real routed_experts) into the MemoryStore, keyed by the
-        # task_id the chat call carried. Replace this with an in-process lookup
-        # by task_id (store.get_task / consume), then concatenate the session's
-        # turns (info["sample_index"] orders them) into one experience here.
-        # Requires threading the per-call task_id_key down to this call site.
+        # record_key the chat call carried. Replace this with an in-process
+        # lookup by record_key (store.get_task / consume), then concatenate the
+        # session's turns (info["sample_index"] orders them) into one
+        # experience here. Requires threading the per-call record_key down to
+        # this call site.
         converted_experience = self.model.convert_messages_to_experience(messages)
         return self._build_experience_from_converted(
             converted_experience,
@@ -247,7 +248,7 @@ class MultiTurnWorkflow(Workflow):
         self, messages, reward, info={}, truncate_status=None
     ) -> Experience:
         # TODO(recording): see process_messages_to_experience — replace with a
-        # MemoryStore lookup by task_id once task_id_key is threaded here.
+        # MemoryStore lookup by record_key once it is threaded here.
         converted_experience = await self.model.convert_messages_to_experience_async(messages)
         return self._build_experience_from_converted(
             converted_experience,
@@ -308,7 +309,7 @@ class BaseSimpleWorkflow(Workflow):
         return messages
 
     # -- recording-path helpers (shared by SimpleWorkflow / AsyncSimpleWorkflow) -
-    def _recorded_task_id_key(self, run_index: int) -> str:
+    def _record_key(self, run_index: int) -> str:
         """Per-sample recording identity (the MemoryStore group key)."""
         return f"{self.task.batch_id}/{self.task.task_id}/{self.run_id_base + run_index}"
 
@@ -331,11 +332,11 @@ class BaseSimpleWorkflow(Workflow):
         return responses
 
     @staticmethod
-    def _stamp_task_id_key(exps: List[Experience], task_id_key: str) -> None:
+    def _stamp_record_key(exps: List[Experience], record_key: str) -> None:
         for exp in exps:
             if exp.info is None:
                 exp.info = {}
-            exp.info["task_id_key"] = task_id_key
+            exp.info["record_key"] = record_key
 
 
 class SimpleWorkflow(BaseSimpleWorkflow):
@@ -349,23 +350,23 @@ class SimpleWorkflow(BaseSimpleWorkflow):
         messages = self.format_messages()
 
         self.logger.debug("start chat")
-        if self.use_recorded_experience:
+        if self.enable_recording:
             return self._run_recorded(messages)
         responses = self.model.chat(messages, **self.rollout_args)
         return self._attach_rewards(responses, base=self.run_id_base)
 
     def _run_recorded(self, messages) -> List[Experience]:
-        # One chat call per sample (n=1) so each gets a distinct task_id_key
+        # One chat call per sample (n=1) so each gets a distinct record_key
         # (the recording group key == reward unit). The runner later reports
-        # {task_id_key: reward} and the coordinator joins reward in-store.
+        # {record_key: reward} and the coordinator joins reward in-store.
         rollout_args = dict(self.rollout_args)
         rollout_args["n"] = 1
         exps: List[Experience] = []
         for i in range(self.repeat_times):
-            task_id_key = self._recorded_task_id_key(i)
-            responses = self.model.chat(messages, task_id_key=task_id_key, **rollout_args)
+            record_key = self._record_key(i)
+            responses = self.model.chat(messages, record_key=record_key, **rollout_args)
             rewarded = self._attach_rewards(responses, base=self.run_id_base + i)
-            self._stamp_task_id_key(rewarded, task_id_key)
+            self._stamp_record_key(rewarded, record_key)
             exps.extend(rewarded)
         return exps
 
@@ -378,7 +379,7 @@ class AsyncSimpleWorkflow(BaseSimpleWorkflow):
         messages = self.format_messages()
 
         self.logger.info("start chat")
-        if self.use_recorded_experience:
+        if self.enable_recording:
             return await self._run_recorded_async(messages)
         responses = await self.model.chat_async(messages, **self.rollout_args)
         return self._attach_rewards(responses, base=self.run_id_base)
@@ -388,12 +389,10 @@ class AsyncSimpleWorkflow(BaseSimpleWorkflow):
         rollout_args["n"] = 1
         exps: List[Experience] = []
         for i in range(self.repeat_times):
-            task_id_key = self._recorded_task_id_key(i)
-            responses = await self.model.chat_async(
-                messages, task_id_key=task_id_key, **rollout_args
-            )
+            record_key = self._record_key(i)
+            responses = await self.model.chat_async(messages, record_key=record_key, **rollout_args)
             rewarded = self._attach_rewards(responses, base=self.run_id_base + i)
-            self._stamp_task_id_key(rewarded, task_id_key)
+            self._stamp_record_key(rewarded, record_key)
             exps.extend(rewarded)
         return exps
 

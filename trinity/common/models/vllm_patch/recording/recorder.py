@@ -24,8 +24,8 @@ from typing import Optional
 
 from trinity.common.experience import Experience
 from trinity.common.models.vllm_patch.recording.context import (
+    record_key_ctx,
     skip_recording_ctx,
-    task_id_ctx,
 )
 from trinity.common.models.vllm_patch.recording.models import build_experience
 from trinity.common.models.vllm_patch.recording.store import RecordStore
@@ -98,14 +98,14 @@ def patch_engine_for_recording(
             yield out
 
         if recorder.enabled and last is not None and getattr(last, "finished", False):
-            # Recover task id from the request's async context (set by
-            # RecordingIdentityMiddleware on the HTTP path, or by
-            # VLLMModel.chat on the Ray-direct path). None when neither was
-            # supplied; the store then falls back to request_id grouping.
-            task_id = task_id_ctx.get()
+            # Recover the record key from the request's async context (set by
+            # RecordingIdentityMiddleware on the HTTP path, or by VLLMModel.chat
+            # on the Ray-direct path). None when neither was supplied; the store
+            # then falls back to request_id grouping.
+            record_key = record_key_ctx.get()
             # Offload heavy serialization off the response critical path. The
             # task is tracked so ``flush`` can await it before a consume.
-            recorder.schedule_record(last, task_id)
+            recorder.schedule_record(last, record_key)
 
     setattr(_patched_generate, _PATCHED_FLAG, True)
     engine_client.generate = _patched_generate
@@ -162,9 +162,9 @@ class Recorder:
         self._flusher.cancel()
         self._flusher = None
 
-    def schedule_record(self, output, task_id: Optional[str]) -> None:
+    def schedule_record(self, output, record_key: Optional[str]) -> None:
         """Spawn (and track) a record task for a finished ``RequestOutput``."""
-        task = asyncio.create_task(self._record(output, task_id))
+        task = asyncio.create_task(self._record(output, record_key))
         self._pending.add(task)
         task.add_done_callback(self._pending.discard)
 
@@ -180,7 +180,7 @@ class Recorder:
         if self._flusher is not None:
             await self._queue.join()
 
-    async def _record(self, output, task_id: Optional[str]) -> None:
+    async def _record(self, output, record_key: Optional[str]) -> None:
         """Build experiences for a finished turn and enqueue each for append."""
         # Auxiliary forwards (logprobs recomputation, convert_messages) set
         # this to avoid polluting the store with 1-token degenerate turns.
@@ -194,7 +194,7 @@ class Recorder:
         model_version = getattr(self.engine_client, _MODEL_VERSION_ATTR, None)
         exps = build_experience(
             output,
-            task_id,
+            record_key,
             rank=self.rank,
             timestamp=timestamp,
             model_version=model_version,

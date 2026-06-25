@@ -12,14 +12,15 @@ Field mapping (captured ``RequestOutput`` fields -> ``Experience``):
   request_id        -> eid.suffix  (``EID(suffix=...)``; the vLLM engine request
                     id == the OpenAI ``response.id``. Kept for traceability;
                     ``eid.task``/``run``/``reward`` are left default here and
-                    assigned by ``MemoryStore.update_reward_by_task_id`` at
+                    assigned by ``MemoryStore.update_reward_by_record_key`` at
                     consume time.)
-  API key / task id -> info["task_id"]  (the recording identity; **the group
-                    key** the MemoryStore batches experiences by, so a whole
-                    task's samples/turns are reward-updated and consumed
-                    together. Falls back to ``eid.suffix`` when absent.)
+  API key / record key -> info["record_key"]  (the recording identity; **the
+                    group key** the MemoryStore batches experiences by, so a
+                    whole reward unit's samples/turns are reward-updated and
+                    consumed together. Falls back to ``eid.suffix`` when
+                    absent.)
   sample index      -> info["sample_index"]  (position within the n-completion
-                    set; orders samples/turns inside a task-id group)
+                    set; orders samples/turns inside a record-key group)
   prompt_token_ids  -> tokens (prompt portion) + prompt_length
   response_token_ids-> tokens (response portion)
   logprobs          -> Experience.logprobs  -- but ONLY the *chosen* token's
@@ -31,7 +32,7 @@ Field mapping (captured ``RequestOutput`` fields -> ``Experience``):
   model_version    -> info["model_version"]  (which checkpoint policy served the
                     turn; read in-actor by the recorder's provider)
 
-Plus bookkeeping (request_id / task_id / sample_index / rank / timestamp /
+Plus bookkeeping (request_id / record_key / sample_index / rank / timestamp /
 endpoint / model_version) stashed in ``Experience.info`` so it round-trips
 with the experience through serialize/deserialize.
 """
@@ -80,7 +81,7 @@ def _extract_chosen_logprobs(
 
 def build_experience(
     output: Any,
-    task_id: Optional[str],
+    record_key: Optional[str],
     *,
     rank: int,
     timestamp: str,
@@ -91,13 +92,14 @@ def build_experience(
 
     One experience per completion (``output.outputs``), so ``n > 1`` sampling
     is captured in full. Each experience shares ``eid.suffix = request_id`` and
-    ``info["task_id"] = task_id`` (the group key); ``info["sample_index"]``
+    ``info["record_key"] = record_key`` (the group key); ``info["sample_index"]``
     distinguishes samples within the group.
 
     Args:
         output: A ``RequestOutput`` with ``finished == True``.
-        task_id: The recording identity (API key / Ray-injected task id);
-            stored in ``info["task_id"]`` and used as the MemoryStore group key.
+        record_key: The recording identity (API key / Ray-injected record key);
+            stored in ``info["record_key"]`` and used as the MemoryStore group
+            key.
         rank: Data-parallel serving rank.
         timestamp: UTC ISO-8601 string (caller-stamped to keep this pure).
         endpoint: Which OpenAI endpoint served the turn (best-effort).
@@ -110,7 +112,7 @@ def build_experience(
     """
     request_id = output.request_id
     # eid.suffix = request_id for traceability; task/run/reward are left
-    # default and assigned by MemoryStore.update_reward_by_task_id at consume.
+    # default and assigned by MemoryStore.update_reward_by_record_key at consume.
 
     prompt_token_ids = list(output.prompt_token_ids or [])
     if not prompt_token_ids:
@@ -136,7 +138,7 @@ def build_experience(
 
         info = {
             "request_id": request_id,
-            "task_id": task_id,
+            "record_key": record_key,
             "sample_index": sample_index,
             "rank": rank,
             "timestamp": timestamp,
