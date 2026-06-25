@@ -44,7 +44,6 @@ from vllm.utils.system_utils import set_ulimit
 from vllm.version import __version__ as VLLM_VERSION
 
 from trinity.common.models.vllm_patch import get_vllm_version
-from trinity.common.models.vllm_patch.recording.config import RecordingConfig
 from trinity.common.models.vllm_patch.recording.context import (
     RecordingIdentityMiddleware,
 )
@@ -53,11 +52,7 @@ from trinity.common.models.vllm_patch.recording.recorder import (
     Recorder,
     patch_engine_for_recording,
 )
-from trinity.common.models.vllm_patch.recording.store import (
-    MemoryStore,
-    RecordStore,
-    SqlStore,
-)
+from trinity.common.models.vllm_patch.recording.store import MemoryStore, RecordStore
 
 #: Attribute on app.state holding the active RecordStore.
 _STORE_STATE_ATTR = "trinity_record_store"
@@ -117,39 +112,29 @@ def _setup_recording(
     engine_client,
     app,
     logger,
-    recording_config: Optional[RecordingConfig] = None,
-) -> Optional[Recorder]:
+) -> Recorder:
     """Wire generation recording onto the in-construction server.
 
-    Returns the started Recorder (for lifecycle management), or None if
-    recording is disabled (``recording_config`` is None).
+    Returns the started Recorder (for lifecycle management). This is only
+    called when recording is on, so there is no disable switch here.
 
-    The static config (db_url/table/topk) arrives explicitly via
-    ``recording_config`` (built by ``get_api_server`` from
-    ``InferenceModelConfig``). The *dynamic* checkpoint version is read live
-    off ``engine_client.trinity_model_version`` (mirrored by VLLMModel at
-    engine creation and in ``sync_model_weights``).
+    No static config is threaded in: the chosen-token logprob width is a
+    constant inside the recorder (``_RECORDER_LOGPROB_WIDTH`` — we store only
+    the sampled token's logprob, so 1 suffices). The *dynamic* checkpoint
+    version is read live off ``engine_client.trinity_model_version`` (mirrored
+    by VLLMModel at engine creation and in ``sync_model_weights``).
+
+    The store backend is always the in-process ``MemoryStore``; the coordinator
+    drains it at finalize time via ``/records/consume_task`` (fanned out per
+    rank), so heavy experience bytes never touch SQL or Ray serialization.
 
     Args:
         args: Parsed vLLM CLI args.
         engine_client: AsyncLLM instance (we own it pre-init_app_state).
         app: FastAPI app from ``build_app`` (we own it pre-serve_http).
         logger: Logger.
-        recording_config: Static recording config; None disables recording.
     """
-    if recording_config is None:
-        return None
-
-    if recording_config.db_url:
-        store: RecordStore = SqlStore(
-            db_url=recording_config.db_url, table_name=recording_config.table
-        )
-    else:
-        logger.warning(
-            "recording enabled but recording_config.db_url is None; falling "
-            "back to in-process MemoryStore (no cross-process visibility)"
-        )
-        store = MemoryStore()
+    store: RecordStore = MemoryStore()
 
     # Rank is constant per process; capture once (RequestOutput does not expose
     # parallel_config, so we read it from engine_client here, mirroring
@@ -161,7 +146,6 @@ def _setup_recording(
 
     recorder = Recorder(
         store=store,
-        topk=recording_config.topk,
         enabled=True,
         rank=rank,
         engine_client=engine_client,
@@ -181,8 +165,7 @@ def _setup_recording(
     setattr(app.state, _RECORDER_STATE_ATTR, recorder)
 
     logger.info(
-        "Generation recording enabled: topk=%d store=%s rank=%d",
-        recording_config.topk,
+        "Generation recording enabled: store=%s rank=%d",
         type(store).__name__,
         rank,
     )
@@ -195,7 +178,6 @@ async def run_server_worker_in_ray(
     args,
     engine_client,
     logger,
-    recording_config: Optional[RecordingConfig] = None,
 ) -> None:
     """Modified from vllm.entrypoints.openai.api_server.run_server_worker.
 
@@ -212,7 +194,7 @@ async def run_server_worker_in_ray(
     app = build_app(args)
 
     # --- recording wiring: engine wrap must precede init_app_state -----------
-    recorder = _setup_recording(args, engine_client, app, logger, recording_config=recording_config)
+    recorder = _setup_recording(args, engine_client, app, logger)
     # ------------------------------------------------------------------------
 
     await init_app_state(engine_client, app.state, args)
@@ -226,8 +208,7 @@ async def run_server_worker_in_ray(
         listen_address,
     )
 
-    if recorder is not None:
-        recorder.start()
+    recorder.start()
 
     shutdown_task = await serve_http(
         app,
@@ -252,8 +233,7 @@ async def run_server_worker_in_ray(
     try:
         await shutdown_task
     finally:
-        if recorder is not None:
-            await recorder.stop()
+        await recorder.stop()
         sock.close()
 
 
@@ -261,14 +241,11 @@ async def run_server_in_ray(
     args,
     engine_client,
     logger,
-    recording_config: Optional[RecordingConfig] = None,
 ):
     # Modified from vllm.entrypoints.openai.api_server.run_server
     listen_address, sock = setup_server_in_ray(args, logger)
     logger.info("vLLM API server listening on %s", listen_address)
-    await run_server_worker_in_ray(
-        listen_address, sock, args, engine_client, logger, recording_config
-    )
+    await run_server_worker_in_ray(listen_address, sock, args, engine_client, logger)
 
 
 async def run_api_server_with_recording(
@@ -282,17 +259,14 @@ async def run_api_server_with_recording(
     tool_call_parser: Optional[str] = None,
     reasoning_parser: Optional[str] = None,
     enable_log_requests: bool = False,
-    recording_config: Optional[RecordingConfig] = None,
 ):
     """Drop-in recording-enabled variant of
     ``api_patch_v17.run_api_server_in_ray_actor_v17``.
 
-    Same signature plus an optional ``recording_config`` so launchers can
-    switch by import path. Requires vllm >= 0.17.0. Recording is on iff
-    ``recording_config`` is provided (built by ``get_api_server`` from
-    ``InferenceModelConfig`` when ``enable_recording`` is on). The dynamic
+    Requires vllm >= 0.17.0. No static recording config is threaded in: the
+    logprob capture width is a recorder-internal constant. The dynamic
     checkpoint version is read off ``async_llm.trinity_model_version``
-    (mirrored by VLLMModel), so it is not part of the static config here.
+    (mirrored by VLLMModel).
     """
     vllm_version = get_vllm_version()
     if vllm_version < parse_version("0.17.0"):
@@ -338,4 +312,4 @@ async def run_api_server_with_recording(
     args = parser.parse_args(cli_args)
     args.structured_outputs_config.reasoning_parser = reasoning_parser
     logger.info(f"Starting vLLM OpenAI API server with args: {args}")
-    await run_server_in_ray(args, async_llm, logger, recording_config)
+    await run_server_in_ray(args, async_llm, logger)

@@ -1,18 +1,25 @@
 # -*- coding: utf-8 -*-
-"""Build a Trinity ``Experience`` from a finished vLLM ``RequestOutput``.
+"""Build Trinity ``Experience`` objects from a finished vLLM ``RequestOutput``.
 
 We record into Trinity's native ``Experience`` struct (see
 ``trinity.common.experience``) rather than a bespoke record, so captured data
 drops straight into Trinity's RL/buffer pipeline without a conversion step.
 
+A single ``RequestOutput`` may carry multiple completions (``n > 1``); we emit
+one ``Experience`` per completion so no sample is lost.
+
 Field mapping (captured ``RequestOutput`` fields -> ``Experience``):
-  request_id        -> eid.suffix  (``EID(suffix=...)``; this is the msg_id the
-                    proxy/openai client sees as ``response.id`` — the key the
-                    proxy's ``HistoryRecorder.update_reward`` looks up by).
+  request_id        -> eid.suffix  (``EID(suffix=...)``; the vLLM engine request
+                    id == the OpenAI ``response.id``. Kept for traceability;
                     ``eid.task``/``run``/``reward`` are left default here and
-                    assigned later by the proxy at ``/feedback`` time, matching
-                    ``explorer/proxy/service.record_experience`` semantics.
-  API key           -> info["task_id"]  (traceability only; not used as a key)
+                    assigned by ``MemoryStore.update_reward_by_task_id`` at
+                    consume time.)
+  API key / task id -> info["task_id"]  (the recording identity; **the group
+                    key** the MemoryStore batches experiences by, so a whole
+                    task's samples/turns are reward-updated and consumed
+                    together. Falls back to ``eid.suffix`` when absent.)
+  sample index      -> info["sample_index"]  (position within the n-completion
+                    set; orders samples/turns inside a task-id group)
   prompt_token_ids  -> tokens (prompt portion) + prompt_length
   response_token_ids-> tokens (response portion)
   logprobs          -> Experience.logprobs  -- but ONLY the *chosen* token's
@@ -24,11 +31,11 @@ Field mapping (captured ``RequestOutput`` fields -> ``Experience``):
   model_version    -> info["model_version"]  (which checkpoint policy served the
                     turn; read in-actor by the recorder's provider)
 
-Plus bookkeeping (request_id / task_id / rank / timestamp / endpoint /
-model_version) stashed in ``Experience.info`` so it round-trips with the
-experience through serialize/deserialize.
+Plus bookkeeping (request_id / task_id / sample_index / rank / timestamp /
+endpoint / model_version) stashed in ``Experience.info`` so it round-trips
+with the experience through serialize/deserialize.
 """
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from trinity.common.experience import EID, Experience
 
@@ -79,15 +86,18 @@ def build_experience(
     timestamp: str,
     endpoint: str = "unknown",
     model_version: Optional[int] = None,
-) -> Optional[Experience]:
-    """Build a Trinity ``Experience`` from a finished ``RequestOutput``.
+) -> List[Experience]:
+    """Build Trinity ``Experience`` objects from a finished ``RequestOutput``.
+
+    One experience per completion (``output.outputs``), so ``n > 1`` sampling
+    is captured in full. Each experience shares ``eid.suffix = request_id`` and
+    ``info["task_id"] = task_id`` (the group key); ``info["sample_index"]``
+    distinguishes samples within the group.
 
     Args:
         output: A ``RequestOutput`` with ``finished == True``.
-        task_id: From the request API key; stored in ``info`` for traceability
-            only.
-            Not used as the storage key — ``eid.suffix`` is, so a missing
-            API key never drops a turn.
+        task_id: The recording identity (API key / Ray-injected task id);
+            stored in ``info["task_id"]`` and used as the MemoryStore group key.
         rank: Data-parallel serving rank.
         timestamp: UTC ISO-8601 string (caller-stamped to keep this pure).
         endpoint: Which OpenAI endpoint served the turn (best-effort).
@@ -95,48 +105,55 @@ def build_experience(
             into ``info`` for RL attribution (read in-actor by the recorder).
 
     Returns:
-        A populated ``Experience``, or None if the turn is degenerate (no
-        prompt or no response tokens) and cannot form a valid experience.
+        One ``Experience`` per non-degenerate completion. Empty list if the
+        request had no prompt or no completion with response tokens.
     """
     request_id = output.request_id
-    # Key by the request id (= the OpenAI response ``id`` / proxy msg_id) so the
-    # proxy's HistoryRecorder.update_reward can find this row at feedback time.
-    # task/run/reward are intentionally left default — the proxy assigns them.
+    # eid.suffix = request_id for traceability; task/run/reward are left
+    # default and assigned by MemoryStore.update_reward_by_task_id at consume.
 
     prompt_token_ids = list(output.prompt_token_ids or [])
+    if not prompt_token_ids:
+        return []
 
-    completion = output.outputs[0] if output.outputs else None
-    if completion is None:
-        return None
-    response_token_ids = list(completion.token_ids or [])
+    completions = list(output.outputs or [])
+    if not completions:
+        return []
 
-    # A valid single-turn experience needs both a prompt and a response;
-    # Experience.__init__ asserts len(tokens) > prompt_length otherwise.
-    if not prompt_token_ids or not response_token_ids:
-        return None
+    experiences: List[Experience] = []
+    for sample_index, completion in enumerate(completions):
+        response_token_ids = list(completion.token_ids or [])
+        # A valid single-turn experience needs both a prompt and a response;
+        # Experience.__init__ asserts len(tokens) > prompt_length otherwise.
+        if not response_token_ids:
+            continue
 
-    tokens = prompt_token_ids + response_token_ids
-    prompt_length = len(prompt_token_ids)
+        tokens = prompt_token_ids + response_token_ids
+        prompt_length = len(prompt_token_ids)
 
-    chosen_logprobs = _extract_chosen_logprobs(completion.logprobs, response_token_ids)
-    routed_experts = completion.routed_experts
+        chosen_logprobs = _extract_chosen_logprobs(completion.logprobs, response_token_ids)
+        routed_experts = completion.routed_experts
 
-    info = {
-        "request_id": request_id,
-        "task_id": task_id,
-        "rank": rank,
-        "timestamp": timestamp,
-        "endpoint": endpoint,
-        "model_version": model_version,
-    }
+        info = {
+            "request_id": request_id,
+            "task_id": task_id,
+            "sample_index": sample_index,
+            "rank": rank,
+            "timestamp": timestamp,
+            "endpoint": endpoint,
+            "model_version": model_version,
+        }
 
-    return Experience(
-        eid=EID(suffix=request_id),
-        tokens=tokens,
-        logprobs=chosen_logprobs,
-        prompt_length=prompt_length,
-        routed_experts=routed_experts,
-        prompt_text=output.prompt,
-        response_text=completion.text,
-        info=info,
-    )
+        experiences.append(
+            Experience(
+                eid=EID(suffix=request_id),
+                tokens=tokens,
+                logprobs=chosen_logprobs,
+                prompt_length=prompt_length,
+                routed_experts=routed_experts,
+                prompt_text=output.prompt,
+                response_text=completion.text,
+                info=info,
+            )
+        )
+    return experiences

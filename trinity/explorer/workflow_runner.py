@@ -3,6 +3,7 @@
 
 import asyncio
 import os
+import pickle
 import time
 import traceback
 from dataclasses import dataclass
@@ -117,7 +118,11 @@ class WorkflowRunner:
             )
         else:
             self.workflow_instance.reset(task)
+        self.workflow_instance.use_recorded_experience = self._use_recorded_experience()
         return self.workflow_instance
+
+    def _use_recorded_experience(self) -> bool:
+        return bool(self.config.explorer.use_recorded_experience)
 
     async def _run_workflow(self, workflow_instance: Workflow) -> List[Experience]:
         if workflow_instance.asynchronous:
@@ -127,7 +132,7 @@ class WorkflowRunner:
         return exps
 
     def _create_isolated_workflow_instance(self, task: Task) -> Workflow:
-        return task.to_workflow(
+        wf = task.to_workflow(
             (
                 self.model_wrapper.clone_with_isolated_history()
                 if self.config.explorer.rollout_model.enable_history
@@ -135,6 +140,8 @@ class WorkflowRunner:
             ),
             self.auxiliary_model_wrappers,
         )
+        wf.use_recorded_experience = self._use_recorded_experience()
+        return wf
 
     def _build_execution_result(
         self,
@@ -417,8 +424,30 @@ class WorkflowRunner:
             status = execution_result.status
 
             if task.is_eval:
-                # If the task is an evaluation task, we do not record the experiences to the buffer
+                # Eval tasks are not written to the training buffer. Under the
+                # recording path their turns are still in the vLLM MemoryStore;
+                # the coordinator's eval finalize must drain-and-discard them
+                # (TODO: wire eval consume-and-discard so eval turns don't leak
+                # in the store). For now, return no payload.
                 return status, b""
+            elif self._use_recorded_experience():
+                # Recording path: ship only the small reward map keyed by the
+                # per-sample task_id_key the workflow stamped on each exp. The
+                # heavy experiences live in the vLLM MemoryStore and are pulled
+                # by the coordinator at finalize time.
+                updates = [
+                    {
+                        "task_id": exp.info.get("task_id_key") or exp.eid.suffix,
+                        "reward": exp.reward,
+                        "run": exp.eid.run,
+                        "task": str(task.task_id),
+                    }
+                    for exp in exps
+                ]
+                reward_payload = pickle.dumps(
+                    {"engine_id": self.rollout_model_id, "updates": updates}
+                )
+                return status, reward_payload
             else:
                 exp_payload = Experience.serialize_many(exps)
                 return status, exp_payload

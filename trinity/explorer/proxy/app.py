@@ -233,33 +233,6 @@ async def metrics(request: Request):
     return JSONResponse(content=metrics)
 
 
-@app.post("/feedback")
-async def feedback(request: Request):
-    """Receive feedback for the current session."""
-    body = await request.json()
-    reward = body.get("reward")
-    msg_ids = body.get("msg_ids")
-    task_id = body.get("task_id")
-    run_id = body.get("run_id", 0)
-    if msg_ids is None or reward is None:
-        return JSONResponse(status_code=400, content={"error": "msg_ids and reward are required"})
-    if not isinstance(msg_ids, list) or not isinstance(reward, (int, float)):
-        return JSONResponse(
-            status_code=400, content={"error": "msg_ids must be a list and reward must be a number"}
-        )
-    await request.app.state.service.record_feedback(
-        reward=reward, msg_ids=msg_ids, task_id=task_id, run_id=run_id
-    )
-    return JSONResponse(content={"status": "success"})
-
-
-@app.post("/commit")
-async def commit(request: Request):
-    """Commit the current experiences."""
-    await request.app.state.service.submit_experiences()
-    return JSONResponse(content={"status": "success"})
-
-
 async def serve_http(app: FastAPI, host: str, port: int) -> None:
     config = uvicorn.Config(app, host=host, port=port)
     server = uvicorn.Server(config)

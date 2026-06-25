@@ -1,21 +1,26 @@
 """Pluggable storage backends for recorded experiences.
 
-A ``RecordStore`` persists Trinity ``Experience`` objects. Backends:
+A ``RecordStore`` persists Trinity ``Experience`` objects in the vLLM API
+server process. The only backend is ``MemoryStore`` — in-process, keyed by the
+recording identity (``info["task_id"]`` = the API key / Ray-injected task id),
+falling back to ``eid.suffix`` (the vLLM ``request_id``) when no identity was
+supplied.
 
-* ``MemoryStore`` — in-process, request/session-keyed; for standalone runs and
-  the ``/records`` debug endpoints.
-* ``SqlStore`` — delegates to ``trinity.explorer.proxy.recorder.HistoryRecorder``
-  so the in-vLLM recorder writes to the *same* SQL table the explorer proxy
-  reads (``proxy_history``). This is the online-RL path: experiences written
-  here by the vLLM process are later picked up by the proxy's
-  ``update_reward``/``submit_experiences`` via the shared ``msg_id`` key.
+The consume side is ``update_reward_by_task_id``: it sets ``reward``/``run``/
+``task`` on every experience in a task-id group, pops the group, and returns
+it. This is the in-memory replacement for the old SQL ``HistoryRecorder``-
+mediated join — the coordinator calls it (via ``/records/consume_task``) at
+finalize time, so heavy experience bytes cross the network exactly once (store
+→ coordinator pipeline) and never through Ray.
 
-Keying: experiences are identified by ``eid.suffix`` (the vLLM ``request_id``,
-== the OpenAI ``response.id`` == the proxy ``msg_id``). ``eid.task``/``run``/
-``reward`` are assigned by the proxy at feedback time, not here.
+Keying: experiences are identified by ``eid.suffix`` (the vLLM ``request_id``)
+for traceability, but **grouped** by ``info["task_id"]`` so a whole task's
+worth of turns/samples can be reward-updated and consumed together.
 
 Concurrency: ``append_turn`` is called from a single background flusher task;
-the async signatures keep the door open for I/O-bound backends.
+``update_reward_by_task_id`` is called from the ``/records/consume_task`` HTTP
+handler. Both run in the same asyncio loop, so the dict is single-writer-safe
+across these two without a lock.
 """
 import abc
 from collections import defaultdict
@@ -35,6 +40,24 @@ class RecordStore(abc.ABC):
     @abc.abstractmethod
     async def append_turn(self, exp: Experience) -> None:
         """Persist one completed experience."""
+
+    @abc.abstractmethod
+    async def update_reward_by_task_id(
+        self, task_id: str, reward: float, run: int, task: str
+    ) -> list[Experience]:
+        """Set reward/run/task on every experience in the group, pop and return it.
+
+        Args:
+            task_id: The recording identity (group key). When the recorded
+                experience had no identity, this is its ``eid.suffix``.
+            reward: Reward to stamp on every experience in the group.
+            run: Run id to stamp on ``eid.run``.
+            task: Task id to stamp on ``eid.task``.
+
+        Returns:
+            The (now reward-stamped) experiences of the group, in insertion
+            order. Empty list if the group was absent.
+        """
 
     @abc.abstractmethod
     async def get_task(self, task_id: str) -> list[Experience]:
@@ -57,12 +80,15 @@ class MemoryStore(RecordStore):
     """In-process store.
 
     Groups experiences by recording identity (``info["task_id"]``) when an API
-    key was supplied, otherwise each turn is keyed by its own ``eid.suffix``
-    (request_id) — so a missing identity never collapses distinct turns.
-    ``get_turn`` resolves an individual turn by ``info["request_id"]``.
+    key / task id was supplied, otherwise each turn is keyed by its own
+    ``eid.suffix`` (request_id) — so a missing identity never collapses
+    distinct turns. ``get_turn`` resolves an individual turn by
+    ``info["request_id"]``.
 
     Note: per-process under data-parallel serving — each API-server rank holds
-    only the experiences it served. For cross-rank aggregation, use ``SqlStore``.
+    only the experiences it served. The coordinator fans out
+    ``/records/consume_task`` to every rank and merges, so cross-rank
+    aggregation happens at consume time, not in storage.
     """
 
     def __init__(self) -> None:
@@ -76,6 +102,16 @@ class MemoryStore(RecordStore):
 
     async def append_turn(self, exp: Experience) -> None:
         self._records[self._group_key(exp)].append(exp)
+
+    async def update_reward_by_task_id(
+        self, task_id: str, reward: float, run: int, task: str
+    ) -> list[Experience]:
+        exps = self._records.pop(task_id, [])
+        for exp in exps:
+            exp.reward = reward
+            exp.eid.run = run
+            exp.eid.task = task
+        return exps
 
     async def get_task(self, task_id: str) -> list[Experience]:
         return list(self._records.get(task_id, []))
@@ -91,46 +127,3 @@ class MemoryStore(RecordStore):
 
     async def delete_task(self, task_id: str) -> None:
         self._records.pop(task_id, None)
-
-
-class SqlStore(RecordStore):
-    """SQL-backed store sharing the explorer proxy's ``proxy_history`` table.
-
-    Writes go through ``HistoryRecorder.record_history`` (which ``prepare()``s
-    the engine on first use and maps ``eid.suffix`` -> ``msg_id``). The explorer
-    proxy's own ``HistoryRecorder`` instance reads/updates the same rows for
-    ``/feedback`` and ``/commit``, so the in-vLLM recorder and the proxy share
-    one table by ``db_url`` + ``table_name``.
-
-    Reads (``get_task``/``get_turn``/``list_tasks``/``delete_task``) are NOT
-    implemented here: in the online-RL setup the proxy owns the read/consume
-    side. The ``/records`` query endpoints surface this as 503 when this backend
-    is active.
-    """
-
-    #: Marks that this backend does not serve the ``/records`` read endpoints.
-    supports_reads = False
-
-    def __init__(self, db_url: str, table_name: str) -> None:
-        # Imported lazily so the vLLM process only pulls in the SQL/explorer
-        # stack when this backend is actually selected.
-        from trinity.explorer.proxy.recorder import HistoryRecorder
-
-        self._recorder = HistoryRecorder(db_url=db_url, table_name=table_name)
-
-    async def append_turn(self, exp: Experience) -> None:
-        # record_history() calls prepare() on first use; serializes the
-        # experience into the blob column and writes meta keyed by msg_id.
-        await self._recorder.record_history([exp])
-
-    async def get_task(self, task_id: str) -> list[Experience]:
-        raise NotImplementedError("SqlStore reads are served by the explorer proxy; use /feedback")
-
-    async def get_turn(self, task_id: str, request_id: str) -> Optional[Experience]:
-        raise NotImplementedError("SqlStore reads are served by the explorer proxy; use /feedback")
-
-    async def list_tasks(self) -> list[str]:
-        raise NotImplementedError("SqlStore reads are served by the explorer proxy; use /feedback")
-
-    async def delete_task(self, task_id: str) -> None:
-        raise NotImplementedError("SqlStore reads are served by the explorer proxy; use /feedback")

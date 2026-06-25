@@ -20,6 +20,11 @@ from starlette.requests import Request
 # task id).
 task_id_ctx: ContextVar[Optional[str]] = ContextVar("trinity_recording_task_id", default=None)
 
+# Set around auxiliary engine.generate calls (logprobs recomputation,
+# convert_messages_to_experience) so the recorder skips them — those 1-token
+# forwards are not real turns and would pollute the store.
+skip_recording_ctx: ContextVar[bool] = ContextVar("trinity_recording_skip", default=False)
+
 #: Preferred identity header for OpenAI-compatible clients.
 AUTHORIZATION_HEADER = "authorization"
 

@@ -4,15 +4,21 @@ from collections import deque
 from typing import Dict, List, Tuple
 
 from trinity.common.constants import RunningStatus, SyncMethod
-from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
 from trinity.explorer.explorer import Explorer
-from trinity.explorer.proxy.recorder import HistoryRecorder
 from trinity.utils.log import get_logger
 
 
 class ExplorerService:
-    """Manages the lifecycle and operations of the Explorer API service."""
+    """Manages the lifecycle and operations of the Explorer API service.
+
+    The proxy is a request router + model-weight sync coordinator for serve
+    mode. Experience collection used to live here (SQL-mediated
+    ``/feedback``/``/commit``); it has been removed in favor of the in-vLLM
+    ``MemoryStore`` + ``/records/consume_task`` flow driven by the rollout
+    coordinator. Serve-mode external reward reporting is therefore pending
+    (see the recording refactor plan).
+    """
 
     def __init__(self, explorer: Explorer, listen_address: str = "localhost", port: int = 8010):
         self.logger = get_logger(__name__)
@@ -29,15 +35,6 @@ class ExplorerService:
         self.model_version_map: Dict[int, int] = {}  # model index -> model version
         self.sync_task_map: Dict[asyncio.Future, int] = {}  # sync task -> model index
         self.latest_model_version = 0
-        self.session_level_experience_queue: Dict[int, deque[Experience]] = {}
-        self.commit_lock = asyncio.Lock()
-        self.ready_experiences = deque()
-        self.recorder = HistoryRecorder(
-            db_url=explorer.config.explorer.db_url
-            or f"sqlite:///{explorer.config.buffer.cache_dir}/proxy_history.db",
-            table_name="proxy_history",
-        )
-        self.ready_experience_count = 0
 
     async def serve(self) -> None:
         from trinity.explorer.proxy.app import run_app
@@ -129,29 +126,7 @@ class ExplorerService:
         for i, model in enumerate(self.models):
             metrics[f"rollout/model_{i}/total_request_count"] = model.request_count
             metrics[f"rollout/model_{i}/model_version"] = model.model_version
-        metrics["rollout/ready_experience_count"] = self.ready_experience_count
         return metrics
-
-    async def submit_experiences(self) -> None:
-        async with self.commit_lock:
-            experiences = list(self.ready_experiences)
-            self.ready_experiences.clear()
-            metrics = await self.explorer.rollout_coordinator.process_experiences.remote(
-                [Experience.serialize_many(experiences)]
-            )
-            metrics.update(self.collect_metrics())
-            self.explorer.explore_step_num += 1
-            self.explorer.monitor.log(metrics, self.explorer.explore_step_num)
-
-    async def record_feedback(self, reward: float, msg_ids: List[str], task_id: str, run_id: int):
-        exps = await self.recorder.update_reward(
-            reward=reward,
-            msg_ids=msg_ids,
-            task_id=task_id,
-            run_id=run_id,
-        )
-        self.ready_experience_count += len(exps)
-        self.ready_experiences.extend(exps)
 
     async def shutdown(self):
         if not self.running:

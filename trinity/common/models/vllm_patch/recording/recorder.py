@@ -23,7 +23,10 @@ import logging
 from typing import Optional
 
 from trinity.common.experience import Experience
-from trinity.common.models.vllm_patch.recording.context import task_id_ctx
+from trinity.common.models.vllm_patch.recording.context import (
+    skip_recording_ctx,
+    task_id_ctx,
+)
 from trinity.common.models.vllm_patch.recording.models import build_experience
 from trinity.common.models.vllm_patch.recording.store import RecordStore
 
@@ -34,6 +37,13 @@ _PATCHED_FLAG = "__patched_engine_recording__"
 #: engine creation); read live here so each experience is attributed to the
 #: right policy without a launch-time parameter.
 _MODEL_VERSION_ATTR = "trinity_model_version"
+#: Force at least this many top-k logprobs per generated token so recording
+#: captures the chosen token's logprob even when the caller didn't request
+#: logprobs. We store ONLY the sampled token's logprob, and vLLM force-includes
+#: the sampled token at ``logprobs=1``, so 1 is the only useful value — no need
+#: to thread a knob through the launcher. The engine's ``max_logprobs`` cap
+#: (default 20, set at engine build) already covers it.
+_RECORDER_LOGPROB_WIDTH = 1
 
 
 def patch_engine_for_recording(
@@ -73,9 +83,12 @@ def patch_engine_for_recording(
             sampling_params = args[1]
 
         if recorder.enabled and sampling_params is not None:
-            desired = recorder.topk
+            # Ensure logprobs are computed for recording (callers may omit
+            # them, e.g. on the HTTP path). See _RECORDER_LOGPROB_WIDTH.
             cur = sampling_params.logprobs
-            sampling_params.logprobs = max(cur, desired) if cur is not None else desired
+            sampling_params.logprobs = (
+                max(cur, _RECORDER_LOGPROB_WIDTH) if cur is not None else _RECORDER_LOGPROB_WIDTH
+            )
 
         last = None
         # ``current`` is the original *bound* method captured pre-wrap, so it
@@ -86,11 +99,13 @@ def patch_engine_for_recording(
 
         if recorder.enabled and last is not None and getattr(last, "finished", False):
             # Recover task id from the request's async context (set by
-            # RecordingIdentityMiddleware). None when the client omitted an
-            # API key; the recorder then falls back to request_id.
+            # RecordingIdentityMiddleware on the HTTP path, or by
+            # VLLMModel.chat on the Ray-direct path). None when neither was
+            # supplied; the store then falls back to request_id grouping.
             task_id = task_id_ctx.get()
-            # Offload heavy serialization off the response critical path.
-            asyncio.create_task(recorder.record(last, task_id))
+            # Offload heavy serialization off the response critical path. The
+            # task is tracked so ``flush`` can await it before a consume.
+            recorder.schedule_record(last, task_id)
 
     setattr(_patched_generate, _PATCHED_FLAG, True)
     engine_client.generate = _patched_generate
@@ -101,21 +116,23 @@ class Recorder:
     """Drains finished turns into a ``RecordStore`` from a background task.
 
     Putting records into an ``asyncio.Queue`` and flushing from a single worker
-    keeps the response path cheap (record == one ``queue.put``) and serializes
-    expensive payloads (ndarray -> .npy, json) off the serving hot loop.
+    keeps the response path cheap (record == enqueue) and serializes expensive
+    payloads (ndarray -> .npy, json) off the serving hot loop.
+
+    ``schedule_record`` spawns a task per finished ``RequestOutput`` and tracks
+    it in ``_pending``; ``flush`` awaits all of them plus ``queue.join`` so a
+    caller (``/records/consume_task``) sees a quiesced store before popping.
     """
 
     def __init__(
         self,
         store: RecordStore,
         *,
-        topk: int,
         enabled: bool,
         rank: int = 0,
         engine_client=None,
     ) -> None:
         self.store = store
-        self.topk = topk
         self.enabled = enabled
         self.rank = rank
         # The engine_client is the same AsyncLLM instance VLLMModel updates in
@@ -124,6 +141,11 @@ class Recorder:
         self.engine_client = engine_client
         self._queue: "asyncio.Queue[Optional[Experience]]" = asyncio.Queue()
         self._flusher: Optional[asyncio.Task] = None
+        # In-flight ``_record`` tasks spawned by ``schedule_record``. Tracked
+        # so ``flush`` can await them — a record task that hasn't put yet would
+        # otherwise race a consume (the experience would be missing from the
+        # store even though the request already finished).
+        self._pending: "set[asyncio.Task]" = set()
 
     def start(self) -> None:
         """Start the background flusher. Idempotent."""
@@ -132,49 +154,65 @@ class Recorder:
         self._flusher = asyncio.create_task(self._flush_loop())
 
     async def stop(self) -> None:
-        """Cancel the flusher and drain remaining queued turns."""
+        """Drain in-flight + queued turns, then stop the flusher."""
         if self._flusher is None:
             return
+        # Drain everything put in flight so we don't lose turns at shutdown.
+        await self.flush()
         self._flusher.cancel()
         self._flusher = None
-        # Drain anything already queued so we don't lose in-flight turns.
-        while not self._queue.empty():
-            exp = self._queue.get_nowait()
-            if exp is not None:
-                await self._safe_append(exp)
 
-    async def record(self, output, task_id: Optional[str]) -> None:
-        """Enqueue a finished ``RequestOutput`` for recording as an Experience.
+    def schedule_record(self, output, task_id: Optional[str]) -> None:
+        """Spawn (and track) a record task for a finished ``RequestOutput``."""
+        task = asyncio.create_task(self._record(output, task_id))
+        self._pending.add(task)
+        task.add_done_callback(self._pending.discard)
 
-        Args:
-            output: A finished ``RequestOutput``.
-            task_id: From ``task_id_ctx``; stored in ``info`` for traceability.
+    async def flush(self) -> None:
+        """Wait until every in-flight record has been appended to the store.
+
+        Awaits all pending ``_record`` tasks (so every finished turn has been
+        enqueued), then ``queue.join``s (so the flusher has appended them all).
+        Call this before consuming the store to avoid reading a partial state.
         """
+        if self._pending:
+            await asyncio.gather(*self._pending, return_exceptions=True)
+        if self._flusher is not None:
+            await self._queue.join()
+
+    async def _record(self, output, task_id: Optional[str]) -> None:
+        """Build experiences for a finished turn and enqueue each for append."""
+        # Auxiliary forwards (logprobs recomputation, convert_messages) set
+        # this to avoid polluting the store with 1-token degenerate turns.
+        if skip_recording_ctx.get():
+            return
         # Stamp now (real runtime, not a workflow sandbox): permitted here.
         from datetime import datetime, timezone
 
         timestamp = datetime.now(timezone.utc).isoformat()
         # Read the live checkpoint version the actor mirrors onto the engine.
         model_version = getattr(self.engine_client, _MODEL_VERSION_ATTR, None)
-        exp = build_experience(
+        exps = build_experience(
             output,
             task_id,
             rank=self.rank,
             timestamp=timestamp,
             model_version=model_version,
         )
-        if exp is None:
-            # Degenerate turn (no prompt/response) — nothing to record.
-            return
-        await self._queue.put(exp)
+        for exp in exps:
+            await self._queue.put(exp)
 
     async def _flush_loop(self) -> None:
         while True:
             exp = await self._queue.get()
-            if exp is None:
-                # Sentinel for graceful shutdown.
-                return
-            await self._safe_append(exp)
+            try:
+                if exp is None:
+                    # Sentinel for graceful shutdown.
+                    return
+                await self._safe_append(exp)
+            finally:
+                # Paired with put() so queue.join() in flush() can complete.
+                self._queue.task_done()
 
     async def _safe_append(self, exp: Experience) -> None:
         try:

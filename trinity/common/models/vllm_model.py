@@ -19,6 +19,10 @@ from trinity.common.models.mm_utils import (
 )
 from trinity.common.models.model import BaseInferenceModel
 from trinity.common.models.vllm_patch import get_vllm_version
+from trinity.common.models.vllm_patch.recording.context import (
+    skip_recording_ctx,
+    task_id_ctx,
+)
 
 
 # V0 engine is deprecated since vLLM v0.10.2, related code will be removed in the future.
@@ -202,11 +206,22 @@ class vLLMRolloutModel(BaseInferenceModel):
                 self.headless_executor.start_worker_monitor()
             self._prepared = True
 
-    async def chat(self, messages: List[Dict], lora_request=None, **kwargs) -> Sequence[Experience]:
+    async def chat(
+        self,
+        messages: List[Dict],
+        lora_request=None,
+        task_id_key: Optional[str] = None,
+        **kwargs,
+    ) -> Sequence[Experience]:
         """Chat with the model with a list of messages in async.
 
         Args:
             messages (List[dict]): The input history messages.
+            task_id_key (Optional[str]): Recording identity for the in-vLLM
+                recorder (the MemoryStore group key). Propagated to
+                ``generate`` via ``task_id_ctx`` so the recorder stamps it into
+                ``info["task_id"]`` without an HTTP hop. None leaves it to the
+                engine request id (fallback grouping).
             kwargs (dict): A dictionary of sampling parameters.
 
         Returns:
@@ -232,7 +247,9 @@ class vLLMRolloutModel(BaseInferenceModel):
                 "prompt": prompt,
                 "multi_modal_data": multi_modal_data or {},
             }
-        return await self.generate(prompt=prompt, lora_request=lora_request, **kwargs)
+        return await self.generate(
+            prompt=prompt, lora_request=lora_request, task_id_key=task_id_key, **kwargs
+        )
 
     def _extract_routed_experts(self, output: Any, output_index: int) -> Optional[torch.Tensor]:
         if not self.config.enable_return_routed_experts:
@@ -256,12 +273,18 @@ class vLLMRolloutModel(BaseInferenceModel):
         return torch.cat(routed_experts_parts, dim=0)
 
     async def generate(
-        self, prompt: Union[str, Dict], lora_request=None, **kwargs
+        self,
+        prompt: Union[str, Dict],
+        lora_request=None,
+        task_id_key: Optional[str] = None,
+        **kwargs,
     ) -> Sequence[Experience]:
         """Generate a response from the provided prompt in async.
 
         Args:
             prompt (str): The input prompt.
+            task_id_key (Optional[str]): Recording identity propagated to the
+                in-vLLM recorder via ``task_id_ctx`` (see ``chat``).
             kwargs (dict): A dictionary of sampling parameters.
 
         Returns:
@@ -282,7 +305,16 @@ class vLLMRolloutModel(BaseInferenceModel):
             }  # is_valid is True: returned_seq is token_ids
             multi_modal_inputs = None
 
-        output = await self._generate_internal(prompt=prompt, lora_request=lora_request, **kwargs)
+        # Propagate the recording identity to the engine-level recorder (same
+        # async task, same process) so the recorded experience is grouped under
+        # this task id in the MemoryStore.
+        task_id_token = task_id_ctx.set(task_id_key)
+        try:
+            output = await self._generate_internal(
+                prompt=prompt, lora_request=lora_request, **kwargs
+            )
+        finally:
+            task_id_ctx.reset(task_id_token)
         if is_mm_prompt:
             if self.mm_render is None:
                 self.mm_render = vLLMMultiModalRender(
@@ -353,11 +385,17 @@ class vLLMRolloutModel(BaseInferenceModel):
         # avoid using prefix cache when calculating logprobs, only for vLLM >= 0.12.0
         if self.logprobs_no_prefix_cache:
             kwargs["skip_reading_prefix_cache"] = True
-        output = await self._generate_internal(
-            prompt={"prompt_token_ids": token_ids},
-            lora_request=lora_request,
-            **kwargs,
-        )
+        # This is an auxiliary 1-token forward, not a real turn — keep it out
+        # of the recording store so it doesn't pollute task-id groups.
+        skip_token = skip_recording_ctx.set(True)
+        try:
+            output = await self._generate_internal(
+                prompt={"prompt_token_ids": token_ids},
+                lora_request=lora_request,
+                **kwargs,
+            )
+        finally:
+            skip_recording_ctx.reset(skip_token)
         return torch.tensor(
             [list(logprob_dict.values())[0].logprob for logprob_dict in output.prompt_logprobs[1:]],
             dtype=torch.float32,
