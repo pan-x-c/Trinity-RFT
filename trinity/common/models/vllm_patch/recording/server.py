@@ -12,8 +12,9 @@ we own both ``app`` and ``engine_client`` at that point):
   1. ``patch_engine_for_recording`` — instance-level wrap of
      ``engine_client.generate`` to force top-k logprobs and record finished
      ``RequestOutput`` (covers chat/completion/responses, streaming and not).
-  2. ``SessionMiddleware`` — in-process ASGI middleware reading
-     ``X-Session-ID`` into a contextvar.
+  2. ``RecordingIdentityMiddleware`` — in-process ASGI middleware reading
+     ``Authorization: Bearer <api_key>`` (or legacy ``X-Session-ID``) into a
+     contextvar.
   3. ``query_router`` — ``/records/*`` endpoints for later analysis.
 
 Only for vllm versions >= 0.17.0.
@@ -45,7 +46,9 @@ from vllm.version import __version__ as VLLM_VERSION
 
 from trinity.common.models.vllm_patch import get_vllm_version
 from trinity.common.models.vllm_patch.recording.config import RecordingConfig
-from trinity.common.models.vllm_patch.recording.context import SessionMiddleware
+from trinity.common.models.vllm_patch.recording.context import (
+    RecordingIdentityMiddleware,
+)
 from trinity.common.models.vllm_patch.recording.query import query_router
 from trinity.common.models.vllm_patch.recording.recorder import (
     Recorder,
@@ -169,8 +172,9 @@ def _setup_recording(
     #     the wrapped reference. Idempotent via the __patched_*__ guard.
     patch_engine_for_recording(engine_client, recorder, logger)
 
-    # (2) in-process middleware: X-Session-ID -> contextvar. Zero network hop.
-    app.add_middleware(SessionMiddleware)
+    # (2) in-process middleware: API key / X-Session-ID -> contextvar.
+    #     Zero network hop.
+    app.add_middleware(RecordingIdentityMiddleware)
 
     # (3) query routes mounted on the main app; OpenAI /v1/* surface untouched.
     app.include_router(query_router)

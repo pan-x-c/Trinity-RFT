@@ -25,7 +25,7 @@ from trinity.common.experience import Experience
 
 #: Attribute carrying the vLLM request id on each experience's ``info`` dict.
 _REQUEST_ID_INFO_KEY = "request_id"
-#: Attribute carrying the task id (X-Session-ID) on each experience's ``info``.
+#: Attribute carrying the recording identity on each experience's ``info``.
 _TASK_ID_INFO_KEY = "task_id"
 
 
@@ -56,9 +56,10 @@ class RecordStore(abc.ABC):
 class MemoryStore(RecordStore):
     """In-process store.
 
-    Groups experiences by session (``info["task_id"]``) when an X-Session-ID
-    was supplied, otherwise each turn is keyed by its own ``eid.suffix``
-    (request_id) — so a missing session header never collapses distinct turns.
+    Groups experiences by recording identity (``info["task_id"]``) when an API
+    key or legacy X-Session-ID was supplied, otherwise each turn is keyed by its
+    own ``eid.suffix`` (request_id) — so a missing identity never collapses
+    distinct turns.
     ``get_turn`` resolves an individual turn by ``info["request_id"]``.
 
     Note: per-process under data-parallel serving — each API-server rank holds

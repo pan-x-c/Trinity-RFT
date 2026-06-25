@@ -3,6 +3,7 @@ Designed for vllm >= 0.23.0.
 """
 from trinity.common.models.vllm_patch.recording.config import RecordingConfig
 from trinity.common.models.vllm_patch.recording.context import (
+    RecordingIdentityMiddleware,
     SessionMiddleware,
     task_id_ctx,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "MemoryStore",
     "RecordStore",
     "RecordingConfig",
+    "RecordingIdentityMiddleware",
     "SqlStore",
     "Recorder",
     "SessionMiddleware",

@@ -12,6 +12,7 @@ Field mapping (captured ``RequestOutput`` fields -> ``Experience``):
                     ``eid.task``/``run``/``reward`` are left default here and
                     assigned later by the proxy at ``/feedback`` time, matching
                     ``explorer/proxy/service.record_experience`` semantics.
+  API key /
   X-Session-ID      -> info["task_id"]  (traceability only; not used as a key)
   prompt_token_ids  -> tokens (prompt portion) + prompt_length
   response_token_ids-> tokens (response portion)
@@ -84,7 +85,8 @@ def build_experience(
 
     Args:
         output: A ``RequestOutput`` with ``finished == True``.
-        task_id: From ``X-Session-ID``; stored in ``info`` for traceability only.
+        task_id: From the request API key, or legacy ``X-Session-ID``; stored
+            in ``info`` for traceability only.
             Not used as the storage key — ``eid.suffix`` is, so a missing
             ``X-Session-ID`` never drops a turn.
         rank: Data-parallel serving rank.
