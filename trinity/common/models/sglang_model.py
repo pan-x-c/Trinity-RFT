@@ -28,17 +28,26 @@ class SGLangClient:
         self.api_key = api_key
         self.logger = logger
 
+    def _auth_header(self, api_key_override: Optional[str]) -> str:
+        # The record_key travels as the bearer so the server-side
+        # RecordingIdentityMiddleware stamps it into ``record_key_ctx``. Falls
+        # back to the client's api_key (which, on the Trinity Ray-direct path,
+        # equals the record_key injected by ModelWrapper).
+        token = api_key_override if api_key_override is not None else self.api_key
+        return f"Bearer {token}" if token else ""
+
     async def _server_call(
         self,
         method: Literal["GET", "POST"],
         endpoint: str,
         payload: Optional[dict] = None,
         timeout: float = 60,
+        api_key_override: Optional[str] = None,
     ) -> dict:
         async with httpx.AsyncClient(
             headers={
                 "Content-Type": "application/json; charset=utf-8",
-                "Authorization": f"Bearer {self.api_key}" if self.api_key else "",
+                "Authorization": self._auth_header(api_key_override),
             }
         ) as client:
             url = f"{self.server_url}{endpoint}"
@@ -191,7 +200,9 @@ class SGLangClient:
             )
         return success
 
-    async def generate(self, input_ids: List[int], **kwargs) -> Sequence[dict[str, Any]]:
+    async def generate(
+        self, input_ids: List[int], record_key: Optional[str] = None, **kwargs
+    ) -> Sequence[dict[str, Any]]:
         sampling_params = {
             "n": kwargs.get("n", 1),
             "temperature": kwargs.get("temperature"),
@@ -219,6 +230,7 @@ class SGLangClient:
             "/generate",
             payload,
             timeout=kwargs.get("timeout", 300),
+            api_key_override=record_key,
         )
         if isinstance(response, dict) and response.get("error"):
             raise RuntimeError(f"Failed to generate with SGLang: {response['error']}")
@@ -252,6 +264,8 @@ class SGLangRolloutModel(BaseInferenceModel):
         self.api_server_port: Optional[int] = None
         self.api_server: Optional[asyncio.Task[None]] = None
         self.api_client: Optional[SGLangClient] = None
+        self.recorder = None
+        self.record_store = None
         self.synchronizer = None
         self.state_dict_meta: List[Tuple[str, str, Tuple]] = []
         self.model_version = 0
@@ -365,7 +379,22 @@ class SGLangRolloutModel(BaseInferenceModel):
         assert routed_experts is not None
         return routed_experts
 
-    async def generate(self, prompt: str, lora_request=None, **kwargs) -> Sequence[Experience]:
+    async def generate(
+        self,
+        prompt: str,
+        lora_request=None,
+        record_key: Optional[str] = None,
+        **kwargs,
+    ) -> Sequence[Experience]:
+        """Generate a response from the provided prompt in async.
+
+        When ``record_key`` is set, it is sent as the Authorization bearer so the
+        server-side recorder groups this turn under that key (the api_key doubles
+        as the record_key on the Trinity path). The returned experiences are the
+        client-side copy; the recorded copy is written to the in-process store by
+        the engine-level recorder and drained via
+        ``extract_experience_from_history`` — mirroring vLLM.
+        """
         assert self.api_client is not None, "API client must be initialized before calling generate"
         if self.tokenizer is None:
             await self._initialize_tokenizer()
@@ -379,6 +408,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         return_logprob = logprobs is not None and logprobs is not False
         responses = await self.api_client.generate(
             input_ids=prompt_token_ids,
+            record_key=record_key,
             n=kwargs.get("n", 1),
             temperature=kwargs.get("temperature", self.config.temperature),
             top_p=kwargs.get("top_p", self.config.top_p),
@@ -441,18 +471,24 @@ class SGLangRolloutModel(BaseInferenceModel):
         record_key: Optional[str] = None,
         **kwargs,
     ) -> Sequence[Experience]:
-        # ``record_key`` is the in-vLLM recorder's group key; SGLang does not
-        # support recording, so accept and ignore it here.
-        del record_key
+        # ``record_key`` is propagated to ``generate`` so the server-side recorder
+        # groups this turn under the caller's key (sent as the Authorization
+        # bearer, same as vLLM's RecordingIdentityMiddleware path).
         if self.tokenizer is None:
             await self._initialize_tokenizer()
 
         normalized_messages = self._normalize_chat_messages(messages)
         prompt = self.apply_chat_template(self.tokenizer, normalized_messages)
-        return await self.generate(prompt=prompt, lora_request=lora_request, **kwargs)
+        return await self.generate(
+            prompt=prompt, lora_request=lora_request, record_key=record_key, **kwargs
+        )
 
     async def logprobs(self, token_ids: List[int], **kwargs) -> torch.Tensor:
         raise NotImplementedError("SGLangRolloutModel does not support logprobs.")
+        # NOTE: if implemented later, the auxiliary forward must avoid being
+        # recorded. Unlike vLLM, ``skip_recording_ctx`` does NOT cross the HTTP
+        # hop to the server; instead omit ``record_key`` for that call so the
+        # server-side recorder skips it (record_key is None -> no record).
 
     async def convert_messages_to_experience(
         self,
@@ -463,6 +499,24 @@ class SGLangRolloutModel(BaseInferenceModel):
         raise NotImplementedError(
             "SGLangRolloutModel does not support convert_messages_to_experience."
         )
+
+    async def extract_experience_from_history(
+        self, record_key: str, clear_history: bool = True
+    ) -> List[Experience]:
+        """Extract recorded experiences from the in-process recorder store.
+
+        Mirrors ``vLLMRolloutModel.extract_experience_from_history``: the
+        recorder and store live in-process (the SGLang server runs as an
+        asyncio task in the same loop as this model), so extraction is a direct
+        store lookup with no HTTP hop.
+        """
+        if self.recorder is None:
+            raise ValueError("Recording is not enabled for this SGLang model.")
+        await self.recorder.flush()
+        exps = await self.recorder.store.get_record_experiences(record_key)
+        if clear_history:
+            await self.recorder.store.delete_record_experiences(record_key)
+        return exps
 
     def _get_api_server_exit_reason(self) -> Optional[str]:
         if self.api_server is None or not self.api_server.done():
@@ -497,6 +551,36 @@ class SGLangRolloutModel(BaseInferenceModel):
 
         if self.api_server_host is None or self.api_server_port is None:
             self.api_server_host, self.api_server_port = self.get_available_address()
+
+        # When recording is on, own the recorder/store here so they can be drained
+        # in-process via ``extract_experience_from_history``. They are wired onto
+        # the embedded server (engine wrap + middleware + query routes) inside
+        # ``get_api_server`` -> ``setup_sglang_recording``.
+        record_store = None
+        recorder = None
+        routed_experts_layout = None
+        if self.config.enable_recording:
+            from trinity.common.models.recording.recorder import Recorder
+            from trinity.common.models.recording.store import MemoryStore
+            from trinity.common.models.sglang_patch.recording.models import (
+                build_sglang_experience,
+            )
+
+            record_store = MemoryStore()
+            recorder = Recorder(
+                store=record_store,
+                build_experiences=build_sglang_experience,
+                enabled=True,
+                rank=0,
+                engine_client=None,
+            )
+            # Decode layout for base64-str routed experts (None for non-MoE
+            # models -> routed_experts stays None in the recorded Experience).
+            if self.config.enable_return_routed_experts:
+                layout = self._get_routed_experts_layout()
+                if layout is not None:
+                    routed_experts_layout = (layout[0], layout[1])
+
         self.api_server = get_api_server(
             host=self.api_server_host,
             port=self.api_server_port,
@@ -518,8 +602,16 @@ class SGLangRolloutModel(BaseInferenceModel):
             master_addr=self.master_addr,
             master_port=self.master_port,
             enable_return_routed_experts=self.config.enable_return_routed_experts,
+            enable_recording=self.config.enable_recording,
+            recorder=recorder,
+            record_store=record_store,
+            routed_experts_layout=routed_experts_layout,
             logger=self.logger,
         )
+        # ``setup_sglang_recording`` (called inside get_api_server) owns the
+        # recorder handle we passed in; keep references for in-process draining.
+        self.recorder = recorder
+        self.record_store = record_store
         server_url = f"http://{self.api_server_host}:{self.api_server_port}"
         self.api_client = SGLangClient(
             server_url=server_url,
@@ -550,6 +642,13 @@ class SGLangRolloutModel(BaseInferenceModel):
             self.api_server = None
             self.api_client = None
             self._has_weight_update_group = False
+        if self.recorder is not None:
+            try:
+                await self.recorder.stop()
+            except Exception as e:
+                self.logger.error("Error while stopping SGLang recorder: %s", e)
+            self.recorder = None
+            self.record_store = None
 
     async def sync_model_weights(
         self,
