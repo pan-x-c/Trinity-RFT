@@ -73,7 +73,7 @@ class RolloutCoordinator:
         self.running = False
         self.detailed_stats = getattr(getattr(config, "monitor", None), "detailed_stats", False)
         # Lazily-resolved map of rollout engine_id -> API server URL, for the
-        # recording path's per-rank /records/consume_task fan-out.
+        # recording path's per-rank /records/update_record fan-out.
         self._rank_urls: Optional[Dict[int, str]] = None
 
     def _enable_recording(self) -> bool:
@@ -336,7 +336,7 @@ class RolloutCoordinator:
 
         ``payload_chunks`` are small pickle reward maps produced by the runners
         (``{"engine_id": int, "updates": [{"record_key", "reward", "run", "task"}]}``).
-        Group updates by engine, fan out ``POST /records/consume_task`` to each
+        Group updates by engine, fan out ``POST /records/update_record`` to each
         rank (which drains its recorder, reward-stamps the matching record-key
         groups, pops them, and returns ``serialize_many`` bytes), deserialize,
         and feed the assembled experiences straight into the pipeline — no Ray
@@ -357,7 +357,7 @@ class RolloutCoordinator:
         rank_urls = self._resolve_rank_urls()
         async with httpx.AsyncClient(timeout=_CONSUME_TIMEOUT) as client:
             requests = [
-                self._post_consume_task(client, rank_urls[engine_id], updates)
+                self._post_update_record(client, rank_urls[engine_id], updates)
                 for engine_id, updates in per_engine.items()
                 if engine_id in rank_urls
             ]
@@ -369,21 +369,21 @@ class RolloutCoordinator:
                 exps.extend(Experience.deserialize_many(resp_bytes))
         return await self.experience_pipeline.process_experiences(exps)
 
-    async def _post_consume_task(
+    async def _post_update_record(
         self, client: httpx.AsyncClient, rank_url: str, updates: List[dict]
     ) -> bytes:
         """POST a batch of record-key reward updates to one rank; return heavy bytes."""
         try:
             resp = await client.post(
-                f"{rank_url}/records/consume_task",
+                f"{rank_url}/records/update_record",
                 json={"updates": updates},
             )
         except (httpx.TimeoutException, httpx.RequestError) as exc:
-            self.logger.error("consume_task to %s failed: %s", rank_url, exc)
+            self.logger.error("update_record to %s failed: %s", rank_url, exc)
             return b""
         if resp.status_code != 200:
             self.logger.error(
-                "consume_task to %s returned %d: %s",
+                "update_record to %s returned %d: %s",
                 rank_url,
                 resp.status_code,
                 resp.text[:200],

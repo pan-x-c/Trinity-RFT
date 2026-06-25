@@ -1816,7 +1816,7 @@ class TestRecording(VLLMTestBase):
 
     Verifies that every call path lands its finished turn in the in-process
     ``MemoryStore`` under the right ``record_key``, and that
-    ``POST /records/consume_task`` flushes the recorder, reward-stamps the
+    ``POST /records/update_record`` flushes the recorder, reward-stamps the
     whole record-key group, pops it, and returns it as serialized experiences.
 
     Paths covered (all async):
@@ -1882,24 +1882,22 @@ class TestRecording(VLLMTestBase):
     async def _flush(self):
         """Drain the recorder without popping anything (an empty consume)."""
         resp = await self._http.post(
-            f"{self.api_address}/records/consume_task", json={"updates": []}
+            f"{self.api_address}/records/update_record", json={"updates": []}
         )
         resp.raise_for_status()
 
     async def _list_record_keys(self):
-        resp = await self._http.get(f"{self.api_address}/records/tasks")
+        resp = await self._http.get(f"{self.api_address}/records")
         resp.raise_for_status()
         return resp.json()["record_keys"]
 
-    async def _get_task(self, record_key: str) -> dict:
-        resp = await self._http.get(f"{self.api_address}/records/tasks/{record_key}")
+    async def _get_record_experiences(self, record_key: str) -> dict:
+        resp = await self._http.get(f"{self.api_address}/records/{record_key}")
         resp.raise_for_status()
         return resp.json()
 
-    async def _get_turn_blob(self, record_key: str, request_id: str) -> Experience:
-        resp = await self._http.get(
-            f"{self.api_address}/records/tasks/{record_key}/turns/{request_id}/blob"
-        )
+    async def _get_request_experience(self, record_key: str, request_id: str) -> Experience:
+        resp = await self._http.get(f"{self.api_address}/records/{record_key}/request/{request_id}")
         resp.raise_for_status()
         return Experience.deserialize(resp.content)
 
@@ -1907,7 +1905,7 @@ class TestRecording(VLLMTestBase):
         self, record_key: str, reward: float, run: int, task: str
     ) -> list[Experience]:
         resp = await self._http.post(
-            f"{self.api_address}/records/consume_task",
+            f"{self.api_address}/records/update_record",
             json={
                 "updates": [{"record_key": record_key, "reward": reward, "run": run, "task": task}]
             },
@@ -1961,11 +1959,11 @@ class TestRecording(VLLMTestBase):
         )
         await self._flush()
         self.assertIn(rk_gen, await self._list_record_keys())
-        task = await self._get_task(rk_gen)
-        self.assertEqual(len(task["turns"]), 1)
+        task = await self._get_record_experiences(rk_gen)
+        self.assertEqual(len(task["experiences"]), 1)
         # blob endpoint round-trips a full experience
-        request_id = task["turns"][0]["info"]["request_id"]
-        blob_exp = await self._get_turn_blob(rk_gen, request_id)
+        request_id = task["experiences"][0]["info"]["request_id"]
+        blob_exp = await self._get_request_experience(rk_gen, request_id)
         self._assert_recorded_experience(blob_exp, rk_gen)
         self._assert_recorded_routed_experts(blob_exp)
         consumed = await self._consume(rk_gen, reward=0.5, run=1, task="t_gen")
@@ -1984,12 +1982,12 @@ class TestRecording(VLLMTestBase):
         )
         self.assertEqual(len(chat_exps), 2)
         await self._flush()
-        task = await self._get_task(rk_chat)
-        self.assertEqual(len(task["turns"]), 2)
+        task = await self._get_record_experiences(rk_chat)
+        self.assertEqual(len(task["experiences"]), 2)
         # n=2 of one engine request -> two completions sharing one request_id,
         # distinguished by sample_index.
-        self.assertEqual(sorted(t["info"]["sample_index"] for t in task["turns"]), [0, 1])
-        self.assertEqual(len({t["info"]["request_id"] for t in task["turns"]}), 1)
+        self.assertEqual(sorted(t["info"]["sample_index"] for t in task["experiences"]), [0, 1])
+        self.assertEqual(len({t["info"]["request_id"] for t in task["experiences"]}), 1)
         consumed = await self._consume(rk_chat, reward=0.8, run=2, task="t_chat")
         self.assertEqual(len(consumed), 2)
         for exp in consumed:

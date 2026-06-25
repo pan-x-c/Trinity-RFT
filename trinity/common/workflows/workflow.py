@@ -232,7 +232,7 @@ class MultiTurnWorkflow(Workflow):
         # captured the authoritative heavy data (real logprobs without an extra
         # forward, real routed_experts) into the MemoryStore, keyed by the
         # record_key the chat call carried. Replace this with an in-process
-        # lookup by record_key (store.get_task / consume), then concatenate the
+        # lookup by record_key (store.get_record_experiences / update), then concatenate the
         # session's turns (info["sample_index"] orders them) into one
         # experience here. Requires threading the per-call record_key down to
         # this call site.

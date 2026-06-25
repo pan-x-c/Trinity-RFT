@@ -1,4 +1,4 @@
-"""HTTP query/consume endpoints over recorded experiences."""
+"""HTTP query/update endpoints over recorded experiences."""
 
 from typing import List
 
@@ -15,15 +15,15 @@ RECORDER_STATE_ATTR = "trinity_recorder"
 query_router = APIRouter(prefix="/records", tags=["trinity-recording"])
 
 
-class _RecordKeyUpdate(BaseModel):
+class _RecordUpdate(BaseModel):
     record_key: str
     reward: float
     run: int = 0
     task: str = ""
 
 
-class _ConsumeTaskRequest(BaseModel):
-    updates: List[_RecordKeyUpdate]
+class _UpdateRecordRequest(BaseModel):
+    updates: List[_RecordUpdate]
 
 
 def _store(request: Request) -> RecordStore:
@@ -41,34 +41,27 @@ def _recorder(request: Request) -> Recorder:
 
 
 async def _get_exp(store: RecordStore, record_key: str, request_id: str) -> Experience:
-    exp = await store.get_turn(record_key, request_id)
+    exp = await store.get_request_experience(record_key, request_id)
     if exp is None:
         raise HTTPException(status_code=404, detail="experience not found")
     return exp
 
 
-@query_router.get("/tasks")
-async def list_tasks(request: Request) -> dict:
+@query_router.get("")
+async def list_records(request: Request) -> dict:
     store = _store(request)
-    return {"record_keys": await store.list_tasks()}
+    return {"record_keys": await store.list_records()}
 
 
-@query_router.get("/tasks/{record_key}")
-async def get_task(record_key: str, request: Request) -> dict:
+@query_router.get("/{record_key}")
+async def get_record_experiences(record_key: str, request: Request) -> dict:
     store = _store(request)
-    experiences = await store.get_task(record_key)
-    return {"record_key": record_key, "turns": [e.to_dict() for e in experiences]}
+    experiences = await store.get_record_experiences(record_key)
+    return {"record_key": record_key, "experiences": [e.to_dict() for e in experiences]}
 
 
-@query_router.get("/tasks/{record_key}/turns/{request_id}")
-async def get_turn(record_key: str, request_id: str, request: Request) -> dict:
-    store = _store(request)
-    exp = await _get_exp(store, record_key, request_id)
-    return exp.to_dict()
-
-
-@query_router.get("/tasks/{record_key}/turns/{request_id}/blob")
-async def get_turn_blob(record_key: str, request_id: str, request: Request) -> Response:
+@query_router.get("/{record_key}/request/{request_id}")
+async def get_request_experience(record_key: str, request_id: str, request: Request) -> Response:
     store = _store(request)
     exp = await _get_exp(store, record_key, request_id)
     return Response(
@@ -78,15 +71,24 @@ async def get_turn_blob(record_key: str, request_id: str, request: Request) -> R
     )
 
 
-@query_router.delete("/tasks/{record_key}")
-async def delete_task(record_key: str, request: Request) -> dict:
+@query_router.delete("/{record_key}")
+async def delete_record_experiences(record_key: str, request: Request) -> dict:
     store = _store(request)
-    await store.delete_task(record_key)
+    await store.delete_record_experiences(record_key)
     return {"record_key": record_key, "deleted": True}
 
 
-@query_router.post("/consume_task")
-async def consume_task(req: _ConsumeTaskRequest, request: Request) -> Response:
+@query_router.delete("/{record_key}/request/{request_id}")
+async def delete_request_experience(record_key: str, request_id: str, request: Request) -> dict:
+    store = _store(request)
+    deleted = await store.delete_request_experience(record_key, request_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="experience not found")
+    return {"record_key": record_key, "request_id": request_id, "deleted": True}
+
+
+@query_router.post("/update_record")
+async def update_record(req: _UpdateRecordRequest, request: Request) -> Response:
     store = _store(request)
     recorder = _recorder(request)
     await recorder.flush()

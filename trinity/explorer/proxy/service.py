@@ -15,7 +15,7 @@ class ExplorerService:
     The proxy is a request router + model-weight sync coordinator for serve
     mode. Experience collection used to live here (SQL-mediated
     ``/feedback``/``/commit``); it has been removed in favor of the in-vLLM
-    ``MemoryStore`` + ``/records/consume_task`` flow driven by the rollout
+    ``MemoryStore`` + ``/records/update_record`` flow driven by the rollout
     coordinator. Serve-mode external reward reporting is therefore pending
     (see the recording refactor plan).
     """

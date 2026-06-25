@@ -135,7 +135,7 @@ def _setup_recording(
     by VLLMModel at engine creation and in ``sync_model_weights``).
 
     The store backend is always the in-process ``MemoryStore``; the coordinator
-    drains it at finalize time via ``/records/consume_task`` (fanned out per
+    drains it at finalize time via ``/records/update_record`` (fanned out per
     rank), so heavy experience bytes never touch SQL or Ray serialization.
 
     Args:

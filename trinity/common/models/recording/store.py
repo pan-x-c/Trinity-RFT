@@ -24,20 +24,26 @@ class RecordStore(abc.ABC):
         """Set reward/run/task on every experience in the group, pop and return it."""
 
     @abc.abstractmethod
-    async def get_task(self, record_key: str) -> list[Experience]:
+    async def get_record_experiences(self, record_key: str) -> list[Experience]:
         """Return all experiences for a record key, in insertion order."""
 
     @abc.abstractmethod
-    async def get_turn(self, record_key: str, request_id: str) -> Optional[Experience]:
+    async def get_request_experience(
+        self, record_key: str, request_id: str
+    ) -> Optional[Experience]:
         """Return a single experience, or None if not found."""
 
     @abc.abstractmethod
-    async def list_tasks(self) -> list[str]:
+    async def list_records(self) -> list[str]:
         """Return all known record keys."""
 
     @abc.abstractmethod
-    async def delete_task(self, record_key: str) -> None:
+    async def delete_record_experiences(self, record_key: str) -> None:
         """Drop all experiences for a record key."""
+
+    @abc.abstractmethod
+    async def delete_request_experience(self, record_key: str, request_id: str) -> bool:
+        """Drop one experience by request id. Return True if one was deleted."""
 
 
 class MemoryStore(RecordStore):
@@ -64,17 +70,31 @@ class MemoryStore(RecordStore):
             exp.eid.task = task
         return exps
 
-    async def get_task(self, record_key: str) -> list[Experience]:
+    async def get_record_experiences(self, record_key: str) -> list[Experience]:
         return list(self._records.get(record_key, []))
 
-    async def get_turn(self, record_key: str, request_id: str) -> Optional[Experience]:
+    async def get_request_experience(
+        self, record_key: str, request_id: str
+    ) -> Optional[Experience]:
         for exp in self._records.get(record_key, []):
             if exp.info.get(REQUEST_ID_INFO_KEY) == request_id:
                 return exp
         return None
 
-    async def list_tasks(self) -> list[str]:
+    async def list_records(self) -> list[str]:
         return list(self._records.keys())
 
-    async def delete_task(self, record_key: str) -> None:
+    async def delete_record_experiences(self, record_key: str) -> None:
         self._records.pop(record_key, None)
+
+    async def delete_request_experience(self, record_key: str, request_id: str) -> bool:
+        exps = self._records.get(record_key)
+        if not exps:
+            return False
+        for index, exp in enumerate(exps):
+            if exp.info.get(REQUEST_ID_INFO_KEY) == request_id:
+                del exps[index]
+                if not exps:
+                    self._records.pop(record_key, None)
+                return True
+        return False

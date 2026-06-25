@@ -597,7 +597,7 @@ class InferenceModelConfig:
     # recording identity (``record_key``). This is the single switch for the
     # recording flow — when on, the explorer also consumes from the store: the
     # WorkflowRunner ships only a small reward map keyed by ``record_key`` and
-    # the RolloutCoordinator pulls heavy experiences via ``/records/consume_task``
+    # the RolloutCoordinator pulls heavy experiences via ``/records/update_record``
     # at finalize time. When off (default), runners ship serialized experiences
     # through the scheduler as before (legacy path). When True, the Allocator
     # forces ``enable_return_routed_experts``. VLLMModel mirrors the recording

@@ -1100,7 +1100,7 @@ async def run_math_workflow(serve_url: str, task: dict):
 
 @unittest.skip(
     "serve-mode experience collection moved to the in-vLLM MemoryStore + "
-    "/records/consume_task flow; the proxy /feedback//commit path and external "
+    "/records/update_record flow; the proxy /feedback//commit path and external "
     "reward reporting are being redesigned (see recording refactor plan)."
 )
 class TestServeWithTrainer(RayUnittestBaseAsync):
