@@ -1,12 +1,5 @@
 """Generation-recording patch for the vLLM OpenAI server.
-
-Self-contained entry point that mirrors ``api_patch_v17.py``'s bootstrap flow
-(``build_app`` -> ``init_app_state`` -> ``serve_http``) and additionally wires
-in generation recording without touching vLLM source code.
-
-Designed for vllm >= 0.17.0. Drop-in alternative to
-``trinity.common.models.vllm_patch.api_patch_v17``: point your launcher at
-``recording.run_api_server_with_recording`` instead.
+Designed for vllm >= 0.23.0.
 """
 from trinity.common.models.vllm_patch.recording.config import RecordingConfig
 from trinity.common.models.vllm_patch.recording.context import (

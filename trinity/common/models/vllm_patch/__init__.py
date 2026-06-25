@@ -10,6 +10,7 @@ from trinity.common.config import InferenceModelConfig
 
 VLLM_VERSION_0120 = parse_version("0.12.0")
 VLLM_VERSION_0170 = parse_version("0.17.0")
+VLLM_VERSION_0230 = parse_version("0.23.0")
 
 
 def vllm_patch():
@@ -155,10 +156,10 @@ def get_api_server(
     # Recording is driven by the config field (not env, not an engine attr):
     # get_api_server already receives InferenceModelConfig, so it builds the
     # static RecordingConfig here and threads it into the recording runner.
-    recording = bool(config.enable_recording) and vllm_version >= VLLM_VERSION_0170
+    recording = bool(config.enable_recording) and vllm_version >= VLLM_VERSION_0230
     if config.enable_recording and not recording:
         logger.warning(
-            "enable_recording is on but vLLM %s < 0.17.0; recording disabled",
+            "enable_recording is on but vLLM %s < 0.23.0; recording disabled",
             vllm.__version__,
         )
 
