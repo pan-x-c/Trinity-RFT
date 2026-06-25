@@ -12,9 +12,10 @@ class StepWiseRewardWorkflow(Workflow):
         self, *, task: Task, model: ModelWrapper, auxiliary_models=None, use_openai_client=True
     ):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
-        assert model.enable_history, (
-            "Rollout Model must have history enabled for step-wise rewards, please "
-            "set `explorer.rollout_model.enable_history` to `True` in your config."
+        assert model.enable_history or model.config.enable_recording, (
+            "Rollout Model must have history or recording enabled for step-wise rewards, "
+            "please set `explorer.rollout_model.enable_history` or "
+            "`explorer.rollout_model.enable_recording` to `True` in your config."
         )
         # use the rollout model's OpenAI client to write your agent application
         if use_openai_client:
@@ -121,9 +122,10 @@ class RewardPropagationWorkflow(Workflow):
         self, *, task: Task, model: ModelWrapper, auxiliary_models=None, use_openai_client=True
     ):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
-        assert model.enable_history, (
-            "Rollout Model must have history enabled for step-wise rewards, please "
-            "set `explorer.rollout_model.enable_history` to `True` in your config."
+        assert model.enable_history or model.config.enable_recording, (
+            "Rollout Model must have history or recording enabled for step-wise rewards, "
+            "please set `explorer.rollout_model.enable_history` or "
+            "`explorer.rollout_model.enable_recording` to `True` in your config."
         )
         # use the rollout model's OpenAI client to write your agent application
         if use_openai_client:

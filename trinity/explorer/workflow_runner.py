@@ -67,6 +67,7 @@ class WorkflowRunner:
             for index, auxiliary_model_id in enumerate(auxiliary_model_ids or [])
         ]
         self.workflow_instance: Workflow = None
+        self.rollout_model_id = rollout_model_id
         self.runner_id = runner_id
         self.runner_state = {
             "workflow_id": None,
@@ -103,9 +104,17 @@ class WorkflowRunner:
     def is_alive(self):
         return True
 
-    def _create_workflow_instance(self, task: Task) -> Workflow:
+    def _build_record_key(self, task: Task, run_index: int) -> str:
+        return f"{task.batch_id}/{task.task_id}/{run_index}"
+
+    def _set_record_key(self, model_wrapper: ModelWrapper, record_key: Optional[str]) -> None:
+        if self._enable_recording() and record_key is not None:
+            model_wrapper.set_api_key(record_key)
+
+    def _create_workflow_instance(self, task: Task, record_key: Optional[str] = None) -> Workflow:
         if task.workflow is None:
             raise ValueError("Workflow is not set in the task.")
+        self._set_record_key(self.model_wrapper, record_key)
         if (
             self.workflow_instance is None
             or not self.workflow_instance.__class__ == task.workflow
@@ -131,17 +140,21 @@ class WorkflowRunner:
             exps = workflow_instance.run()
         return exps
 
-    def _create_isolated_workflow_instance(self, task: Task) -> Workflow:
+    def _create_isolated_workflow_instance(
+        self, task: Task, record_key: Optional[str] = None
+    ) -> Tuple[Workflow, ModelWrapper]:
+        model_wrapper = (
+            self.model_wrapper.clone_with_isolated_history()
+            if (self.config.explorer.rollout_model.enable_history or self._enable_recording())
+            else self.model_wrapper
+        )
+        self._set_record_key(model_wrapper, record_key)
         wf = task.to_workflow(
-            (
-                self.model_wrapper.clone_with_isolated_history()
-                if self.config.explorer.rollout_model.enable_history
-                else self.model_wrapper
-            ),
+            model_wrapper,
             self.auxiliary_model_wrappers,
         )
         wf.enable_recording = self._enable_recording()
-        return wf
+        return wf, model_wrapper
 
     def _build_execution_result(
         self,
@@ -208,8 +221,17 @@ class WorkflowRunner:
         async def run_single(
             i: int,
         ) -> Tuple[bool, List[Experience], Optional[Dict[str, float]], Optional[str]]:
-            workflow = self._create_isolated_workflow_instance(task)
-            return await self._execute_single_run(workflow, task, i, run_id_base)
+            run_index = run_id_base + i
+            record_key = self._build_record_key(task, run_index)
+            workflow, model_wrapper = self._create_isolated_workflow_instance(task, record_key)
+            return await self._execute_single_run(
+                workflow,
+                task,
+                i,
+                run_id_base,
+                model_wrapper=model_wrapper,
+                record_key=record_key,
+            )
 
         if collect_partial_runs:
             if use_threads:
@@ -262,10 +284,14 @@ class WorkflowRunner:
         task: Task,
         run_index: int,
         run_id_base: int,
+        model_wrapper: Optional[ModelWrapper] = None,
+        record_key: Optional[str] = None,
     ) -> Tuple[bool, List[Experience], Optional[Dict[str, float]], Optional[str]]:
         st = time.time()
-        await self.model_wrapper.clean_workflow_state()
-        self.runner_state["workflow_id"] = f"{task.batch_id}/{task.task_id}/{run_index}"
+        model_wrapper = model_wrapper or self.model_wrapper
+        self._set_record_key(model_wrapper, record_key)
+        await model_wrapper.clean_workflow_state()
+        self.runner_state["workflow_id"] = self._build_record_key(task, run_id_base + run_index)
         self.runner_state["terminate_time"] = None
         self.runner_state["begin_time"] = st
         try:
@@ -296,11 +322,13 @@ class WorkflowRunner:
     ) -> RunnerExecutionResult:
         """Init workflow from the task and run it."""
         if task.workflow.can_repeat:
-            workflow_instance = self._create_workflow_instance(task)
+            record_key = self._build_record_key(task, run_id_base)
+            workflow_instance = self._create_workflow_instance(task, record_key=record_key)
             workflow_instance.set_repeat_times(repeat_times, run_id_base)
             st = time.time()
+            self._set_record_key(self.model_wrapper, record_key)
             await self.model_wrapper.clean_workflow_state()
-            self.runner_state["workflow_id"] = f"{task.batch_id}/{task.task_id}/{run_id_base}"
+            self.runner_state["workflow_id"] = record_key
             self.runner_state["terminate_time"] = None
             self.runner_state["begin_time"] = st
             exps = await self._run_workflow(workflow_instance)
@@ -333,8 +361,16 @@ class WorkflowRunner:
     ) -> RunnerExecutionResult:
         results = []
         for i in range(repeat_times):
-            workflow = self._create_workflow_instance(task)
-            result = await self._execute_single_run(workflow, task, i, run_id_base)
+            run_index = run_id_base + i
+            record_key = self._build_record_key(task, run_index)
+            workflow = self._create_workflow_instance(task, record_key=record_key)
+            result = await self._execute_single_run(
+                workflow,
+                task,
+                i,
+                run_id_base,
+                record_key=record_key,
+            )
             results.append(result)
             if collect_partial_runs:
                 continue
