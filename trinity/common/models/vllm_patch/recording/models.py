@@ -38,7 +38,10 @@ with the experience through serialize/deserialize.
 """
 from typing import Any, List, Optional
 
+import torch
+
 from trinity.common.experience import EID, Experience
+from trinity.common.models.mm_utils import combine_output_token_ids
 
 
 def _extract_chosen_logprobs(
@@ -79,6 +82,33 @@ def _extract_chosen_logprobs(
     return [float(sample_logprobs[i][tid].logprob) for i, tid in enumerate(response_token_ids)]
 
 
+def _extract_routed_experts(
+    output: Any,
+    completion: Any,
+    *,
+    include_routed_experts: bool,
+    include_prompt_routed_experts: bool,
+):
+    if not include_routed_experts:
+        return None
+
+    routed_experts_parts = []
+    if include_prompt_routed_experts:
+        prompt_routed_experts = getattr(output, "prompt_routed_experts", None)
+        if prompt_routed_experts is not None:
+            routed_experts_parts.append(torch.as_tensor(prompt_routed_experts, dtype=torch.uint8))
+
+    completion_routed_experts = getattr(completion, "routed_experts", None)
+    if completion_routed_experts is not None:
+        routed_experts_parts.append(torch.as_tensor(completion_routed_experts, dtype=torch.uint8))
+
+    if not routed_experts_parts:
+        return None
+    if len(routed_experts_parts) == 1:
+        return routed_experts_parts[0]
+    return torch.cat(routed_experts_parts, dim=0)
+
+
 def build_experience(
     output: Any,
     record_key: Optional[str],
@@ -87,6 +117,11 @@ def build_experience(
     timestamp: str,
     endpoint: str = "unknown",
     model_version: Optional[int] = None,
+    multi_modal_inputs: Optional[dict] = None,
+    prompt_text: Optional[str] = None,
+    include_recording_info: bool = True,
+    include_routed_experts: bool = True,
+    include_prompt_routed_experts: bool = False,
 ) -> List[Experience]:
     """Build Trinity ``Experience`` objects from a finished ``RequestOutput``.
 
@@ -105,6 +140,19 @@ def build_experience(
         endpoint: Which OpenAI endpoint served the turn (best-effort).
         model_version: Checkpoint version the serving policy was at; stamped
             into ``info`` for RL attribution (read in-actor by the recorder).
+        multi_modal_inputs: Optional training-time multimodal tensors aligned
+            with the prompt tokens. Response token type ids are appended per
+            completion before storing on the ``Experience``.
+        prompt_text: Optional prompt text override. Direct model calls can pass
+            tokenizer-decoded prompt text when ``RequestOutput.prompt`` is not
+            suitable for training records.
+        include_recording_info: Whether to attach recording metadata and
+            ``EID(suffix=request_id)``. Direct generate return values can turn
+            this off to preserve normal Experience construction semantics.
+        include_routed_experts: Whether routed experts should be copied.
+        include_prompt_routed_experts: Whether to prepend prompt routed experts
+            to completion routed experts. Direct generate uses this to match
+            its full-token training representation.
 
     Returns:
         One ``Experience`` per non-degenerate completion. Empty list if the
@@ -134,27 +182,40 @@ def build_experience(
         prompt_length = len(prompt_token_ids)
 
         chosen_logprobs = _extract_chosen_logprobs(completion.logprobs, response_token_ids)
-        routed_experts = completion.routed_experts
+        routed_experts = _extract_routed_experts(
+            output,
+            completion,
+            include_routed_experts=include_routed_experts,
+            include_prompt_routed_experts=include_prompt_routed_experts,
+        )
 
-        info = {
-            "request_id": request_id,
-            "record_key": record_key,
-            "sample_index": sample_index,
-            "rank": rank,
-            "timestamp": timestamp,
-            "endpoint": endpoint,
-            "model_version": model_version,
-        }
+        info = None
+        eid = None
+        if include_recording_info:
+            eid = EID(suffix=request_id)
+            info = {
+                "request_id": request_id,
+                "record_key": record_key,
+                "sample_index": sample_index,
+                "rank": rank,
+                "timestamp": timestamp,
+                "endpoint": endpoint,
+                "model_version": model_version,
+            }
 
         experiences.append(
             Experience(
-                eid=EID(suffix=request_id),
+                eid=eid,
                 tokens=tokens,
                 logprobs=chosen_logprobs,
                 prompt_length=prompt_length,
                 routed_experts=routed_experts,
-                prompt_text=output.prompt,
+                prompt_text=prompt_text if prompt_text is not None else output.prompt,
                 response_text=completion.text,
+                multi_modal_inputs=combine_output_token_ids(
+                    response_token_ids,
+                    multi_modal_inputs,
+                ),
                 info=info,
             )
         )

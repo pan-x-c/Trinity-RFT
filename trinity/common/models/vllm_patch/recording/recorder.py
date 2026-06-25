@@ -17,18 +17,14 @@ Why wrap ``engine_client.generate`` instead of the serving layer?
     computation — the client response is unchanged unless the client itself
     requested logprobs. Recording stays transparent.
 """
-import asyncio
 import functools
 import logging
 from typing import Optional
 
-from trinity.common.experience import Experience
-from trinity.common.models.vllm_patch.recording.context import (
-    record_key_ctx,
-    skip_recording_ctx,
-)
+from trinity.common.models.recording.context import record_key_ctx
+from trinity.common.models.recording.recorder import Recorder
+from trinity.common.models.recording.store import MemoryStore, RecordStore
 from trinity.common.models.vllm_patch.recording.models import build_experience
-from trinity.common.models.vllm_patch.recording.store import RecordStore
 
 #: Guard attribute marking the wrapped generate, mirroring api_patch_v17 style.
 _PATCHED_FLAG = "__patched_engine_recording__"
@@ -44,6 +40,73 @@ _MODEL_VERSION_ATTR = "trinity_model_version"
 #: to thread a knob through the launcher. The engine's ``max_logprobs`` cap
 #: (default 20, set at engine build) already covers it.
 _RECORDER_LOGPROB_WIDTH = 1
+TRINITY_RECORDER_ATTR = "trinity_recorder"
+TRINITY_RECORD_STORE_ATTR = "trinity_record_store"
+TRINITY_MM_RENDER_ATTR = "trinity_mm_render"
+
+
+def _get_api_process_rank(engine_client) -> int:
+    try:
+        return int(engine_client.vllm_config.parallel_config._api_process_rank)
+    except Exception:
+        return 0
+
+
+def create_vllm_recorder(
+    engine_client,
+    logger: logging.Logger,
+    *,
+    store: Optional[RecordStore] = None,
+    enabled: bool = True,
+) -> Recorder:
+    """Create and install a vLLM-backed recorder on ``engine_client``."""
+    existing = getattr(engine_client, TRINITY_RECORDER_ATTR, None)
+    if existing is not None:
+        return existing
+
+    recorder = Recorder(
+        store=store or MemoryStore(),
+        build_experiences=build_experience,
+        enabled=enabled,
+        rank=_get_api_process_rank(engine_client),
+        engine_client=engine_client,
+    )
+    patch_engine_for_recording(engine_client, recorder, logger)
+    setattr(engine_client, TRINITY_RECORDER_ATTR, recorder)
+    setattr(engine_client, TRINITY_RECORD_STORE_ATTR, recorder.store)
+    return recorder
+
+
+def _get_prompt_arg(args, kwargs):
+    if "prompt" in kwargs:
+        return kwargs["prompt"]
+    if args:
+        return args[0]
+    return None
+
+
+def _build_multi_modal_inputs(engine_client, prompt, output, logger: logging.Logger):
+    if not isinstance(prompt, dict):
+        return None
+    multi_modal_data = prompt.get("multi_modal_data")
+    if not multi_modal_data:
+        return None
+    mm_render = getattr(engine_client, TRINITY_MM_RENDER_ATTR, None)
+    if mm_render is None:
+        logger.warning(
+            "Recording saw a multimodal vLLM prompt but no %s is attached to engine_client; "
+            "recorded Experience will not include multi_modal_inputs.",
+            TRINITY_MM_RENDER_ATTR,
+        )
+        return None
+    try:
+        return mm_render.build_mm_input_for_training(
+            input_ids=output.prompt_token_ids,
+            multi_modal_data=multi_modal_data,
+        )
+    except Exception:
+        logger.exception("Failed to build multi_modal_inputs for recorded vLLM Experience")
+        return None
 
 
 def patch_engine_for_recording(
@@ -81,6 +144,7 @@ def patch_engine_for_recording(
         sampling_params = kwargs.get("sampling_params")
         if sampling_params is None and len(args) >= 2:
             sampling_params = args[1]
+        prompt = _get_prompt_arg(args, kwargs)
 
         if recorder.enabled and sampling_params is not None:
             # Ensure logprobs are computed for recording (callers may omit
@@ -100,126 +164,22 @@ def patch_engine_for_recording(
         if recorder.enabled and last is not None and getattr(last, "finished", False):
             # Recover the record key from the request's async context (set by
             # RecordingIdentityMiddleware on the HTTP path, or by VLLMModel.chat
-            # on the Ray-direct path). None when neither was supplied; the store
-            # then falls back to request_id grouping.
+            # on the Ray-direct path). A missing key means the caller did not
+            # opt into grouping this turn, so skip recording entirely.
             record_key = record_key_ctx.get()
-            # Offload heavy serialization off the response critical path. The
-            # task is tracked so ``flush`` can await it before a consume.
-            recorder.schedule_record(last, record_key)
+            if record_key is not None:
+                multi_modal_inputs = _build_multi_modal_inputs(
+                    engine_client,
+                    prompt,
+                    last,
+                    logger,
+                )
+                recorder.schedule_record(
+                    last,
+                    record_key,
+                    multi_modal_inputs=multi_modal_inputs,
+                )
 
     setattr(_patched_generate, _PATCHED_FLAG, True)
     engine_client.generate = _patched_generate
     logger.info("Patched vLLM engine_client.generate for generation recording")
-
-
-class Recorder:
-    """Drains finished turns into a ``RecordStore`` from a background task.
-
-    Putting records into an ``asyncio.Queue`` and flushing from a single worker
-    keeps the response path cheap (record == enqueue) and serializes expensive
-    payloads (ndarray -> .npy, json) off the serving hot loop.
-
-    ``schedule_record`` spawns a task per finished ``RequestOutput`` and tracks
-    it in ``_pending``; ``flush`` awaits all of them plus ``queue.join`` so a
-    caller (``/records/consume_task``) sees a quiesced store before popping.
-    """
-
-    def __init__(
-        self,
-        store: RecordStore,
-        *,
-        enabled: bool,
-        rank: int = 0,
-        engine_client=None,
-    ) -> None:
-        self.store = store
-        self.enabled = enabled
-        self.rank = rank
-        # The engine_client is the same AsyncLLM instance VLLMModel updates in
-        # sync_model_weights (``.trinity_model_version``), so we read the live
-        # checkpoint version off it at record time.
-        self.engine_client = engine_client
-        self._queue: "asyncio.Queue[Optional[Experience]]" = asyncio.Queue()
-        self._flusher: Optional[asyncio.Task] = None
-        # In-flight ``_record`` tasks spawned by ``schedule_record``. Tracked
-        # so ``flush`` can await them — a record task that hasn't put yet would
-        # otherwise race a consume (the experience would be missing from the
-        # store even though the request already finished).
-        self._pending: "set[asyncio.Task]" = set()
-
-    def start(self) -> None:
-        """Start the background flusher. Idempotent."""
-        if self._flusher is not None or not self.enabled:
-            return
-        self._flusher = asyncio.create_task(self._flush_loop())
-
-    async def stop(self) -> None:
-        """Drain in-flight + queued turns, then stop the flusher."""
-        if self._flusher is None:
-            return
-        # Drain everything put in flight so we don't lose turns at shutdown.
-        await self.flush()
-        self._flusher.cancel()
-        self._flusher = None
-
-    def schedule_record(self, output, record_key: Optional[str]) -> None:
-        """Spawn (and track) a record task for a finished ``RequestOutput``."""
-        task = asyncio.create_task(self._record(output, record_key))
-        self._pending.add(task)
-        task.add_done_callback(self._pending.discard)
-
-    async def flush(self) -> None:
-        """Wait until every in-flight record has been appended to the store.
-
-        Awaits all pending ``_record`` tasks (so every finished turn has been
-        enqueued), then ``queue.join``s (so the flusher has appended them all).
-        Call this before consuming the store to avoid reading a partial state.
-        """
-        if self._pending:
-            await asyncio.gather(*self._pending, return_exceptions=True)
-        if self._flusher is not None:
-            await self._queue.join()
-
-    async def _record(self, output, record_key: Optional[str]) -> None:
-        """Build experiences for a finished turn and enqueue each for append."""
-        # Auxiliary forwards (logprobs recomputation, convert_messages) set
-        # this to avoid polluting the store with 1-token degenerate turns.
-        if skip_recording_ctx.get():
-            return
-        # Stamp now (real runtime, not a workflow sandbox): permitted here.
-        from datetime import datetime, timezone
-
-        timestamp = datetime.now(timezone.utc).isoformat()
-        # Read the live checkpoint version the actor mirrors onto the engine.
-        model_version = getattr(self.engine_client, _MODEL_VERSION_ATTR, None)
-        exps = build_experience(
-            output,
-            record_key,
-            rank=self.rank,
-            timestamp=timestamp,
-            model_version=model_version,
-        )
-        for exp in exps:
-            await self._queue.put(exp)
-
-    async def _flush_loop(self) -> None:
-        while True:
-            exp = await self._queue.get()
-            try:
-                if exp is None:
-                    # Sentinel for graceful shutdown.
-                    return
-                await self._safe_append(exp)
-            finally:
-                # Paired with put() so queue.join() in flush() can complete.
-                self._queue.task_done()
-
-    async def _safe_append(self, exp: Experience) -> None:
-        try:
-            await self.store.append_turn(exp)
-        except Exception:
-            # Never let a storage hiccup crash the flusher loop.
-            logging.getLogger(__name__).exception(
-                "recording store.append_turn failed for request %s",
-                exp.info.get("request_id"),
-            )

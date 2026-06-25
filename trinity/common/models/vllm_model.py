@@ -13,16 +13,11 @@ from transformers import AutoProcessor
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
-from trinity.common.models.mm_utils import (
-    combine_output_token_ids,
-    vLLMMultiModalRender,
-)
+from trinity.common.models.mm_utils import vLLMMultiModalRender
 from trinity.common.models.model import BaseInferenceModel
+from trinity.common.models.recording.context import record_key_ctx, skip_recording_ctx
 from trinity.common.models.vllm_patch import get_vllm_version
-from trinity.common.models.vllm_patch.recording.context import (
-    record_key_ctx,
-    skip_recording_ctx,
-)
+from trinity.common.models.vllm_patch.recording.models import build_experience
 
 
 # V0 engine is deprecated since vLLM v0.10.2, related code will be removed in the future.
@@ -92,6 +87,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         self.api_server_host = None
         self.api_server_port = None
         self.api_server = None
+        self.recorder = None
         self._prepared = False
         self.async_llm = None
         self.headless_executor = None
@@ -195,6 +191,19 @@ class vLLMRolloutModel(BaseInferenceModel):
                 # attribute experiences to the right policy without an extra
                 # launch-time parameter. Updated in sync_model_weights.
                 self.async_llm.trinity_model_version = self.model_version
+                if self.config.enable_recording:
+                    from trinity.common.models.vllm_patch.recording.recorder import (
+                        TRINITY_MM_RENDER_ATTR,
+                        create_vllm_recorder,
+                    )
+
+                    if self.mm_render is None:
+                        self.mm_render = vLLMMultiModalRender(
+                            model_path=self.config.model_path,  # type: ignore
+                        )
+                    setattr(self.async_llm, TRINITY_MM_RENDER_ATTR, self.mm_render)
+                    self.recorder = create_vllm_recorder(self.async_llm, self.logger)
+                    self.recorder.start()
                 await self._collective_rpc("apply_patches")
                 await self.run_api_server()
             else:
@@ -251,27 +260,6 @@ class vLLMRolloutModel(BaseInferenceModel):
             prompt=prompt, lora_request=lora_request, record_key=record_key, **kwargs
         )
 
-    def _extract_routed_experts(self, output: Any, output_index: int) -> Optional[torch.Tensor]:
-        if not self.config.enable_return_routed_experts:
-            return None
-
-        routed_experts_parts = []
-        prompt_routed_experts = getattr(output, "prompt_routed_experts", None)
-        if prompt_routed_experts is not None:
-            routed_experts_parts.append(torch.as_tensor(prompt_routed_experts, dtype=torch.uint8))
-
-        completion_routed_experts = getattr(output.outputs[output_index], "routed_experts", None)
-        if completion_routed_experts is not None:
-            routed_experts_parts.append(
-                torch.as_tensor(completion_routed_experts, dtype=torch.uint8)
-            )
-
-        if not routed_experts_parts:
-            return None
-        if len(routed_experts_parts) == 1:
-            return routed_experts_parts[0]
-        return torch.cat(routed_experts_parts, dim=0)
-
     async def generate(
         self,
         prompt: Union[str, Dict],
@@ -324,36 +312,19 @@ class vLLMRolloutModel(BaseInferenceModel):
                 input_ids=output.prompt_token_ids,
                 multi_modal_data=prompt.get("multi_modal_data", {}),
             )
-        experiences = [
-            Experience(
-                tokens=torch.cat(
-                    (
-                        torch.tensor(output.prompt_token_ids, dtype=torch.int32),
-                        torch.tensor(output.outputs[i].token_ids, dtype=torch.int32),
-                    )
-                ),
-                logprobs=torch.cat(
-                    (
-                        torch.tensor(
-                            [
-                                list(logprob_dict.values())[0].logprob
-                                for logprob_dict in output.outputs[i].logprobs
-                            ],
-                            dtype=torch.float32,
-                        ),
-                    )
-                ),
-                prompt_length=len(output.prompt_token_ids),
-                prompt_text=self.tokenizer.decode(output.prompt_token_ids),
-                response_text=output.outputs[i].text,
-                multi_modal_inputs=combine_output_token_ids(
-                    output.outputs[i].token_ids, multi_modal_inputs
-                ),
-                routed_experts=self._extract_routed_experts(output, i),
-            )
-            for i in range(len(output.outputs))
-        ]
-        return experiences
+        if self.tokenizer is None:
+            await self._initialize_tokenizer()
+        return build_experience(
+            output,
+            record_key=None,
+            rank=0,
+            timestamp="",
+            multi_modal_inputs=multi_modal_inputs,
+            prompt_text=self.tokenizer.decode(output.prompt_token_ids),
+            include_recording_info=False,
+            include_routed_experts=self.config.enable_return_routed_experts,
+            include_prompt_routed_experts=True,
+        )
 
     async def logprobs(  # type: ignore [override]
         self,
@@ -543,14 +514,18 @@ class vLLMRolloutModel(BaseInferenceModel):
             **generate_kwargs,
         )
 
-        # Consume the stream until the request is finished.
+        # Consume the stream to completion so engine-level recording runs only
+        # after the full generation stream has ended.
+        finished_output = None
         async for request_output in stream:
             if request_output.finished:
                 # Bypass the original full prompt.
                 # request_output.prompt = request.prompt
-                return request_output
+                finished_output = request_output
 
-        raise RuntimeError("[vLLM] The request is not finished. This should not happen.")
+        if finished_output is None:
+            raise RuntimeError("[vLLM] The request is not finished. This should not happen.")
+        return finished_output
 
     async def shutdown(self):
         """Shutdown the vLLM v1 engine. This kills child processes forked
@@ -565,6 +540,9 @@ class vLLMRolloutModel(BaseInferenceModel):
             except asyncio.CancelledError:
                 pass
             self.api_server = None
+        if self.recorder is not None:
+            await self.recorder.stop()
+            self.recorder = None
         if self.headless_executor is not None:
             self.logger.info("Shutting down headless executor")
             self.headless_executor.shutdown()

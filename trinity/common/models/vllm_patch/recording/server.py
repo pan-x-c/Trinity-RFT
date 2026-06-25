@@ -7,11 +7,8 @@ drop-in alternative: point your launcher at
 and you get the standard vLLM OpenAI server *plus* generation recording, with
 no edits to vLLM source or to ``api_patch_v17.py``.
 
-Recording wiring (all applied between ``build_app`` and ``serve_http`` because
-we own both ``app`` and ``engine_client`` at that point):
-  1. ``patch_engine_for_recording`` — instance-level wrap of
-     ``engine_client.generate`` to force top-k logprobs and record finished
-     ``RequestOutput`` (covers chat/completion/responses, streaming and not).
+Recording wiring:
+  1. ``vLLMRolloutModel`` owns the recorder and attaches it to ``async_llm``.
   2. ``RecordingIdentityMiddleware`` — in-process ASGI middleware reading
      ``Authorization: Bearer <api_key>`` into a contextvar.
   3. ``query_router`` — ``/records/*`` endpoints for later analysis.
@@ -43,21 +40,21 @@ from vllm.utils.network_utils import is_valid_ipv6_address
 from vllm.utils.system_utils import set_ulimit
 from vllm.version import __version__ as VLLM_VERSION
 
+from trinity.common.models.recording.context import RecordingIdentityMiddleware
+from trinity.common.models.recording.query import (
+    RECORDER_STATE_ATTR,
+    STORE_STATE_ATTR,
+    query_router,
+)
+from trinity.common.models.recording.recorder import Recorder
+from trinity.common.models.recording.store import RecordStore
 from trinity.common.models.vllm_patch import get_vllm_version
-from trinity.common.models.vllm_patch.recording.context import (
-    RecordingIdentityMiddleware,
-)
-from trinity.common.models.vllm_patch.recording.query import query_router
-from trinity.common.models.vllm_patch.recording.recorder import (
-    Recorder,
-    patch_engine_for_recording,
-)
-from trinity.common.models.vllm_patch.recording.store import MemoryStore, RecordStore
+from trinity.common.models.vllm_patch.recording.recorder import TRINITY_RECORDER_ATTR
 
 #: Attribute on app.state holding the active RecordStore.
-_STORE_STATE_ATTR = "trinity_record_store"
+_STORE_STATE_ATTR = STORE_STATE_ATTR
 #: Attribute on app.state holding the active Recorder.
-_RECORDER_STATE_ATTR = "trinity_recorder"
+_RECORDER_STATE_ATTR = RECORDER_STATE_ATTR
 
 
 def setup_server_in_ray(args, logger):
@@ -108,15 +105,14 @@ def dummy_add_signal_handler(self, *args, **kwargs):
 
 
 def _setup_recording(
-    args,
     engine_client,
     app,
     logger,
 ) -> Recorder:
     """Wire generation recording onto the in-construction server.
 
-    Returns the started Recorder (for lifecycle management). This is only
-    called when recording is on, so there is no disable switch here.
+    Returns the Recorder owned by ``vLLMRolloutModel``. This is only called when
+    recording is on, so there is no disable switch here.
 
     No static config is threaded in: the chosen-token logprob width is a
     constant inside the recorder (``_RECORDER_LOGPROB_WIDTH`` — we store only
@@ -129,31 +125,18 @@ def _setup_recording(
     rank), so heavy experience bytes never touch SQL or Ray serialization.
 
     Args:
-        args: Parsed vLLM CLI args.
-        engine_client: AsyncLLM instance (we own it pre-init_app_state).
+        engine_client: AsyncLLM instance with ``trinity_recorder`` already set
+            by ``vLLMRolloutModel``.
         app: FastAPI app from ``build_app`` (we own it pre-serve_http).
         logger: Logger.
     """
-    store: RecordStore = MemoryStore()
-
-    # Rank is constant per process; capture once (RequestOutput does not expose
-    # parallel_config, so we read it from engine_client here, mirroring
-    # api_patch_v17.py:148).
-    try:
-        rank = int(engine_client.vllm_config.parallel_config._api_process_rank)
-    except Exception:
-        rank = 0
-
-    recorder = Recorder(
-        store=store,
-        enabled=True,
-        rank=rank,
-        engine_client=engine_client,
-    )
-
-    # (1) engine-level wrap — before init_app_state so serving objects inherit
-    #     the wrapped reference. Idempotent via the __patched_*__ guard.
-    patch_engine_for_recording(engine_client, recorder, logger)
+    recorder = getattr(engine_client, TRINITY_RECORDER_ATTR, None)
+    if recorder is None:
+        raise RuntimeError(
+            "Generation recording API server requires vLLMRolloutModel to install "
+            "engine_client.trinity_recorder before server startup."
+        )
+    store: RecordStore = recorder.store
 
     # (2) in-process middleware: API key -> contextvar. Zero network hop.
     app.add_middleware(RecordingIdentityMiddleware)
@@ -167,7 +150,7 @@ def _setup_recording(
     logger.info(
         "Generation recording enabled: store=%s rank=%d",
         type(store).__name__,
-        rank,
+        recorder.rank,
     )
     return recorder
 
@@ -182,8 +165,8 @@ async def run_server_worker_in_ray(
     """Modified from vllm.entrypoints.openai.api_server.run_server_worker.
 
     Differs from api_patch_v17.py only in the recording wiring inserted between
-    ``build_app`` and ``init_app_state``, plus starting/stopping the recorder
-    flusher around ``serve_http``.
+    ``build_app`` and ``init_app_state``. The recorder lifecycle is owned by
+    ``vLLMRolloutModel``.
     """
     if args.tool_parser_plugin and len(args.tool_parser_plugin) > 3:
         ToolParserManager.import_tool_parser(args.tool_parser_plugin)
@@ -194,7 +177,7 @@ async def run_server_worker_in_ray(
     app = build_app(args)
 
     # --- recording wiring: engine wrap must precede init_app_state -----------
-    recorder = _setup_recording(args, engine_client, app, logger)
+    _setup_recording(engine_client, app, logger)
     # ------------------------------------------------------------------------
 
     await init_app_state(engine_client, app.state, args)
@@ -207,8 +190,6 @@ async def run_server_worker_in_ray(
         engine_client.vllm_config.parallel_config._api_process_rank,
         listen_address,
     )
-
-    recorder.start()
 
     shutdown_task = await serve_http(
         app,
@@ -233,7 +214,6 @@ async def run_server_worker_in_ray(
     try:
         await shutdown_task
     finally:
-        await recorder.stop()
         sock.close()
 
 
