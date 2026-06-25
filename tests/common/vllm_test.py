@@ -1922,7 +1922,7 @@ class TestRecording(VLLMTestBase):
     async def _model_id(self, client: openai.AsyncOpenAI) -> str:
         if self._model_id is None:
             self._model_id = (await client.models.list()).data[0].id
-        return self._model_id
+        return self._model_id  # type: ignore [return-value]
 
     # -- per-recorded-experience invariants -----------------------------------
 
@@ -1931,12 +1931,12 @@ class TestRecording(VLLMTestBase):
         self.assertIsNotNone(exp.info.get("request_id"))
         self.assertEqual(exp.info.get("rank"), 0)
         self.assertEqual(exp.info.get("model_version"), self.expected_model_version)
-        self.assertGreater(len(exp.tokens), exp.prompt_length)
+        self.assertGreater(len(exp.tokens), exp.prompt_length)  # type: ignore [arg-type]
         # The recorder forces top-1 logprobs even when the client omitted them.
-        self.assertGreater(len(exp.logprobs), 0)
-        self.assertEqual(len(exp.logprobs), len(exp.tokens) - exp.prompt_length)
-        self.assertGreater(len(exp.prompt_text), 0)
-        self.assertGreater(len(exp.response_text), 0)
+        self.assertGreater(len(exp.logprobs), 0)  # type: ignore [arg-type]
+        self.assertEqual(len(exp.logprobs), len(exp.tokens) - exp.prompt_length)  # type: ignore [arg-type]
+        self.assertGreater(len(exp.prompt_text), 0)  # type: ignore [arg-type]
+        self.assertGreater(len(exp.response_text), 0)  # type: ignore [arg-type]
 
     def _assert_recorded_routed_experts(self, exp: Experience):
         # enable_return_routed_experts is forced on by enable_recording.

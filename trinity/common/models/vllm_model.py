@@ -714,6 +714,14 @@ class vLLMRolloutModel(BaseInferenceModel):
             return None
         return f"http://{self.api_server_host}:{self.api_server_port}"
 
+    def get_api_server_exit_reason(self) -> Optional[str]:
+        if self.api_server is None or not self.api_server.done():
+            return None
+        if self.api_server.cancelled():
+            return "cancelled"
+        exc = self.api_server.exception()
+        return "unknown error" if exc is None else repr(exc)
+
     async def reset_prefix_cache(self) -> None:
         await self.async_llm.reset_prefix_cache(reset_running_requests=True)
 

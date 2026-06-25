@@ -138,6 +138,10 @@ class InferenceModel(ABC):
         """Get the API server URL if available."""
         return None
 
+    def get_api_server_exit_reason(self) -> Optional[str]:
+        """Return API server exit reason if the background server task has exited."""
+        return None
+
     def get_api_key(self) -> str:
         """Get the API key."""
         return "EMPTY"
@@ -467,6 +471,11 @@ class ModelWrapper:
         max_retries = 30
         interval = 2  # seconds
         for i in range(max_retries):
+            reason = await self.model.get_api_server_exit_reason.remote()
+            if reason is not None:
+                raise RuntimeError(
+                    f"API server at {self.api_address} exited before becoming ready: {reason}."
+                )
             try:
                 async with httpx.AsyncClient() as client:
                     response = await client.get(self.api_address + "/health", timeout=5)

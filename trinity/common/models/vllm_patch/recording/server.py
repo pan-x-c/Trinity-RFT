@@ -225,7 +225,11 @@ async def run_server_in_ray(
     # Modified from vllm.entrypoints.openai.api_server.run_server
     listen_address, sock = setup_server_in_ray(args, logger)
     logger.info("vLLM API server listening on %s", listen_address)
-    await run_server_worker_in_ray(listen_address, sock, args, engine_client, logger)
+    try:
+        await run_server_worker_in_ray(listen_address, sock, args, engine_client, logger)
+    except Exception:
+        logger.exception("vLLM recording API server exited before becoming ready")
+        raise
 
 
 async def run_api_server_with_recording(
