@@ -372,18 +372,6 @@ class vLLMRolloutModel(BaseInferenceModel):
             dtype=torch.float32,
         )
 
-    async def extract_experience_from_history(
-        self, record_key: str, clear_history: bool = True
-    ) -> List[Experience]:
-        """Extract recorded experiences from the in-vLLM recorder store."""
-        if self.recorder is None:
-            raise ValueError("Recording is not enabled for this vLLM model.")
-        await self.recorder.flush()
-        exps = await self.recorder.store.get_record_experiences(record_key)
-        if clear_history:
-            await self.recorder.store.delete_record_experiences(record_key)
-        return exps
-
     async def add_lora_adapter(self, lora_request: Any) -> int:
         """Add a LoRA adapter to the vLLM engine.
 

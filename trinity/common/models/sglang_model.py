@@ -500,23 +500,10 @@ class SGLangRolloutModel(BaseInferenceModel):
             "SGLangRolloutModel does not support convert_messages_to_experience."
         )
 
-    async def extract_experience_from_history(
-        self, record_key: str, clear_history: bool = True
-    ) -> List[Experience]:
-        """Extract recorded experiences from the in-process recorder store.
-
-        Mirrors ``vLLMRolloutModel.extract_experience_from_history``: the
-        recorder and store live in-process (the SGLang server runs as an
-        asyncio task in the same loop as this model), so extraction is a direct
-        store lookup with no HTTP hop.
-        """
-        if self.recorder is None:
-            raise ValueError("Recording is not enabled for this SGLang model.")
-        await self.recorder.flush()
-        exps = await self.recorder.store.get_record_experiences(record_key)
-        if clear_history:
-            await self.recorder.store.delete_record_experiences(record_key)
-        return exps
+    # ``extract_experience_from_history`` is implemented on the shared
+    # ``InferenceModel`` base; ``self.recorder`` is installed by ``run_api_server``
+    # when recording is on (the recorder/store live in-process with the embedded
+    # SGLang server, same as vLLM).
 
     def _get_api_server_exit_reason(self) -> Optional[str]:
         if self.api_server is None or not self.api_server.done():
