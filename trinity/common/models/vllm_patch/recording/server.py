@@ -13,8 +13,7 @@ we own both ``app`` and ``engine_client`` at that point):
      ``engine_client.generate`` to force top-k logprobs and record finished
      ``RequestOutput`` (covers chat/completion/responses, streaming and not).
   2. ``RecordingIdentityMiddleware`` — in-process ASGI middleware reading
-     ``Authorization: Bearer <api_key>`` (or legacy ``X-Session-ID``) into a
-     contextvar.
+     ``Authorization: Bearer <api_key>`` into a contextvar.
   3. ``query_router`` — ``/records/*`` endpoints for later analysis.
 
 Only for vllm versions >= 0.17.0.
@@ -172,8 +171,7 @@ def _setup_recording(
     #     the wrapped reference. Idempotent via the __patched_*__ guard.
     patch_engine_for_recording(engine_client, recorder, logger)
 
-    # (2) in-process middleware: API key / X-Session-ID -> contextvar.
-    #     Zero network hop.
+    # (2) in-process middleware: API key -> contextvar. Zero network hop.
     app.add_middleware(RecordingIdentityMiddleware)
 
     # (3) query routes mounted on the main app; OpenAI /v1/* surface untouched.

@@ -57,9 +57,8 @@ class MemoryStore(RecordStore):
     """In-process store.
 
     Groups experiences by recording identity (``info["task_id"]``) when an API
-    key or legacy X-Session-ID was supplied, otherwise each turn is keyed by its
-    own ``eid.suffix`` (request_id) — so a missing identity never collapses
-    distinct turns.
+    key was supplied, otherwise each turn is keyed by its own ``eid.suffix``
+    (request_id) — so a missing identity never collapses distinct turns.
     ``get_turn`` resolves an individual turn by ``info["request_id"]``.
 
     Note: per-process under data-parallel serving — each API-server rank holds

@@ -86,8 +86,8 @@ def patch_engine_for_recording(
 
         if recorder.enabled and last is not None and getattr(last, "finished", False):
             # Recover task id from the request's async context (set by
-            # SessionMiddleware). None when the client omitted X-Session-ID;
-            # the recorder then falls back to request_id.
+            # RecordingIdentityMiddleware). None when the client omitted an
+            # API key; the recorder then falls back to request_id.
             task_id = task_id_ctx.get()
             # Offload heavy serialization off the response critical path.
             asyncio.create_task(recorder.record(last, task_id))

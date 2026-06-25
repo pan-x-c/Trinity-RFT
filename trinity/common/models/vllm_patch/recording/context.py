@@ -1,11 +1,10 @@
 """Per-request recording identity propagation.
 
-The OpenAI ``Authorization: Bearer <api_key>`` header is the preferred identity
-source for recording because it works with CLI agents that do not support
-custom headers. ``X-Session-ID`` remains a compatibility fallback. We read the
-identity in an in-process ASGI middleware and stash it in a contextvar so the
-engine-level wrapper (which runs in the same async task as the serving handler)
-can recover it at record time.
+The OpenAI ``Authorization: Bearer <api_key>`` header is the recording identity
+source because it works with CLI agents that do not support custom headers. We
+read the identity in an in-process ASGI middleware and stash it in a contextvar
+so the engine-level wrapper (which runs in the same async task as the serving
+handler) can recover it at record time.
 
 No identity header on a request is fine: the recorder falls back to
 ``request_id`` as the task id so nothing is silently dropped.
@@ -23,8 +22,6 @@ task_id_ctx: ContextVar[Optional[str]] = ContextVar("trinity_recording_task_id",
 
 #: Preferred identity header for OpenAI-compatible clients.
 AUTHORIZATION_HEADER = "authorization"
-#: Compatibility identity header. Lower-cased per ASGI/httpx convention.
-SESSION_ID_HEADER = "x-session-id"
 
 
 def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
@@ -44,13 +41,10 @@ def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
 def get_recording_task_id(request: Request) -> Optional[str]:
     """Return the recording identity for a request.
 
-    Prefer OpenAI-compatible API keys because every supported agent platform
-    can pass them. ``X-Session-ID`` is kept as a backward-compatible fallback
-    for direct clients and debugging.
+    OpenAI-compatible API keys are used because every supported agent platform
+    can pass them.
     """
-    return extract_bearer_token(request.headers.get(AUTHORIZATION_HEADER)) or request.headers.get(
-        SESSION_ID_HEADER
-    )
+    return extract_bearer_token(request.headers.get(AUTHORIZATION_HEADER))
 
 
 class RecordingIdentityMiddleware(BaseHTTPMiddleware):
@@ -67,7 +61,3 @@ class RecordingIdentityMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         finally:
             task_id_ctx.reset(token)
-
-
-# Backward-compatible export for existing imports.
-SessionMiddleware = RecordingIdentityMiddleware
