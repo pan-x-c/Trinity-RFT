@@ -120,12 +120,9 @@ def _list_or_empty(value):
     return list(value)
 
 
-def _is_cumulative(prev_tokens: list[int], cur_tokens: list[int]) -> bool:
-    return (
-        bool(prev_tokens)
-        and len(cur_tokens) >= len(prev_tokens)
-        and (cur_tokens[: len(prev_tokens)] == prev_tokens)
-    )
+def _is_delta_output(sampling_params) -> bool:
+    output_kind = getattr(sampling_params, "output_kind", None)
+    return getattr(output_kind, "name", output_kind) == "DELTA"
 
 
 def _concat_routed_experts(prev, cur):
@@ -153,7 +150,7 @@ def _concat_routed_experts(prev, cur):
         return cur
 
 
-def _accumulate_request_output(state, output):
+def _accumulate_request_output(state, output, *, is_delta_output: bool):
     if state is None:
         state = {
             "request_id": output.request_id,
@@ -179,40 +176,36 @@ def _accumulate_request_output(state, output):
 
         acc = state["outputs"][index]
         cur_token_ids = _list_or_empty(getattr(completion, "token_ids", None))
-        cumulative = _is_cumulative(acc["token_ids"], cur_token_ids)
-        if cumulative:
-            acc["token_ids"] = cur_token_ids
-        elif cur_token_ids:
+        if is_delta_output and cur_token_ids:
             acc["token_ids"].extend(cur_token_ids)
+        else:
+            acc["token_ids"] = cur_token_ids
 
         cur_logprobs = getattr(completion, "logprobs", None)
         if cur_logprobs is not None:
             cur_logprobs = list(cur_logprobs)
             if not cur_logprobs:
                 pass
-            elif cumulative:
-                acc["logprobs"] = cur_logprobs
-            elif acc["logprobs"] is None:
-                acc["logprobs"] = cur_logprobs
-            else:
+            elif is_delta_output and acc["logprobs"] is not None:
                 acc["logprobs"].extend(cur_logprobs)
+            else:
+                acc["logprobs"] = cur_logprobs
 
         cur_text = getattr(completion, "text", None) or ""
-        if cur_text:
-            if cumulative and cur_text.startswith(acc["text"]):
-                acc["text"] = cur_text
-            else:
-                acc["text"] += cur_text
+        if is_delta_output and cur_text:
+            acc["text"] += cur_text
+        else:
+            acc["text"] = cur_text
 
         cur_routed_experts = getattr(completion, "routed_experts", None)
         if cur_routed_experts is not None:
-            if cumulative:
-                acc["routed_experts"] = cur_routed_experts
-            else:
+            if is_delta_output:
                 acc["routed_experts"] = _concat_routed_experts(
                     acc["routed_experts"],
                     cur_routed_experts,
                 )
+            else:
+                acc["routed_experts"] = cur_routed_experts
 
     return state
 
@@ -286,6 +279,7 @@ def patch_engine_for_recording(
             sampling_params.logprobs = (
                 max(cur, _RECORDER_LOGPROB_WIDTH) if cur is not None else _RECORDER_LOGPROB_WIDTH
             )
+        is_delta_output = _is_delta_output(sampling_params)
 
         last = None
         accumulated = None
@@ -294,7 +288,11 @@ def patch_engine_for_recording(
         async for out in current(*args, **kwargs):
             last = out
             if recorder.enabled:
-                accumulated = _accumulate_request_output(accumulated, out)
+                accumulated = _accumulate_request_output(
+                    accumulated,
+                    out,
+                    is_delta_output=is_delta_output,
+                )
             yield out
 
         if recorder.enabled and last is not None and getattr(last, "finished", False):
