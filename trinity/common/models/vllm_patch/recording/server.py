@@ -104,6 +104,20 @@ def dummy_add_signal_handler(self, *args, **kwargs):
     pass
 
 
+def _add_recording_middleware(app) -> None:
+    """Install recording middleware before serving, even if vLLM built the stack.
+
+    Some vLLM/FastAPI versions touch ``app.middleware_stack`` inside
+    ``build_app``. Starlette then rejects ``add_middleware`` with "Cannot add
+    middleware after an application has started", even though uvicorn has not
+    started serving yet. Clearing the cached stack lets Starlette rebuild it
+    with our middleware on first request.
+    """
+    if getattr(app, "middleware_stack", None) is not None:
+        app.middleware_stack = None
+    app.add_middleware(RecordingIdentityMiddleware)
+
+
 def _setup_recording(
     engine_client,
     app,
@@ -139,7 +153,7 @@ def _setup_recording(
     store: RecordStore = recorder.store
 
     # (2) in-process middleware: API key -> contextvar. Zero network hop.
-    app.add_middleware(RecordingIdentityMiddleware)
+    _add_recording_middleware(app)
 
     # (3) query routes mounted on the main app; OpenAI /v1/* surface untouched.
     app.include_router(query_router)
