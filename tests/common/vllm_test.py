@@ -1839,6 +1839,10 @@ class TestRecording(VLLMTestBase):
         # enable_recording forces enable_return_routed_experts -> needs a MoE
         # model (vLLM raises on dense models). Use a Qwen3-MoE checkpoint.
         self.config.model.model_path = get_moe_model_path()
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.config.model.model_path,
+            trust_remote_code=True,
+        )
         self.text_config = _get_text_config(self.config.model.model_path)
         self.expected_routed_experts_layers = _count_moe_layers(self.text_config)
         self.expected_routed_experts_topk = int(self.text_config.num_experts_per_tok)
@@ -1917,7 +1921,7 @@ class TestRecording(VLLMTestBase):
         # record_key travels as the Bearer api_key -> RecordingIdentityMiddleware.
         return openai.AsyncOpenAI(base_url=f"{self.api_address}/v1", api_key=record_key)
 
-    async def _model_id(self, client: openai.AsyncOpenAI) -> str:
+    async def _get_model_id(self, client: openai.AsyncOpenAI) -> str:
         if self._model_id is None:
             self._model_id = (await client.models.list()).data[0].id
         return self._model_id  # type: ignore [return-value]
@@ -1938,7 +1942,11 @@ class TestRecording(VLLMTestBase):
         # not decode token ids back to text on the hot path.
         if exp.prompt_text is not None:
             self.assertGreater(len(exp.prompt_text), 0)
-        self.assertGreater(len(exp.response_text), 0)  # type: ignore [arg-type]
+        # OpenAI streaming clients receive text as delta chunks. The finished
+        # engine output recorded below may carry an empty native
+        # CompletionOutput.text even when response token ids are present; avoid
+        # decoding tokens on the recording hot path just to populate this field.
+        self.assertIsNotNone(exp.response_text)
 
     def _assert_recorded_routed_experts(self, exp: Experience):
         # enable_return_routed_experts is forced on by enable_recording.
@@ -2005,7 +2013,7 @@ class TestRecording(VLLMTestBase):
         # ===== 3. OpenAI regular (HTTP; record_key = Bearer api_key) =====
         rk_oai = "trinity_record_openai"
         client = await self._openai_client(rk_oai)
-        model_id = await self._model_id(client)
+        model_id = await self._get_model_id(client)
         resp = await client.chat.completions.create(
             model=model_id,
             messages=messages,
@@ -2043,7 +2051,9 @@ class TestRecording(VLLMTestBase):
         self.assertEqual(len(consumed), 1)
         self._assert_recorded_experience(consumed[0], rk_str)
         self._assert_recorded_routed_experts(consumed[0])
-        self.assertEqual(consumed[0].response_text, content)
+        response_token_ids = consumed[0].tokens[consumed[0].prompt_length :].tolist()
+        decoded_content = self.tokenizer.decode(response_token_ids, skip_special_tokens=True)
+        self.assertEqual(decoded_content, content)
         self.assertNotIn(rk_str, await self._list_record_keys())
 
         # ===== 5. OpenAI tool usage (HTTP) =====

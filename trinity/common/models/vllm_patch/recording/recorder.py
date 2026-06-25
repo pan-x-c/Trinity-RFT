@@ -19,6 +19,7 @@ Why wrap ``engine_client.generate`` instead of the serving layer?
 """
 import functools
 import logging
+from types import SimpleNamespace
 from typing import Optional
 
 from trinity.common.models.recording.context import record_key_ctx
@@ -109,6 +110,138 @@ def _build_multi_modal_inputs(engine_client, prompt, output, logger: logging.Log
         return None
 
 
+def _completion_index(completion, fallback: int) -> int:
+    return int(getattr(completion, "index", fallback))
+
+
+def _list_or_empty(value):
+    if value is None:
+        return []
+    return list(value)
+
+
+def _is_cumulative(prev_tokens: list[int], cur_tokens: list[int]) -> bool:
+    return (
+        bool(prev_tokens)
+        and len(cur_tokens) >= len(prev_tokens)
+        and (cur_tokens[: len(prev_tokens)] == prev_tokens)
+    )
+
+
+def _concat_routed_experts(prev, cur):
+    if cur is None:
+        return prev
+    if prev is None:
+        return cur
+    try:
+        import numpy as np
+
+        if isinstance(prev, np.ndarray) or isinstance(cur, np.ndarray):
+            return np.concatenate([prev, cur], axis=0)
+    except Exception:
+        pass
+    try:
+        import torch
+
+        if isinstance(prev, torch.Tensor) or isinstance(cur, torch.Tensor):
+            return torch.cat([torch.as_tensor(prev), torch.as_tensor(cur)], dim=0)
+    except Exception:
+        pass
+    try:
+        return prev + cur
+    except Exception:
+        return cur
+
+
+def _accumulate_request_output(state, output):
+    if state is None:
+        state = {
+            "request_id": output.request_id,
+            "prompt_token_ids": _list_or_empty(getattr(output, "prompt_token_ids", None)),
+            "prompt": getattr(output, "prompt", None),
+            "outputs": {},
+            "order": [],
+        }
+    elif not state["prompt_token_ids"]:
+        state["prompt_token_ids"] = _list_or_empty(getattr(output, "prompt_token_ids", None))
+        state["prompt"] = state["prompt"] or getattr(output, "prompt", None)
+
+    for fallback_index, completion in enumerate(list(getattr(output, "outputs", None) or [])):
+        index = _completion_index(completion, fallback_index)
+        if index not in state["outputs"]:
+            state["outputs"][index] = {
+                "token_ids": [],
+                "logprobs": None,
+                "text": "",
+                "routed_experts": None,
+            }
+            state["order"].append(index)
+
+        acc = state["outputs"][index]
+        cur_token_ids = _list_or_empty(getattr(completion, "token_ids", None))
+        cumulative = _is_cumulative(acc["token_ids"], cur_token_ids)
+        if cumulative:
+            acc["token_ids"] = cur_token_ids
+        elif cur_token_ids:
+            acc["token_ids"].extend(cur_token_ids)
+
+        cur_logprobs = getattr(completion, "logprobs", None)
+        if cur_logprobs is not None:
+            cur_logprobs = list(cur_logprobs)
+            if not cur_logprobs:
+                pass
+            elif cumulative:
+                acc["logprobs"] = cur_logprobs
+            elif acc["logprobs"] is None:
+                acc["logprobs"] = cur_logprobs
+            else:
+                acc["logprobs"].extend(cur_logprobs)
+
+        cur_text = getattr(completion, "text", None) or ""
+        if cur_text:
+            if cumulative and cur_text.startswith(acc["text"]):
+                acc["text"] = cur_text
+            else:
+                acc["text"] += cur_text
+
+        cur_routed_experts = getattr(completion, "routed_experts", None)
+        if cur_routed_experts is not None:
+            if cumulative:
+                acc["routed_experts"] = cur_routed_experts
+            else:
+                acc["routed_experts"] = _concat_routed_experts(
+                    acc["routed_experts"],
+                    cur_routed_experts,
+                )
+
+    return state
+
+
+def _build_record_output(state, last):
+    if state is None:
+        return last
+    completions = []
+    for index in state["order"]:
+        acc = state["outputs"][index]
+        completions.append(
+            SimpleNamespace(
+                index=index,
+                token_ids=acc["token_ids"],
+                logprobs=acc["logprobs"],
+                text=acc["text"],
+                routed_experts=acc["routed_experts"],
+            )
+        )
+    return SimpleNamespace(
+        request_id=state["request_id"],
+        prompt_token_ids=state["prompt_token_ids"],
+        prompt=state["prompt"],
+        outputs=completions,
+        finished=getattr(last, "finished", False),
+        prompt_routed_experts=getattr(last, "prompt_routed_experts", None),
+    )
+
+
 def patch_engine_for_recording(
     engine_client,
     recorder: "Recorder",
@@ -155,10 +288,13 @@ def patch_engine_for_recording(
             )
 
         last = None
+        accumulated = None
         # ``current`` is the original *bound* method captured pre-wrap, so it
         # still resolves ``self`` correctly. Yields RequestOutput unchanged.
         async for out in current(*args, **kwargs):
             last = out
+            if recorder.enabled:
+                accumulated = _accumulate_request_output(accumulated, out)
             yield out
 
         if recorder.enabled and last is not None and getattr(last, "finished", False):
@@ -168,14 +304,15 @@ def patch_engine_for_recording(
             # opt into grouping this turn, so skip recording entirely.
             record_key = record_key_ctx.get()
             if record_key is not None:
+                record_output = _build_record_output(accumulated, last)
                 multi_modal_inputs = _build_multi_modal_inputs(
                     engine_client,
                     prompt,
-                    last,
+                    record_output,
                     logger,
                 )
                 recorder.schedule_record(
-                    last,
+                    record_output,
                     record_key,
                     multi_modal_inputs=multi_modal_inputs,
                 )
