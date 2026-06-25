@@ -1933,7 +1933,11 @@ class TestRecording(VLLMTestBase):
         # The recorder forces top-1 logprobs even when the client omitted them.
         self.assertGreater(len(exp.logprobs), 0)  # type: ignore [arg-type]
         self.assertEqual(len(exp.logprobs), len(exp.tokens) - exp.prompt_length)  # type: ignore [arg-type]
-        self.assertGreater(len(exp.prompt_text), 0)  # type: ignore [arg-type]
+        # Ray-direct generate may pass token ids into vLLM; in that path
+        # RequestOutput.prompt is not populated. Recording intentionally does
+        # not decode token ids back to text on the hot path.
+        if exp.prompt_text is not None:
+            self.assertGreater(len(exp.prompt_text), 0)
         self.assertGreater(len(exp.response_text), 0)  # type: ignore [arg-type]
 
     def _assert_recorded_routed_experts(self, exp: Experience):
