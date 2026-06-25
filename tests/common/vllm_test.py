@@ -6,9 +6,12 @@ import unittest
 from copy import deepcopy
 from typing import cast
 
+import httpx
+import openai
 import ray
 import torch
 from openai import BadRequestError
+from packaging.version import parse as parse_version
 from parameterized import parameterized_class
 from transformers import AutoConfig, AutoTokenizer
 
@@ -23,8 +26,10 @@ from tests.tools import (
 )
 from trinity.common.config import Config
 from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME, SyncMethod
+from trinity.common.experience import Experience
 from trinity.common.models.allocator import Allocator
 from trinity.common.models.model import ModelWrapper
+from trinity.common.models.vllm_patch import get_vllm_version
 from trinity.manager.synchronizer import Synchronizer
 
 DEBUG = False
@@ -1804,6 +1809,289 @@ class TestAPIServerToolCall(VLLMTestBase):
         print_debug(
             "\n" + "=" * 28 + f" test_api_tool_calls PASSED in {total_time:.2f}s " + "=" * 28 + "\n"
         )
+
+
+class TestRecording(VLLMTestBase):
+    """Correctness of the in-vLLM generation recording flow (``enable_recording``).
+
+    Verifies that every call path lands its finished turn in the in-process
+    ``MemoryStore`` under the right ``record_key``, and that
+    ``POST /records/consume_task`` flushes the recorder, reward-stamps the
+    whole record-key group, pops it, and returns it as serialized experiences.
+
+    Paths covered (all async):
+      * Ray-direct ``generate`` / ``chat`` — record_key propagated via
+        ``record_key_ctx`` (set inside the actor by ``VLLMModel``).
+      * OpenAI HTTP regular / streaming / tool-call — record_key propagated
+        via the ``Authorization: Bearer <api_key>`` header, captured by
+        ``RecordingIdentityMiddleware``.
+
+    ``enable_recording`` forces ``enable_return_routed_experts`` in the
+    Allocator, and vLLM's routed-experts capturer raises on a non-MoE model,
+    so this test requires a MoE checkpoint (``TRINITY_MOE_MODEL_PATH``).
+    """
+
+    async def asyncSetUp(self):
+        if get_vllm_version() < parse_version("0.23.0"):
+            self.skipTest("generation recording requires vLLM >= 0.23.0")
+        self.config = get_template_config()
+        self.config.mode = "explore"
+        # enable_recording forces enable_return_routed_experts -> needs a MoE
+        # model (vLLM raises on dense models). Use a Qwen3-MoE checkpoint.
+        self.config.model.model_path = get_moe_model_path()
+        self.text_config = _get_text_config(self.config.model.model_path)
+        self.expected_routed_experts_layers = _count_moe_layers(self.text_config)
+        self.expected_routed_experts_topk = int(self.text_config.num_experts_per_tok)
+        self.config.model.custom_chat_template = CHAT_TEMPLATE
+        self.config.explorer.rollout_model.engine_type = "vllm"
+        self.config.explorer.rollout_model.engine_num = 1
+        self.config.explorer.rollout_model.tensor_parallel_size = 2
+        self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
+        # enable_recording requires the OpenAI API server (the recording runner).
+        self.config.explorer.rollout_model.enable_openai_api = True
+        self.config.explorer.rollout_model.enable_recording = True
+        self.config.explorer.rollout_model.enable_expert_parallel = True
+        # Tool-call coverage; qwen3_coder matches the Qwen3.5 chat template.
+        self.config.explorer.rollout_model.enable_auto_tool_choice = True
+        self.config.explorer.rollout_model.tool_call_parser = "qwen3_coder"
+        self.config.explorer.rollout_model.enable_thinking = False
+        # History recording is client-side; the in-vLLM recorder is the subject.
+        self.config.explorer.rollout_model.enable_history = False
+        self.config.explorer.rollout_model.extra_engine_args = {
+            "max_num_seqs": 24,
+            "moe_backend": "triton",
+            "gdn_prefill_backend": "triton",
+        }
+        # check_and_update derives enable_return_routed_experts from this.
+        self.config.algorithm.enable_router_replay = True
+        self.config.check_and_update()
+
+        self.engines, self.auxiliary_engines = await create_test_models(self.config)
+        self.model_wrapper = self.engines[0]
+        self.api_address = self.model_wrapper.api_address
+        self.expected_model_version = await self.model_wrapper.model_version_async
+        self._http = httpx.AsyncClient(timeout=120.0)
+        self._model_id = None
+
+    async def asyncTearDown(self):
+        await self._http.aclose()
+        await super().asyncTearDown()
+
+    # -- /records store query/consume helpers ---------------------------------
+
+    async def _flush(self):
+        """Drain the recorder without popping anything (an empty consume)."""
+        resp = await self._http.post(
+            f"{self.api_address}/records/consume_task", json={"updates": []}
+        )
+        resp.raise_for_status()
+
+    async def _list_record_keys(self):
+        resp = await self._http.get(f"{self.api_address}/records/tasks")
+        resp.raise_for_status()
+        return resp.json()["record_keys"]
+
+    async def _get_task(self, record_key: str) -> dict:
+        resp = await self._http.get(f"{self.api_address}/records/tasks/{record_key}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def _get_turn_blob(self, record_key: str, request_id: str) -> Experience:
+        resp = await self._http.get(
+            f"{self.api_address}/records/tasks/{record_key}/turns/{request_id}/blob"
+        )
+        resp.raise_for_status()
+        return Experience.deserialize(resp.content)
+
+    async def _consume(
+        self, record_key: str, reward: float, run: int, task: str
+    ) -> list[Experience]:
+        resp = await self._http.post(
+            f"{self.api_address}/records/consume_task",
+            json={
+                "updates": [{"record_key": record_key, "reward": reward, "run": run, "task": task}]
+            },
+        )
+        resp.raise_for_status()
+        return Experience.deserialize_many(resp.content)
+
+    async def _openai_client(self, record_key: str) -> openai.AsyncOpenAI:
+        # record_key travels as the Bearer api_key -> RecordingIdentityMiddleware.
+        return openai.AsyncOpenAI(base_url=f"{self.api_address}/v1", api_key=record_key)
+
+    async def _model_id(self, client: openai.AsyncOpenAI) -> str:
+        if self._model_id is None:
+            self._model_id = (await client.models.list()).data[0].id
+        return self._model_id
+
+    # -- per-recorded-experience invariants -----------------------------------
+
+    def _assert_recorded_experience(self, exp: Experience, record_key: str):
+        self.assertEqual(exp.info.get("record_key"), record_key)
+        self.assertIsNotNone(exp.info.get("request_id"))
+        self.assertEqual(exp.info.get("rank"), 0)
+        self.assertEqual(exp.info.get("model_version"), self.expected_model_version)
+        self.assertGreater(len(exp.tokens), exp.prompt_length)
+        # The recorder forces top-1 logprobs even when the client omitted them.
+        self.assertGreater(len(exp.logprobs), 0)
+        self.assertEqual(len(exp.logprobs), len(exp.tokens) - exp.prompt_length)
+        self.assertGreater(len(exp.prompt_text), 0)
+        self.assertGreater(len(exp.response_text), 0)
+
+    def _assert_recorded_routed_experts(self, exp: Experience):
+        # enable_return_routed_experts is forced on by enable_recording.
+        self.assertIsNotNone(exp.routed_experts)
+        re = exp.routed_experts
+        self.assertEqual(re.dtype, torch.uint8)
+        self.assertEqual(re.ndim, 3)
+        self.assertEqual(re.shape[1], self.expected_routed_experts_layers)
+        self.assertEqual(re.shape[2], self.expected_routed_experts_topk)
+
+    async def test_record(self):  # noqa: C901
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Say hello in one short sentence."},
+        ]
+        no_think = {"chat_template_kwargs": {"enable_thinking": False}}
+
+        # ===== 1. Ray-direct generate (record_key via record_key_ctx) =====
+        rk_gen = "trinity_record_generate"
+        await self.model_wrapper.generate_async(
+            ["Hello, world!"], n=1, temperature=1.0, max_tokens=16, record_key=rk_gen
+        )
+        await self._flush()
+        self.assertIn(rk_gen, await self._list_record_keys())
+        task = await self._get_task(rk_gen)
+        self.assertEqual(len(task["turns"]), 1)
+        # blob endpoint round-trips a full experience
+        request_id = task["turns"][0]["info"]["request_id"]
+        blob_exp = await self._get_turn_blob(rk_gen, request_id)
+        self._assert_recorded_experience(blob_exp, rk_gen)
+        self._assert_recorded_routed_experts(blob_exp)
+        consumed = await self._consume(rk_gen, reward=0.5, run=1, task="t_gen")
+        self.assertEqual(len(consumed), 1)
+        self.assertEqual(consumed[0].reward, 0.5)
+        self.assertEqual(consumed[0].eid.run, 1)
+        self.assertEqual(consumed[0].eid.task, "t_gen")
+        self._assert_recorded_experience(consumed[0], rk_gen)
+        self._assert_recorded_routed_experts(consumed[0])
+        self.assertNotIn(rk_gen, await self._list_record_keys())  # popped
+
+        # ===== 2. Ray-direct chat, n=2 (one record-key group, two samples) =====
+        rk_chat = "trinity_record_chat"
+        chat_exps = await self.model_wrapper.chat_async(
+            messages, n=2, temperature=1.0, max_tokens=16, record_key=rk_chat
+        )
+        self.assertEqual(len(chat_exps), 2)
+        await self._flush()
+        task = await self._get_task(rk_chat)
+        self.assertEqual(len(task["turns"]), 2)
+        # n=2 of one engine request -> two completions sharing one request_id,
+        # distinguished by sample_index.
+        self.assertEqual(sorted(t["info"]["sample_index"] for t in task["turns"]), [0, 1])
+        self.assertEqual(len({t["info"]["request_id"] for t in task["turns"]}), 1)
+        consumed = await self._consume(rk_chat, reward=0.8, run=2, task="t_chat")
+        self.assertEqual(len(consumed), 2)
+        for exp in consumed:
+            self.assertEqual(exp.reward, 0.8)
+            self.assertEqual(exp.eid.run, 2)
+            self.assertEqual(exp.eid.task, "t_chat")
+            self._assert_recorded_experience(exp, rk_chat)
+            self._assert_recorded_routed_experts(exp)
+        self.assertNotIn(rk_chat, await self._list_record_keys())
+
+        # ===== 3. OpenAI regular (HTTP; record_key = Bearer api_key) =====
+        rk_oai = "trinity_record_openai"
+        client = await self._openai_client(rk_oai)
+        model_id = await self._model_id(client)
+        resp = await client.chat.completions.create(
+            model=model_id,
+            messages=messages,
+            n=1,
+            temperature=0.7,
+            max_tokens=32,
+            extra_body=no_think,
+        )
+        consumed = await self._consume(rk_oai, reward=0.3, run=3, task="t_oai")
+        self.assertEqual(len(consumed), 1)
+        self._assert_recorded_experience(consumed[0], rk_oai)
+        self._assert_recorded_routed_experts(consumed[0])
+        self.assertEqual(consumed[0].response_text, resp.choices[0].message.content)
+        self.assertNotIn(rk_oai, await self._list_record_keys())
+
+        # ===== 4. OpenAI streaming (HTTP) =====
+        rk_str = "trinity_record_stream"
+        sclient = await self._openai_client(rk_str)
+        stream = await sclient.chat.completions.create(
+            model=model_id,
+            messages=messages,
+            n=1,
+            stream=True,
+            temperature=0.7,
+            max_tokens=32,
+            extra_body=no_think,
+        )
+        content = ""
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                content += delta
+        self.assertGreater(len(content), 0)
+        consumed = await self._consume(rk_str, reward=0.1, run=4, task="t_str")
+        self.assertEqual(len(consumed), 1)
+        self._assert_recorded_experience(consumed[0], rk_str)
+        self._assert_recorded_routed_experts(consumed[0])
+        self.assertEqual(consumed[0].response_text, content)
+        self.assertNotIn(rk_str, await self._list_record_keys())
+
+        # ===== 5. OpenAI tool usage (HTTP) =====
+        rk_tool = "trinity_record_tool"
+        tclient = await self._openai_client(rk_tool)
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_current_weather",
+                    "description": "Get the current weather in a given location",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "The city and state, e.g. San Francisco, CA",
+                            }
+                        },
+                        "required": ["location"],
+                    },
+                },
+            }
+        ]
+        tool_messages = [{"role": "user", "content": "What's the weather like in Boston?"}]
+        tresp = await tclient.chat.completions.create(
+            model=model_id,
+            messages=tool_messages,
+            tools=tools,
+            tool_choice="auto",
+            max_tokens=64,
+            extra_body=no_think,
+        )
+        consumed = await self._consume(rk_tool, reward=1.0, run=5, task="t_tool")
+        self.assertEqual(len(consumed), 1)
+        self._assert_recorded_experience(consumed[0], rk_tool)
+        self._assert_recorded_routed_experts(consumed[0])
+        # The tool-augmented prompt (tool defs rendered by the chat template)
+        # must be part of the recorded experience.
+        self.assertIn("get_current_weather", consumed[0].prompt_text)
+        # If the model emitted a tool call, its function name is in the raw
+        # recorded response text.
+        choice = tresp.choices[0]
+        if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
+            for tc in choice.message.tool_calls:
+                self.assertIn(tc.function.name, consumed[0].response_text)
+        self.assertNotIn(rk_tool, await self._list_record_keys())
+
+        # ===== global: every group consumed -> store is drained =====
+        self.assertEqual(await self._list_record_keys(), [])
 
 
 class TestSuperLongGeneration(VLLMTestBase):
