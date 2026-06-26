@@ -651,7 +651,7 @@ class ExplorerConfigValidator(ConfigValidator):
     over-rollout ratio validation, and LoRA configuration processing.
     """
 
-    def validate(self, config: Config) -> None:
+    def validate(self, config: Config) -> None:  # noqa: C901
         """Validate and configure explorer-specific settings.
 
         - Inherits model configuration from the global model config to rollout models

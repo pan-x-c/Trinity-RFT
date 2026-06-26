@@ -28,14 +28,16 @@ import logging
 from typing import Any, List, Optional, Tuple
 
 from trinity.common.models.recording.context import record_key_ctx
-from trinity.common.models.recording.recorder import Recorder
+from trinity.common.models.recording.recorder import (
+    TRINITY_RECORD_STORE_ATTR,
+    TRINITY_RECORDER_ATTR,
+    Recorder,
+)
 from trinity.common.models.recording.store import MemoryStore, RecordStore
 from trinity.common.models.sglang_patch.recording.models import build_sglang_experience
 
 #: Guard attribute marking the wrapped generate_request (mirrors vLLM's style).
 _PATCHED_FLAG = "__patched_sglang_recording__"
-TRINITY_RECORDER_ATTR = "trinity_recorder"
-TRINITY_RECORD_STORE_ATTR = "trinity_record_store"
 
 
 def _get_obj(args, kwargs):

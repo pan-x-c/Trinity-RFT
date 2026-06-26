@@ -11,6 +11,8 @@ from trinity.common.models.recording.context import skip_recording_ctx
 from trinity.common.models.recording.store import RecordStore
 
 MODEL_VERSION_ATTR = "trinity_model_version"
+TRINITY_RECORDER_ATTR = "trinity_recorder"
+TRINITY_RECORD_STORE_ATTR = "trinity_record_store"
 
 BuildExperiencesFn = Callable[..., Sequence[Experience]]
 

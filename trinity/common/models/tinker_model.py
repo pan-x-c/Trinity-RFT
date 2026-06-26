@@ -12,7 +12,30 @@ from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
 from trinity.common.models.model import BaseInferenceModel
+from trinity.common.models.recording.recorder import MODEL_VERSION_ATTR, Recorder
+from trinity.common.models.recording.store import MemoryStore
 from trinity.manager.synchronizer import Synchronizer
+
+
+def _build_tinker_experiences(
+    experiences: Sequence[Experience],
+    record_key: str,
+    *,
+    rank: int,
+    timestamp: str,
+    model_version: Optional[int] = None,
+    request_id: str,
+) -> Sequence[Experience]:
+    for index, exp in enumerate(experiences):
+        if exp.info is None:
+            exp.info = {}
+        exp.info["record_key"] = record_key
+        exp.info["request_id"] = f"{request_id}:{index}"
+        exp.info["rank"] = rank
+        exp.info["timestamp"] = timestamp
+        if model_version is not None:
+            exp.info["model_version"] = model_version
+    return experiences
 
 
 class TinkerModel(BaseInferenceModel):
@@ -25,6 +48,17 @@ class TinkerModel(BaseInferenceModel):
         self.synchronizer = Synchronizer.get_actor(namespace=ray.get_runtime_context().namespace)
         self.model = None
         self.model_path = config.model_path
+        self.request_id = 0
+        self.recorder = None
+        if self.config.enable_history:
+            self.recorder = Recorder(
+                store=MemoryStore(),
+                build_experiences=_build_tinker_experiences,
+                enabled=True,
+                rank=0,
+                engine_client=self,
+            )
+        setattr(self, MODEL_VERSION_ATTR, self.model_version)
 
     async def _initialize_tokenizer(self) -> None:
         """Initialize the tokenizer."""
@@ -48,10 +82,14 @@ class TinkerModel(BaseInferenceModel):
             topk_prompt_logprobs=kwargs.get("topk_prompt_logprobs", self.config.logprobs),
         )
 
-    async def generate(self, prompt: str, **kwargs) -> Sequence[Experience]:
+    async def generate(self, prompt: str, lora_request=None, **kwargs) -> Sequence[Experience]:
         """Generate a responses from a prompt in async."""
         if self.tokenizer is None:
             await self._initialize_tokenizer()
+
+        record_key = kwargs.pop("record_key", None)
+        request_id = str(self.request_id)
+        self.request_id += 1
 
         returned_seq, is_valid = self._handle_prompt_truncation(prompt, **kwargs)
         if not is_valid:
@@ -118,6 +156,13 @@ class TinkerModel(BaseInferenceModel):
             )
             experiences.append(chat_completion)
 
+        if self.recorder is not None and record_key is not None:
+            self.recorder.schedule_record(
+                experiences[: len(output.sequences)],
+                record_key,
+                request_id=request_id,
+            )
+
         return experiences
 
     async def chat(self, messages: List[dict], **kwargs) -> Sequence[Experience]:
@@ -149,6 +194,8 @@ class TinkerModel(BaseInferenceModel):
             base_model=self.config.model_path,
         )
         await self._initialize_tokenizer()
+        if self.recorder is not None:
+            self.recorder.start()
 
     async def sync_model_weights(
         self,
@@ -162,6 +209,7 @@ class TinkerModel(BaseInferenceModel):
             model_path=remote_sampler_path,
         )
         self.model_path = remote_sampler_path
+        setattr(self, MODEL_VERSION_ATTR, self.model_version)
         return model_version
 
     def get_model_version(self) -> int:
@@ -189,3 +237,8 @@ class TinkerModel(BaseInferenceModel):
     def get_model_path(self) -> Optional[str]:
         """Get the latest sampler weight path."""
         return self.model_path
+
+    async def shutdown(self) -> None:
+        if self.recorder is not None:
+            await self.recorder.stop()
+            self.recorder = None

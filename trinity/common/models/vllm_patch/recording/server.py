@@ -40,21 +40,9 @@ from vllm.utils.network_utils import is_valid_ipv6_address
 from vllm.utils.system_utils import set_ulimit
 from vllm.version import __version__ as VLLM_VERSION
 
-from trinity.common.models.recording.context import RecordingIdentityMiddleware
-from trinity.common.models.recording.query import (
-    RECORDER_STATE_ATTR,
-    STORE_STATE_ATTR,
-    query_router,
-)
-from trinity.common.models.recording.recorder import Recorder
-from trinity.common.models.recording.store import RecordStore
+from trinity.common.models.recording.recorder import TRINITY_RECORDER_ATTR, Recorder
+from trinity.common.models.recording.server import mount_recording_api
 from trinity.common.models.vllm_patch import get_vllm_version
-from trinity.common.models.vllm_patch.recording.recorder import TRINITY_RECORDER_ATTR
-
-#: Attribute on app.state holding the active RecordStore.
-_STORE_STATE_ATTR = STORE_STATE_ATTR
-#: Attribute on app.state holding the active Recorder.
-_RECORDER_STATE_ATTR = RECORDER_STATE_ATTR
 
 
 def setup_server_in_ray(args, logger):
@@ -104,20 +92,6 @@ def dummy_add_signal_handler(self, *args, **kwargs):
     pass
 
 
-def _add_recording_middleware(app) -> None:
-    """Install recording middleware before serving, even if vLLM built the stack.
-
-    Some vLLM/FastAPI versions touch ``app.middleware_stack`` inside
-    ``build_app``. Starlette then rejects ``add_middleware`` with "Cannot add
-    middleware after an application has started", even though uvicorn has not
-    started serving yet. Clearing the cached stack lets Starlette rebuild it
-    with our middleware on first request.
-    """
-    if getattr(app, "middleware_stack", None) is not None:
-        app.middleware_stack = None
-    app.add_middleware(RecordingIdentityMiddleware)
-
-
 def _setup_recording(
     engine_client,
     app,
@@ -150,22 +124,7 @@ def _setup_recording(
             "Generation recording API server requires vLLMRolloutModel to install "
             "engine_client.trinity_recorder before server startup."
         )
-    store: RecordStore = recorder.store
-
-    # (2) in-process middleware: API key -> contextvar. Zero network hop.
-    _add_recording_middleware(app)
-
-    # (3) query routes mounted on the main app; OpenAI /v1/* surface untouched.
-    app.include_router(query_router)
-
-    setattr(app.state, _STORE_STATE_ATTR, store)
-    setattr(app.state, _RECORDER_STATE_ATTR, recorder)
-
-    logger.info(
-        "Generation recording enabled: store=%s rank=%d",
-        type(store).__name__,
-        recorder.rank,
-    )
+    mount_recording_api(app, recorder, logger, engine_name="vLLM")
     return recorder
 
 

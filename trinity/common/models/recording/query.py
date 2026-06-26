@@ -6,11 +6,15 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from trinity.common.experience import Experience
-from trinity.common.models.recording.recorder import Recorder
+from trinity.common.models.recording.recorder import (
+    TRINITY_RECORD_STORE_ATTR,
+    TRINITY_RECORDER_ATTR,
+    Recorder,
+)
 from trinity.common.models.recording.store import RecordStore
 
-STORE_STATE_ATTR = "trinity_record_store"
-RECORDER_STATE_ATTR = "trinity_recorder"
+STORE_STATE_ATTR = TRINITY_RECORD_STORE_ATTR
+RECORDER_STATE_ATTR = TRINITY_RECORDER_ATTR
 
 query_router = APIRouter(prefix="/records", tags=["trinity-recording"])
 

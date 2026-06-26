@@ -5,7 +5,7 @@ import asyncio
 import copy
 import socket
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 import httpx
 import ray
@@ -649,13 +649,11 @@ class ModelWrapper:
                         messages=messages,
                         with_chat_completion=True,
                         return_token_ids=self.enable_history,
+                        record_key=(self._api_key if self.enable_history else None),
                         **kwargs,
                     )
                 )
                 response = chat_response.pop()
-                # TODO: Tinker legacy recording path - should be migrated to engine-side recording
-                if self.enable_history:
-                    self.history.extend(chat_response)
                 return response
 
             self.openai_client.chat.completions.create = chat_completions
@@ -696,12 +694,10 @@ class ModelWrapper:
                     messages=messages,
                     with_chat_completion=True,
                     return_token_ids=self.enable_history,
+                    record_key=(self._api_key if self.enable_history else None),
                     **kwargs,
                 )
                 response = chat_response.pop()
-                # TODO: Tinker legacy recording path - should be migrated to engine-side recording
-                if self.enable_history:
-                    self.history.extend(chat_response)
                 return response
 
             self.openai_async_client.chat.completions.create = chat_completions

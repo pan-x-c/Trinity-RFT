@@ -211,7 +211,7 @@ def build_experience(
                 prompt_length=prompt_length,
                 routed_experts=routed_experts,
                 prompt_text=prompt_text if prompt_text is not None else output.prompt,
-                response_text=completion.text,
+                response_text=getattr(completion, "text", None) or "",
                 multi_modal_inputs=combine_output_token_ids(
                     response_token_ids,
                     multi_modal_inputs,

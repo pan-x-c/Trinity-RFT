@@ -499,7 +499,7 @@ class TestRecording(RayUnittestBaseAsync):
         # recording hot path (decode token ids lazily where a check is needed).
         if exp.prompt_text is not None:
             self.assertGreater(len(exp.prompt_text), 0)
-        self.assertIsNotNone(exp.response_text)
+        self.assertGreater(len(exp.response_text), 0)
 
     def _assert_recorded_routed_experts(self, exp: Experience):
         # enable_return_routed_experts is forced on by enable_recording.
@@ -608,6 +608,7 @@ class TestRecording(RayUnittestBaseAsync):
         response_token_ids = consumed[0].tokens[consumed[0].prompt_length :].tolist()
         decoded_content = self.tokenizer.decode(response_token_ids, skip_special_tokens=True)
         self.assertEqual(decoded_content, content)
+        self.assertEqual(consumed[0].response_text, content)
         self.assertNotIn(rk_str, await self._list_record_keys())
 
         # ===== 5. OpenAI tool-call parsing (HTTP) =====

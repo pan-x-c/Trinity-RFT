@@ -15,28 +15,10 @@ for the ``query_router`` HTTP drain path used by the coordinator.
 import logging
 from typing import Optional, Tuple
 
-from trinity.common.models.recording.context import RecordingIdentityMiddleware
-from trinity.common.models.recording.query import (
-    RECORDER_STATE_ATTR,
-    STORE_STATE_ATTR,
-    query_router,
-)
 from trinity.common.models.recording.recorder import Recorder
+from trinity.common.models.recording.server import mount_recording_api
 from trinity.common.models.recording.store import RecordStore
 from trinity.common.models.sglang_patch.recording.recorder import create_sglang_recorder
-
-
-def _add_recording_middleware(app) -> None:
-    """Install recording middleware before serving, even if SGLang built the stack.
-
-    Starlette rejects ``add_middleware`` after ``middleware_stack`` is built with
-    "Cannot add middleware after an application has started". Clearing the cached
-    stack lets Starlette rebuild it with our middleware on first request (same
-    defensive pattern as the vLLM recording patch).
-    """
-    if getattr(app, "middleware_stack", None) is not None:
-        app.middleware_stack = None
-    app.add_middleware(RecordingIdentityMiddleware)
 
 
 def setup_sglang_recording(
@@ -62,19 +44,11 @@ def setup_sglang_recording(
         routed_experts_layout=routed_experts_layout,
     )
 
-    # (2) in-process middleware: Authorization bearer -> record_key contextvar.
-    _add_recording_middleware(app)
-
-    # (3) query routes mounted on the main app; OpenAI /v1/* surface untouched.
-    app.include_router(query_router)
-
-    setattr(app.state, STORE_STATE_ATTR, recorder.store)
-    setattr(app.state, RECORDER_STATE_ATTR, recorder)
-
-    recorder.start()
-
-    logger.info(
-        "SGLang generation recording enabled: store=%s",
-        type(recorder.store).__name__,
+    mount_recording_api(
+        app,
+        recorder,
+        logger,
+        engine_name="SGLang",
+        start_recorder=True,
     )
     return recorder

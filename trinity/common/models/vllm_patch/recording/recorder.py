@@ -23,7 +23,11 @@ from types import SimpleNamespace
 from typing import Optional
 
 from trinity.common.models.recording.context import record_key_ctx
-from trinity.common.models.recording.recorder import Recorder
+from trinity.common.models.recording.recorder import (
+    TRINITY_RECORD_STORE_ATTR,
+    TRINITY_RECORDER_ATTR,
+    Recorder,
+)
 from trinity.common.models.recording.store import MemoryStore, RecordStore
 from trinity.common.models.vllm_patch.recording.models import build_experience
 
@@ -41,8 +45,6 @@ _MODEL_VERSION_ATTR = "trinity_model_version"
 #: to thread a knob through the launcher. The engine's ``max_logprobs`` cap
 #: (default 20, set at engine build) already covers it.
 _RECORDER_LOGPROB_WIDTH = 1
-TRINITY_RECORDER_ATTR = "trinity_recorder"
-TRINITY_RECORD_STORE_ATTR = "trinity_record_store"
 TRINITY_MM_RENDER_ATTR = "trinity_mm_render"
 
 
@@ -176,8 +178,9 @@ def _accumulate_request_output(state, output, *, is_delta_output: bool):
 
         acc = state["outputs"][index]
         cur_token_ids = _list_or_empty(getattr(completion, "token_ids", None))
-        if is_delta_output and cur_token_ids:
-            acc["token_ids"].extend(cur_token_ids)
+        if is_delta_output:
+            if cur_token_ids:
+                acc["token_ids"].extend(cur_token_ids)
         else:
             acc["token_ids"] = cur_token_ids
 
@@ -192,8 +195,9 @@ def _accumulate_request_output(state, output, *, is_delta_output: bool):
                 acc["logprobs"] = cur_logprobs
 
         cur_text = getattr(completion, "text", None) or ""
-        if is_delta_output and cur_text:
-            acc["text"] += cur_text
+        if is_delta_output:
+            if cur_text:
+                acc["text"] += cur_text
         else:
             acc["text"] = cur_text
 

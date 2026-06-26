@@ -29,7 +29,7 @@ from typing import Any, List, Optional, Tuple
 import torch
 
 from trinity.common.experience import EID, Experience
-from trinity.common.models.experience_extraction import decode_sglang_routed_experts
+from trinity.common.models.sglang_model import decode_sglang_routed_experts
 
 
 def _extract_output_logprobs(meta_info: dict) -> List[float]:
@@ -162,7 +162,7 @@ def build_sglang_experience(
                 logprobs=response_logprobs,
                 prompt_length=prompt_length,
                 prompt_text=item.get("prompt_text"),
-                response_text=item.get("text"),
+                response_text=item.get("text") or "",
                 routed_experts=routed_experts,
                 info=info,
             )

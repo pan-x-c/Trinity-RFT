@@ -9,15 +9,41 @@ from logging import Logger
 from typing import Any, List, Literal, Optional, Sequence, Tuple
 
 import httpx
+import pybase64
 import torch
 from transformers import AutoTokenizer
 
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME, SyncMethod
 from trinity.common.experience import Experience
-from trinity.common.models.experience_extraction import decode_sglang_routed_experts
 from trinity.common.models.model import BaseInferenceModel
 from trinity.manager.synchronizer import Synchronizer
+
+
+def decode_sglang_routed_experts(
+    routed_experts_value: Any,
+    total_tokens: int,
+    layout: Tuple[int, int],
+) -> Optional[torch.Tensor]:
+    if routed_experts_value is None:
+        return None
+    if isinstance(routed_experts_value, torch.Tensor):
+        return routed_experts_value.to(torch.uint8)
+    if not isinstance(routed_experts_value, str):
+        return torch.tensor(routed_experts_value, dtype=torch.uint8)
+
+    decoded = pybase64.b64decode_as_bytearray(routed_experts_value)
+    routed_experts = torch.frombuffer(decoded, dtype=torch.int32)
+    num_layers, topk = layout
+    seq_length = max(total_tokens - 1, 0)
+    expected_numel = seq_length * num_layers * topk
+    if routed_experts.numel() != expected_numel:
+        raise ValueError(
+            "Unexpected routed_experts size from SGLang: "
+            f"expected {expected_numel} elements for shape ({seq_length}, {num_layers}, {topk}), "
+            f"got {routed_experts.numel()}"
+        )
+    return routed_experts.reshape(seq_length, num_layers, topk).to(torch.uint8)
 
 
 class SGLangClient:
@@ -71,12 +97,7 @@ class SGLangClient:
 
     async def health_check(self) -> bool:
         try:
-            async with httpx.AsyncClient(
-                headers={
-                    "Content-Type": "application/json; charset=utf-8",
-                    "Authorization": f"Bearer {self.api_key}" if self.api_key else "",
-                }
-            ) as client:
+            async with httpx.AsyncClient() as client:
                 response = await client.get(f"{self.server_url}/health", timeout=5)
                 return response.status_code == 200
         except Exception as e:
@@ -546,7 +567,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         record_store = None
         recorder = None
         routed_experts_layout = None
-        if self.config.enable_recording:
+        if self.config.enable_history:
             from trinity.common.models.recording.recorder import Recorder
             from trinity.common.models.recording.store import MemoryStore
             from trinity.common.models.sglang_patch.recording.models import (
@@ -589,7 +610,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             master_addr=self.master_addr,
             master_port=self.master_port,
             enable_return_routed_experts=self.config.enable_return_routed_experts,
-            enable_recording=self.config.enable_recording,
+            enable_history=self.config.enable_history,
             recorder=recorder,
             record_store=record_store,
             routed_experts_layout=routed_experts_layout,

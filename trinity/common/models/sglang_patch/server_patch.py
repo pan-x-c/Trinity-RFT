@@ -304,7 +304,7 @@ def get_api_server(
     master_addr: Optional[str],
     master_port: Optional[int],
     logger: Logger,
-    enable_recording: bool = False,
+    enable_history: bool = False,
     recorder: Optional[Any] = None,
     record_store: Optional[Any] = None,
     routed_experts_layout: Optional[Tuple[int, int]] = None,
@@ -341,7 +341,7 @@ def get_api_server(
         # api_key, so the auth middleware would otherwise 401-reject it. This
         # mirrors vLLM, whose recording server sets no api_key auth. The
         # embedded server is localhost/in-Ray-actor, so auth is not needed.
-        api_key=None if enable_recording else api_key,
+        api_key=None if enable_history else api_key,
         # SGLang enables tool calling via tool_call_parser (no separate
         # enable_auto_tool_choice flag in this version). Only render/parse tools
         # when a parser is configured, matching vLLM's enable_auto_tool_choice.
@@ -385,7 +385,7 @@ def get_api_server(
     # recorder/store are owned by ``SGLangRolloutModel``; this installs the
     # engine wrap on ``tokenizer_manager``, ``RecordingIdentityMiddleware`` and
     # ``query_router`` on ``app``, and stashes store/recorder on ``app.state``.
-    if enable_recording:
+    if enable_history:
         from trinity.common.models.sglang_patch.recording import setup_sglang_recording
 
         setup_sglang_recording(
