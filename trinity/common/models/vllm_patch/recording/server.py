@@ -260,11 +260,13 @@ async def run_api_server_with_recording(
     # path happens in VLLMModel (via EngineArgs), *before* this runner gets the
     # already-built ``async_llm``. Adding ``--enable-return-routed-experts`` /
     # ``--max-logprobs`` here would be inert (init_app_state does not read them).
-    # The Allocator therefore forces ``InferenceModelConfig.enable_return_routed_experts
-    # = True`` when recording is on, and the engine's default ``max_logprobs=20``
-    # covers the recorder's top-k (``VLLM_RECORD_TOPK``, default 1). To record
-    # routed_experts, the engine must be built with that flag on — the launcher
-    # is responsible for that, not these CLI args.
+    # ``enable_return_routed_experts`` is opt-in via ``enable_router_replay``
+    # (mirrored in ``config_validator``); it is not implied by recording, so a
+    # dense model records history with ``routed_experts=None``. The engine's
+    # default ``max_logprobs=20`` covers the recorder's top-k
+    # (``VLLM_RECORD_TOPK``, default 1). To record routed_experts, the engine
+    # must be built with that flag on — the launcher is responsible for that,
+    # not these CLI args.
 
     args = parser.parse_args(cli_args)
     args.structured_outputs_config.reasoning_parser = reasoning_parser

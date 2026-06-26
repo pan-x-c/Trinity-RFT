@@ -16,6 +16,10 @@ from trinity.common.experience import Experience
 from trinity.common.models.mm_utils import vLLMMultiModalRender
 from trinity.common.models.model import BaseInferenceModel
 from trinity.common.models.recording.context import record_key_ctx, skip_recording_ctx
+from trinity.common.models.recording.store import (
+    RECORD_KEY_INFO_KEY,
+    REQUEST_ID_INFO_KEY,
+)
 from trinity.common.models.vllm_patch import get_vllm_version
 from trinity.common.models.vllm_patch.recording.models import build_experience
 
@@ -285,9 +289,20 @@ class vLLMRolloutModel(BaseInferenceModel):
 
             returned_seq, is_valid = self._handle_prompt_truncation(prompt, **kwargs)  # type: ignore
             if not is_valid:
-                return (
-                    returned_seq  # is_valid is False: returned_seq is a list of dummy experiences
-                )
+                # Prompt was truncated: ``_handle_prompt_truncation`` returns
+                # dummy (masked) experiences and we skip real generation. The
+                # engine-level recorder only captures actual generations, so
+                # persist these dummies directly under the record_key — masked
+                # experiences must still be tracked for history extraction and
+                # the buffer/trainer (they are popped by record_key on consume).
+                if self.recorder is not None and record_key is not None:
+                    for exp in returned_seq:
+                        exp.info[RECORD_KEY_INFO_KEY] = record_key
+                        exp.info[REQUEST_ID_INFO_KEY] = exp.eid.suffix
+                        exp.info["rank"] = self.recorder.rank
+                        exp.info["model_version"] = self.model_version
+                        await self.recorder.store.append_turn(exp)
+                return returned_seq
             prompt = {
                 "prompt_token_ids": returned_seq
             }  # is_valid is True: returned_seq is token_ids

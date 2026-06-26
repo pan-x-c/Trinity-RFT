@@ -83,14 +83,16 @@ class Allocator:
         config.engine_id = engine_id
 
         if config.engine_type.startswith("vllm") or config.engine_type == "sglang":
-            # enable_history is the single switch for engine-side recording.
+            # enable_history is the single switch for engine-side recording. The
+            # recorder runs inside the OpenAI API server, so it must be on.
+            # ``enable_return_routed_experts`` is NOT forced here: it is driven
+            # by the user's ``enable_router_replay`` (see ``config_validator``),
+            # so dense models can record history without vLLM's routed-experts
+            # capturer (which raises on configs lacking ``num_experts_per_tok``).
+            # The recorder simply leaves ``Experience.routed_experts`` as None
+            # when the engine did not capture any.
             if config.enable_history:
                 config.enable_openai_api = True
-                # Recording: force routed_experts capture (the engine reads
-                # this at build time). The model mirrors the recording config
-                # onto the engine/server instance for the recorder to read.
-                # No env / runtime_env involved.
-                config.enable_return_routed_experts = True
 
         actor_bundle_lists = []
         for node_id in range(config.nnodes):

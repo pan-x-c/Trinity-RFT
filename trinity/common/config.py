@@ -576,10 +576,14 @@ class InferenceModelConfig:
     # the RolloutCoordinator pulls heavy experiences via ``/records/update_record``
     # at finalize time. When off (default), runners ship serialized experiences
     # through the scheduler as before (legacy path). When True, the Allocator
-    # forces ``enable_return_routed_experts``. VLLMModel mirrors the recording
-    # config onto the engine instance for the recorder to read. The capture
-    # width (top-k logprobs) reuses ``logprobs`` below (default 1). Requires
-    # ``enable_openai_api=True`` (the recording runner is the API server).
+    # forces ``enable_openai_api`` (the recorder runs in the API server).
+    # VLLMModel mirrors the recording config onto the engine instance for the
+    # recorder to read. The capture width (top-k logprobs) reuses ``logprobs``
+    # below (default 1). Requires ``enable_openai_api=True`` (the recording
+    # runner is the API server). Routed-experts capture is opt-in via
+    # ``enable_router_replay`` (mirrored to ``enable_return_routed_experts`` in
+    # ``config_validator``); it is not implied by ``enable_history``, so dense
+    # models can record history too.
     enable_history: bool = False
 
     # For OpenAI API
