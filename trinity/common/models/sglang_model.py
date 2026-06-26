@@ -593,6 +593,7 @@ class SGLangRolloutModel(BaseInferenceModel):
             recorder=recorder,
             record_store=record_store,
             routed_experts_layout=routed_experts_layout,
+            tool_call_parser=self.config.tool_call_parser,
             logger=self.logger,
         )
         # ``setup_sglang_recording`` (called inside get_api_server) owns the

@@ -52,8 +52,15 @@ def _get_obj(args, kwargs):
     return None
 
 
-def _force_record_fields(obj: Any) -> None:
-    """Force logprob + prompt-token-id capture for recording (transparent)."""
+def _force_record_fields(obj: Any, *, force_routed_experts: bool) -> None:
+    """Force logprob + prompt-token-id (+ routed-expert) capture for recording.
+
+    Transparent to clients: the OpenAI serving layer gates its response
+    ``logprobs`` / ``prompt_token_ids`` / ``sglext.routed_experts`` emission on
+    the *ChatCompletionRequest* flags (unchanged); we only flip the
+    ``GenerateReqInput`` flags the scheduler reads, so the recorded ``ret`` gains
+    these fields while HTTP responses stay the same.
+    """
     if obj is None:
         return
     # return_logprob may be a list for batched requests; broadcast True.
@@ -65,6 +72,14 @@ def _force_record_fields(obj: Any) -> None:
             obj.return_logprob = True
     if hasattr(obj, "return_prompt_token_ids"):
         obj.return_prompt_token_ids = True
+    # The scheduler only returns routed_experts when the per-request flag is set
+    # (scheduler.py: ``if recv_req.return_routed_experts``), even though the
+    # model runner computes them whenever the server flag is on. The chat path
+    # defaults this to False, so force it here when the server is MoE-enabled
+    # (signaled by a non-None routed_experts_layout) so the recorded experience
+    # carries routed_experts on every path, not just Ray-direct /generate.
+    if force_routed_experts and hasattr(obj, "return_routed_experts"):
+        obj.return_routed_experts = True
 
 
 def _normalize_ret(out: Any) -> List[dict]:
@@ -243,7 +258,7 @@ def patch_tokenizer_manager_for_recording(
     async def _patched_generate_request(*args, **kwargs):
         obj = _get_obj(args, kwargs)
         if recorder.enabled and obj is not None:
-            _force_record_fields(obj)
+            _force_record_fields(obj, force_routed_experts=routed_experts_layout is not None)
 
         state: dict = {}
         order: list = []

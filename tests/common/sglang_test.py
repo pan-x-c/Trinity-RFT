@@ -413,6 +413,13 @@ class TestRecording(RayUnittestBaseAsync):
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.explorer.rollout_model.enable_recording = True
         self.config.explorer.rollout_model.enable_expert_parallel = True
+        # Tool-call parsing coverage (qwen3_coder matches the Qwen3.5 chat
+        # template). SGLang enables tool calling via tool_call_parser (no
+        # separate enable_auto_tool_choice flag); enable_auto_tool_choice is
+        # set for parity with the vLLM TestRecording config.
+        self.config.explorer.rollout_model.enable_auto_tool_choice = True
+        self.config.explorer.rollout_model.tool_call_parser = "qwen3_coder"
+        self.config.explorer.rollout_model.enable_thinking = False
         # History recording is client-side; the in-SGLang recorder is the subject.
         self.config.explorer.rollout_model.enable_history = False
         self.config.explorer.rollout_model.base_port = 13400
@@ -603,7 +610,7 @@ class TestRecording(RayUnittestBaseAsync):
         self.assertEqual(decoded_content, content)
         self.assertNotIn(rk_str, await self._list_record_keys())
 
-        # ===== 5. OpenAI tool-augmented (HTTP) =====
+        # ===== 5. OpenAI tool-call parsing (HTTP) =====
         rk_tool = "trinity_record_tool"
         tclient = await self._openai_client(rk_tool)
         tools = [
@@ -626,23 +633,31 @@ class TestRecording(RayUnittestBaseAsync):
             }
         ]
         tool_messages = [{"role": "user", "content": "What's the weather like in Boston?"}]
+        no_think = {"chat_template_kwargs": {"enable_thinking": False}}
         tresp = await tclient.chat.completions.create(
             model=model_id,
             messages=tool_messages,
             tools=tools,
-            tool_choice="none",
-            max_tokens=32,
+            tool_choice="auto",
+            max_tokens=64,
+            extra_body=no_think,
         )
         consumed = await self._consume(rk_tool, reward=1.0, run=5, task="t_tool")
         self.assertEqual(len(consumed), 1)
         self._assert_recorded_experience(consumed[0], rk_tool)
         self._assert_recorded_routed_experts(consumed[0])
-        # The tool-augmented prompt (tool defs rendered by the chat template)
-        # must be part of the recorded experience. SGLang's ret does not carry
-        # prompt text, so decode the recorded tokens to check.
+        # tool_choice != "none" -> SGLang renders the tool defs into the prompt
+        # (serving_chat._process_messages), so the recorded prompt tokens carry
+        # the tool name. SGLang's ret does not carry prompt text, so decode.
         decoded = self.tokenizer.decode(consumed[0].tokens.tolist(), skip_special_tokens=False)
         self.assertIn("get_current_weather", decoded)
-        self.assertEqual(consumed[0].response_text, tresp.choices[0].message.content)
+        # If the model emitted a tool call, its function name is in the raw
+        # recorded response text (ret.text), which the qwen3_coder parser also
+        # surfaces as choice.message.tool_calls.
+        choice = tresp.choices[0]
+        if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
+            for tc in choice.message.tool_calls:
+                self.assertIn(tc.function.name, consumed[0].response_text)
         self.assertNotIn(rk_tool, await self._list_record_keys())
 
         # ===== global: every group consumed -> store is drained =====

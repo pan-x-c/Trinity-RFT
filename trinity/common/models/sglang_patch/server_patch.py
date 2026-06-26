@@ -308,6 +308,7 @@ def get_api_server(
     recorder: Optional[Any] = None,
     record_store: Optional[Any] = None,
     routed_experts_layout: Optional[Tuple[int, int]] = None,
+    tool_call_parser: Optional[str] = None,
 ) -> "asyncio.Task[None]":
     _apply_openai_api_monkey_patch()
 
@@ -341,6 +342,10 @@ def get_api_server(
         # mirrors vLLM, whose recording server sets no api_key auth. The
         # embedded server is localhost/in-Ray-actor, so auth is not needed.
         api_key=None if enable_recording else api_key,
+        # SGLang enables tool calling via tool_call_parser (no separate
+        # enable_auto_tool_choice flag in this version). Only render/parse tools
+        # when a parser is configured, matching vLLM's enable_auto_tool_choice.
+        tool_call_parser=tool_call_parser,
         nnodes=nnodes,
         node_rank=node_rank,
         dist_init_addr=(
