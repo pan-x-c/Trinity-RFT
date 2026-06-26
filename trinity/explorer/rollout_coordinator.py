@@ -76,7 +76,7 @@ class RolloutCoordinator:
         # recording path's per-rank /records/update_record fan-out.
         self._rank_urls: Optional[Dict[int, str]] = None
 
-    def _enable_recording(self) -> bool:
+    def _enable_history_recording(self) -> bool:
         """Whether the recording-consume path is active for train batches."""
         return bool(self.config.explorer.rollout_model.enable_history)
 
@@ -319,7 +319,7 @@ class RolloutCoordinator:
 
             batch_state.state = BatchLifecycleState.FINALIZING
             try:
-                if self._enable_recording():
+                if self._enable_history_recording():
                     pipeline_metrics = await self._consume_recorded_experiences(payload_chunks)
                 else:
                     pipeline_metrics = await self.process_experiences(payload_chunks)

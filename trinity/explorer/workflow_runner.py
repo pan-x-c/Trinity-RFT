@@ -108,7 +108,7 @@ class WorkflowRunner:
         return f"{task.batch_id}/{task.task_id}/{run_index}"
 
     def _set_record_key(self, model_wrapper: ModelWrapper, record_key: Optional[str]) -> None:
-        if self._enable_recording() and record_key is not None:
+        if self._enable_history_recording() and record_key is not None:
             model_wrapper.set_api_key(record_key)
 
     def _create_workflow_instance(self, task: Task, record_key: Optional[str] = None) -> Workflow:
@@ -127,10 +127,10 @@ class WorkflowRunner:
             )
         else:
             self.workflow_instance.reset(task)
-        self.workflow_instance.enable_recording = self._enable_recording()
+        self.workflow_instance.enable_history = self._enable_history_recording()
         return self.workflow_instance
 
-    def _enable_recording(self) -> bool:
+    def _enable_history_recording(self) -> bool:
         return bool(self.config.explorer.rollout_model.enable_history)
 
     async def _run_workflow(self, workflow_instance: Workflow) -> List[Experience]:
@@ -145,7 +145,7 @@ class WorkflowRunner:
     ) -> Tuple[Workflow, ModelWrapper]:
         model_wrapper = (
             self.model_wrapper.clone_with_isolated_history()
-            if (self.config.explorer.rollout_model.enable_history or self._enable_recording())
+            if self.config.explorer.rollout_model.enable_history
             else self.model_wrapper
         )
         self._set_record_key(model_wrapper, record_key)
@@ -153,7 +153,7 @@ class WorkflowRunner:
             model_wrapper,
             self.auxiliary_model_wrappers,
         )
-        wf.enable_recording = self._enable_recording()
+        wf.enable_history = self._enable_history_recording()
         return wf, model_wrapper
 
     def _build_execution_result(
@@ -466,7 +466,7 @@ class WorkflowRunner:
                 # (TODO: wire eval consume-and-discard so eval turns don't leak
                 # in the store). For now, return no payload.
                 return status, b""
-            elif self._enable_recording():
+            elif self._enable_history_recording():
                 # Recording path: ship only the small reward map keyed by the
                 # per-sample record_key the workflow stamped on each exp. The
                 # heavy experiences live in the vLLM MemoryStore and are pulled

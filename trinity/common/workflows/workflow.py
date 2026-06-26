@@ -95,7 +95,7 @@ class Workflow:
     # can join reward inside the store. Set by the WorkflowRunner from
     # ``config.explorer.rollout_model.enable_history``. See ``SimpleWorkflow``
     # for the per-sample (n=1) loop this triggers.
-    enable_recording: bool = False
+    enable_history: bool = False
 
     def __init__(
         self,
@@ -227,7 +227,7 @@ class MultiTurnWorkflow(Workflow):
     def process_messages_to_experience(
         self, messages, reward, info={}, truncate_status=None
     ) -> Experience:
-        # TODO(recording): when enable_recording is on, this client-side
+        # TODO(recording): when enable_history is on, this client-side
         # conversion is redundant — the vLLM recorder's build_experience already
         # captured the authoritative heavy data (real logprobs without an extra
         # forward, real routed_experts) into the MemoryStore, keyed by the
@@ -350,7 +350,7 @@ class SimpleWorkflow(BaseSimpleWorkflow):
         messages = self.format_messages()
 
         self.logger.debug("start chat")
-        if self.enable_recording:
+        if self.enable_history:
             return self._run_recorded(messages)
         responses = self.model.chat(messages, **self.rollout_args)
         return self._attach_rewards(responses, base=self.run_id_base)
@@ -379,7 +379,7 @@ class AsyncSimpleWorkflow(BaseSimpleWorkflow):
         messages = self.format_messages()
 
         self.logger.info("start chat")
-        if self.enable_recording:
+        if self.enable_history:
             return await self._run_recorded_async(messages)
         responses = await self.model.chat_async(messages, **self.rollout_args)
         return self._attach_rewards(responses, base=self.run_id_base)

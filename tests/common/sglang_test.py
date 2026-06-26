@@ -367,7 +367,7 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
 
 
 class TestRecording(RayUnittestBaseAsync):
-    """Correctness of the in-SGLang generation recording flow (``enable_recording``).
+    """Correctness of the in-SGLang generation recording flow (``enable_history``).
 
     Mirrors ``tests/common/vllm_test.py::TestRecording``. Verifies that every
     call path lands its finished turn in the in-process ``MemoryStore`` under
@@ -386,14 +386,14 @@ class TestRecording(RayUnittestBaseAsync):
     per-task ``record_key`` (captured by ``RecordingIdentityMiddleware``),
     matching vLLM (which sets no api_key auth in recording mode).
 
-    ``enable_recording`` forces ``enable_return_routed_experts`` in the
+    ``enable_history`` forces ``enable_return_routed_experts`` in the
     Allocator, so this test uses a MoE checkpoint (``get_moe_model_path``).
     """
 
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
-        # enable_recording forces enable_return_routed_experts -> needs a MoE
+        # enable_history forces enable_return_routed_experts -> needs a MoE
         # model (otherwise routed_experts is absent and the shape asserts below
         # would fail). Use a Qwen3-MoE checkpoint.
         self.config.model.model_path = get_moe_model_path()
@@ -409,9 +409,9 @@ class TestRecording(RayUnittestBaseAsync):
         self.config.explorer.rollout_model.engine_num = 1
         self.config.explorer.rollout_model.tensor_parallel_size = 2
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        # enable_recording requires the OpenAI API server (the recording runner).
+        # enable_history requires the OpenAI API server (the recording runner).
         self.config.explorer.rollout_model.enable_openai_api = True
-        self.config.explorer.rollout_model.enable_recording = True
+        self.config.explorer.rollout_model.enable_history = True
         self.config.explorer.rollout_model.enable_expert_parallel = True
         # Tool-call parsing coverage (qwen3_coder matches the Qwen3.5 chat
         # template). SGLang enables tool calling via tool_call_parser (no
@@ -420,8 +420,7 @@ class TestRecording(RayUnittestBaseAsync):
         self.config.explorer.rollout_model.enable_auto_tool_choice = True
         self.config.explorer.rollout_model.tool_call_parser = "qwen3_coder"
         self.config.explorer.rollout_model.enable_thinking = False
-        # History recording is client-side; the in-SGLang recorder is the subject.
-        self.config.explorer.rollout_model.enable_history = False
+        # The in-SGLang recorder is the subject.
         self.config.explorer.rollout_model.base_port = 13400
         self.config.check_and_update()
 
@@ -502,7 +501,7 @@ class TestRecording(RayUnittestBaseAsync):
         self.assertGreater(len(exp.response_text), 0)
 
     def _assert_recorded_routed_experts(self, exp: Experience):
-        # enable_return_routed_experts is forced on by enable_recording.
+        # enable_return_routed_experts is forced on by enable_history.
         self.assertIsNotNone(exp.routed_experts)
         re = exp.routed_experts
         self.assertEqual(re.dtype, torch.uint8)

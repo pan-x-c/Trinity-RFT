@@ -1949,7 +1949,7 @@ class TestRecording(VLLMTestBase):
         self.assertGreater(len(exp.response_text), 0)
 
     def _assert_recorded_routed_experts(self, exp: Experience):
-        # enable_return_routed_experts is forced on by enable_recording.
+        # enable_return_routed_experts is forced on by enable_history.
         self.assertIsNotNone(exp.routed_experts)
         re = exp.routed_experts
         self.assertEqual(re.dtype, torch.uint8)
