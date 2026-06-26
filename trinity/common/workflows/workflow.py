@@ -93,7 +93,7 @@ class Workflow:
     # call carries a per-sample ``record_key`` (the MemoryStore group key) so
     # the runner can later report ``{record_key: reward}`` and the coordinator
     # can join reward inside the store. Set by the WorkflowRunner from
-    # ``config.explorer.rollout_model.enable_recording``. See ``SimpleWorkflow``
+    # ``config.explorer.rollout_model.enable_history``. See ``SimpleWorkflow``
     # for the per-sample (n=1) loop this triggers.
     enable_recording: bool = False
 

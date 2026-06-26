@@ -191,7 +191,7 @@ class vLLMRolloutModel(BaseInferenceModel):
                 # attribute experiences to the right policy without an extra
                 # launch-time parameter. Updated in sync_model_weights.
                 self.async_llm.trinity_model_version = self.model_version
-                if self.config.enable_recording:
+                if self.config.enable_history:
                     from trinity.common.models.vllm_patch.recording.recorder import (
                         TRINITY_MM_RENDER_ATTR,
                         create_vllm_recorder,

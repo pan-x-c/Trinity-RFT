@@ -78,7 +78,7 @@ class RolloutCoordinator:
 
     def _enable_recording(self) -> bool:
         """Whether the recording-consume path is active for train batches."""
-        return bool(self.config.explorer.rollout_model.enable_recording)
+        return bool(self.config.explorer.rollout_model.enable_history)
 
     def _resolve_rank_urls(self) -> Dict[int, str]:
         """Resolve each rollout engine's API server URL via named Ray actors.

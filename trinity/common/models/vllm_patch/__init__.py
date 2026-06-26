@@ -158,10 +158,10 @@ def get_api_server(
     # wires the in-process MemoryStore + engine wrap itself — no static config
     # needs threading (the logprob width is a recorder-internal constant, and
     # the checkpoint version is read live off the engine).
-    recording = bool(config.enable_recording) and vllm_version >= VLLM_VERSION_0230
-    if config.enable_recording and not recording:
+    recording = bool(config.enable_history) and vllm_version >= VLLM_VERSION_0230
+    if config.enable_history and not recording:
         logger.warning(
-            "enable_recording is on but vLLM %s < 0.23.0; recording disabled",
+            "enable_history is on but vLLM %s < 0.23.0; recording disabled",
             vllm.__version__,
         )
 

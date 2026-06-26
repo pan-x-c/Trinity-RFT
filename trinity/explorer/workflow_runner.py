@@ -131,7 +131,7 @@ class WorkflowRunner:
         return self.workflow_instance
 
     def _enable_recording(self) -> bool:
-        return bool(self.config.explorer.rollout_model.enable_recording)
+        return bool(self.config.explorer.rollout_model.enable_history)
 
     async def _run_workflow(self, workflow_instance: Workflow) -> List[Experience]:
         if workflow_instance.asynchronous:

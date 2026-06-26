@@ -1812,7 +1812,7 @@ class TestAPIServerToolCall(VLLMTestBase):
 
 
 class TestRecording(VLLMTestBase):
-    """Correctness of the in-vLLM generation recording flow (``enable_recording``).
+    """Correctness of the in-vLLM generation recording flow (``enable_history``).
 
     Verifies that every call path lands its finished turn in the in-process
     ``MemoryStore`` under the right ``record_key``, and that
@@ -1826,7 +1826,7 @@ class TestRecording(VLLMTestBase):
         via the ``Authorization: Bearer <api_key>`` header, captured by
         ``RecordingIdentityMiddleware``.
 
-    ``enable_recording`` forces ``enable_return_routed_experts`` in the
+    ``enable_history`` forces ``enable_return_routed_experts`` in the
     Allocator, and vLLM's routed-experts capturer raises on a non-MoE model,
     so this test requires a MoE checkpoint (``TRINITY_MOE_MODEL_PATH``).
     """
@@ -1836,7 +1836,7 @@ class TestRecording(VLLMTestBase):
             self.skipTest("generation recording requires vLLM >= 0.23.0")
         self.config = get_template_config()
         self.config.mode = "explore"
-        # enable_recording forces enable_return_routed_experts -> needs a MoE
+        # enable_history forces enable_return_routed_experts -> needs a MoE
         # model (vLLM raises on dense models). Use a Qwen3-MoE checkpoint.
         self.config.model.model_path = get_moe_model_path()
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -1851,9 +1851,9 @@ class TestRecording(VLLMTestBase):
         self.config.explorer.rollout_model.engine_num = 1
         self.config.explorer.rollout_model.tensor_parallel_size = 2
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
-        # enable_recording requires the OpenAI API server (the recording runner).
+        # enable_history requires the OpenAI API server (the recording runner).
         self.config.explorer.rollout_model.enable_openai_api = True
-        self.config.explorer.rollout_model.enable_recording = True
+        self.config.explorer.rollout_model.enable_history = True
         self.config.explorer.rollout_model.enable_expert_parallel = True
         # Tool-call coverage; qwen3_coder matches the Qwen3.5 chat template.
         self.config.explorer.rollout_model.enable_auto_tool_choice = True

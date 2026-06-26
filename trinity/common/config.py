@@ -567,7 +567,19 @@ class InferenceModelConfig:
     # For Qwen3
     enable_thinking: Optional[bool] = None
 
-    # For history recording
+    # For experience recording. When enabled on vLLM rollout models, the engine
+    # wraps ``engine_client.generate`` and writes each finished turn as a
+    # Trinity ``Experience`` to the in-process ``MemoryStore``, keyed by the
+    # recording identity (``record_key``). This is the single switch for the
+    # recording flow — when on, the explorer also consumes from the store: the
+    # WorkflowRunner ships only a small reward map keyed by ``record_key`` and
+    # the RolloutCoordinator pulls heavy experiences via ``/records/update_record``
+    # at finalize time. When off (default), runners ship serialized experiences
+    # through the scheduler as before (legacy path). When True, the Allocator
+    # forces ``enable_return_routed_experts``. VLLMModel mirrors the recording
+    # config onto the engine instance for the recorder to read. The capture
+    # width (top-k logprobs) reuses ``logprobs`` below (default 1). Requires
+    # ``enable_openai_api=True`` (the recording runner is the API server).
     enable_history: bool = False
 
     # For OpenAI API
@@ -590,21 +602,6 @@ class InferenceModelConfig:
     nnodes: int = 1
     node_rank: int = 0
     enable_return_routed_experts: bool = False
-
-    # Turn on in-vLLM generation recording for the OpenAI API serving path: the
-    # engine wraps ``engine_client.generate`` and writes each finished turn as a
-    # Trinity ``Experience`` to the in-process ``MemoryStore``, keyed by the
-    # recording identity (``record_key``). This is the single switch for the
-    # recording flow — when on, the explorer also consumes from the store: the
-    # WorkflowRunner ships only a small reward map keyed by ``record_key`` and
-    # the RolloutCoordinator pulls heavy experiences via ``/records/update_record``
-    # at finalize time. When off (default), runners ship serialized experiences
-    # through the scheduler as before (legacy path). When True, the Allocator
-    # forces ``enable_return_routed_experts``. VLLMModel mirrors the recording
-    # config onto the engine instance for the recorder to read. The capture
-    # width (top-k logprobs) reuses ``logprobs`` below (default 1). Requires
-    # ``enable_openai_api=True`` (the recording runner is the API server).
-    enable_recording: bool = False
 
     # Buffer size (MB) for batched NCCL weight sync. Controls peak GPU memory during sync.
     weight_sync_buffer_size: int = 1024  # MB
