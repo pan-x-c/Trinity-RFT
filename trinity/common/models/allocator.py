@@ -82,13 +82,13 @@ class Allocator:
         config = deepcopy(config)
         config.engine_id = engine_id
 
-        if config.engine_type.startswith("vllm"):
-            # enable_history is the single switch for vLLM recording.
+        if config.engine_type.startswith("vllm") or config.engine_type == "sglang":
+            # enable_history is the single switch for engine-side recording.
             if config.enable_history:
                 config.enable_openai_api = True
-                # In-vLLM recording: force routed_experts capture (the engine reads
-                # this at build time — see vllm_model.py). VLLMModel mirrors the
-                # recording config onto the engine instance for the recorder to read.
+                # Recording: force routed_experts capture (the engine reads
+                # this at build time). The model mirrors the recording config
+                # onto the engine/server instance for the recorder to read.
                 # No env / runtime_env involved.
                 config.enable_return_routed_experts = True
 

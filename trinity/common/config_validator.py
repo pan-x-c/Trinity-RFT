@@ -705,8 +705,10 @@ class ExplorerConfigValidator(ConfigValidator):
         if config.mode == "serve":
             # in 'serve' mode, we always enable openai api for rollout model
             config.explorer.rollout_model.enable_openai_api = True
-        if config.explorer.rollout_model.engine_type.startswith("vllm"):
-            # enable_history is the single switch for vLLM recording.
+        if config.explorer.rollout_model.engine_type.startswith("vllm") or (
+            config.explorer.rollout_model.engine_type == "sglang"
+        ):
+            # enable_history is the single switch for engine-side recording.
             if config.explorer.rollout_model.enable_history:
                 config.explorer.rollout_model.enable_openai_api = True
         self._validate_inference_parallel_config(config.explorer.rollout_model, "rollout_model")
