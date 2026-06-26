@@ -11,14 +11,12 @@ one ``Experience`` per completion so no sample is lost.
 Field mapping (captured ``RequestOutput`` fields -> ``Experience``):
   request_id        -> eid.suffix  (``EID(suffix=...)``; the vLLM engine request
                     id == the OpenAI ``response.id``. Kept for traceability;
-                    ``eid.task``/``run``/``reward`` are left default here and
-                    assigned by ``MemoryStore.update_reward_by_record_key`` at
-                    consume time.)
+                    ``eid.batch``/``task``/``run`` and reward are assigned from
+                    record key by ``MemoryStore.update`` at consume time.)
   API key / record key -> info["record_key"]  (the recording identity; **the
                     group key** the MemoryStore batches experiences by, so a
                     whole reward unit's samples/turns are reward-updated and
-                    consumed together. Falls back to ``eid.suffix`` when
-                    absent.)
+                    consumed together.)
   sample index      -> info["sample_index"]  (position within the n-completion
                     set; orders samples/turns inside a record-key group)
   prompt_token_ids  -> tokens (prompt portion) + prompt_length
@@ -36,6 +34,7 @@ Plus bookkeeping (request_id / record_key / sample_index / rank / timestamp /
 endpoint / model_version) stashed in ``Experience.info`` so it round-trips
 with the experience through serialize/deserialize.
 """
+
 from typing import Any, List, Optional
 
 import torch
@@ -159,8 +158,8 @@ def build_experience(
         request had no prompt or no completion with response tokens.
     """
     request_id = output.request_id
-    # eid.suffix = request_id for traceability; task/run/reward are left
-    # default and assigned by MemoryStore.update_reward_by_record_key at consume.
+    # eid.suffix = request_id for traceability; batch/task/run and reward are
+    # assigned from record_key by MemoryStore.update at consume.
 
     prompt_token_ids = list(output.prompt_token_ids or [])
     if not prompt_token_ids:

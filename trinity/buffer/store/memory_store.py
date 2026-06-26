@@ -6,6 +6,9 @@ from typing import Callable, Iterable, List
 from trinity.buffer.store.base_store import BaseStore
 from trinity.common.experience import Experience
 
+REQUEST_ID_INFO_KEY = "request_id"
+RECORD_KEY_INFO_KEY = "record_key"
+
 SampleIdGetter = Callable[[Experience], str]
 
 
@@ -26,12 +29,23 @@ def default_sample_id_getter(exp: Experience) -> str:
     return exp.eid.uid
 
 
+def get_record_key(exp: Experience) -> str:
+    """Return the complete store key stamped on an experience."""
+    info = exp.info or {}
+    record_key = info.get(RECORD_KEY_INFO_KEY)
+    if record_key:
+        return record_key
+    if exp.eid.batch != "" and exp.eid.task != "":
+        return exp.eid.rid
+    return exp.eid.suffix
+
+
 class MemoryStore(BaseStore):
     """A fast in-process store backed by Python dictionaries.
 
     ``add``, ``overwrite`` and ``update`` require complete keys in the form
-    ``<step_id>/<task_id>/<run_id>``. ``get`` and ``remove`` also accept prefixes
-    so callers can drain a task or step at once.
+    ``<batch_id>/<task_id>/<run_id>``. ``get`` and ``remove`` also accept prefixes
+    so callers can drain a batch or task at once.
     """
 
     def __init__(self, sample_id_getter: SampleIdGetter | None = None) -> None:
@@ -75,11 +89,15 @@ class MemoryStore(BaseStore):
         if records is None:
             raise KeyError(f"Key '{key}' does not exist.")
 
+        batch, task, run = self._parse_complete_key(key)
         target_ids: Iterable[str] = list(records.keys()) if sample_ids is None else sample_ids
         for sample_id in target_ids:
             if sample_id not in records:
                 raise KeyError(f"sample_id '{sample_id}' does not exist under key '{key}'.")
             exp = records[sample_id]
+            exp.eid.batch = batch
+            exp.eid.task = task
+            exp.eid.run = run
             exp.reward = reward
             if info:
                 if exp.info is None:
@@ -103,11 +121,24 @@ class MemoryStore(BaseStore):
 
     @staticmethod
     def _validate_complete_key(key: str) -> None:
+        MemoryStore._parse_complete_key(key)
+
+    @staticmethod
+    def _parse_complete_key(key: str) -> tuple[str, str, int]:
         parts = key.split("/")
         if len(parts) != 3 or any(part == "" for part in parts):
             raise ValueError(
-                f"Store key must be complete '<step_id>/<task_id>/<run_id>', got '{key}'."
+                f"Store key must be complete '<batch_id>/<task_id>/<run_id>', got '{key}'."
             )
+        batch, task, run_text = parts
+        try:
+            run = int(run_text)
+        except ValueError as exc:
+            raise ValueError(
+                f"Store key run_id must be an integer in '<batch_id>/<task_id>/<run_id>', "
+                f"got '{key}'."
+            ) from exc
+        return batch, task, run
 
     def _matching_keys(self, key: str) -> list[str]:
         if key == "":

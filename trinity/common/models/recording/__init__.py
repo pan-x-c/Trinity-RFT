@@ -1,5 +1,6 @@
 """Engine-agnostic generation recording utilities."""
 
+from trinity.buffer.store import MemoryStore, RecordStore
 from trinity.common.models.recording.context import (
     RecordingIdentityMiddleware,
     extract_bearer_token,
@@ -12,11 +13,7 @@ from trinity.common.models.recording.recorder import (
     TRINITY_RECORDER_ATTR,
     Recorder,
 )
-from trinity.common.models.recording.server import (
-    add_recording_middleware,
-    mount_recording_api,
-)
-from trinity.common.models.recording.store import MemoryStore, RecordStore
+from trinity.common.models.recording.server import add_recording_middleware, mount_recording_api
 
 __all__ = [
     "MemoryStore",

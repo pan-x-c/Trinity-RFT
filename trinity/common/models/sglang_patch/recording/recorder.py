@@ -23,17 +23,18 @@ Two adaptations forced by the SGLang shape (see the plan for detail):
    ``prompt_token_ids`` on the separate ``return_token_ids`` flag) and only adds
    an ignored field to ``/generate`` JSON responses.
 """
+
 import functools
 import logging
 from typing import Any, List, Optional, Tuple
 
+from trinity.buffer.store import MemoryStore, RecordStore
 from trinity.common.models.recording.context import record_key_ctx
 from trinity.common.models.recording.recorder import (
     TRINITY_RECORD_STORE_ATTR,
     TRINITY_RECORDER_ATTR,
     Recorder,
 )
-from trinity.common.models.recording.store import MemoryStore, RecordStore
 from trinity.common.models.sglang_patch.recording.models import build_sglang_experience
 
 #: Guard attribute marking the wrapped generate_request (mirrors vLLM's style).

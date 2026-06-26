@@ -17,18 +17,19 @@ Why wrap ``engine_client.generate`` instead of the serving layer?
     computation — the client response is unchanged unless the client itself
     requested logprobs. Recording stays transparent.
 """
+
 import functools
 import logging
 from types import SimpleNamespace
 from typing import Optional
 
+from trinity.buffer.store import MemoryStore, RecordStore
 from trinity.common.models.recording.context import record_key_ctx
 from trinity.common.models.recording.recorder import (
     TRINITY_RECORD_STORE_ATTR,
     TRINITY_RECORDER_ATTR,
     Recorder,
 )
-from trinity.common.models.recording.store import MemoryStore, RecordStore
 from trinity.common.models.vllm_patch.recording.models import build_experience
 
 #: Guard attribute marking the wrapped generate, mirroring api_patch_v17 style.

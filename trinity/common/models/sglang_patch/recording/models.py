@@ -12,8 +12,8 @@ the recorded Experience gets the real prompt tokens without reconstructing them
 from the request.
 
 Field mapping (SGLang ``ret`` -> ``Experience``):
-  meta_info.id        -> eid.suffix  (traceability; task/run/reward assigned by
-                      ``MemoryStore.update_reward_by_record_key`` at consume)
+  meta_info.id        -> eid.suffix  (traceability; batch/task/run and reward
+                      are assigned from record key by ``MemoryStore.update``)
   record_key          -> info["record_key"]  (the MemoryStore group key)
   sample index        -> info["sample_index"]  (position within the n set)
   prompt_token_ids    -> tokens (prompt) + prompt_length
@@ -24,6 +24,7 @@ Field mapping (SGLang ``ret`` -> ``Experience``):
                       the model's ``(num_layers, topk)`` layout when base64-str)
   meta_info.weight_version -> info["model_version"]
 """
+
 from typing import Any, List, Optional, Tuple
 
 import torch

@@ -8,12 +8,12 @@ import torch
 from tinker import types
 from torch import Tensor
 
+from trinity.buffer.store import MemoryStore
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
 from trinity.common.models.model import BaseInferenceModel
 from trinity.common.models.recording.recorder import MODEL_VERSION_ATTR, Recorder
-from trinity.common.models.recording.store import MemoryStore
 from trinity.manager.synchronizer import Synchronizer
 
 

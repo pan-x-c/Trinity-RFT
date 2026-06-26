@@ -12,12 +12,13 @@ are owned by ``SGLangRolloutModel`` (passed in) so it can drain them in-process
 via ``extract_experience_from_history``; they are also stashed on ``app.state``
 for the ``query_router`` HTTP drain path used by the coordinator.
 """
+
 import logging
 from typing import Optional, Tuple
 
+from trinity.buffer.store import RecordStore
 from trinity.common.models.recording.recorder import Recorder
 from trinity.common.models.recording.server import mount_recording_api
-from trinity.common.models.recording.store import RecordStore
 from trinity.common.models.sglang_patch.recording.recorder import create_sglang_recorder
 
 

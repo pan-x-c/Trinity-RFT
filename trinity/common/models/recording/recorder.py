@@ -6,9 +6,9 @@ from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from trinity.buffer.store import RecordStore, get_record_key
 from trinity.common.experience import Experience
 from trinity.common.models.recording.context import skip_recording_ctx
-from trinity.common.models.recording.store import RecordStore
 
 MODEL_VERSION_ATTR = "trinity_model_version"
 TRINITY_RECORDER_ATTR = "trinity_recorder"
@@ -97,9 +97,9 @@ class Recorder:
 
     async def _safe_append(self, exp: Experience) -> None:
         try:
-            await self.store.append_turn(exp)
+            self.store.add(get_record_key(exp), [exp])
         except Exception:
             logging.getLogger(__name__).exception(
-                "recording store.append_turn failed for request %s",
+                "recording store.add failed for request %s",
                 exp.info.get("request_id"),
             )

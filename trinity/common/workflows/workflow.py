@@ -85,9 +85,15 @@ class Workflow:
         auxiliary_models: List of OpenAI clients (sync or async based on is_async) for auxiliary models.
     """
 
-    can_reset: bool = False  # whether the workflow can be reset with a new task. If true, `reset()` must be implemented.
-    can_repeat: bool = False  # whether the workflow can be repeated multiple times. If true, `set_repeat_times()` must be implemented.
-    is_async: bool = False  # whether the workflow runs in async mode. If true, `run_async()` must be implemented, else `run()` must be implemented.
+    can_reset: bool = (
+        False  # whether the workflow can be reset with a new task. If true, `reset()` must be implemented.
+    )
+    can_repeat: bool = (
+        False  # whether the workflow can be repeated multiple times. If true, `set_repeat_times()` must be implemented.
+    )
+    is_async: bool = (
+        False  # whether the workflow runs in async mode. If true, `run_async()` must be implemented, else `run()` must be implemented.
+    )
 
     # When True, the workflow cooperates with the in-vLLM recorder: each chat
     # call carries a per-sample ``record_key`` (the MemoryStore group key) so
@@ -232,7 +238,7 @@ class MultiTurnWorkflow(Workflow):
         # captured the authoritative heavy data (real logprobs without an extra
         # forward, real routed_experts) into the MemoryStore, keyed by the
         # record_key the chat call carried. Replace this with an in-process
-        # lookup by record_key (store.get_record_experiences / update), then concatenate the
+        # lookup by record_key (store.get / update), then concatenate the
         # session's turns (info["sample_index"] orders them) into one
         # experience here. Requires threading the per-call record_key down to
         # this call site.

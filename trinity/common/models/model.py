@@ -155,9 +155,9 @@ class InferenceModel(ABC):
         if recorder is None:
             raise ValueError("Recording is not enabled for this model.")
         await recorder.flush()
-        exps = await recorder.store.get_record_experiences(record_key)
+        exps = recorder.store.get(record_key)
         if clear_history:
-            await recorder.store.delete_record_experiences(record_key)
+            recorder.store.remove(record_key)
         return exps
 
     def get_model_config(self) -> InferenceModelConfig:

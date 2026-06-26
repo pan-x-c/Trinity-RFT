@@ -5,13 +5,13 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
+from trinity.buffer.store import REQUEST_ID_INFO_KEY, RecordStore
 from trinity.common.experience import Experience
 from trinity.common.models.recording.recorder import (
     TRINITY_RECORD_STORE_ATTR,
     TRINITY_RECORDER_ATTR,
     Recorder,
 )
-from trinity.common.models.recording.store import RecordStore
 
 STORE_STATE_ATTR = TRINITY_RECORD_STORE_ATTR
 RECORDER_STATE_ATTR = TRINITY_RECORDER_ATTR
@@ -22,8 +22,6 @@ query_router = APIRouter(prefix="/records", tags=["trinity-recording"])
 class _RecordUpdate(BaseModel):
     record_key: str
     reward: float
-    run: int = 0
-    task: str = ""
 
 
 class _UpdateRecordRequest(BaseModel):
@@ -44,30 +42,31 @@ def _recorder(request: Request) -> Recorder:
     return rec
 
 
-async def _get_exp(store: RecordStore, record_key: str, request_id: str) -> Experience:
-    exp = await store.get_request_experience(record_key, request_id)
-    if exp is None:
-        raise HTTPException(status_code=404, detail="experience not found")
-    return exp
+def _get_exp(store: RecordStore, record_key: str, request_id: str) -> Experience:
+    for exp in store.get(record_key):
+        info = exp.info or {}
+        if info.get(REQUEST_ID_INFO_KEY) == request_id:
+            return exp
+    raise HTTPException(status_code=404, detail="experience not found")
 
 
 @query_router.get("")
 async def list_records(request: Request) -> dict:
     store = _store(request)
-    return {"record_keys": await store.list_records()}
+    return {"record_keys": store.keys()}
 
 
 @query_router.get("/{record_key}")
 async def get_record_experiences(record_key: str, request: Request) -> dict:
     store = _store(request)
-    experiences = await store.get_record_experiences(record_key)
+    experiences = store.get(record_key)
     return {"record_key": record_key, "experiences": [e.to_dict() for e in experiences]}
 
 
 @query_router.get("/{record_key}/request/{request_id}")
 async def get_request_experience(record_key: str, request_id: str, request: Request) -> Response:
     store = _store(request)
-    exp = await _get_exp(store, record_key, request_id)
+    exp = _get_exp(store, record_key, request_id)
     return Response(
         content=Experience.serialize(exp),
         media_type="application/octet-stream",
@@ -78,16 +77,27 @@ async def get_request_experience(record_key: str, request_id: str, request: Requ
 @query_router.delete("/{record_key}")
 async def delete_record_experiences(record_key: str, request: Request) -> dict:
     store = _store(request)
-    await store.delete_record_experiences(record_key)
+    store.remove(record_key)
     return {"record_key": record_key, "deleted": True}
 
 
 @query_router.delete("/{record_key}/request/{request_id}")
 async def delete_request_experience(record_key: str, request_id: str, request: Request) -> dict:
     store = _store(request)
-    deleted = await store.delete_request_experience(record_key, request_id)
+    kept = []
+    deleted = False
+    for exp in store.get(record_key):
+        info = exp.info or {}
+        if info.get(REQUEST_ID_INFO_KEY) == request_id:
+            deleted = True
+        else:
+            kept.append(exp)
     if not deleted:
         raise HTTPException(status_code=404, detail="experience not found")
+    if kept:
+        store.overwrite(record_key, kept)
+    else:
+        store.remove(record_key)
     return {"record_key": record_key, "request_id": request_id, "deleted": True}
 
 
@@ -99,14 +109,15 @@ async def update_record(req: _UpdateRecordRequest, request: Request) -> Response
 
     exps: List[Experience] = []
     for update in req.updates:
-        exps.extend(
-            await store.update_reward_by_record_key(
-                record_key=update.record_key,
-                reward=update.reward,
-                run=update.run,
-                task=update.task,
-            )
+        if not store.get(update.record_key):
+            continue
+        store.update(
+            key=update.record_key,
+            reward=update.reward,
+            info=None,
+            sample_ids=None,
         )
+        exps.extend(store.remove(update.record_key))
     return Response(
         content=Experience.serialize_many(exps),
         media_type="application/octet-stream",

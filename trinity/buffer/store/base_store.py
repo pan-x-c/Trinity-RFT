@@ -7,7 +7,7 @@ from trinity.common.experience import Experience
 class BaseStore(ABC):
     """Abstract base class for an in-process experience store.
 
-    The key follows the format ``<step_id>/<task_id>/<run_id>`` and each
+    The key follows the format ``<batch_id>/<task_id>/<run_id>`` and each
     experience is associated with a unique sample id.
     """
 
@@ -23,7 +23,7 @@ class BaseStore(ABC):
     def update(
         self, key: str, reward: float, info: dict | None, sample_ids: List[str] | None
     ) -> None:
-        """Update reward and optional info for selected experiences under a complete key."""
+        """Update reward, EID fields from key, and optional info for selected experiences."""
 
     @abstractmethod
     def get(self, key: str) -> List[Experience]:
@@ -32,3 +32,10 @@ class BaseStore(ABC):
     @abstractmethod
     def remove(self, key: str) -> List[Experience]:
         """Remove and return experiences for an exact key or prefix."""
+
+    @abstractmethod
+    def keys(self) -> list[str]:
+        """Return complete keys currently stored in insertion order."""
+
+
+RecordStore = BaseStore
