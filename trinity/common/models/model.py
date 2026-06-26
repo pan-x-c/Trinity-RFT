@@ -143,8 +143,22 @@ class InferenceModel(ABC):
     async def extract_experience_from_history(
         self, record_key: str, clear_history: bool = True
     ) -> List[Experience]:
-        """Extract recorded experiences by record key."""
-        raise NotImplementedError("Recording extraction is not supported by this model.")
+        """Extract recorded experiences by record key from the in-process store.
+
+        Both vLLM and SGLang keep the recorder and its store in-process (the
+        engine / embedded HTTP server runs in the same event loop as the model),
+        so extraction is a direct store lookup with no HTTP hop. Subclasses that
+        enable recording must set ``self.recorder`` (a ``Recorder`` whose
+        ``.store`` is a ``RecordStore``); this base implementation is shared.
+        """
+        recorder = getattr(self, "recorder", None)
+        if recorder is None:
+            raise ValueError("Recording is not enabled for this model.")
+        await recorder.flush()
+        exps = await recorder.store.get_record_experiences(record_key)
+        if clear_history:
+            await recorder.store.delete_record_experiences(record_key)
+        return exps
 
     def get_model_config(self) -> InferenceModelConfig:
         """Get the model configuration."""
