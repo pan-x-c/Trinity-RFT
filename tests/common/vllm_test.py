@@ -1859,8 +1859,7 @@ class TestRecording(VLLMTestBase):
         self.config.explorer.rollout_model.enable_auto_tool_choice = True
         self.config.explorer.rollout_model.tool_call_parser = "qwen3_coder"
         self.config.explorer.rollout_model.enable_thinking = False
-        # History recording is client-side; the in-vLLM recorder is the subject.
-        self.config.explorer.rollout_model.enable_history = False
+        # The in-vLLM recorder is the subject.
         self.config.explorer.rollout_model.extra_engine_args = {
             "max_num_seqs": 24,
             "moe_backend": "triton",
