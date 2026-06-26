@@ -1,9 +1,9 @@
 """Pluggable storage backends for recorded experiences."""
 
 import abc
-from collections import defaultdict
 from typing import Optional
 
+from trinity.buffer.store import MemoryStore as BaseMemoryStore
 from trinity.common.experience import Experience
 
 REQUEST_ID_INFO_KEY = "request_id"
@@ -46,55 +46,65 @@ class RecordStore(abc.ABC):
         """Drop one experience by request id. Return True if one was deleted."""
 
 
-class MemoryStore(RecordStore):
+class MemoryStore(BaseMemoryStore, RecordStore):
     """In-process store grouped by recording identity."""
 
     def __init__(self) -> None:
-        self._records: dict[str, list[Experience]] = defaultdict(list)
+        super().__init__()
 
     @staticmethod
     def _group_key(exp: Experience) -> str:
-        record_key = exp.info.get(RECORD_KEY_INFO_KEY)
+        info = exp.info or {}
+        record_key = info.get(RECORD_KEY_INFO_KEY)
         return record_key if record_key else exp.eid.suffix
 
     async def append_turn(self, exp: Experience) -> None:
-        self._records[self._group_key(exp)].append(exp)
+        self.add(self._group_key(exp), [exp])
 
     async def update_reward_by_record_key(
         self, record_key: str, reward: float, run: int, task: str
     ) -> list[Experience]:
-        exps = self._records.pop(record_key, [])
-        for exp in exps:
-            exp.reward = reward
-            exp.eid.run = run
-            exp.eid.task = task
-        return exps
+        if not self.get(record_key):
+            return []
+        self.update(
+            key=record_key,
+            reward=reward,
+            info={"run": run, "task": task},
+            sample_ids=None,
+        )
+        return self.remove(record_key)
 
     async def get_record_experiences(self, record_key: str) -> list[Experience]:
-        return list(self._records.get(record_key, []))
+        return self.get(record_key)
 
     async def get_request_experience(
         self, record_key: str, request_id: str
     ) -> Optional[Experience]:
-        for exp in self._records.get(record_key, []):
-            if exp.info.get(REQUEST_ID_INFO_KEY) == request_id:
+        for exp in self.get(record_key):
+            info = exp.info or {}
+            if info.get(REQUEST_ID_INFO_KEY) == request_id:
                 return exp
         return None
 
     async def list_records(self) -> list[str]:
-        return list(self._records.keys())
+        return self.keys()
 
     async def delete_record_experiences(self, record_key: str) -> None:
-        self._records.pop(record_key, None)
+        self.remove(record_key)
 
     async def delete_request_experience(self, record_key: str, request_id: str) -> bool:
-        exps = self._records.get(record_key)
-        if not exps:
-            return False
-        for index, exp in enumerate(exps):
-            if exp.info.get(REQUEST_ID_INFO_KEY) == request_id:
-                del exps[index]
-                if not exps:
-                    self._records.pop(record_key, None)
-                return True
-        return False
+        kept = []
+        deleted = False
+        for exp in self.get(record_key):
+            info = exp.info or {}
+            if info.get(REQUEST_ID_INFO_KEY) == request_id:
+                deleted = True
+            else:
+                kept.append(exp)
+
+        if deleted:
+            if kept:
+                self.overwrite(record_key, kept)
+            else:
+                await self.delete_record_experiences(record_key)
+        return deleted
