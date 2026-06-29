@@ -85,15 +85,9 @@ class Workflow:
         auxiliary_models: List of OpenAI clients (sync or async based on is_async) for auxiliary models.
     """
 
-    can_reset: bool = (
-        False  # whether the workflow can be reset with a new task. If true, `reset()` must be implemented.
-    )
-    can_repeat: bool = (
-        False  # whether the workflow can be repeated multiple times. If true, `set_repeat_times()` must be implemented.
-    )
-    is_async: bool = (
-        False  # whether the workflow runs in async mode. If true, `run_async()` must be implemented, else `run()` must be implemented.
-    )
+    can_reset: bool = False  # whether the workflow can be reset with a new task. If true, `reset()` must be implemented.
+    can_repeat: bool = False  # whether the workflow can be repeated multiple times. If true, `set_repeat_times()` must be implemented.
+    is_async: bool = False  # whether the workflow runs in async mode. If true, `run_async()` must be implemented, else `run()` must be implemented.
 
     # When True, the workflow cooperates with the in-vLLM recorder: each chat
     # call carries a per-sample ``record_key`` (the MemoryStore group key) so

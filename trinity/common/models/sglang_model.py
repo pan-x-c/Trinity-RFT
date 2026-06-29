@@ -570,7 +570,9 @@ class SGLangRolloutModel(BaseInferenceModel):
         if self.config.enable_history:
             from trinity.buffer.store import MemoryStore
             from trinity.common.models.recording.recorder import Recorder
-            from trinity.common.models.sglang_patch.recording.models import build_sglang_experience
+            from trinity.common.models.sglang_patch.recording.models import (
+                build_sglang_experience,
+            )
 
             record_store = MemoryStore()
             recorder = Recorder(

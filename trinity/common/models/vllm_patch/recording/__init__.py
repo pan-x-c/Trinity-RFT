@@ -15,7 +15,9 @@ from trinity.common.models.vllm_patch.recording.recorder import (
     create_vllm_recorder,
     patch_engine_for_recording,
 )
-from trinity.common.models.vllm_patch.recording.server import run_api_server_with_recording
+from trinity.common.models.vllm_patch.recording.server import (
+    run_api_server_with_recording,
+)
 
 __all__ = [
     "MemoryStore",

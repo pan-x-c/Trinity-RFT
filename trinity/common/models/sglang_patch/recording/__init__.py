@@ -15,14 +15,16 @@ from trinity.common.models.recording.context import (  # noqa: F401
 )
 from trinity.common.models.recording.query import query_router  # noqa: F401
 from trinity.common.models.recording.recorder import Recorder  # noqa: F401
-from trinity.common.models.sglang_patch.recording.models import (
+from trinity.common.models.sglang_patch.recording.models import (  # noqa: F401
     build_sglang_experience,
-)  # noqa: F401
+)
 from trinity.common.models.sglang_patch.recording.recorder import (  # noqa: F401
     create_sglang_recorder,
     patch_tokenizer_manager_for_recording,
 )
-from trinity.common.models.sglang_patch.recording.server import setup_sglang_recording  # noqa: F401
+from trinity.common.models.sglang_patch.recording.server import (  # noqa: F401
+    setup_sglang_recording,
+)
 
 __all__ = [
     "MemoryStore",

@@ -13,7 +13,10 @@ from trinity.common.models.recording.recorder import (
     TRINITY_RECORDER_ATTR,
     Recorder,
 )
-from trinity.common.models.recording.server import add_recording_middleware, mount_recording_api
+from trinity.common.models.recording.server import (
+    add_recording_middleware,
+    mount_recording_api,
+)
 
 __all__ = [
     "MemoryStore",
