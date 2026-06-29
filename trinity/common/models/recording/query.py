@@ -5,7 +5,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from trinity.buffer.store import REQUEST_ID_INFO_KEY, RecordStore
+from trinity.buffer.store import RecordStore
 from trinity.common.experience import Experience
 from trinity.common.models.recording.recorder import (
     TRINITY_RECORD_STORE_ATTR,
@@ -44,8 +44,7 @@ def _recorder(request: Request) -> Recorder:
 
 def _get_exp(store: RecordStore, record_key: str, request_id: str) -> Experience:
     for exp in store.get(record_key):
-        info = exp.info or {}
-        if info.get(REQUEST_ID_INFO_KEY) == request_id:
+        if exp.eid.suffix == request_id:
             return exp
     raise HTTPException(status_code=404, detail="experience not found")
 
@@ -94,8 +93,7 @@ async def delete_request_experience(record_key: str, request_id: str, request: R
     kept = []
     deleted = False
     for exp in store.get(record_key):
-        info = exp.info or {}
-        if info.get(REQUEST_ID_INFO_KEY) == request_id:
+        if exp.eid.suffix == request_id:
             deleted = True
         else:
             kept.append(exp)

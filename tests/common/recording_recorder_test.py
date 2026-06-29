@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from trinity.buffer.store import MemoryStore
+from trinity.buffer.store import MemoryStore, parse_record_key
 from trinity.common.experience import EID, Experience
 from trinity.common.models.recording.recorder import Recorder
 
@@ -17,15 +17,12 @@ def make_turn(
     sample_id: str | None = None,
     sample_index: int = 0,
 ) -> Experience:
-    info = {
-        "record_key": record_key,
-        "request_id": request_id,
-        "sample_index": sample_index,
-    }
+    batch, task, run = parse_record_key(record_key)
+    info = {"sample_index": sample_index}
     if sample_id is not None:
         info["sample_id"] = sample_id
     return Experience(
-        eid=EID(suffix=request_id),
+        eid=EID(batch=batch, task=task, run=run, suffix=request_id),
         tokens=tokens,
         prompt_length=prompt_length,
         logprobs=logprobs,
@@ -66,7 +63,6 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(recorded), 1)
         merged = recorded[0]
         self.assertEqual(merged.info["sample_id"], "sample-final")
-        self.assertEqual(merged.info["request_id"], "req-2")
         self.assertEqual(merged.eid.suffix, "req-2")
         self.assertEqual(merged.prompt_length, 2)
         self.assertTrue(torch.equal(merged.tokens, second.tokens))
@@ -82,7 +78,7 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
                 torch.tensor([-0.2, -0.3, 0.0, 0.0, -0.4, -0.5, -0.6]),
             )
         )
-        self.assertEqual(merged.info["merged_request_ids"], ["req-1", "req-2"])
+        self.assertEqual(merged.info["merged_eid_suffixes"], ["req-1", "req-2"])
         self.assertEqual(merged.info["merged_sample_ids"], ["sample-old", "sample-final"])
 
         store.update(record_key, reward=1.0, info=None, sample_ids=["sample-final"])

@@ -24,6 +24,7 @@ from tests.tools import (
     get_moe_model_path,
     get_template_config,
 )
+from trinity.buffer.store import get_record_key
 from trinity.common.config import Config
 from trinity.common.constants import ROLLOUT_WEIGHT_SYNC_GROUP_NAME, SyncMethod
 from trinity.common.experience import Experience
@@ -1928,8 +1929,8 @@ class TestRecording(VLLMTestBase):
     # -- per-recorded-experience invariants -----------------------------------
 
     def _assert_recorded_experience(self, exp: Experience, record_key: str):
-        self.assertEqual(exp.info.get("record_key"), record_key)
-        self.assertIsNotNone(exp.info.get("request_id"))
+        self.assertEqual(get_record_key(exp), record_key)
+        self.assertTrue(exp.eid.suffix)
         self.assertEqual(exp.info.get("rank"), 0)
         self.assertEqual(exp.info.get("model_version"), self.expected_model_version)
         self.assertGreater(len(exp.tokens), exp.prompt_length)  # type: ignore [arg-type]
@@ -1973,7 +1974,7 @@ class TestRecording(VLLMTestBase):
         task = await self._get_record_experiences(rk_gen)
         self.assertEqual(len(task["experiences"]), 1)
         # blob endpoint round-trips a full experience
-        request_id = task["experiences"][0]["info"]["request_id"]
+        request_id = task["experiences"][0]["eid"]["suffix"]
         blob_exp = await self._get_request_experience(rk_gen, request_id)
         self._assert_recorded_experience(blob_exp, rk_gen)
         self._assert_recorded_routed_experts(blob_exp)
@@ -1995,10 +1996,10 @@ class TestRecording(VLLMTestBase):
         await self._flush()
         task = await self._get_record_experiences(rk_chat)
         self.assertEqual(len(task["experiences"]), 2)
-        # n=2 of one engine request -> two completions sharing one request_id,
-        # distinguished by sample_index.
+        # n=2 of one engine request -> two completions distinguished by
+        # sample_index and a sample-qualified EID suffix.
         self.assertEqual(sorted(t["info"]["sample_index"] for t in task["experiences"]), [0, 1])
-        self.assertEqual(len({t["info"]["request_id"] for t in task["experiences"]}), 1)
+        self.assertEqual(len({t["eid"]["suffix"] for t in task["experiences"]}), 2)
         consumed = await self._consume(rk_chat, reward=0.8, run=2, task="t_chat")
         self.assertEqual(len(consumed), 2)
         for exp in consumed:

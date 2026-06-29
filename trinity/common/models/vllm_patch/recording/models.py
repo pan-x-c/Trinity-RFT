@@ -13,7 +13,7 @@ Field mapping (captured ``RequestOutput`` fields -> ``Experience``):
                     id == the OpenAI ``response.id``. Kept for traceability;
                     ``eid.batch``/``task``/``run`` and reward are assigned from
                     record key by ``MemoryStore.update`` at consume time.)
-  API key / record key -> info["record_key"]  (the recording identity; **the
+  API key / record key -> eid.batch/task/run  (the recording identity; **the
                     group key** the MemoryStore batches experiences by, so a
                     whole reward unit's samples/turns are reward-updated and
                     consumed together.)
@@ -30,8 +30,8 @@ Field mapping (captured ``RequestOutput`` fields -> ``Experience``):
   model_version    -> info["model_version"]  (which checkpoint policy served the
                     turn; read in-actor by the recorder's provider)
 
-Plus bookkeeping (request_id / record_key / sample_index / rank / timestamp /
-endpoint / model_version) stashed in ``Experience.info`` so it round-trips
+Plus bookkeeping (sample_index / rank / timestamp / endpoint / model_version)
+stashed in ``Experience.info`` so it round-trips
 with the experience through serialize/deserialize.
 """
 
@@ -39,6 +39,7 @@ from typing import Any, List, Optional
 
 import torch
 
+from trinity.buffer.store import parse_record_key
 from trinity.common.experience import EID, Experience
 from trinity.common.models.mm_utils import combine_output_token_ids
 
@@ -79,6 +80,12 @@ def _extract_chosen_logprobs(
     # One entry per generated token; sampled token is force-included per the
     # note above, so a direct lookup per position is always well-defined.
     return [float(sample_logprobs[i][tid].logprob) for i, tid in enumerate(response_token_ids)]
+
+
+def _sample_suffix(request_id: str, sample_index: int, num_samples: int) -> str:
+    if num_samples <= 1:
+        return request_id
+    return f"{request_id}:{sample_index}"
 
 
 def _extract_routed_experts(
@@ -125,15 +132,14 @@ def build_experience(
     """Build Trinity ``Experience`` objects from a finished ``RequestOutput``.
 
     One experience per completion (``output.outputs``), so ``n > 1`` sampling
-    is captured in full. Each experience shares ``eid.suffix = request_id`` and
-    ``info["record_key"] = record_key`` (the group key); ``info["sample_index"]``
-    distinguishes samples within the group.
+    is captured in full. Each experience carries ``record_key`` in
+    ``eid.batch/task/run`` and shares ``eid.suffix = request_id``;
+    ``info["sample_index"]`` distinguishes samples within the group.
 
     Args:
         output: A ``RequestOutput`` with ``finished == True``.
         record_key: The recording identity (API key / Ray-injected record key);
-            stored in ``info["record_key"]`` and used as the MemoryStore group
-            key.
+            stored in ``eid.batch/task/run`` and used as the MemoryStore group key.
         rank: Data-parallel serving rank.
         timestamp: UTC ISO-8601 string (caller-stamped to keep this pure).
         endpoint: Which OpenAI endpoint served the turn (best-effort).
@@ -158,8 +164,8 @@ def build_experience(
         request had no prompt or no completion with response tokens.
     """
     request_id = output.request_id
-    # eid.suffix = request_id for traceability; batch/task/run and reward are
-    # assigned from record_key by MemoryStore.update at consume.
+    # eid.suffix = request_id for traceability; batch/task/run are assigned
+    # from record_key when recording metadata is requested.
 
     prompt_token_ids = list(output.prompt_token_ids or [])
     if not prompt_token_ids:
@@ -191,10 +197,13 @@ def build_experience(
         info = None
         eid = None
         if include_recording_info:
-            eid = EID(suffix=request_id)
+            suffix = _sample_suffix(request_id, sample_index, len(completions))
+            if record_key is None:
+                eid = EID(suffix=suffix)
+            else:
+                batch, task, run = parse_record_key(record_key)
+                eid = EID(batch=batch, task=task, run=run, suffix=suffix)
             info = {
-                "request_id": request_id,
-                "record_key": record_key,
                 "sample_index": sample_index,
                 "rank": rank,
                 "timestamp": timestamp,

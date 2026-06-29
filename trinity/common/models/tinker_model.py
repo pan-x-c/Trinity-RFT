@@ -8,7 +8,7 @@ import torch
 from tinker import types
 from torch import Tensor
 
-from trinity.buffer.store import MemoryStore
+from trinity.buffer.store import MemoryStore, parse_record_key
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
@@ -26,11 +26,14 @@ def _build_tinker_experiences(
     model_version: Optional[int] = None,
     request_id: str,
 ) -> Sequence[Experience]:
+    batch, task, run = parse_record_key(record_key)
     for index, exp in enumerate(experiences):
+        exp.eid.batch = batch
+        exp.eid.task = task
+        exp.eid.run = run
+        exp.eid.suffix = f"{request_id}:{index}"
         if exp.info is None:
             exp.info = {}
-        exp.info["record_key"] = record_key
-        exp.info["request_id"] = f"{request_id}:{index}"
         exp.info["rank"] = rank
         exp.info["timestamp"] = timestamp
         if model_version is not None:

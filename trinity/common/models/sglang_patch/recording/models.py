@@ -12,9 +12,8 @@ the recorded Experience gets the real prompt tokens without reconstructing them
 from the request.
 
 Field mapping (SGLang ``ret`` -> ``Experience``):
-  meta_info.id        -> eid.suffix  (traceability; batch/task/run and reward
-                      are assigned from record key by ``MemoryStore.update``)
-  record_key          -> info["record_key"]  (the MemoryStore group key)
+  meta_info.id        -> eid.suffix  (traceability)
+  record_key          -> eid.batch/task/run  (the MemoryStore group key)
   sample index        -> info["sample_index"]  (position within the n set)
   prompt_token_ids    -> tokens (prompt) + prompt_length
   output_ids          -> tokens (response)
@@ -29,6 +28,7 @@ from typing import Any, List, Optional, Tuple
 
 import torch
 
+from trinity.buffer.store import parse_record_key
 from trinity.common.experience import EID, Experience
 from trinity.common.models.sglang_model import decode_sglang_routed_experts
 
@@ -41,6 +41,12 @@ def _extract_output_logprobs(meta_info: dict) -> List[float]:
     """
     output_token_logprobs = meta_info.get("output_token_logprobs") or []
     return [float(logprob) for logprob, *_ in output_token_logprobs]
+
+
+def _sample_suffix(request_id: str, sample_index: int, num_samples: int) -> str:
+    if num_samples <= 1:
+        return request_id
+    return f"{request_id}:{sample_index}"
 
 
 def _extract_routed_experts(
@@ -74,8 +80,9 @@ def build_sglang_experience(
     """Build Trinity ``Experience`` objects from a finished SGLang ``ret``.
 
     One experience per output (``n > 1`` / batch is captured in full). Each
-    shares ``eid.suffix = meta_info.id`` and ``info["record_key"] = record_key``;
-    ``info["sample_index"]`` distinguishes samples within the group.
+    carries ``record_key`` in ``eid.batch/task/run`` and shares
+    ``eid.suffix = meta_info.id``; ``info["sample_index"]`` distinguishes
+    samples within the group.
 
     Args:
         ret: A finished SGLang result — a dict, or a list of dicts for ``n > 1``
@@ -145,10 +152,13 @@ def build_sglang_experience(
         if resolved_model_version is None:
             resolved_model_version = model_version
 
-        eid = EID(suffix=request_id)
+        suffix = _sample_suffix(request_id, sample_index, len(ret_list))
+        if record_key is None:
+            eid = EID(suffix=suffix)
+        else:
+            batch, task, run = parse_record_key(record_key)
+            eid = EID(batch=batch, task=task, run=run, suffix=suffix)
         info = {
-            "request_id": request_id,
-            "record_key": record_key,
             "sample_index": sample_index,
             "rank": rank,
             "timestamp": timestamp,

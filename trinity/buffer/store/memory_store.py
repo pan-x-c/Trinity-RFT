@@ -6,10 +6,25 @@ from typing import Callable, Iterable, List
 from trinity.buffer.store.base_store import BaseStore
 from trinity.common.experience import Experience
 
-REQUEST_ID_INFO_KEY = "request_id"
-RECORD_KEY_INFO_KEY = "record_key"
-
 SampleIdGetter = Callable[[Experience], str]
+
+
+def parse_record_key(key: str) -> tuple[str, str, int]:
+    """Parse a complete ``<batch_id>/<task_id>/<run_id>`` store key."""
+    parts = key.split("/")
+    if len(parts) != 3 or any(part == "" for part in parts):
+        raise ValueError(
+            f"Store key must be complete '<batch_id>/<task_id>/<run_id>', got '{key}'."
+        )
+    batch, task, run_text = parts
+    try:
+        run = int(run_text)
+    except ValueError as exc:
+        raise ValueError(
+            f"Store key run_id must be an integer in '<batch_id>/<task_id>/<run_id>', "
+            f"got '{key}'."
+        ) from exc
+    return batch, task, run
 
 
 def default_sample_id_getter(exp: Experience) -> str:
@@ -19,22 +34,15 @@ def default_sample_id_getter(exp: Experience) -> str:
     if sample_id is not None:
         return str(sample_id)
 
-    request_id = info.get("request_id")
     sample_index = info.get("sample_index")
-    if request_id is not None and sample_index is not None:
-        return f"{request_id}:{sample_index}"
-    if request_id is not None:
-        return str(request_id)
+    if sample_index is not None:
+        return f"{exp.eid.suffix}:{sample_index}"
 
     return exp.eid.uid
 
 
 def get_record_key(exp: Experience) -> str:
     """Return the complete store key stamped on an experience."""
-    info = exp.info or {}
-    record_key = info.get(RECORD_KEY_INFO_KEY)
-    if record_key:
-        return record_key
     if exp.eid.batch != "" and exp.eid.task != "":
         return exp.eid.rid
     return exp.eid.suffix
@@ -57,7 +65,7 @@ class MemoryStore(BaseStore):
         return sum(len(exps) for exps in self._records.values())
 
     def add(self, key: str, exps: List[Experience]) -> None:
-        self._validate_complete_key(key)
+        self._parse_complete_key(key)  # validate key format
         if not exps:
             return
 
@@ -73,12 +81,12 @@ class MemoryStore(BaseStore):
             self._sample_to_key[sample_id] = key
 
     def overwrite(self, key: str, exps: List[Experience]) -> None:
-        self._validate_complete_key(key)
+        self._parse_complete_key(key)  # validate key format
         self._drop_key(key)
         self.add(key, exps)
 
     def replace(self, key: str, old_sample_id: str, exp: Experience) -> None:
-        self._validate_complete_key(key)
+        self._parse_complete_key(key)  # validate key format
         records = self._records.get(key)
         if records is None:
             raise KeyError(f"Key '{key}' does not exist.")
@@ -111,12 +119,10 @@ class MemoryStore(BaseStore):
         info: dict | None,
         sample_ids: List[str] | None,
     ) -> None:
-        self._validate_complete_key(key)
+        batch, task, run = self._parse_complete_key(key)  # validate key format
         records = self._records.get(key)
         if records is None:
             raise KeyError(f"Key '{key}' does not exist.")
-
-        batch, task, run = self._parse_complete_key(key)
         target_ids: Iterable[str] = list(records.keys()) if sample_ids is None else sample_ids
         for sample_id in target_ids:
             if sample_id not in records:
@@ -147,25 +153,9 @@ class MemoryStore(BaseStore):
         return list(self._records.keys())
 
     @staticmethod
-    def _validate_complete_key(key: str) -> None:
-        MemoryStore._parse_complete_key(key)
-
-    @staticmethod
     def _parse_complete_key(key: str) -> tuple[str, str, int]:
-        parts = key.split("/")
-        if len(parts) != 3 or any(part == "" for part in parts):
-            raise ValueError(
-                f"Store key must be complete '<batch_id>/<task_id>/<run_id>', got '{key}'."
-            )
-        batch, task, run_text = parts
-        try:
-            run = int(run_text)
-        except ValueError as exc:
-            raise ValueError(
-                f"Store key run_id must be an integer in '<batch_id>/<task_id>/<run_id>', "
-                f"got '{key}'."
-            ) from exc
-        return batch, task, run
+        """Parse a complete store key; also usable as a key-format validator."""
+        return parse_record_key(key)
 
     def _matching_keys(self, key: str) -> list[str]:
         if key == "":

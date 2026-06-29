@@ -10,7 +10,7 @@ import torch
 from packaging.version import parse as parse_version
 from transformers import AutoProcessor
 
-from trinity.buffer.store import RECORD_KEY_INFO_KEY, REQUEST_ID_INFO_KEY
+from trinity.buffer.store import parse_record_key
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
@@ -230,7 +230,7 @@ class vLLMRolloutModel(BaseInferenceModel):
             record_key (Optional[str]): Recording identity for the in-vLLM
                 recorder (the MemoryStore group key). Propagated to
                 ``generate`` via ``record_key_ctx`` so the recorder stamps it
-                into ``info["record_key"]`` without an HTTP hop. None skips
+                into ``Experience.eid`` without an HTTP hop. None skips
                 recording.
             kwargs (dict): A dictionary of sampling parameters.
 
@@ -293,9 +293,11 @@ class vLLMRolloutModel(BaseInferenceModel):
                 # experiences must still be tracked for history extraction and
                 # the buffer/trainer (they are popped by record_key on consume).
                 if self.recorder is not None and record_key is not None:
+                    batch, task, run = parse_record_key(record_key)
                     for exp in returned_seq:
-                        exp.info[RECORD_KEY_INFO_KEY] = record_key
-                        exp.info[REQUEST_ID_INFO_KEY] = exp.eid.suffix
+                        exp.eid.batch = batch
+                        exp.eid.task = task
+                        exp.eid.run = run
                         exp.info["rank"] = self.recorder.rank
                         exp.info["model_version"] = self.model_version
                         self.recorder.store.add(record_key, [exp])

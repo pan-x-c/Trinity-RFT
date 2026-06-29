@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from trinity.buffer import get_buffer_reader, get_buffer_writer
+from trinity.buffer.store import get_record_key
 from trinity.common.config import Config, StorageConfig
 from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 from trinity.common.experience import Experience
@@ -473,7 +474,7 @@ class WorkflowRunner:
                 # by the coordinator at finalize time.
                 updates = [
                     {
-                        "record_key": exp.info.get("record_key") or exp.eid.suffix,
+                        "record_key": get_record_key(exp),
                         "reward": exp.reward,
                         "run": exp.eid.run,
                         "task": str(task.task_id),

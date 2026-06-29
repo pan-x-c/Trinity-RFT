@@ -110,7 +110,7 @@ class Recorder:
         except Exception:
             logging.getLogger(__name__).exception(
                 "recording store write failed for request %s",
-                exp.info.get("request_id"),
+                exp.eid.suffix,
             )
 
     def forget_record(self, record_key: str) -> None:

@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Type, Union
 
+from trinity.buffer.store import parse_record_key
 from trinity.common.config import FormatConfig, GenerationConfig
 from trinity.common.experience import Experience
 from trinity.common.rewards.reward_fn import RewardFn
@@ -333,10 +334,11 @@ class BaseSimpleWorkflow(Workflow):
 
     @staticmethod
     def _stamp_record_key(exps: List[Experience], record_key: str) -> None:
+        batch, task, run = parse_record_key(record_key)
         for exp in exps:
-            if exp.info is None:
-                exp.info = {}
-            exp.info["record_key"] = record_key
+            exp.eid.batch = batch
+            exp.eid.task = task
+            exp.eid.run = run
 
 
 class SimpleWorkflow(BaseSimpleWorkflow):

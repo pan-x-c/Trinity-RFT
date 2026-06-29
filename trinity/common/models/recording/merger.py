@@ -14,7 +14,7 @@ class PrefixExperienceMerger:
 
     Strategy:
       * Experiences are grouped by record key and a best-effort sample stream
-        key (sample_index, explicit sample_id, request_id suffix, then default).
+        key (sample_index, explicit sample_id, then default).
       * Each stream tracks one latest/longest head experience. A new experience
         merges only when the head tokens are a strict prefix of the new tokens.
       * If no head exists yet, the store is scanned once to find the longest
@@ -95,12 +95,6 @@ def _sample_stream_key(exp: Experience) -> tuple[str, Any]:
     sample_id = info.get("sample_id")
     if sample_id is not None:
         return ("sample_id", sample_id)
-
-    request_id = info.get("request_id")
-    if isinstance(request_id, str):
-        _, sep, suffix = request_id.rpartition(":")
-        if sep and suffix.isdigit():
-            return ("request_id_sample_index", int(suffix))
 
     return ("default", 0)
 
@@ -236,15 +230,11 @@ def _response_routed_experts(exp: Experience) -> Optional[torch.Tensor]:
 def _merge_info(prefix_exp: Experience, final_exp: Experience) -> dict:
     info = dict(final_exp.info or {})
 
-    merged_request_ids = list((prefix_exp.info or {}).get("merged_request_ids") or [])
-    prefix_request_id = (prefix_exp.info or {}).get("request_id")
-    if prefix_request_id is not None and prefix_request_id not in merged_request_ids:
-        merged_request_ids.append(prefix_request_id)
-    final_request_id = (final_exp.info or {}).get("request_id")
-    if final_request_id is not None and final_request_id not in merged_request_ids:
-        merged_request_ids.append(final_request_id)
-    if merged_request_ids:
-        info["merged_request_ids"] = merged_request_ids
+    merged_eid_suffixes = list((prefix_exp.info or {}).get("merged_eid_suffixes") or [])
+    for suffix in (prefix_exp.eid.suffix, final_exp.eid.suffix):
+        if suffix not in merged_eid_suffixes:
+            merged_eid_suffixes.append(suffix)
+    info["merged_eid_suffixes"] = merged_eid_suffixes
 
     merged_sample_ids = list((prefix_exp.info or {}).get("merged_sample_ids") or [])
     for sample_id in (default_sample_id_getter(prefix_exp), default_sample_id_getter(final_exp)):
