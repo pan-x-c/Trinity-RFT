@@ -10,9 +10,10 @@ from typing import Dict, List, Optional, Tuple
 from trinity.buffer import get_buffer_reader, get_buffer_writer
 from trinity.common.config import Config, StorageConfig
 from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
+from trinity.common.experience import Experience
 from trinity.common.models.allocator import Allocator
 from trinity.common.models.model import ModelWrapper
-from trinity.common.workflows import Status, Task, Workflow
+from trinity.common.workflows import RepeatableWorkflow, Status, Task, Workflow
 from trinity.utils.log import get_logger
 
 
@@ -86,7 +87,7 @@ class WorkflowRunner:
         return f"{task.batch_id}/{task.task_id}/{run_index}"
 
     def _set_record_key(self, model_wrapper: ModelWrapper, record_key: Optional[str]) -> None:
-        if self._enable_history_recording() and record_key is not None:
+        if record_key is not None:
             model_wrapper.set_api_key(record_key)
 
     def _create_workflow_instance(self, task: Task, record_key: Optional[str] = None) -> Workflow:
@@ -105,20 +106,13 @@ class WorkflowRunner:
             )
         else:
             self.workflow_instance.reset(task)
-        self.workflow_instance.enable_history = self._enable_history_recording()
         return self.workflow_instance
 
-    def _enable_history_recording(self) -> bool:
-        return bool(self.config.explorer.rollout_model.enable_history)
-
     async def _run_workflow(self, workflow_instance: Workflow) -> Status:
-        if workflow_instance.asynchronous:
-            status = await workflow_instance.run_async()
-        else:
-            status = workflow_instance.run()
+        status = await workflow_instance.execute()
         if not isinstance(status, Status):
             raise TypeError(
-                f"{workflow_instance.__class__.__name__}.run must return Status, "
+                f"{workflow_instance.__class__.__name__}.execute must return Status, "
                 f"got {type(status).__name__}."
             )
         return status
@@ -136,7 +130,6 @@ class WorkflowRunner:
             model_wrapper,
             self.auxiliary_model_wrappers,
         )
-        wf.enable_history = self._enable_history_recording()
         return wf, model_wrapper
 
     def _build_status(
@@ -268,6 +261,7 @@ class WorkflowRunner:
         self._set_record_key(model_wrapper, record_key)
         await model_wrapper.clean_workflow_state()
         run_id = run_id_base + run_index
+        workflow.set_execution_context(run_id=run_id)
         self.runner_state["workflow_id"] = self._build_record_key(task, run_id)
         self.runner_state["terminate_time"] = None
         self.runner_state["begin_time"] = st
@@ -312,10 +306,10 @@ class WorkflowRunner:
         collect_partial_runs: bool = True,
     ) -> Status:
         """Init workflow from the task and run it."""
-        if task.workflow.can_repeat:
+        if issubclass(task.workflow, RepeatableWorkflow):
             record_key = self._build_record_key(task, run_id_base)
             workflow_instance = self._create_workflow_instance(task, record_key=record_key)
-            workflow_instance.set_repeat_times(repeat_times, run_id_base)
+            workflow_instance.set_execution_context(repeat_times, run_id_base)
             st = time.time()
             self._set_record_key(self.model_wrapper, record_key)
             await self.model_wrapper.clean_workflow_state()
@@ -506,7 +500,8 @@ class DebugWorkflowRunner(WorkflowRunner):
         experiences = []
         if self.config.explorer.rollout_model.enable_history:
             try:
-                experiences = await self.model_wrapper.drain_experience_records_async("debug")
+                payload = await self.model_wrapper.drain_experience_records_bytes_async("debug")
+                experiences = Experience.deserialize_many(payload) if payload else []
             except Exception:
                 experiences = []
         if not status.ok and not experiences:

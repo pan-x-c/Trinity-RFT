@@ -16,14 +16,12 @@ from trinity.common.constants import StorageType, SyncStyle
 from trinity.common.experience import EID, Experience
 from trinity.common.models.allocator import Allocator
 from trinity.common.models.model import InferenceModel, ModelWrapper
-from trinity.common.workflows import WORKFLOWS, Task, Workflow
+from trinity.common.workflows import WORKFLOWS, RepeatableWorkflow, Task, Workflow
 from trinity.explorer.scheduler import Scheduler
 
 
 @WORKFLOWS.register_module("dummy_workflow")
-class DummyWorkflow(Workflow):
-    can_repeat: bool = True
-
+class DummyWorkflow(RepeatableWorkflow):
     def __init__(self, *, task, model, auxiliary_models):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
         self.step_num = task.workflow_args.get("step_num", 1)
@@ -187,8 +185,7 @@ class DummyAsyncPartialSnapshotWorkflow(Workflow):
 
 
 @WORKFLOWS.register_module("dummy_async_workflow")
-class DummyAsyncWorkflow(Workflow):
-    can_repeat: bool = True
+class DummyAsyncWorkflow(RepeatableWorkflow):
     is_async: bool = True
 
     def __init__(self, *, task, model, auxiliary_models):
@@ -222,8 +219,7 @@ class DummyAsyncWorkflow(Workflow):
 
 
 @WORKFLOWS.register_module("dummy_workflow_with_state")
-class DummyWorkflowWithState(Workflow):
-    can_repeat: bool = True
+class DummyWorkflowWithState(RepeatableWorkflow):
     is_async: bool = True
 
     def __init__(self, *, task, model: ModelWrapper, auxiliary_models):
@@ -258,7 +254,6 @@ class DummyWorkflowWithState(Workflow):
 
 @WORKFLOWS.register_module("dummy_concurrent_workflow")
 class DummyConcurrentWorkflow(Workflow):
-    can_repeat: bool = False
     is_async: bool = True
 
     def __init__(self, *, task, model, auxiliary_models):

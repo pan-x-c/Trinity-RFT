@@ -17,10 +17,10 @@ from typing import List, Optional
 from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
 from trinity.common.rewards.qwen25_eval import verify_math_answer
-from trinity.common.workflows.workflow import Task, Workflow
+from trinity.common.workflows.workflow import RepeatableWorkflow, Task
 
 
-class OnPolicyDistillWorkflow(Workflow):
+class OnPolicyDistillWorkflow(RepeatableWorkflow):
     """On-policy distillation workflow.
 
     Computes and stores teacher_logprobs in experience.info.
@@ -34,7 +34,6 @@ class OnPolicyDistillWorkflow(Workflow):
 
     is_async: bool = True
     can_reset: bool = True
-    can_repeat: bool = True
 
     def __init__(
         self,

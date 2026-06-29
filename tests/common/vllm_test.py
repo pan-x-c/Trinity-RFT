@@ -1884,7 +1884,8 @@ class TestRecording(VLLMTestBase):
 
     async def _consume(self, record_key: str, reward: float) -> list[Experience]:
         await self.model_wrapper.update_experience_reward_async(record_key, reward=reward)
-        return await self.model_wrapper.drain_experience_records_async(record_key)
+        payload = await self.model_wrapper.drain_experience_records_bytes_async(record_key)
+        return Experience.deserialize_many(payload)
 
     async def _openai_client(self, record_key: str) -> openai.AsyncOpenAI:
         # record_key travels as the Bearer api_key -> RecordingIdentityMiddleware.
@@ -2056,7 +2057,7 @@ class TestRecording(VLLMTestBase):
                 self.assertIn(tc.function.name, consumed[0].response_text)
 
         # ===== global: every group consumed -> store is drained =====
-        self.assertEqual(await self.model_wrapper.delete_experience_records_async("0"), 0)
+        await self.model_wrapper.delete_experience_records_async("0")
 
 
 class TestSuperLongGeneration(VLLMTestBase):

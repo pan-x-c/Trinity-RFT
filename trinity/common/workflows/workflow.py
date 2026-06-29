@@ -33,6 +33,9 @@ class Status:
         return self.completed_runs == self.total_runs
 
 
+Metrics = Dict[str, float]
+
+
 @dataclass
 class Task(dict):
     """A Task class that defines a task and its associated reward function / workflow."""
@@ -94,10 +97,16 @@ class Task(dict):
 class Workflow:
     """The base workflow class.
 
-    A workflow is a runnable object that executes rollout logic and returns a
-    :class:`Status`. Training experiences are captured by the rollout model's
-    built-in recording path during generation; workflows should update rewards
-    on those recorded experiences before returning.
+    A workflow is a runnable object that implements rollout logic in ``run`` or
+    ``run_async``. User code normally returns metrics for the completed run
+    and lets :meth:`execute` assemble the internal :class:`Status` consumed by
+    the runner and scheduler.
+
+    Training experiences are captured by the rollout model's built-in recording
+    path during generation; workflows should update rewards on those recorded
+    experiences before returning. Advanced workflows may override
+    :meth:`execute` directly when they need full control over partial success,
+    run ids, or error messages.
 
     Attributes:
         auxiliary_model_wrappers: List of ModelWrapper instances for auxiliary models.
@@ -105,16 +114,7 @@ class Workflow:
     """
 
     can_reset: bool = False  # whether the workflow can be reset with a new task. If true, `reset()` must be implemented.
-    can_repeat: bool = False  # whether the workflow can be repeated multiple times. If true, `set_repeat_times()` must be implemented.
     is_async: bool = False  # whether the workflow runs in async mode. If true, `run_async()` must be implemented, else `run()` must be implemented.
-
-    # Mirrors ``config.explorer.rollout_model.enable_history``. When it is set,
-    # the rollout model records generated experiences in its model-side store
-    # under ``record_key`` groups. Workflows use that rollout-model history to
-    # update rewards before returning Status; the coordinator later drains a
-    # whole step by prefix and sends the recorded experiences to the
-    # ExperiencePipeline.
-    enable_history: bool = False
 
     def __init__(
         self,
@@ -134,7 +134,7 @@ class Workflow:
                 self.auxiliary_models = [m.get_openai_async_client() for m in auxiliary_models]
             else:
                 self.auxiliary_models = [m.get_openai_client() for m in auxiliary_models]
-        self.run_id_base = 0
+        self.run_id = 0
         self.logger = get_logger(__name__)
 
     @property
@@ -143,43 +143,42 @@ class Workflow:
         return self.__class__.can_reset
 
     @property
-    def repeatable(self):
-        """Deprecated, use cls.can_repeat instead.
-        A workflow is repeatable if it can be run multiple times within the run() or run_async() method.
-        """
-        return self.__class__.can_repeat
-
-    @property
     def asynchronous(self):
         """Deprecated, use cls.is_async instead.
         Whether the workflow runs in async mode."""
         return self.__class__.is_async
 
+    def set_execution_context(self, run_id: int) -> None:
+        """Set the execution context used by ``execute`` and recording helpers."""
+        self.run_id = run_id
+
     def reset(self, task: Task):
         """Reset the workflow."""
         raise NotImplementedError
 
-    def set_repeat_times(self, repeat_times: int, run_id_base: int) -> None:
-        """
-        Set the number of times to repeat the workflow.
-        Args:
-            repeat_times (int): number of times to repeat the workflow (if repeatable).
-            run_id_base (int): base run_id for recording keys and returned statuses.
-        """
-        raise NotImplementedError(
-            "set_repeat_times() must be implemented for a repeatable workflow."
+    def run(self) -> Metrics:
+        """Run workflow and return metrics for the completed run."""
+        raise NotImplementedError
+
+    async def run_async(self) -> Metrics:
+        """Run workflow asynchronously and return metrics for the completed run."""
+        raise NotImplementedError
+
+    async def execute(self) -> Status:
+        """Execute the workflow and normalize the user return value to Status."""
+        result = await self.run_async() if self.asynchronous else self.run()
+        return self._to_status(result)
+
+    def _to_status(self, result: Metrics) -> Status:
+        return Status(
+            completed_runs=1,
+            total_runs=1,
+            metrics=[result],
+            successful_run_ids=[self.run_id],
         )
 
-    def run(self) -> Status:
-        """Run workflow and return its execution status."""
-        raise NotImplementedError
-
-    async def run_async(self) -> Status:
-        """Run workflow in async and return its execution status."""
-        raise NotImplementedError
-
     def _build_record_key(self, run_id: Optional[int] = None) -> str:
-        run = self.run_id_base if run_id is None else run_id
+        run = self.run_id if run_id is None else run_id
         return f"{self.task.batch_id}/{self.task.task_id}/{run}"
 
     async def update_reward(
@@ -190,14 +189,63 @@ class Workflow:
         run_id: Optional[int] = None,
     ) -> None:
         """Update recorded experiences for one run with reward and optional info."""
-        if not self.enable_history:
-            return
         await self.model.update_experience_reward_async(
             record_key=self._build_record_key(run_id),
             reward=reward,
             info=info,
             sample_ids=sample_ids,
         )
+
+
+class RepeatableWorkflow(Workflow):
+    """Workflow base class for implementations that run repeats internally.
+
+    ``run`` or ``run_async`` should return one metrics dict per successful
+    repeat. Workflows that need custom partial-success semantics can override
+    ``execute`` and return :class:`Status` directly.
+    """
+
+    def __init__(
+        self,
+        *,
+        task: Task,
+        model: ModelWrapper,
+        auxiliary_models: Optional[List[ModelWrapper]] = None,
+    ):
+        super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
+        self.repeat_times = 1
+        self.run_id_base = 0
+
+    def set_repeat_times(self, repeat_times: int, run_id_base: int) -> None:
+        """Set repeat count and base run id for one repeatable execution."""
+        self.repeat_times = repeat_times
+        self.run_id_base = run_id_base
+        self.run_id = run_id_base
+
+    def set_execution_context(self, repeat_times: int, run_id_base: int) -> None:
+        """Set the execution context used by ``execute`` and recording helpers."""
+        self.set_repeat_times(repeat_times, run_id_base)
+
+    def run(self) -> List[Metrics]:
+        """Run workflow and return metrics for completed repeats."""
+        raise NotImplementedError
+
+    async def run_async(self) -> List[Metrics]:
+        """Run workflow asynchronously and return metrics for completed repeats."""
+        raise NotImplementedError
+
+    def _to_status(self, result: List[Metrics]) -> Status:
+        completed_runs = len(result)
+        return Status(
+            completed_runs=completed_runs,
+            total_runs=self.repeat_times,
+            metrics=result,
+            successful_run_ids=list(range(self.run_id_base, self.run_id_base + completed_runs)),
+        )
+
+    def _build_record_key(self, run_id: Optional[int] = None) -> str:
+        run = self.run_id_base if run_id is None else run_id
+        return f"{self.task.batch_id}/{self.task.task_id}/{run}"
 
 
 class MultiTurnWorkflow(Workflow):
@@ -217,10 +265,6 @@ class MultiTurnWorkflow(Workflow):
             model=model,
             auxiliary_models=auxiliary_models,
         )
-
-    def set_repeat_times(self, repeat_times, run_id_base):
-        self.repeat_times = repeat_times
-        self.run_id_base = run_id_base
 
     def _build_experience_from_converted(
         self, converted_experience, reward, info={}, truncate_status=None
@@ -298,7 +342,11 @@ class MultiTurnWorkflow(Workflow):
         )
 
 
-class BaseSimpleWorkflow(Workflow):
+class RepeatableMultiTurnWorkflow(MultiTurnWorkflow, RepeatableWorkflow):
+    """Multi-turn workflow variant that runs repeats inside one execute call."""
+
+
+class BaseSimpleWorkflow(RepeatableWorkflow):
     def __init__(
         self,
         *,
@@ -384,17 +432,13 @@ class SimpleWorkflow(BaseSimpleWorkflow):
     """A workflow for simple single-round task."""
 
     can_reset: bool = True
-    can_repeat: bool = True
 
     def run(self) -> List[Experience]:
         # TODO: Optimize the generate function
         messages = self.format_messages()
 
         self.logger.debug("start chat")
-        if self.enable_history:
-            return self._run_recorded(messages)
-        responses = self.model.chat(messages, **self.rollout_args)
-        return self._attach_rewards(responses, base=self.run_id_base)
+        return self._run_recorded(messages)
 
     def _run_recorded(self, messages) -> List[Experience]:
         # One chat call per sample (n=1) so each gets a distinct record_key
@@ -420,10 +464,7 @@ class AsyncSimpleWorkflow(BaseSimpleWorkflow):
         messages = self.format_messages()
 
         self.logger.info("start chat")
-        if self.enable_history:
-            return await self._run_recorded_async(messages)
-        responses = await self.model.chat_async(messages, **self.rollout_args)
-        return self._attach_rewards(responses, base=self.run_id_base)
+        return await self._run_recorded_async(messages)
 
     async def _run_recorded_async(self, messages) -> List[Experience]:
         rollout_args = dict(self.rollout_args)

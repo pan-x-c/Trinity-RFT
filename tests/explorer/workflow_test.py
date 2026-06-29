@@ -29,10 +29,14 @@ from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 from trinity.common.experience import EID, Experience
 from trinity.common.models.allocator import Allocator
 from trinity.common.models.model import ModelWrapper
-from trinity.common.workflows import WORKFLOWS, Workflow
+from trinity.common.workflows import WORKFLOWS, RepeatableWorkflow, Workflow
 from trinity.common.workflows.customized_math_workflows import MathBoxedWorkflow
 from trinity.common.workflows.eval_workflow import MathEvalWorkflow
-from trinity.common.workflows.workflow import MathWorkflow, MultiTurnWorkflow, Task
+from trinity.common.workflows.workflow import (
+    MathWorkflow,
+    RepeatableMultiTurnWorkflow,
+    Task,
+)
 from trinity.explorer.workflow_runner import WorkflowRunner
 
 
@@ -63,9 +67,8 @@ class MockResponse:
     action_mask: Optional[Tensor] = None
 
 
-class DummyWorkflow(Workflow):
+class DummyWorkflow(RepeatableWorkflow):
     can_reset: bool = True
-    can_repeat: bool = True
 
     def __init__(self, model, task: Task, auxiliary_models=None):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
@@ -107,9 +110,8 @@ class DummyWorkflow(Workflow):
             raise ValueError("Invalid output format")
 
 
-class DummyAsyncWorkflow(Workflow):
+class DummyAsyncWorkflow(RepeatableWorkflow):
     can_reset: bool = True
-    can_repeat: bool = True
     is_async: bool = True
 
     def __init__(self, model, task: Task, auxiliary_models=None):
@@ -153,9 +155,7 @@ class DummyAsyncWorkflow(Workflow):
             raise ValueError("Invalid output format")
 
 
-class DummyMultiTurnWorkflow(MultiTurnWorkflow):
-    can_repeat: bool = True
-
+class DummyMultiTurnWorkflow(RepeatableMultiTurnWorkflow):
     def __init__(self, model, task: Task, auxiliary_models=None):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
         self.contents = task.raw_task["contents"]  # type: ignore
@@ -171,9 +171,8 @@ class DummyMultiTurnWorkflow(MultiTurnWorkflow):
         return experience_list
 
 
-class DummyAsyncMultiTurnWorkflow(MultiTurnWorkflow):
+class DummyAsyncMultiTurnWorkflow(RepeatableMultiTurnWorkflow):
     is_async: bool = True
-    can_repeat: bool = True
 
     def __init__(self, model, task: Task, auxiliary_models=None):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
