@@ -1,4 +1,4 @@
-"""HTTP query/update endpoints over recorded experiences."""
+"""HTTP endpoints over recorded generation experiences."""
 
 from typing import List
 
@@ -19,13 +19,15 @@ RECORDER_STATE_ATTR = TRINITY_RECORDER_ATTR
 query_router = APIRouter(prefix="/records", tags=["trinity-recording"])
 
 
-class _RecordUpdate(BaseModel):
+class _RewardUpdateRequest(BaseModel):
     record_key: str
     reward: float
+    info: dict | None = None
+    sample_ids: List[str] | None = None
 
 
-class _UpdateRecordRequest(BaseModel):
-    updates: List[_RecordUpdate]
+class _PrefixRequest(BaseModel):
+    prefix: str
 
 
 def _store(request: Request) -> RecordStore:
@@ -107,25 +109,51 @@ async def delete_request_experience(record_key: str, request_id: str, request: R
     return {"record_key": record_key, "request_id": request_id, "deleted": True}
 
 
-@query_router.post("/update_record")
-async def update_record(req: _UpdateRecordRequest, request: Request) -> Response:
+@query_router.post("/update_reward")
+async def update_reward(req: _RewardUpdateRequest, request: Request) -> dict:
     store = _store(request)
     recorder = _recorder(request)
     await recorder.flush()
+    if not store.get(req.record_key):
+        return {"record_key": req.record_key, "updated": 0}
+    store.update(
+        key=req.record_key,
+        reward=req.reward,
+        info=req.info,
+        sample_ids=req.sample_ids,
+    )
+    return {
+        "record_key": req.record_key,
+        "updated": (
+            len(req.sample_ids) if req.sample_ids is not None else len(store.get(req.record_key))
+        ),
+    }
 
-    exps: List[Experience] = []
-    for update in req.updates:
-        if not store.get(update.record_key):
-            continue
-        store.update(
-            key=update.record_key,
-            reward=update.reward,
-            info=None,
-            sample_ids=None,
-        )
-        exps.extend(store.remove(update.record_key))
-        recorder.forget_record(update.record_key)
+
+@query_router.post("/drain")
+async def drain_records(req: _PrefixRequest, request: Request) -> Response:
+    store = _store(request)
+    recorder = _recorder(request)
+    await recorder.flush()
+    matched_keys = [
+        key for key in store.keys() if key == req.prefix or key.startswith(f"{req.prefix}/")
+    ]
+    exps = store.remove(req.prefix)
+    for key in matched_keys:
+        recorder.forget_record(key)
     return Response(
         content=Experience.serialize_many(exps),
         media_type="application/octet-stream",
     )
+
+
+@query_router.delete("")
+async def delete_records(req: _PrefixRequest, request: Request) -> dict:
+    store = _store(request)
+    matched_keys = [
+        key for key in store.keys() if key == req.prefix or key.startswith(f"{req.prefix}/")
+    ]
+    deleted = len(store.remove(req.prefix))
+    for key in matched_keys:
+        _forget_record(request, key)
+    return {"prefix": req.prefix, "deleted": deleted}

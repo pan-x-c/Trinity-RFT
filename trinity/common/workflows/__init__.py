@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Workflow module"""
-from trinity.common.workflows.workflow import Task, Workflow
+from trinity.common.workflows.workflow import Status, Task, Workflow
 from trinity.utils.registry import Registry
 
 WORKFLOWS: Registry = Registry(
@@ -57,6 +57,7 @@ WORKFLOWS: Registry = Registry(
 
 __all__ = [
     "Task",
+    "Status",
     "Workflow",
     "WORKFLOWS",
 ]

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Type, Union
 
 from trinity.buffer.store import parse_record_key
 from trinity.common.config import FormatConfig, GenerationConfig
@@ -16,6 +16,21 @@ if TYPE_CHECKING:
     import openai
 
     from trinity.common.models.model import ModelWrapper
+
+
+@dataclass(frozen=True)
+class Status:
+    """Status of workflow, task, and batch execution."""
+
+    completed_runs: int
+    total_runs: int
+    metrics: List[Dict[str, float]]
+    successful_run_ids: List[int] = field(default_factory=list)
+    message: Optional[str] = None
+
+    @property
+    def ok(self) -> bool:
+        return self.completed_runs == self.total_runs
 
 
 @dataclass
@@ -79,7 +94,10 @@ class Task(dict):
 class Workflow:
     """The base workflow class.
 
-    A workflow is a runnable object which generates a list of experiences.
+    A workflow is a runnable object that executes rollout logic and returns a
+    :class:`Status`. Training experiences are captured by the rollout model's
+    built-in recording path during generation; workflows should update rewards
+    on those recorded experiences before returning.
 
     Attributes:
         auxiliary_model_wrappers: List of ModelWrapper instances for auxiliary models.
@@ -90,12 +108,12 @@ class Workflow:
     can_repeat: bool = False  # whether the workflow can be repeated multiple times. If true, `set_repeat_times()` must be implemented.
     is_async: bool = False  # whether the workflow runs in async mode. If true, `run_async()` must be implemented, else `run()` must be implemented.
 
-    # When True, the workflow cooperates with the in-vLLM recorder: each chat
-    # call carries a per-sample ``record_key`` (the MemoryStore group key) so
-    # the runner can later report ``{record_key: reward}`` and the coordinator
-    # can join reward inside the store. Set by the WorkflowRunner from
-    # ``config.explorer.rollout_model.enable_history``. See ``SimpleWorkflow``
-    # for the per-sample (n=1) loop this triggers.
+    # Mirrors ``config.explorer.rollout_model.enable_history``. When it is set,
+    # the rollout model records generated experiences in its model-side store
+    # under ``record_key`` groups. Workflows use that rollout-model history to
+    # update rewards before returning Status; the coordinator later drains a
+    # whole step by prefix and sends the recorded experiences to the
+    # ExperiencePipeline.
     enable_history: bool = False
 
     def __init__(
@@ -146,19 +164,40 @@ class Workflow:
         Set the number of times to repeat the workflow.
         Args:
             repeat_times (int): number of times to repeat the workflow (if repeatable).
-            run_id_base (int): base run_id for setting run_id in experiences.
+            run_id_base (int): base run_id for recording keys and returned statuses.
         """
         raise NotImplementedError(
             "set_repeat_times() must be implemented for a repeatable workflow."
         )
 
-    def run(self) -> List[Experience]:
-        """Run workflow and return a list of experiences."""
+    def run(self) -> Status:
+        """Run workflow and return its execution status."""
         raise NotImplementedError
 
-    async def run_async(self) -> List[Experience]:
-        """Run workflow in async and return a list of experiences."""
+    async def run_async(self) -> Status:
+        """Run workflow in async and return its execution status."""
         raise NotImplementedError
+
+    def _build_record_key(self, run_id: Optional[int] = None) -> str:
+        run = self.run_id_base if run_id is None else run_id
+        return f"{self.task.batch_id}/{self.task.task_id}/{run}"
+
+    async def update_reward(
+        self,
+        reward: float,
+        info: Optional[dict] = None,
+        sample_ids: Optional[List[str]] = None,
+        run_id: Optional[int] = None,
+    ) -> None:
+        """Update recorded experiences for one run with reward and optional info."""
+        if not self.enable_history:
+            return
+        await self.model.update_experience_reward_async(
+            record_key=self._build_record_key(run_id),
+            reward=reward,
+            info=info,
+            sample_ids=sample_ids,
+        )
 
 
 class MultiTurnWorkflow(Workflow):

@@ -161,6 +161,49 @@ class InferenceModel(ABC):
             recorder.forget_record(record_key)
         return exps
 
+    async def update_experience_reward(
+        self,
+        record_key: str,
+        reward: float,
+        info: Optional[dict] = None,
+        sample_ids: Optional[List[str]] = None,
+    ) -> None:
+        """Update reward and optional info on recorded experiences."""
+        recorder = getattr(self, "recorder", None)
+        if recorder is None:
+            raise ValueError("Recording is not enabled for this model.")
+        await recorder.flush()
+        if not recorder.store.get(record_key):
+            return
+        recorder.store.update(
+            key=record_key,
+            reward=reward,
+            info=info,
+            sample_ids=sample_ids,
+        )
+
+    async def drain_experience_records(self, prefix: str) -> List[Experience]:
+        """Remove and return recorded experiences matching a key or prefix."""
+        recorder = getattr(self, "recorder", None)
+        if recorder is None:
+            raise ValueError("Recording is not enabled for this model.")
+        await recorder.flush()
+        matched_keys = [
+            key for key in recorder.store.keys() if key == prefix or key.startswith(f"{prefix}/")
+        ]
+        exps = recorder.store.remove(prefix)
+        for key in matched_keys:
+            recorder.forget_record(key)
+        return exps
+
+    async def drain_experience_records_bytes(self, prefix: str) -> bytes:
+        """Remove matching recorded experiences and return serialized bytes."""
+        return Experience.serialize_many(await self.drain_experience_records(prefix))
+
+    async def delete_experience_records(self, prefix: str) -> int:
+        """Remove recorded experiences matching a key or prefix."""
+        return len(await self.drain_experience_records(prefix))
+
     def get_model_config(self) -> InferenceModelConfig:
         """Get the model configuration."""
         return self.config
@@ -782,6 +825,49 @@ class ModelWrapper:
         if clear_history:
             self.recording_history_offsets[record_key] = len(exps)
         return new_exps
+
+    async def update_experience_reward_async(
+        self,
+        record_key: str,
+        reward: float,
+        info: Optional[dict] = None,
+        sample_ids: Optional[List[str]] = None,
+    ) -> None:
+        """Update reward and optional info on recorded experiences."""
+        if not self.enable_history:
+            raise ValueError("History recording is not enabled.")
+        if self.model is None:
+            raise ValueError("Recording update requires an inference model actor.")
+        await self.model.update_experience_reward.remote(
+            record_key=record_key,
+            reward=reward,
+            info=info,
+            sample_ids=sample_ids,
+        )
+
+    async def drain_experience_records_async(self, prefix: str) -> List[Experience]:
+        """Remove and return recorded experiences matching a key or prefix."""
+        if not self.enable_history:
+            raise ValueError("History recording is not enabled.")
+        if self.model is None:
+            raise ValueError("Recording drain requires an inference model actor.")
+        return await self.model.drain_experience_records.remote(prefix=prefix)
+
+    async def drain_experience_records_bytes_async(self, prefix: str) -> bytes:
+        """Remove matching recorded experiences and return serialized bytes."""
+        if not self.enable_history:
+            raise ValueError("History recording is not enabled.")
+        if self.model is None:
+            raise ValueError("Recording drain requires an inference model actor.")
+        return await self.model.drain_experience_records_bytes.remote(prefix=prefix)
+
+    async def delete_experience_records_async(self, prefix: str) -> int:
+        """Remove recorded experiences matching a key or prefix."""
+        if not self.enable_history:
+            raise ValueError("History recording is not enabled.")
+        if self.model is None:
+            raise ValueError("Recording delete requires an inference model actor.")
+        return await self.model.delete_experience_records.remote(prefix=prefix)
 
     # Workflow state management methods
     async def set_workflow_state(self, state: Dict) -> None:

@@ -3,49 +3,26 @@
 
 import asyncio
 import os
-import pickle
 import time
 import traceback
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from trinity.buffer import get_buffer_reader, get_buffer_writer
-from trinity.buffer.store import get_record_key
 from trinity.common.config import Config, StorageConfig
 from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
-from trinity.common.experience import Experience
 from trinity.common.models.allocator import Allocator
 from trinity.common.models.model import ModelWrapper
-from trinity.common.workflows import Task, Workflow
+from trinity.common.workflows import Status, Task, Workflow
 from trinity.utils.log import get_logger
-from trinity.utils.metrics import aggregate_run_level_metrics
-
-
-@dataclass(frozen=True)
-class Status:
-    """Status of the task running result."""
-
-    completed_runs: int
-    total_runs: int
-    metrics: List[Dict[str, float]]
-    # A list of metric dictionaries, where each dictionary is from a single run.
-    message: Optional[str] = None
-
-    @property
-    def ok(self) -> bool:
-        return self.completed_runs == self.total_runs
-
-
-@dataclass(frozen=True)
-class RunnerExecutionResult:
-    """Execution result for one runner task."""
-
-    status: Status
-    experiences: List[Experience]
 
 
 class WorkflowRunner:
-    """A Ray remote actor to run the workflow and generate experiences."""
+    """A Ray remote actor that runs workflows and returns execution statuses.
+
+    Experience payloads are not returned through the runner. The rollout model
+    owns experience capture through its recording/history path, and the rollout
+    coordinator drains those model-side stores at step finalization.
+    """
 
     def __init__(
         self,
@@ -134,12 +111,17 @@ class WorkflowRunner:
     def _enable_history_recording(self) -> bool:
         return bool(self.config.explorer.rollout_model.enable_history)
 
-    async def _run_workflow(self, workflow_instance: Workflow) -> List[Experience]:
+    async def _run_workflow(self, workflow_instance: Workflow) -> Status:
         if workflow_instance.asynchronous:
-            exps = await workflow_instance.run_async()
+            status = await workflow_instance.run_async()
         else:
-            exps = workflow_instance.run()
-        return exps
+            status = workflow_instance.run()
+        if not isinstance(status, Status):
+            raise TypeError(
+                f"{workflow_instance.__class__.__name__}.run must return Status, "
+                f"got {type(status).__name__}."
+            )
+        return status
 
     def _create_isolated_workflow_instance(
         self, task: Task, record_key: Optional[str] = None
@@ -157,14 +139,14 @@ class WorkflowRunner:
         wf.enable_history = self._enable_history_recording()
         return wf, model_wrapper
 
-    def _build_execution_result(
+    def _build_status(
         self,
         total_runs: int,
-        completed_runs: int,
         metrics: List[Dict[str, float]],
-        experiences: List[Experience],
+        successful_run_ids: List[int],
         first_error: Optional[str] = None,
-    ) -> RunnerExecutionResult:
+    ) -> Status:
+        completed_runs = len(successful_run_ids)
         if first_error is None:
             message = None
         elif completed_runs > 0:
@@ -175,39 +157,35 @@ class WorkflowRunner:
         else:
             message = first_error
 
-        return RunnerExecutionResult(
-            status=Status(
-                completed_runs=completed_runs,
-                total_runs=total_runs,
-                metrics=list(metrics),
-                message=message,
-            ),
-            experiences=experiences,
+        return Status(
+            completed_runs=completed_runs,
+            total_runs=total_runs,
+            metrics=list(metrics),
+            successful_run_ids=list(successful_run_ids),
+            message=message,
         )
 
     def _aggregate_run_results(
         self,
         total_runs: int,
-        results: List[Tuple[bool, List[Experience], Optional[Dict[str, float]], Optional[str]]],
-    ) -> RunnerExecutionResult:
-        exps = []
+        results: List[Status],
+    ) -> Status:
         run_metrics = []
+        successful_run_ids = []
         first_error = None
 
-        for ok, new_exps, run_metric, error in results:
-            if ok:
-                exps.extend(new_exps)
-                if run_metric is not None:
-                    run_metrics.append(run_metric)
+        for status in results:
+            if status.ok:
+                run_metrics.extend(status.metrics)
+                successful_run_ids.extend(status.successful_run_ids)
                 continue
             if first_error is None:
-                first_error = error
+                first_error = status.message
 
-        return self._build_execution_result(
+        return self._build_status(
             total_runs=total_runs,
-            completed_runs=len(run_metrics),
             metrics=run_metrics,
-            experiences=exps,
+            successful_run_ids=successful_run_ids,
             first_error=first_error,
         )
 
@@ -218,10 +196,8 @@ class WorkflowRunner:
         run_id_base: int,
         collect_partial_runs: bool = True,
         use_threads: bool = False,
-    ) -> RunnerExecutionResult:
-        async def run_single(
-            i: int,
-        ) -> Tuple[bool, List[Experience], Optional[Dict[str, float]], Optional[str]]:
+    ) -> Status:
+        async def run_single(i: int) -> Status:
             run_index = run_id_base + i
             record_key = self._build_record_key(task, run_index)
             workflow, model_wrapper = self._create_isolated_workflow_instance(task, record_key)
@@ -267,8 +243,7 @@ class WorkflowRunner:
                 future_to_run_index.pop(future)
                 result = future.result()
                 results.append(result)
-                ok, _, _, _ = result
-                if not ok:
+                if not result.ok:
                     should_stop = True
             if should_stop:
                 for future in pending:
@@ -287,32 +262,47 @@ class WorkflowRunner:
         run_id_base: int,
         model_wrapper: Optional[ModelWrapper] = None,
         record_key: Optional[str] = None,
-    ) -> Tuple[bool, List[Experience], Optional[Dict[str, float]], Optional[str]]:
+    ) -> Status:
         st = time.time()
         model_wrapper = model_wrapper or self.model_wrapper
         self._set_record_key(model_wrapper, record_key)
         await model_wrapper.clean_workflow_state()
-        self.runner_state["workflow_id"] = self._build_record_key(task, run_id_base + run_index)
+        run_id = run_id_base + run_index
+        self.runner_state["workflow_id"] = self._build_record_key(task, run_id)
         self.runner_state["terminate_time"] = None
         self.runner_state["begin_time"] = st
         try:
-            new_exps = await self._run_workflow(workflow)
+            status = await self._run_workflow(workflow)
             et = time.time()
             self.runner_state["terminate_time"] = et
-            run_metric = aggregate_run_level_metrics(
-                [exp.metrics for exp in new_exps if exp.metrics]
+            metrics = [dict(metric) for metric in status.metrics]
+            if not metrics:
+                metrics = [{}]
+            for metric in metrics:
+                metric["time/run_execution"] = et - st
+            successful_run_ids = status.successful_run_ids or (
+                [run_id] if status.completed_runs > 0 else []
             )
-            run_metric["time/run_execution"] = et - st
-            for exp in new_exps:
-                exp.eid.run = run_id_base + run_index
-            return True, new_exps, run_metric, None
+            status = Status(
+                completed_runs=len(successful_run_ids),
+                total_runs=status.total_runs,
+                metrics=metrics,
+                successful_run_ids=successful_run_ids,
+                message=status.message,
+            )
+            return status
         except Exception as exc:
             self.runner_state["terminate_time"] = time.time()
             error_trace_back = traceback.format_exc()
             self.logger.error(
                 "WorkflowRunner single run error: " f"{exc}\nTraceback:\n{error_trace_back}"
             )
-            return False, [], None, error_trace_back.rstrip()
+            return Status(
+                completed_runs=0,
+                total_runs=1,
+                metrics=[],
+                message=error_trace_back.rstrip(),
+            )
 
     async def _run_task(
         self,
@@ -320,7 +310,7 @@ class WorkflowRunner:
         repeat_times: int,
         run_id_base: int,
         collect_partial_runs: bool = True,
-    ) -> RunnerExecutionResult:
+    ) -> Status:
         """Init workflow from the task and run it."""
         if task.workflow.can_repeat:
             record_key = self._build_record_key(task, run_id_base)
@@ -332,18 +322,20 @@ class WorkflowRunner:
             self.runner_state["workflow_id"] = record_key
             self.runner_state["terminate_time"] = None
             self.runner_state["begin_time"] = st
-            exps = await self._run_workflow(workflow_instance)
+            status = await self._run_workflow(workflow_instance)
             et = time.time()
             self.runner_state["terminate_time"] = et
-            # repeatable workflow cannot calculate run level metrics, we use experience level metrics directly
-            run_metrics = [exp.metrics for exp in exps if exp.metrics]
+            run_metrics = [dict(metric) for metric in status.metrics]
             for metric in run_metrics:
                 metric["time/run_execution"] = et - st
-            return self._build_execution_result(
+            successful_run_ids = status.successful_run_ids or list(
+                range(run_id_base, run_id_base + status.completed_runs)
+            )
+            return self._build_status(
                 total_runs=repeat_times,
-                completed_runs=repeat_times,
                 metrics=run_metrics,
-                experiences=exps,
+                successful_run_ids=successful_run_ids,
+                first_error=status.message,
             )
         else:
             return await self.concurrent_run_fn(
@@ -359,7 +351,7 @@ class WorkflowRunner:
         repeat_times: int,
         run_id_base: int,
         collect_partial_runs: bool = True,
-    ) -> RunnerExecutionResult:
+    ) -> Status:
         results = []
         for i in range(repeat_times):
             run_index = run_id_base + i
@@ -375,8 +367,7 @@ class WorkflowRunner:
             results.append(result)
             if collect_partial_runs:
                 continue
-            ok, _, _, _ = result
-            if ok:
+            if result.ok:
                 continue
             break
         return self._aggregate_run_results(repeat_times, results)
@@ -387,7 +378,7 @@ class WorkflowRunner:
         repeat_times: int,
         run_id_base: int,
         collect_partial_runs: bool = True,
-    ) -> RunnerExecutionResult:
+    ) -> Status:
         return await self._run_parallel_runs(
             task,
             repeat_times,
@@ -401,7 +392,7 @@ class WorkflowRunner:
         repeat_times: int,
         run_id_base: int,
         collect_partial_runs: bool = True,
-    ) -> RunnerExecutionResult:
+    ) -> Status:
         return await self._run_parallel_runs(
             task,
             repeat_times,
@@ -423,8 +414,8 @@ class WorkflowRunner:
         repeat_times: int = 1,
         run_id_base: int = 0,
         collect_partial_runs: bool = True,
-    ) -> Tuple[Status, bytes]:
-        """Run the task and return the states."""
+    ) -> Status:
+        """Run the task and return its execution status."""
         st = time.time()
         try:
             model_version = await self.model_wrapper.model_version_async
@@ -432,74 +423,22 @@ class WorkflowRunner:
             self.logger.info(
                 f"Starting task: step={batch_id}, model_version={model_version}, repeat_times={repeat_times}, run_id_base={run_id_base}"
             )
-            execution_result = await self._run_task(
+            status = await self._run_task(
                 task,
                 repeat_times,
                 run_id_base,
                 collect_partial_runs=collect_partial_runs,
             )
-            model_version_after = await self.model_wrapper.model_version_async
-            exps = execution_result.experiences
-            if execution_result.status.completed_runs > 0:
-                assert exps is not None and len(exps) > 0, "An empty experience is generated"
-            # set eid for each experience
-            for exp in exps:
-                exp.eid.batch = task.batch_id
-                # keep exp.eid.task if it has been set before (e.g., in workflow)
-                if exp.eid.task == "":  # "" is the default value
-                    exp.eid.task = task.task_id
-                if not hasattr(exp, "info") or exp.info is None:
-                    exp.info = {}
-                exp.info["model_version"] = model_version
-                exp.info["model_version_drift"] = model_version_after - model_version
-                exp.info["use_count"] = 0
-                exp.info["task_index"] = task.index
-
-                if not hasattr(exp, "metrics") or exp.metrics is None:
-                    exp.metrics = {}
-
-            status = execution_result.status
-
-            if task.is_eval:
-                # Eval tasks are not written to the training buffer. Under the
-                # recording path their turns are still in the vLLM MemoryStore;
-                # the coordinator's eval finalize must drain-and-discard them
-                # (TODO: wire eval consume-and-discard so eval turns don't leak
-                # in the store). For now, return no payload.
-                return status, b""
-            elif self._enable_history_recording():
-                # Recording path: ship only the small reward map keyed by the
-                # per-sample record_key the workflow stamped on each exp. The
-                # heavy experiences live in the vLLM MemoryStore and are pulled
-                # by the coordinator at finalize time.
-                updates = [
-                    {
-                        "record_key": get_record_key(exp),
-                        "reward": exp.reward,
-                        "run": exp.eid.run,
-                        "task": str(task.task_id),
-                    }
-                    for exp in exps
-                ]
-                reward_payload = pickle.dumps(
-                    {"engine_id": self.rollout_model_id, "updates": updates}
-                )
-                return status, reward_payload
-            else:
-                exp_payload = Experience.serialize_many(exps)
-                return status, exp_payload
+            return status
 
         except Exception as e:
             error_trace_back = traceback.format_exc()
             self.logger.error(f"WorkflowRunner run task error: {e}\nTraceback:\n{error_trace_back}")
-            return (
-                Status(
-                    completed_runs=0,
-                    total_runs=repeat_times,
-                    metrics=[{"time/run_execution": time.time() - st}],
-                    message=error_trace_back.rstrip(),
-                ),
-                b"",
+            return Status(
+                completed_runs=0,
+                total_runs=repeat_times,
+                metrics=[{"time/run_execution": time.time() - st}],
+                message=error_trace_back.rstrip(),
             )
 
 
@@ -556,22 +495,28 @@ class DebugWorkflowRunner(WorkflowRunner):
         task = tasks[0]
         self.logger.info(f"Start debugging task:\n{task.raw_task}")
         if not self.enable_profiling:
-            status, exp_payload = await self.run_task(
-                task=task, batch_id="debug", repeat_times=1, run_id_base=0
-            )
+            status = await self.run_task(task=task, batch_id="debug", repeat_times=1, run_id_base=0)
         else:
             from viztracer import VizTracer
 
             with VizTracer(output_file=self.output_profiling_file):
-                status, exp_payload = await self.run_task(
+                status = await self.run_task(
                     task=task, batch_id="debug", repeat_times=1, run_id_base=0
                 )
-        experiences = Experience.deserialize_many(exp_payload) if exp_payload else []
+        experiences = []
+        if self.config.explorer.rollout_model.enable_history:
+            try:
+                experiences = await self.model_wrapper.drain_experience_records_async("debug")
+            except Exception:
+                experiences = []
         if not status.ok and not experiences:
-            experiences = self.model_wrapper.extract_experience_from_history()
-            self.logger.info(
-                f"Debugging failed, extracting {len(experiences)} experiences from history."
-            )
+            try:
+                experiences = self.model_wrapper.extract_experience_from_history()
+                self.logger.info(
+                    f"Debugging failed, extracting {len(experiences)} experiences from history."
+                )
+            except Exception:
+                experiences = []
         await self.sqlite_writer.write(experiences)
         if status.ok:
             print(f"Task {task.task_id} completed successfully with metrics:\n{status.metrics}")

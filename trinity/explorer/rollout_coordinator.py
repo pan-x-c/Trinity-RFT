@@ -1,19 +1,15 @@
 """Rollout coordinator for async batch submission and finalize."""
 
 import asyncio
-import pickle
-from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, Literal, Optional, Union
 
-import httpx
 import ray
 from ray.actor import ActorHandle
 
 from trinity.buffer.pipelines.experience_pipeline import ExperiencePipeline
 from trinity.common.config import Config
-from trinity.common.experience import Experience
 from trinity.common.workflows import Task
 from trinity.explorer.scheduler import Scheduler
 from trinity.utils.log import get_logger
@@ -21,10 +17,6 @@ from trinity.utils.metrics import aggregate_eval_metrics, aggregate_metrics
 
 BatchId = Union[int, str]
 BatchType = Literal["train", "eval"]
-
-#: Default per-rank consume HTTP timeout (seconds). The consume returns heavy
-#: experience bytes, so allow generous headroom over the inference timeout.
-_CONSUME_TIMEOUT = 300.0
 
 
 class BatchLifecycleState(str, Enum):
@@ -72,42 +64,39 @@ class RolloutCoordinator:
         self.pending_batches: Dict[BatchId, BatchState] = {}
         self.running = False
         self.detailed_stats = getattr(getattr(config, "monitor", None), "detailed_stats", False)
-        # Lazily-resolved map of rollout engine_id -> API server URL, for the
-        # recording path's per-rank /records/update_record fan-out.
-        self._rank_urls: Optional[Dict[int, str]] = None
+        # Lazily-resolved map of rollout engine_id -> rollout actor handle, for
+        # recording residual cleanup.
+        self._rollout_actors: Dict[int, ActorHandle] = {}
 
     def _enable_history_recording(self) -> bool:
         """Whether the recording-consume path is active for train batches."""
         return bool(self.config.explorer.rollout_model.enable_history)
 
-    def _resolve_rank_urls(self) -> Dict[int, str]:
-        """Resolve each rollout engine's API server URL via named Ray actors.
+    def _resolve_rollout_actors(self) -> Dict[int, ActorHandle]:
+        """Resolve each rollout engine's actor handle via named Ray actors.
 
         Mirrors ``Allocator.get_actor_name`` + ``ray.get_actor``: rollout model
         actors are named ``f"{explorer.name}_rollout_model_{engine_id}_0"``
-        (node_id 0 holds the API server). Cached after first resolution.
+        (node_id 0 holds the recording store). Cached after first resolution.
         """
-        if self._rank_urls is not None:
-            return self._rank_urls
+        if self._rollout_actors:
+            return self._rollout_actors
         rollout_cfg = self.config.explorer.rollout_model
         name = self.config.explorer.name
         namespace = rollout_cfg.ray_namespace
-        urls: Dict[int, str] = {}
+        actors: Dict[int, ActorHandle] = {}
         for engine_id in range(rollout_cfg.engine_num):
             actor_name = f"{name}_rollout_model_{engine_id}_0"
             try:
-                actor = ray.get_actor(actor_name, namespace=namespace)
-            except ValueError:
-                self.logger.warning(
-                    "rollout actor %s not found in namespace %s; skipping rank %d",
-                    actor_name,
-                    namespace,
-                    engine_id,
-                )
-                continue
-            urls[engine_id] = ray.get(actor.get_api_server_url.remote())
-        self._rank_urls = urls
-        return urls
+                actors[engine_id] = ray.get_actor(actor_name, namespace=namespace)
+            except ValueError as exc:
+                raise RuntimeError(
+                    "Rollout actor %s not found in namespace %s."
+                    " RolloutCoordinator cannot initialize Scheduler without all rollout actors."
+                    % (actor_name, namespace)
+                ) from exc
+        self._rollout_actors = actors
+        return actors
 
     async def prepare(self) -> None:
         """Initialize the owned pipeline and scheduler."""
@@ -142,6 +131,7 @@ class RolloutCoordinator:
             return
         self.scheduler = Scheduler(
             self.config,
+            rollout_actors=self._resolve_rollout_actors(),
         )
         await self.scheduler.start()
 
@@ -218,6 +208,7 @@ class RolloutCoordinator:
                 if task_id in batch_state.statuses:
                     continue
                 batch_state.statuses[task_id] = status
+            await self._discard_recorded_experiences(str(batch_state.batch_id))
             return self._finish_batch(batch_state, pipeline_metrics={})
 
     async def abort_batch(
@@ -242,6 +233,7 @@ class RolloutCoordinator:
             restart_runners=True,
         )
         scheduler.discard_completed_results(batch_id)
+        await self._discard_recorded_experiences(str(batch_id))
 
         batch_state.state = BatchLifecycleState.ABORTED
         batch_state.final_result = self._build_batch_result(batch_state, pipeline_metrics={})
@@ -319,10 +311,8 @@ class RolloutCoordinator:
 
             batch_state.state = BatchLifecycleState.FINALIZING
             try:
-                if self._enable_history_recording():
-                    pipeline_metrics = await self._consume_recorded_experiences(payload_chunks)
-                else:
-                    pipeline_metrics = await self.process_experiences(payload_chunks)
+                pipeline_metrics = await self.process_experiences(payload_chunks)
+                await self._discard_recorded_experiences(str(batch_state.batch_id))
                 if not is_complete:
                     await self._cleanup_train_batch_runtime(batch_state)
             except Exception:
@@ -331,65 +321,18 @@ class RolloutCoordinator:
 
             return self._finish_batch(batch_state, pipeline_metrics=pipeline_metrics)
 
-    async def _consume_recorded_experiences(self, payload_chunks: List[bytes]) -> dict:
-        """Recording path: pull heavy experiences from each vLLM rank's store.
-
-        ``payload_chunks`` are small pickle reward maps produced by the runners
-        (``{"engine_id": int, "updates": [{"record_key", "reward", "run", "task"}]}``).
-        Group updates by engine, fan out ``POST /records/update_record`` to each
-        rank (which drains its recorder, reward-stamps the matching record-key
-        groups, pops them, and returns ``serialize_many`` bytes), deserialize,
-        and feed the assembled experiences straight into the pipeline — no Ray
-        serialization of heavy tensors, and reward is fused inside the store.
-        """
-        if self.experience_pipeline is None:
-            raise RuntimeError("Experience pipeline is not initialized.")
-        per_engine: Dict[int, List[dict]] = defaultdict(list)
-        for chunk in payload_chunks:
-            if not chunk:
-                continue
-            data = pickle.loads(chunk)
-            per_engine[int(data["engine_id"])].extend(data["updates"])
-
-        if not per_engine:
-            return {}
-
-        rank_urls = self._resolve_rank_urls()
-        async with httpx.AsyncClient(timeout=_CONSUME_TIMEOUT) as client:
-            requests = [
-                self._post_update_record(client, rank_urls[engine_id], updates)
-                for engine_id, updates in per_engine.items()
-                if engine_id in rank_urls
-            ]
-            responses = await asyncio.gather(*requests)
-
-        exps: List[Experience] = []
-        for resp_bytes in responses:
-            if resp_bytes:
-                exps.extend(Experience.deserialize_many(resp_bytes))
-        return await self.experience_pipeline.process_experiences(exps)
-
-    async def _post_update_record(
-        self, client: httpx.AsyncClient, rank_url: str, updates: List[dict]
-    ) -> bytes:
-        """POST a batch of record-key reward updates to one rank; return heavy bytes."""
-        try:
-            resp = await client.post(
-                f"{rank_url}/records/update_record",
-                json={"updates": updates},
-            )
-        except (httpx.TimeoutException, httpx.RequestError) as exc:
-            self.logger.error("update_record to %s failed: %s", rank_url, exc)
-            return b""
-        if resp.status_code != 200:
-            self.logger.error(
-                "update_record to %s returned %d: %s",
-                rank_url,
-                resp.status_code,
-                resp.text[:200],
-            )
-            return b""
-        return resp.content
+    async def _discard_recorded_experiences(self, prefix: str) -> None:
+        """Delete recorded experiences matching a prefix from all rollout ranks."""
+        if not self._enable_history_recording():
+            return
+        actors = self._resolve_rollout_actors()
+        results = await asyncio.gather(
+            *[actor.delete_experience_records.remote(prefix=prefix) for actor in actors.values()],
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                self.logger.error("records delete from rollout actor failed: %s", result)
 
     def _finish_batch(
         self,
@@ -417,6 +360,7 @@ class RolloutCoordinator:
             return_partial_tasks=False,
             restart_runners=True,
         )
+        await self._discard_recorded_experiences(str(batch_state.batch_id))
 
     def _build_batch_result(
         self,
