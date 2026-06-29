@@ -151,15 +151,10 @@ class InferenceModel(ABC):
         enable recording must set ``self.recorder`` (a ``Recorder`` whose
         ``.store`` is a ``RecordStore``); this base implementation is shared.
         """
-        recorder = getattr(self, "recorder", None)
-        if recorder is None:
-            raise ValueError("Recording is not enabled for this model.")
-        await recorder.flush()
-        exps = recorder.store.get(record_key)
-        if clear_history:
-            recorder.store.remove(record_key)
-            recorder.forget_record(record_key)
-        return exps
+        return await self._collect_experiences(
+            record_key,
+            remove=clear_history,
+        )
 
     async def update_experience_reward(
         self,
@@ -182,19 +177,38 @@ class InferenceModel(ABC):
             sample_ids=sample_ids,
         )
 
-    async def _drain_experience_records(self, prefix: str) -> List[Experience]:
-        """Remove and return recorded experiences matching a key or prefix."""
+    async def overwrite_history_experiences(self, record_key: str, payload: bytes) -> None:
+        """Overwrite recorded experiences under one complete record key."""
         recorder = getattr(self, "recorder", None)
         if recorder is None:
             raise ValueError("Recording is not enabled for this model.")
         await recorder.flush()
-        matched_keys = [
-            key for key in recorder.store.keys() if key == prefix or key.startswith(f"{prefix}/")
-        ]
-        exps = recorder.store.remove(prefix)
-        for key in matched_keys:
+        recorder.store.overwrite(record_key, Experience.deserialize_many(payload))
+        recorder.forget_record(record_key)
+
+    async def _drain_experience_records(self, prefix: str) -> List[Experience]:
+        """Remove and return recorded experiences matching a key or prefix."""
+        return await self._collect_experiences(
+            prefix,
+            remove=True,
+        )
+
+    async def _collect_experiences(
+        self,
+        key: str,
+        *,
+        remove: bool,
+    ) -> List[Experience]:
+        """Collect recorded experiences by exact key or store-supported prefix."""
+        recorder = getattr(self, "recorder", None)
+        if recorder is None:
+            raise ValueError("Recording is not enabled for this model.")
+        await recorder.flush()
+        if remove:
+            exps = recorder.store.remove(key)
             recorder.forget_record(key)
-        return exps
+            return exps
+        return recorder.store.get(key)
 
     async def drain_experience_records_bytes(self, prefix: str) -> bytes:
         """Remove matching recorded experiences and return serialized bytes."""
@@ -843,6 +857,21 @@ class ModelWrapper:
             reward=reward,
             info=info,
             sample_ids=sample_ids,
+        )
+
+    async def overwrite_history_experiences_async(
+        self,
+        record_key: str,
+        experiences: List[Experience],
+    ) -> None:
+        """Overwrite recorded experiences under one complete record key."""
+        if not self.enable_history:
+            raise ValueError("History recording is not enabled.")
+        if self.model is None:
+            raise ValueError("Recording overwrite requires an inference model actor.")
+        await self.model.overwrite_history_experiences.remote(
+            record_key=record_key,
+            payload=Experience.serialize_many(experiences),
         )
 
     async def drain_experience_records_bytes_async(self, prefix: str) -> bytes:
