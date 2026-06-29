@@ -4,7 +4,7 @@ from typing import List
 from trinity.common.experience import Experience
 
 
-class BaseStore(ABC):
+class RecordStore(ABC):
     """Abstract base class for an in-process experience store.
 
     The key follows the format ``<batch_id>/<task_id>/<run_id>`` and each
@@ -40,6 +40,3 @@ class BaseStore(ABC):
     @abstractmethod
     def keys(self) -> list[str]:
         """Return complete keys currently stored in insertion order."""
-
-
-RecordStore = BaseStore

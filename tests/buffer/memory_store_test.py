@@ -11,7 +11,7 @@ def get_dummy_experience(num: int, request_id: str | None = None):
     request_id = request_id or uuid.uuid4().hex[:6]
     return [
         Experience(
-            eid=EID(suffix=request_id),
+            eid=EID(suffix=request_id if num == 1 else f"{request_id}:{i}"),
             tokens=torch.zeros(5),
             prompt_length=2,
             info={

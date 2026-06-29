@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 import torch
 
-from trinity.buffer.store import RecordStore, default_sample_id_getter
+from trinity.buffer.store import RecordStore, get_sample_id
 from trinity.common.experience import Experience
 
 
@@ -14,7 +14,7 @@ class PrefixExperienceMerger:
 
     Strategy:
       * Experiences are grouped by record key and a best-effort sample stream
-        key (sample_index, explicit sample_id, then default).
+        key (sample_index, then default).
       * Each stream tracks one latest/longest head experience. A new experience
         merges only when the head tokens are a strict prefix of the new tokens.
       * If no head exists yet, the store is scanned once to find the longest
@@ -47,7 +47,7 @@ class PrefixExperienceMerger:
         if candidate is None:
             return False
 
-        old_sample_id = default_sample_id_getter(candidate)
+        old_sample_id = get_sample_id(candidate)
         merged = _merge_prefix_experiences(candidate, exp)
         try:
             self.store.replace(record_key, old_sample_id, merged)
@@ -91,10 +91,6 @@ def _sample_stream_key(exp: Experience) -> tuple[str, Any]:
     sample_index = info.get("sample_index")
     if sample_index is not None:
         return ("sample_index", sample_index)
-
-    sample_id = info.get("sample_id")
-    if sample_id is not None:
-        return ("sample_id", sample_id)
 
     return ("default", 0)
 
@@ -237,7 +233,7 @@ def _merge_info(prefix_exp: Experience, final_exp: Experience) -> dict:
     info["merged_eid_suffixes"] = merged_eid_suffixes
 
     merged_sample_ids = list((prefix_exp.info or {}).get("merged_sample_ids") or [])
-    for sample_id in (default_sample_id_getter(prefix_exp), default_sample_id_getter(final_exp)):
+    for sample_id in (get_sample_id(prefix_exp), get_sample_id(final_exp)):
         if sample_id not in merged_sample_ids:
             merged_sample_ids.append(sample_id)
     info["merged_sample_ids"] = merged_sample_ids

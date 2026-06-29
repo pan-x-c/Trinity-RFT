@@ -14,13 +14,10 @@ def make_turn(
     tokens: list[int],
     prompt_length: int,
     logprobs: list[float],
-    sample_id: str | None = None,
     sample_index: int = 0,
 ) -> Experience:
     batch, task, run = parse_record_key(record_key)
     info = {"sample_index": sample_index}
-    if sample_id is not None:
-        info["sample_id"] = sample_id
     return Experience(
         eid=EID(batch=batch, task=task, run=run, suffix=request_id),
         tokens=tokens,
@@ -45,7 +42,6 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
             tokens=[10, 11, 20, 21],
             prompt_length=2,
             logprobs=[-0.2, -0.3],
-            sample_id="sample-old",
         )
         second = make_turn(
             request_id="req-2",
@@ -53,7 +49,6 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
             tokens=[10, 11, 20, 21, 12, 13, 30, 31, 32],
             prompt_length=6,
             logprobs=[-0.4, -0.5, -0.6],
-            sample_id="sample-final",
         )
 
         await recorder._safe_append(first)
@@ -62,7 +57,6 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
         recorded = store.get(record_key)
         self.assertEqual(len(recorded), 1)
         merged = recorded[0]
-        self.assertEqual(merged.info["sample_id"], "sample-final")
         self.assertEqual(merged.eid.suffix, "req-2")
         self.assertEqual(merged.prompt_length, 2)
         self.assertTrue(torch.equal(merged.tokens, second.tokens))
@@ -79,12 +73,12 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
             )
         )
         self.assertEqual(merged.info["merged_eid_suffixes"], ["req-1", "req-2"])
-        self.assertEqual(merged.info["merged_sample_ids"], ["sample-old", "sample-final"])
+        self.assertEqual(merged.info["merged_sample_ids"], ["req-1", "req-2"])
 
-        store.update(record_key, reward=1.0, info=None, sample_ids=["sample-final"])
+        store.update(record_key, reward=1.0, info=None, sample_ids=["req-2"])
         self.assertEqual(store.get(record_key)[0].reward, 1.0)
         with self.assertRaises(KeyError):
-            store.update(record_key, reward=2.0, info=None, sample_ids=["sample-old"])
+            store.update(record_key, reward=2.0, info=None, sample_ids=["req-1"])
 
     async def test_non_prefix_experiences_do_not_merge(self):
         store = MemoryStore()
@@ -130,7 +124,6 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
             tokens=[10, 11, 20],
             prompt_length=2,
             logprobs=[-0.2],
-            sample_id="sample-zero",
             sample_index=0,
         )
         sample_one_first = make_turn(
@@ -139,7 +132,6 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
             tokens=[10, 11, 21],
             prompt_length=2,
             logprobs=[-0.3],
-            sample_id="sample-one-old",
             sample_index=1,
         )
         sample_one_final = make_turn(
@@ -148,7 +140,6 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
             tokens=[10, 11, 21, 12, 31],
             prompt_length=4,
             logprobs=[-0.4],
-            sample_id="sample-one-final",
             sample_index=1,
         )
 
@@ -158,8 +149,8 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
 
         recorded = store.get(record_key)
         self.assertEqual(len(recorded), 2)
-        self.assertEqual(recorded[0].info["sample_id"], "sample-zero")
-        self.assertEqual(recorded[1].info["sample_id"], "sample-one-final")
+        self.assertEqual(recorded[0].eid.suffix, "req-1")
+        self.assertEqual(recorded[1].eid.suffix, "req-3")
         self.assertTrue(
             torch.equal(
                 recorded[1].action_mask,
@@ -181,7 +172,6 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
             tokens=[10, 11, 20],
             prompt_length=2,
             logprobs=[-0.2],
-            sample_id="sample-old",
         )
         second = make_turn(
             request_id="req-2",
@@ -189,7 +179,6 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
             tokens=[10, 11, 20, 12, 30],
             prompt_length=4,
             logprobs=[-0.3],
-            sample_id="sample-final",
         )
 
         await recorder._safe_append(first)
@@ -198,7 +187,7 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
 
         recorded = store.get(record_key)
         self.assertEqual(len(recorded), 1)
-        self.assertEqual(recorded[0].info["sample_id"], "sample-final")
+        self.assertEqual(recorded[0].eid.suffix, "req-2")
         self.assertEqual(recorded[0].prompt_length, 4)
 
 

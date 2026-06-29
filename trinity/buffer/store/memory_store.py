@@ -1,12 +1,10 @@
 """In-memory implementation of the experience store interface."""
 
 from collections import OrderedDict
-from typing import Callable, Iterable, List
+from typing import Iterable, List
 
-from trinity.buffer.store.base_store import BaseStore
+from trinity.buffer.store.base_store import RecordStore
 from trinity.common.experience import Experience
-
-SampleIdGetter = Callable[[Experience], str]
 
 
 def parse_record_key(key: str) -> tuple[str, str, int]:
@@ -27,18 +25,9 @@ def parse_record_key(key: str) -> tuple[str, str, int]:
     return batch, task, run
 
 
-def default_sample_id_getter(exp: Experience) -> str:
-    """Resolve a stable sample id for an experience."""
-    info = exp.info or {}
-    sample_id = info.get("sample_id")
-    if sample_id is not None:
-        return str(sample_id)
-
-    sample_index = info.get("sample_index")
-    if sample_index is not None:
-        return f"{exp.eid.suffix}:{sample_index}"
-
-    return exp.eid.uid
+def get_sample_id(exp: Experience) -> str:
+    """Return the short sample id used by ``MemoryStore``."""
+    return exp.eid.suffix
 
 
 def get_record_key(exp: Experience) -> str:
@@ -48,7 +37,7 @@ def get_record_key(exp: Experience) -> str:
     return exp.eid.suffix
 
 
-class MemoryStore(BaseStore):
+class MemoryStore(RecordStore):
     """A fast in-process store backed by Python dictionaries.
 
     ``add``, ``overwrite`` and ``update`` require complete keys in the form
@@ -56,22 +45,26 @@ class MemoryStore(BaseStore):
     so callers can drain a batch or task at once.
     """
 
-    def __init__(self, sample_id_getter: SampleIdGetter | None = None) -> None:
-        self.sample_id_getter = sample_id_getter or default_sample_id_getter
+    def __init__(self) -> None:
+        # main storage of experiences, keyed by complete store key and sample_id
         self._records: dict[str, OrderedDict[str, Experience]] = {}
+        # extra indices to support prefix-based lookups in get() and remove()
+        self._batch_keys: dict[str, OrderedDict[str, None]] = {}
+        self._task_keys: dict[tuple[str, str], OrderedDict[str, None]] = {}
         self._sample_to_key: dict[str, str] = {}
 
     def __len__(self) -> int:
         return sum(len(exps) for exps in self._records.values())
 
     def add(self, key: str, exps: List[Experience]) -> None:
-        self._parse_complete_key(key)  # validate key format
+        batch, task, _ = self._parse_complete_key(key)  # validate key format
         if not exps:
             return
 
         records = self._records.setdefault(key, OrderedDict())
+        self._index_key(batch, task, key)
         for exp in exps:
-            sample_id = self.sample_id_getter(exp)
+            sample_id = get_sample_id(exp)
             owner_key = self._sample_to_key.get(sample_id)
             if owner_key is not None:
                 raise ValueError(
@@ -93,7 +86,7 @@ class MemoryStore(BaseStore):
         if old_sample_id not in records:
             raise KeyError(f"sample_id '{old_sample_id}' does not exist under key '{key}'.")
 
-        new_sample_id = self.sample_id_getter(exp)
+        new_sample_id = get_sample_id(exp)
         owner_key = self._sample_to_key.get(new_sample_id)
         if owner_key is not None and (owner_key != key or new_sample_id != old_sample_id):
             raise ValueError(
@@ -162,13 +155,38 @@ class MemoryStore(BaseStore):
             return list(self._records.keys())
         if key in self._records:
             return [key]
-        prefix = key + "/"
-        return [record_key for record_key in self._records if record_key.startswith(prefix)]
+
+        parts = key.split("/")
+        if len(parts) == 1 and parts[0] != "":
+            return list(self._batch_keys.get(parts[0], ()))
+        if len(parts) == 2 and parts[0] != "" and parts[1] != "":
+            return list(self._task_keys.get((parts[0], parts[1]), ()))
+        return []
 
     def _drop_key(self, key: str) -> list[Experience]:
         records = self._records.pop(key, None)
         if records is None:
             return []
+        batch, task, _ = self._parse_complete_key(key)
+        self._unindex_key(batch, task, key)
         for sample_id in records:
             self._sample_to_key.pop(sample_id, None)
         return list(records.values())
+
+    def _index_key(self, batch: str, task: str, key: str) -> None:
+        self._batch_keys.setdefault(batch, OrderedDict())[key] = None
+        self._task_keys.setdefault((batch, task), OrderedDict())[key] = None
+
+    def _unindex_key(self, batch: str, task: str, key: str) -> None:
+        batch_keys = self._batch_keys.get(batch)
+        if batch_keys is not None:
+            batch_keys.pop(key, None)
+            if not batch_keys:
+                self._batch_keys.pop(batch, None)
+
+        task_key = (batch, task)
+        task_keys = self._task_keys.get(task_key)
+        if task_keys is not None:
+            task_keys.pop(key, None)
+            if not task_keys:
+                self._task_keys.pop(task_key, None)
