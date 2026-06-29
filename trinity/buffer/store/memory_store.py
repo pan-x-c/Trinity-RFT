@@ -77,6 +77,33 @@ class MemoryStore(BaseStore):
         self._drop_key(key)
         self.add(key, exps)
 
+    def replace(self, key: str, old_sample_id: str, exp: Experience) -> None:
+        self._validate_complete_key(key)
+        records = self._records.get(key)
+        if records is None:
+            raise KeyError(f"Key '{key}' does not exist.")
+        if old_sample_id not in records:
+            raise KeyError(f"sample_id '{old_sample_id}' does not exist under key '{key}'.")
+
+        new_sample_id = self.sample_id_getter(exp)
+        owner_key = self._sample_to_key.get(new_sample_id)
+        if owner_key is not None and (owner_key != key or new_sample_id != old_sample_id):
+            raise ValueError(
+                f"Duplicate sample_id '{new_sample_id}' already exists under key '{owner_key}'."
+            )
+
+        items = []
+        for sample_id, record in records.items():
+            if sample_id == old_sample_id:
+                items.append((new_sample_id, exp))
+            else:
+                items.append((sample_id, record))
+
+        records.clear()
+        records.update(items)
+        self._sample_to_key.pop(old_sample_id, None)
+        self._sample_to_key[new_sample_id] = key
+
     def update(
         self,
         key: str,

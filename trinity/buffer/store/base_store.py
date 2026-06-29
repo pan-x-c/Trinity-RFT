@@ -20,6 +20,10 @@ class BaseStore(ABC):
         """Replace all experiences under the given complete key."""
 
     @abstractmethod
+    def replace(self, key: str, old_sample_id: str, exp: Experience) -> None:
+        """Replace one experience under the given complete key."""
+
+    @abstractmethod
     def update(
         self, key: str, reward: float, info: dict | None, sample_ids: List[str] | None
     ) -> None:

@@ -50,6 +50,12 @@ def _get_exp(store: RecordStore, record_key: str, request_id: str) -> Experience
     raise HTTPException(status_code=404, detail="experience not found")
 
 
+def _forget_record(request: Request, record_key: str) -> None:
+    rec = getattr(request.app.state, RECORDER_STATE_ATTR, None)
+    if rec is not None:
+        rec.forget_record(record_key)
+
+
 @query_router.get("")
 async def list_records(request: Request) -> dict:
     store = _store(request)
@@ -78,6 +84,7 @@ async def get_request_experience(record_key: str, request_id: str, request: Requ
 async def delete_record_experiences(record_key: str, request: Request) -> dict:
     store = _store(request)
     store.remove(record_key)
+    _forget_record(request, record_key)
     return {"record_key": record_key, "deleted": True}
 
 
@@ -98,6 +105,7 @@ async def delete_request_experience(record_key: str, request_id: str, request: R
         store.overwrite(record_key, kept)
     else:
         store.remove(record_key)
+    _forget_record(request, record_key)
     return {"record_key": record_key, "request_id": request_id, "deleted": True}
 
 
@@ -118,6 +126,7 @@ async def update_record(req: _UpdateRecordRequest, request: Request) -> Response
             sample_ids=None,
         )
         exps.extend(store.remove(update.record_key))
+        recorder.forget_record(update.record_key)
     return Response(
         content=Experience.serialize_many(exps),
         media_type="application/octet-stream",

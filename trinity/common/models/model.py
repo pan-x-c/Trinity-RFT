@@ -158,6 +158,7 @@ class InferenceModel(ABC):
         exps = recorder.store.get(record_key)
         if clear_history:
             recorder.store.remove(record_key)
+            recorder.forget_record(record_key)
         return exps
 
     def get_model_config(self) -> InferenceModelConfig:
