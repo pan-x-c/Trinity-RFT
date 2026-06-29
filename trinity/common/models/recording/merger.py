@@ -10,7 +10,27 @@ from trinity.common.experience import Experience
 
 
 class PrefixExperienceMerger:
-    """Merge same-record experiences whose tokens form a strict prefix chain."""
+    """Merge same-record experiences whose tokens form a strict prefix chain.
+
+    Strategy:
+      * Experiences are grouped by record key and a best-effort sample stream
+        key (sample_index, explicit sample_id, request_id suffix, then default).
+      * Each stream tracks one latest/longest head experience. A new experience
+        merges only when the head tokens are a strict prefix of the new tokens.
+      * If no head exists yet, the store is scanned once to find the longest
+        prefix-matching experience for that stream.
+
+    Limitation:
+      This assumes each record/sample stream is a single linear conversation
+      branch. If one task has concurrent writers sharing the same record/sample
+      stream (for example, multi-agent rollouts under one record key), the latest
+      head may belong to a different branch, so the prefix hit can be missed or
+      become ambiguous.
+
+    TODO(recording): support branching/concurrent histories by tracking multiple
+    heads per record/sample stream, keyed by a stable conversation/thread id or
+    by token-prefix fingerprints.
+    """
 
     def __init__(self, store: RecordStore) -> None:
         self.store = store
