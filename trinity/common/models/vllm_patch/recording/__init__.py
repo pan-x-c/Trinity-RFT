@@ -8,7 +8,6 @@ from trinity.common.models.recording.context import (
     record_key_ctx,
     skip_recording_ctx,
 )
-from trinity.common.models.recording.query import query_router
 from trinity.common.models.recording.recorder import Recorder
 from trinity.common.models.vllm_patch.recording.models import build_experience
 from trinity.common.models.vllm_patch.recording.recorder import (
@@ -27,7 +26,6 @@ __all__ = [
     "build_experience",
     "create_vllm_recorder",
     "patch_engine_for_recording",
-    "query_router",
     "record_key_ctx",
     "run_api_server_with_recording",
     "skip_recording_ctx",

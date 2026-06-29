@@ -439,9 +439,9 @@ def run_agent(proxy_url, model_path: str, stream: bool):
 
 
 @unittest.skip(
-    "serve-mode experience collection moved to the in-vLLM MemoryStore + "
-    "/records/update_record flow; the proxy /feedback//commit path and external "
-    "reward reporting are being redesigned (see recording refactor plan)."
+    "serve-mode experience collection moved to rollout model-side recording stores; "
+    "the proxy /feedback//commit path and external reward reporting are being "
+    "redesigned (see recording refactor plan)."
 )
 class ServeTest(RayUnittestBaseAsync):
     def setUp(self):

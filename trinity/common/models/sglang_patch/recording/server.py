@@ -3,14 +3,14 @@
 Mirrors ``trinity/common/models/vllm_patch/recording/server.py:_setup_recording``:
 (1) the engine wrap (``create_sglang_recorder``), (2) ``RecordingIdentityMiddleware``
 — an in-process ASGI middleware reading ``Authorization: Bearer <record_key>``
-into a contextvar, and (3) ``query_router`` — ``/records/*`` endpoints.
+into a contextvar, and (3) actor-side recording APIs over the model-owned store.
 
 Called from ``sglang_patch.server_patch.get_api_server`` after the
 ``tokenizer_manager`` is created and **before** the uvicorn task starts serving,
 so the middleware/router are mounted on ``app`` in time. The recorder and store
 are owned by ``SGLangRolloutModel`` (passed in) so it can drain them in-process
-via ``extract_experience_from_history``; they are also stashed on ``app.state``
-for the ``query_router`` HTTP drain path used by the coordinator.
+via actor methods; they are also stashed on ``app.state`` for server-local
+recording lifecycle management.
 """
 
 import logging

@@ -572,11 +572,10 @@ class InferenceModelConfig:
     # Trinity ``Experience`` to the in-process ``MemoryStore``, keyed by the
     # recording identity (``record_key``). This is the single switch for the
     # recording flow — when on, the explorer also consumes from the store: the
-    # WorkflowRunner ships only a small reward map keyed by ``record_key`` and
-    # the RolloutCoordinator pulls heavy experiences via ``/records/drain``
-    # at finalize time. When off (default), runners ship serialized experiences
-    # through the scheduler as before (legacy path). When True, the Allocator
-    # forces ``enable_openai_api`` (the recorder runs in the API server).
+    # Workflow updates rewards by ``record_key`` and the Scheduler drains
+    # completed task experiences through rollout model actor methods. When off
+    # (default), recording APIs are disabled. When True, the Allocator forces
+    # ``enable_openai_api`` for engine-side request capture.
     # VLLMModel mirrors the recording config onto the engine instance for the
     # recorder to read. The capture width (top-k logprobs) reuses ``logprobs``
     # below (default 1). Requires ``enable_openai_api=True`` (the recording

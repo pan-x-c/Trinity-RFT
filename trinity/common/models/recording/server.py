@@ -3,12 +3,14 @@
 import logging
 
 from trinity.common.models.recording.context import RecordingIdentityMiddleware
-from trinity.common.models.recording.query import (
-    RECORDER_STATE_ATTR,
-    STORE_STATE_ATTR,
-    query_router,
+from trinity.common.models.recording.recorder import (
+    TRINITY_RECORD_STORE_ATTR,
+    TRINITY_RECORDER_ATTR,
+    Recorder,
 )
-from trinity.common.models.recording.recorder import Recorder
+
+STORE_STATE_ATTR = TRINITY_RECORD_STORE_ATTR
+RECORDER_STATE_ATTR = TRINITY_RECORDER_ATTR
 
 
 def add_recording_middleware(app) -> None:
@@ -31,9 +33,8 @@ def mount_recording_api(
     engine_name: str,
     start_recorder: bool = False,
 ) -> None:
-    """Mount recording middleware/query routes and expose state to handlers."""
+    """Mount recording middleware and expose state to the server process."""
     add_recording_middleware(app)
-    app.include_router(query_router)
 
     setattr(app.state, STORE_STATE_ATTR, recorder.store)
     setattr(app.state, RECORDER_STATE_ATTR, recorder)

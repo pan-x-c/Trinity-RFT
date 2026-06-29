@@ -11,7 +11,7 @@ Recording wiring:
   1. ``vLLMRolloutModel`` owns the recorder and attaches it to ``async_llm``.
   2. ``RecordingIdentityMiddleware`` — in-process ASGI middleware reading
      ``Authorization: Bearer <api_key>`` into a contextvar.
-  3. ``query_router`` — ``/records/*`` endpoints for later analysis.
+  3. Actor-side recording APIs drain/update the model-owned store.
 
 Only for vllm versions >= 0.17.0.
 """
@@ -108,9 +108,8 @@ def _setup_recording(
     version is read live off ``engine_client.trinity_model_version`` (mirrored
     by VLLMModel at engine creation and in ``sync_model_weights``).
 
-    The store backend is always the in-process ``MemoryStore``; the coordinator
-    drains it at finalize time via ``/records/drain`` (fanned out per
-    rank), so heavy experience bytes never touch SQL or Ray serialization.
+    The store backend is always the in-process ``MemoryStore``; the scheduler
+    drains completed task records through rollout model actor methods.
 
     Args:
         engine_client: AsyncLLM instance with ``trinity_recorder`` already set

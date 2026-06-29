@@ -1816,9 +1816,8 @@ class TestRecording(VLLMTestBase):
     """Correctness of the in-vLLM generation recording flow (``enable_history``).
 
     Verifies that every call path lands its finished turn in the in-process
-    ``MemoryStore`` under the right ``record_key``, and that
-    ``POST /records/update_record`` flushes the recorder, reward-stamps the
-    whole record-key group, pops it, and returns it as serialized experiences.
+    ``MemoryStore`` under the right ``record_key``, and that actor-side
+    reward update + drain APIs stamp and return recorded experiences.
 
     Paths covered (all async):
       * Ray-direct ``generate`` / ``chat`` — record_key propagated via
@@ -1881,41 +1880,11 @@ class TestRecording(VLLMTestBase):
         await self._http.aclose()
         await super().asyncTearDown()
 
-    # -- /records store query/consume helpers ---------------------------------
+    # -- actor-side recording store helpers -----------------------------------
 
-    async def _flush(self):
-        """Drain the recorder without popping anything (an empty consume)."""
-        resp = await self._http.post(
-            f"{self.api_address}/records/update_record", json={"updates": []}
-        )
-        resp.raise_for_status()
-
-    async def _list_record_keys(self):
-        resp = await self._http.get(f"{self.api_address}/records")
-        resp.raise_for_status()
-        return resp.json()["record_keys"]
-
-    async def _get_record_experiences(self, record_key: str) -> dict:
-        resp = await self._http.get(f"{self.api_address}/records/{record_key}")
-        resp.raise_for_status()
-        return resp.json()
-
-    async def _get_request_experience(self, record_key: str, request_id: str) -> Experience:
-        resp = await self._http.get(f"{self.api_address}/records/{record_key}/request/{request_id}")
-        resp.raise_for_status()
-        return Experience.deserialize(resp.content)
-
-    async def _consume(
-        self, record_key: str, reward: float, run: int, task: str
-    ) -> list[Experience]:
-        resp = await self._http.post(
-            f"{self.api_address}/records/update_record",
-            json={
-                "updates": [{"record_key": record_key, "reward": reward, "run": run, "task": task}]
-            },
-        )
-        resp.raise_for_status()
-        return Experience.deserialize_many(resp.content)
+    async def _consume(self, record_key: str, reward: float) -> list[Experience]:
+        await self.model_wrapper.update_experience_reward_async(record_key, reward=reward)
+        return await self.model_wrapper.drain_experience_records_async(record_key)
 
     async def _openai_client(self, record_key: str) -> openai.AsyncOpenAI:
         # record_key travels as the Bearer api_key -> RecordingIdentityMiddleware.
@@ -1965,53 +1934,39 @@ class TestRecording(VLLMTestBase):
         no_think = {"chat_template_kwargs": {"enable_thinking": False}}
 
         # ===== 1. Ray-direct generate (record_key via record_key_ctx) =====
-        rk_gen = "trinity_record_generate"
+        rk_gen = "0/t_gen/1"
         await self.model_wrapper.generate_async(
             ["Hello, world!"], n=1, temperature=1.0, max_tokens=16, record_key=rk_gen
         )
-        await self._flush()
-        self.assertIn(rk_gen, await self._list_record_keys())
-        task = await self._get_record_experiences(rk_gen)
-        self.assertEqual(len(task["experiences"]), 1)
-        # blob endpoint round-trips a full experience
-        request_id = task["experiences"][0]["eid"]["suffix"]
-        blob_exp = await self._get_request_experience(rk_gen, request_id)
-        self._assert_recorded_experience(blob_exp, rk_gen)
-        self._assert_recorded_routed_experts(blob_exp)
-        consumed = await self._consume(rk_gen, reward=0.5, run=1, task="t_gen")
+        consumed = await self._consume(rk_gen, reward=0.5)
         self.assertEqual(len(consumed), 1)
         self.assertEqual(consumed[0].reward, 0.5)
         self.assertEqual(consumed[0].eid.run, 1)
         self.assertEqual(consumed[0].eid.task, "t_gen")
         self._assert_recorded_experience(consumed[0], rk_gen)
         self._assert_recorded_routed_experts(consumed[0])
-        self.assertNotIn(rk_gen, await self._list_record_keys())  # popped
 
         # ===== 2. Ray-direct chat, n=2 (one record-key group, two samples) =====
-        rk_chat = "trinity_record_chat"
+        rk_chat = "0/t_chat/2"
         chat_exps = await self.model_wrapper.chat_async(
             messages, n=2, temperature=1.0, max_tokens=16, record_key=rk_chat
         )
         self.assertEqual(len(chat_exps), 2)
-        await self._flush()
-        task = await self._get_record_experiences(rk_chat)
-        self.assertEqual(len(task["experiences"]), 2)
+        consumed = await self._consume(rk_chat, reward=0.8)
+        self.assertEqual(len(consumed), 2)
         # n=2 of one engine request -> two completions distinguished by
         # sample_index and a sample-qualified EID suffix.
-        self.assertEqual(sorted(t["info"]["sample_index"] for t in task["experiences"]), [0, 1])
-        self.assertEqual(len({t["eid"]["suffix"] for t in task["experiences"]}), 2)
-        consumed = await self._consume(rk_chat, reward=0.8, run=2, task="t_chat")
-        self.assertEqual(len(consumed), 2)
+        self.assertEqual(sorted(exp.info["sample_index"] for exp in consumed), [0, 1])
+        self.assertEqual(len({exp.eid.suffix for exp in consumed}), 2)
         for exp in consumed:
             self.assertEqual(exp.reward, 0.8)
             self.assertEqual(exp.eid.run, 2)
             self.assertEqual(exp.eid.task, "t_chat")
             self._assert_recorded_experience(exp, rk_chat)
             self._assert_recorded_routed_experts(exp)
-        self.assertNotIn(rk_chat, await self._list_record_keys())
 
         # ===== 3. OpenAI regular (HTTP; record_key = Bearer api_key) =====
-        rk_oai = "trinity_record_openai"
+        rk_oai = "0/t_oai/3"
         client = await self._openai_client(rk_oai)
         model_id = await self._get_model_id(client)
         resp = await client.chat.completions.create(
@@ -2022,15 +1977,14 @@ class TestRecording(VLLMTestBase):
             max_tokens=32,
             extra_body=no_think,
         )
-        consumed = await self._consume(rk_oai, reward=0.3, run=3, task="t_oai")
+        consumed = await self._consume(rk_oai, reward=0.3)
         self.assertEqual(len(consumed), 1)
         self._assert_recorded_experience(consumed[0], rk_oai)
         self._assert_recorded_routed_experts(consumed[0])
         self.assertEqual(consumed[0].response_text, resp.choices[0].message.content)
-        self.assertNotIn(rk_oai, await self._list_record_keys())
 
         # ===== 4. OpenAI streaming (HTTP) =====
-        rk_str = "trinity_record_stream"
+        rk_str = "0/t_str/4"
         sclient = await self._openai_client(rk_str)
         stream = await sclient.chat.completions.create(
             model=model_id,
@@ -2047,7 +2001,7 @@ class TestRecording(VLLMTestBase):
             if delta:
                 content += delta
         self.assertGreater(len(content), 0)
-        consumed = await self._consume(rk_str, reward=0.1, run=4, task="t_str")
+        consumed = await self._consume(rk_str, reward=0.1)
         self.assertEqual(len(consumed), 1)
         self._assert_recorded_experience(consumed[0], rk_str)
         self._assert_recorded_routed_experts(consumed[0])
@@ -2055,10 +2009,9 @@ class TestRecording(VLLMTestBase):
         decoded_content = self.tokenizer.decode(response_token_ids, skip_special_tokens=True)
         self.assertEqual(decoded_content, content)
         self.assertEqual(consumed[0].response_text, content)
-        self.assertNotIn(rk_str, await self._list_record_keys())
 
         # ===== 5. OpenAI tool usage (HTTP) =====
-        rk_tool = "trinity_record_tool"
+        rk_tool = "0/t_tool/5"
         tclient = await self._openai_client(rk_tool)
         tools = [
             {
@@ -2088,7 +2041,7 @@ class TestRecording(VLLMTestBase):
             max_tokens=64,
             extra_body=no_think,
         )
-        consumed = await self._consume(rk_tool, reward=1.0, run=5, task="t_tool")
+        consumed = await self._consume(rk_tool, reward=1.0)
         self.assertEqual(len(consumed), 1)
         self._assert_recorded_experience(consumed[0], rk_tool)
         self._assert_recorded_routed_experts(consumed[0])
@@ -2101,10 +2054,9 @@ class TestRecording(VLLMTestBase):
         if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
             for tc in choice.message.tool_calls:
                 self.assertIn(tc.function.name, consumed[0].response_text)
-        self.assertNotIn(rk_tool, await self._list_record_keys())
 
         # ===== global: every group consumed -> store is drained =====
-        self.assertEqual(await self._list_record_keys(), [])
+        self.assertEqual(await self.model_wrapper.delete_experience_records_async("0"), 0)
 
 
 class TestSuperLongGeneration(VLLMTestBase):

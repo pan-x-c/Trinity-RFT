@@ -13,7 +13,6 @@ from trinity.common.models.recording.context import (  # noqa: F401
     record_key_ctx,
     skip_recording_ctx,
 )
-from trinity.common.models.recording.query import query_router  # noqa: F401
 from trinity.common.models.recording.recorder import Recorder  # noqa: F401
 from trinity.common.models.sglang_patch.recording.models import (  # noqa: F401
     build_sglang_experience,
@@ -35,7 +34,6 @@ __all__ = [
     "create_sglang_recorder",
     "get_recording_record_key",
     "patch_tokenizer_manager_for_recording",
-    "query_router",
     "record_key_ctx",
     "setup_sglang_recording",
     "skip_recording_ctx",

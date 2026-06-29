@@ -383,8 +383,8 @@ def get_api_server(
 
     # Wire generation recording before the uvicorn task starts serving. The
     # recorder/store are owned by ``SGLangRolloutModel``; this installs the
-    # engine wrap on ``tokenizer_manager``, ``RecordingIdentityMiddleware`` and
-    # ``query_router`` on ``app``, and stashes store/recorder on ``app.state``.
+    # engine wrap on ``tokenizer_manager`` and ``RecordingIdentityMiddleware``
+    # on ``app``, and stashes store/recorder on ``app.state``.
     if enable_history:
         from trinity.common.models.sglang_patch.recording import setup_sglang_recording
 
