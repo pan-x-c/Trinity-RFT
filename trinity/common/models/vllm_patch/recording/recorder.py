@@ -34,17 +34,12 @@ from trinity.common.models.vllm_patch.recording.models import build_experience
 
 #: Guard attribute marking the wrapped generate, mirroring api_patch_v17 style.
 _PATCHED_FLAG = "__patched_engine_recording__"
-#: Instance attribute on the AsyncLLM engine_client holding the current serving
-#: checkpoint version. Mirrored by ``VLLMModel.sync_model_weights`` (and at
-#: engine creation); read live here so each experience is attributed to the
-#: right policy without a launch-time parameter.
-_MODEL_VERSION_ATTR = "trinity_model_version"
 #: Force at least this many top-k logprobs per generated token so recording
 #: captures the chosen token's logprob even when the caller didn't request
 #: logprobs. We store ONLY the sampled token's logprob, and vLLM force-includes
 #: the sampled token at ``logprobs=1``, so 1 is the only useful value — no need
 #: to thread a knob through the launcher. The engine's ``max_logprobs`` cap
-#: (default 20, set at engine build) already covers it.
+#: (default 1, set at engine build) already covers it.
 _RECORDER_LOGPROB_WIDTH = 1
 TRINITY_MM_RENDER_ATTR = "trinity_mm_render"
 
