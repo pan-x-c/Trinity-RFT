@@ -99,7 +99,11 @@ class WorkflowRunner:
             )
         else:
             self.workflow_instance.reset(task)
+        self._set_single_run_context(self.workflow_instance, task.run_id)
         return self.workflow_instance
+
+    def _set_single_run_context(self, workflow: Workflow, run_id: int) -> None:
+        workflow.set_single_run_context(run_id)
 
     async def _run_workflow(self, workflow_instance: Workflow) -> Status:
         status = await workflow_instance.execute()
@@ -120,6 +124,7 @@ class WorkflowRunner:
             model_wrapper,
             self.auxiliary_model_wrappers,
         )
+        self._set_single_run_context(wf, run_id)
         return wf
 
     def _build_status(

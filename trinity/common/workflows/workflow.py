@@ -174,6 +174,16 @@ class Workflow(WorkflowBase):
         self.repeat_times = repeat_times
         self.run_id_base = run_id_base
 
+    def set_single_run_context(self, run_id_base: int) -> None:
+        """
+        Set the workflow context for a single non-repeat run.
+
+        This only updates runner bookkeeping fields and intentionally avoids
+        repeat-workflow side effects such as changing rollout_args.n.
+        """
+        self.repeat_times = 1
+        self.run_id_base = run_id_base
+
     def run(self) -> List[Experience]:
         """Run workflow and return a list of experiences."""
         raise NotImplementedError
