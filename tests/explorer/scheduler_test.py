@@ -58,7 +58,12 @@ class DummyWorkflow(Workflow):
                         tokens=torch.zeros(5),
                         prompt_length=2,
                         prompt_text=self.error_type or "success",
-                        eid=EID(run=i + self.run_id_base, step=step),
+                        eid=EID(
+                            batch=self.task.batch_id,
+                            task=self.task.task_id,
+                            run=i + self.run_id_base,
+                            step=step,
+                        ),
                         info={"repeat_times": self.repeat_times},
                     )
                 )
@@ -86,7 +91,12 @@ class DummyNonRepeatWorkflow(Workflow):
     def run(self) -> List[Experience]:
         exps = [
             Experience(
-                eid=EID(run=self.run_id_base, step=step),
+                eid=EID(
+                    batch=self.task.batch_id,
+                    task=self.task.task_id,
+                    run=self.run_id_base,
+                    step=step,
+                ),
                 tokens=torch.zeros(5),
                 prompt_length=2,
                 prompt_text="success",
@@ -122,7 +132,12 @@ class DummyPartialSnapshotWorkflow(Workflow):
 
         return [
             Experience(
-                eid=EID(step=0),
+                eid=EID(
+                    batch=self.task.batch_id,
+                    task=self.task.task_id,
+                    run=self.run_id_base,
+                    step=0,
+                ),
                 tokens=torch.zeros(5),
                 prompt_length=2,
                 prompt_text=action,
@@ -172,7 +187,12 @@ class DummyAsyncPartialSnapshotWorkflow(Workflow):
 
         return [
             Experience(
-                eid=EID(step=0),
+                eid=EID(
+                    batch=self.task.batch_id,
+                    task=self.task.task_id,
+                    run=self.run_id_base,
+                    step=0,
+                ),
                 tokens=torch.zeros(5),
                 prompt_length=2,
                 prompt_text=action,
@@ -243,7 +263,12 @@ class DummyWorkflowWithState(Workflow):
             for step in range(self.step_num):
                 run_level_exps.append(
                     Experience(
-                        eid=EID(run=i + self.run_id_base, step=step),
+                        eid=EID(
+                            batch=self.task.batch_id,
+                            task=self.task.task_id,
+                            run=i + self.run_id_base,
+                            step=step,
+                        ),
                         tokens=torch.zeros(5),
                         prompt_length=2,
                         prompt_text="success",
@@ -268,7 +293,12 @@ class DummyConcurrentWorkflow(Workflow):
 
         return [
             Experience(
-                eid=EID(run=self.run_id_base, step=0),
+                eid=EID(
+                    batch=self.task.batch_id,
+                    task=self.task.task_id,
+                    run=self.run_id_base,
+                    step=0,
+                ),
                 tokens=torch.zeros(5),
                 prompt_length=2,
                 prompt_text="success",
