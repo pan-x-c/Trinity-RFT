@@ -27,6 +27,8 @@ def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     if scheme.lower() != "bearer":
         return None
     token = token.strip()
+    if token == "EMPTY":
+        return None
     return token or None
 
 

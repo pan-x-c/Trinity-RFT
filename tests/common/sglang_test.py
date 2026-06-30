@@ -108,6 +108,9 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         allocator = Allocator(self.config.explorer)
         rollout_models, _ = await allocator.create_all_models()
         self.model_wrapper = rollout_models[0]
+        self.record_key = "0/sglang_openai_api/0"
+        if self.enable_history:
+            self.model_wrapper.set_api_key(self.record_key)
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config.model.model_path,
             trust_remote_code=self.config.explorer.rollout_model.trust_remote_code,
@@ -288,6 +291,7 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
 
         chat_exps = await self.model_wrapper.chat_async(
             messages,
+            enable_recording=self.enable_history,
             n=2,
             temperature=0.7,
             max_tokens=32,
@@ -328,6 +332,7 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         generate_prompt = "Write one short sentence about Boston."
         generate_exps = await self.model_wrapper.generate_async(
             [generate_prompt],
+            enable_recording=self.enable_history,
             n=2,
             temperature=0.7,
             max_tokens=32,

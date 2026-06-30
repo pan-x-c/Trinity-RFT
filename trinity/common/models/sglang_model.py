@@ -60,6 +60,8 @@ class SGLangClient:
         # back to the client's api_key (which, on the Trinity Ray-direct path,
         # equals the record_key injected by ModelWrapper).
         token = api_key_override if api_key_override is not None else self.api_key
+        if token == "EMPTY":
+            token = None
         return f"Bearer {token}" if token else ""
 
     async def _server_call(
