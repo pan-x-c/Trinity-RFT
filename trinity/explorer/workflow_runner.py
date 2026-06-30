@@ -2,10 +2,11 @@
 """The Workflow Runner Module."""
 
 import asyncio
+import copy
 import os
 import time
 import traceback
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from trinity.buffer import get_buffer_reader, get_buffer_writer
 from trinity.common.config import Config, StorageConfig
@@ -89,7 +90,7 @@ class WorkflowRunner:
         if (
             self.workflow_instance is None
             or not self.workflow_instance.__class__ == task.workflow
-            or not self.workflow_instance.resettable
+            or not getattr(self.workflow_instance.__class__, "can_reset", True)
         ):
             # Pass ModelWrapper directly; Workflow.__init__ will get OpenAI clients automatically
             self.workflow_instance = task.to_workflow(
@@ -109,18 +110,17 @@ class WorkflowRunner:
             )
         return status
 
-    def _create_isolated_workflow_instance(
-        self, task: Task, run_id: int
-    ) -> Tuple[Workflow, ModelWrapper]:
+    def _create_isolated_workflow_instance(self, task: Task, run_id: int) -> Workflow:
         model_wrapper = self.model_wrapper.clone_with_isolated_state()
-        # only a shallow copy is enough
-        task = task.copy()
+        # only a shallow copy is enough; use copy.copy so the result stays a Task
+        # (Task inherits dict, so task.copy() would return a plain dict)
+        task = copy.copy(task)
         task.run_id = run_id
         wf = task.to_workflow(
             model_wrapper,
             self.auxiliary_model_wrappers,
         )
-        return wf, model_wrapper
+        return wf
 
     def _build_status(
         self,
@@ -185,11 +185,8 @@ class WorkflowRunner:
     ) -> Status:
         async def run_single(i: int) -> Status:
             run_id = run_id_base + i
-            workflow, model_wrapper = self._create_isolated_workflow_instance(task, run_id)
-            return await self._execute_single_run(
-                workflow=workflow,
-                model_wrapper=model_wrapper,
-            )
+            workflow = self._create_isolated_workflow_instance(task, run_id)
+            return await self._execute_single_run(workflow=workflow)
 
         if collect_partial_runs:
             if use_threads:
@@ -238,10 +235,8 @@ class WorkflowRunner:
     async def _execute_single_run(
         self,
         workflow: Workflow,
-        model_wrapper: ModelWrapper,
     ) -> Status:
         st = time.time()
-        await model_wrapper.clean_workflow_state()
         self.runner_state["terminate_time"] = None
         self.runner_state["begin_time"] = st
         try:
@@ -278,13 +273,8 @@ class WorkflowRunner:
             workflow_instance = self._create_workflow_instance(task)
             workflow_instance.set_repeat_times(repeat_times, run_id_base)
             st = time.time()
-            await self.model_wrapper.clean_workflow_state()
-            self.runner_state["workflow_id"] = task.api_key
-            self.runner_state["terminate_time"] = None
-            self.runner_state["begin_time"] = st
             status = await self._run_workflow(workflow_instance)
             et = time.time()
-            self.runner_state["terminate_time"] = et
             run_metrics = [dict(metric) for metric in status.metrics]
             for metric in run_metrics:
                 metric["time/run_execution"] = et - st
@@ -316,10 +306,7 @@ class WorkflowRunner:
         for i in range(repeat_times):
             task.run_id = run_id_base + i
             workflow = self._create_workflow_instance(task)
-            result = await self._execute_single_run(
-                workflow=workflow,
-                model_wrapper=self.model_wrapper,
-            )
+            result = await self._execute_single_run(workflow=workflow)
             results.append(result)
             if collect_partial_runs:
                 continue
@@ -356,12 +343,6 @@ class WorkflowRunner:
             collect_partial_runs=collect_partial_runs,
             use_threads=True,
         )
-
-    async def get_runner_state(self) -> Dict:
-        """Get the runner state."""
-        runner_state = self.runner_state.copy()
-        runner_state.update(await self.model_wrapper.get_workflow_state())
-        return runner_state
 
     async def run_task(
         self,
@@ -459,12 +440,11 @@ class DebugWorkflowRunner(WorkflowRunner):
             with VizTracer(output_file=self.output_profiling_file):
                 status = await self.run_task(task=task, repeat_times=1, run_id_base=0)
         experiences = []
-        if self.config.explorer.rollout_model.enable_history:
-            try:
-                payload = await self.model_wrapper.drain_experience_records_bytes_async("debug")
-                experiences = Experience.deserialize_many(payload) if payload else []
-            except Exception:
-                experiences = []
+        try:
+            payload = await self.model_wrapper.drain_experience_records_bytes_async("debug")
+            experiences = Experience.deserialize_many(payload) if payload else []
+        except Exception:
+            experiences = []
         if not status.ok and not experiences:
             try:
                 experiences = self.model_wrapper.extract_experience_from_history()

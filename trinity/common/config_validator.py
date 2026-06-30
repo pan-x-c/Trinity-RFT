@@ -708,15 +708,30 @@ class ExplorerConfigValidator(ConfigValidator):
         if config.explorer.rollout_model.engine_type.startswith("vllm") or (
             config.explorer.rollout_model.engine_type == "sglang"
         ):
-            # enable_history is the single switch for engine-side recording.
-            if config.explorer.rollout_model.enable_history:
-                config.explorer.rollout_model.enable_openai_api = True
+            # enable_history is the single switch for engine-side recording and is
+            # mandatory for the rollout model: the Workflow.execute overwrite path
+            # and the Scheduler drain both rely on experiences being captured into
+            # the in-process store keyed by the recording identity.
+            if not config.explorer.rollout_model.enable_history:
+                config.explorer.rollout_model.enable_history = True
+                self.logger.warning(
+                    "`explorer.rollout_model.enable_history` is required for the rollout "
+                    "model's recording flow; force-set to True."
+                )
+            # enable_history implies the OpenAI API server (the recording runner).
+            config.explorer.rollout_model.enable_openai_api = True
         self._validate_inference_parallel_config(config.explorer.rollout_model, "rollout_model")
         # auxiliary models
         for aux_model in config.explorer.auxiliary_models:
             if not aux_model.model_path:
                 raise ValueError("auxiliary model's model_path is required.")
             aux_model.ray_namespace = config.ray_namespace
+            # auxiliary models must not record history; only the rollout model does.
+            if aux_model.enable_history:
+                self.logger.warning(
+                    "`enable_history` is not supported on auxiliary models and is "
+                    "force-set to False."
+                )
             aux_model.enable_history = False
             aux_model.enable_openai_api = True
             for args in model_args:

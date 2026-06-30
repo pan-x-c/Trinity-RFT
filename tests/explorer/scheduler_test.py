@@ -246,7 +246,6 @@ class DummyWorkflowWithState(Workflow):
                 )
             run_level_exps[-1].metrics = run_level_metrics
             self.logger.info(f"Setting workflow state to repeat_cnt={i}")
-            await self.model.set_workflow_state({"repeat_cnt": i})
             await asyncio.sleep(1)
             exps.extend(run_level_exps)
         return exps

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """Test for the workflow module"""
 import asyncio
+import copy
 import os
 import shutil
 import threading
 import time
 import unittest
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 from unittest import mock
@@ -24,7 +24,6 @@ from tests.tools import (
     get_template_config,
     get_unittest_dataset_config,
 )
-from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 from trinity.common.experience import EID, Experience
 from trinity.common.models.allocator import Allocator
@@ -494,48 +493,6 @@ class MultiTurnWorkflowTest(unittest.IsolatedAsyncioTestCase):
         ray.shutdown(_exiting_interpreter=True)
 
 
-class StateRecordingWorkflow(Workflow):
-    is_async: bool = True
-
-    def __init__(self, *, task, model: ModelWrapper, auxiliary_models):
-        super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
-        self.wait_time = task.workflow_args.get("wait_time", 1)
-
-    async def run_async(self):
-        for i in range(self.wait_time):
-            await self.model.set_workflow_state({"step": i})
-            await asyncio.sleep(1)
-        return [Experience(tokens=Tensor([0, 1, 2]), prompt_length=1, reward=1.0)]
-
-
-class TestWorkflowStateRecording(unittest.IsolatedAsyncioTestCase):
-    async def test_workflow_state_recording(self):
-        model = MagicMock()
-        model_wrapper = ModelWrapper(model, config=InferenceModelConfig(model_path="dummy_model"))
-
-        task = Task(
-            workflow=StateRecordingWorkflow,
-            repeat_times=3,
-            raw_task={},
-            workflow_args={"wait_time": 3},
-        )
-        workflow = task.to_workflow(model_wrapper)
-
-        async def monitor_routine():
-            old_state = {}
-            count = 0
-            for i in range(20):
-                await asyncio.sleep(0.2)
-                new_state = await model_wrapper.get_workflow_state()
-                if new_state.get("step") != old_state.get("step"):
-                    old_state = new_state
-                    count += 1
-            self.assertEqual(count, 3)
-            return count
-
-        await asyncio.gather(*[monitor_routine(), workflow.run_async()])
-
-
 class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
     async def test_adapter_v1(self):
         try:
@@ -592,9 +549,23 @@ class TestAgentScopeWorkflowAdapter(unittest.IsolatedAsyncioTestCase):
 
 class DummyModelWrapper:
     def __init__(self, model, **kwargs):
-        pass
+        self._api_key = "EMPTY"
 
     async def prepare(self):
+        return
+
+    def set_api_key(self, api_key: str) -> None:
+        """Mirror ModelWrapper.set_api_key for the refactored WorkflowBase."""
+        self._api_key = api_key
+
+    def clone_with_isolated_state(self) -> "DummyModelWrapper":
+        """Mirror ModelWrapper.clone_with_isolated_state for the runner's
+        isolated workflow instances used in async/multi-threading modes."""
+        return copy.copy(self)
+
+    async def overwrite_history_experiences_async(self, experiences, key: str) -> None:
+        """Mirror ModelWrapper.overwrite_history_experiences_async; a no-op for
+        tests since DummyWorkflow does not record history."""
         return
 
     def get_openai_client(self):
@@ -602,9 +573,6 @@ class DummyModelWrapper:
 
     def get_openai_async_client(self):
         return openai.AsyncOpenAI(api_key="EMPTY")
-
-    async def clean_workflow_state(self):
-        return
 
     @property
     async def model_version_async(self):
@@ -792,7 +760,6 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
 
             async def mock_execute_single_run(
                 workflow: Workflow,
-                model_wrapper: ModelWrapper,
             ):
                 run_index = int(workflow.task.run_id)
                 if run_index == 0:
@@ -837,65 +804,6 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 status.message,
             )
 
-    async def test_workflow_runner_get_state(self):
-        config = get_template_config()
-
-        async def mock_get_api_server_url_remote():
-            return None
-
-        async def mock_get_model_version_remote():
-            return 1
-
-        async def mock_get_api_key_remote():
-            return "dummy_api_key"
-
-        async def mock_get_model_config_remote():
-            return InferenceModelConfig(model_path="dummy_model")
-
-        model = MagicMock()
-        model.get_api_server_url.remote = MagicMock(side_effect=mock_get_api_server_url_remote)
-        model.get_model_version.remote = MagicMock(side_effect=mock_get_model_version_remote)
-        model.get_api_key.remote = MagicMock(side_effect=mock_get_api_key_remote)
-        model.get_model_config.remote = MagicMock(side_effect=mock_get_model_config_remote)
-
-        with patch_runner_models(
-            ModelWrapper(model, config=InferenceModelConfig(model_path="dummy_model"))
-        ):
-            runner = WorkflowRunner(
-                config,
-                rollout_model_id=0,
-                runner_id=1,
-            )
-            await runner.prepare()
-        task = Task(
-            workflow=StateRecordingWorkflow,
-            raw_task={},
-            workflow_args={"wait_time": 2},
-            batch_id=1,
-            task_id=2,
-        )
-
-        async def monitor_routine():
-            state_history = defaultdict(set)
-            count = 0
-            for i in range(20):
-                await asyncio.sleep(0.4)
-                new_state = await runner.get_runner_state()
-                for k, v in new_state.items():
-                    state_history[k].add(v)
-            self.assertEqual(len(state_history["model_version"]), 1)
-            self.assertEqual(len(state_history["workflow_id"]), 3)
-            self.assertEqual(len(state_history["begin_time"]), 3)
-            self.assertEqual(len(state_history["step"]), 2)
-            return count
-
-        await asyncio.gather(
-            *[
-                monitor_routine(),
-                runner.run_task(task, repeat_times=3, run_id_base=0),
-            ]
-        )
-
     async def test_workflow_with_openai(self):
         config = get_template_config()
         config.mode = "explore"
@@ -917,23 +825,33 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 workflow=APIWorkflow,
                 raw_task={"raise_except": True},
                 repeat_times=2,
+                batch_id="openai_test",
+                task_id=0,
             ),
             Task(
                 workflow=APIWorkflow,
                 raw_task={},
                 repeat_times=2,
+                batch_id="openai_test",
+                task_id=1,
             ),
         ]
 
         status = await runner.run_task(tasks[0], repeat_times=2, run_id_base=0)
         self.assertEqual(status.ok, False)
+        # The run raised after the chat call, so the partial experience recorded
+        # under the last run's key persists (execute/overwrite is never reached).
         exps = runner.model_wrapper.extract_experience_from_history(clear_history=False)
         self.assertEqual(len(exps), 1)
         status = await runner.run_task(tasks[1], repeat_times=2, run_id_base=0)
         self.assertEqual(status.ok, True)
         self.assertEqual(status.completed_runs, 2)
+        # A successful run extracts the recorded history (clearing it) and then
+        # `Workflow.execute` overwrites the final experiences back under the key,
+        # so the last run's key still holds one experience (drained later by the
+        # coordinator, not by run_task).
         exps = runner.model_wrapper.extract_experience_from_history(clear_history=False)
-        self.assertEqual(len(exps), 0)
+        self.assertEqual(len(exps), 1)
         self.assertEqual(len(rollout_model), 1)
         await rollout_model[0].shutdown()
 
@@ -950,20 +868,26 @@ class ConcurrentTestWorkflow(Workflow):
 
     async def run_async(self):
         assert self.task.raw_task is not None
-        _ = await self.model.chat_async([{"role": "user", "content": self.task.raw_task["text"]}])
+        text = self.task.raw_task["text"]
+        # Both calls opt into recording under the run's record key
+        # (enable_recording=True is required for chat_async to stamp the key;
+        # otherwise the engine recorder skips the turn entirely). Distinct prompts
+        # guarantee the two recorded experiences never form a token-prefix chain,
+        # so the prefix merger leaves them as two separate experiences.
+        _ = await self.model.chat_async([{"role": "user", "content": text}], enable_recording=True)
         await asyncio.sleep(1.0)
         _ = await self.client.chat.completions.create(
             model=self.client.model_path,
-            messages=[{"role": "user", "content": self.task.raw_task["text"]}],
+            messages=[{"role": "user", "content": "What is the result of one plus one?"}],
         )
         history_exps = self.model.extract_experience_from_history()
-        assert len(history_exps) == 2
-        assert history_exps[0].prompt_length == history_exps[1].prompt_length
-        prompt_length = history_exps[0].prompt_length
-        assert (
-            history_exps[0].tokens[:prompt_length].shape
-            == history_exps[1].tokens[:prompt_length].shape
+        assert len(history_exps) == 2, "Expected 2 experiences from history, got {}".format(
+            len(history_exps)
         )
+        for exp in history_exps:
+            assert exp.prompt_length > 0, "Expected a positive prompt length, got {}".format(
+                exp.prompt_length
+            )
         self.logger.debug("[DEBUG MESSAGE]")
         self.logger.info("[INFO MESSAGE]")
         self.logger.warning("[WARNING MESSAGE]")
@@ -1045,22 +969,34 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
             workflow=ConcurrentTestWorkflow,
             repeat_times=4,
             raw_task={"text": "Hello, world!"},
+            batch_id="concurrent",
+            task_id=0,
         )
 
+        # Each run_task call uses a distinct batch_id so the record keys
+        # (<batch_id>/<task_id>/<run_id>) never collide across calls on the shared
+        # rollout-model store. `Workflow.execute` overwrites the final experiences
+        # back under each key, so reusing a key would let a later call observe the
+        # previous call's leftovers and break the per-run `assert len==2`.
         # warmup
+        task.batch_id = "concurrent_async_warmup"
         async_status = await async_runner.run_task.remote(task, repeat_times=2, run_id_base=0)
 
         st = time.time()
+        task.batch_id = "concurrent_async"
         async_status = await async_runner.run_task.remote(task, repeat_times=4, run_id_base=0)
         async_runtime = time.time() - st
 
         # warmup
+        task.batch_id = "concurrent_thread_warmup"
         thread_status = await thread_runner.run_task.remote(task, repeat_times=1, run_id_base=0)
 
         st = time.time()
+        task.batch_id = "concurrent_thread"
         thread_status = await thread_runner.run_task.remote(task, repeat_times=4, run_id_base=0)
         thread_runtime = time.time() - st
         st = time.time()
+        task.batch_id = "concurrent_sequential"
         sequential_status = await sequential_runner.run_task.remote(
             task, repeat_times=4, run_id_base=0
         )

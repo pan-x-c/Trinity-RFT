@@ -68,10 +68,6 @@ class RolloutCoordinator:
         # recording residual cleanup.
         self._rollout_actors: Dict[int, ActorHandle] = {}
 
-    def _enable_history_recording(self) -> bool:
-        """Whether the recording-consume path is active for train batches."""
-        return bool(self.config.explorer.rollout_model.enable_history)
-
     def _resolve_rollout_actors(self) -> Dict[int, ActorHandle]:
         """Resolve each rollout engine's actor handle via named Ray actors.
 
@@ -323,8 +319,6 @@ class RolloutCoordinator:
 
     async def _discard_recorded_experiences(self, prefix: str) -> None:
         """Delete recorded experiences matching a prefix from all rollout ranks."""
-        if not self._enable_history_recording():
-            return
         actors = self._resolve_rollout_actors()
         results = await asyncio.gather(
             *[actor.delete_experience_records.remote(prefix=prefix) for actor in actors.values()],

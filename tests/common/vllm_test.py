@@ -1035,7 +1035,6 @@ class TestLogprobs(VLLMTestBase):
         )
 
         # test openai api and vllm engine logprobs consistency
-        await self.model_wrapper.clean_workflow_state()
         _ = await self.model_client.chat.completions.create(
             model=self.model_client.model_path,
             messages=messages,

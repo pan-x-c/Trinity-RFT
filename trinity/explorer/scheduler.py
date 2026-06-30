@@ -84,7 +84,6 @@ class RunnerWrapper:
         self.timeout = config.explorer.max_timeout
         self.namespace = config.ray_namespace
         self.runner = self._create_runner()
-        self.state = {}
         self.rollout_actor = rollout_actor
 
     def _create_runner(self):
@@ -105,11 +104,6 @@ class RunnerWrapper:
                 self.runner_id,
             )
         )
-
-    async def update_state(self) -> None:
-        """Get the runner state."""
-        self.state = await self.runner.get_runner_state.remote()
-        self.state["running_time"] = time.time() - self.state.get("begin_time", time.time())
 
     async def prepare(self):
         await self.runner.prepare.remote()
@@ -161,7 +155,7 @@ class RunnerWrapper:
         self,
         task: TaskWrapper,
         repeat_times: int,
-        run_base: int,
+        run_id_base: int,
         timeout: float,
         collect_partial_runs: bool,
     ) -> Tuple[Status, List[bytes], int, float]:
@@ -196,7 +190,7 @@ class RunnerWrapper:
                     run_task_ref = self.runner.run_task.remote(
                         task=task2run,
                         repeat_times=repeat_times,
-                        run_base=run_base,
+                        run_id_base=run_id_base,
                         collect_partial_runs=collect_partial_runs,
                     )
                     status = await asyncio.wait_for(
@@ -326,7 +320,6 @@ class Scheduler:
         self.background_tasks: set[asyncio.Task] = set()
 
         self.scheduler_task: Optional[asyncio.Task] = None
-        self.monitor_task: Optional[asyncio.Task] = None
 
         self.total_running_time = 0.0
         self.total_completed_steps = 0
@@ -383,24 +376,6 @@ class Scheduler:
                 await asyncio.sleep(0.1)
         self.logger.info("Scheduler loop stopped.")
 
-    async def _monitor_runner_state_loop(self) -> None:
-        interval = self.config.explorer.runner_state_report_interval
-        if interval <= 0:
-            self.logger.info("Runner state monitoring loop disabled.")
-            return
-
-        self.logger.info("Runner state monitoring loop started.")
-        while self.running:
-            try:
-                await asyncio.gather(*[runner.update_state() for runner in self.runners.values()])
-                self.print_all_state()
-            except Exception:
-                self.logger.error(
-                    f"Error in runner state monitoring loop:\n{traceback.format_exc()}"
-                )
-            await asyncio.sleep(interval)
-        self.logger.info("Runner state monitoring loop stopped.")
-
     async def _schedule_pending_tasks(self) -> None:
         if not self.idle_runners:
             return
@@ -410,13 +385,13 @@ class Scheduler:
             task_queue = self.pending_tasks[batch_id]
 
             while task_queue and self.idle_runners:
-                task, repeat_times, run_base = task_queue.pop()
+                task, repeat_times, run_id_base = task_queue.pop()
                 runner_id = self.idle_runners.pop()
                 future = asyncio.create_task(
                     self.runners[runner_id].run_with_retry(
                         task,
                         repeat_times=repeat_times,
-                        run_base=run_base,
+                        run_id_base=run_id_base,
                         timeout=self.dynamic_timeout(),
                         collect_partial_runs=self.config.explorer.over_rollout.return_partial_tasks,
                     )
@@ -578,7 +553,6 @@ class Scheduler:
         self.scheduler_task = asyncio.create_task(self._scheduler_loop())
         ready_refs = [runner.runner.__ray_ready__.remote() for runner in self.runners.values()]
         await asyncio.gather(*ready_refs)
-        self.monitor_task = asyncio.create_task(self._monitor_runner_state_loop())
         self.logger.info(f"Starting Scheduler with {self.runner_num} runners")
 
     async def stop(self) -> None:
@@ -601,12 +575,6 @@ class Scheduler:
             self.scheduler_task.cancel()
             try:
                 await self.scheduler_task
-            except asyncio.CancelledError:
-                pass
-        if self.monitor_task:
-            self.monitor_task.cancel()
-            try:
-                await self.monitor_task
             except asyncio.CancelledError:
                 pass
         self.logger.info("Scheduler stopped")
@@ -638,9 +606,9 @@ class Scheduler:
                 self.pending_tasks[batch_id].appendleft((task_wrapper, task.repeat_times, 0))
                 continue
             sub_tasks = []
-            for run_base in range(0, task.repeat_times, self.max_repeat_times):
-                repeat_times = min(self.max_repeat_times, task.repeat_times - run_base)
-                sub_tasks.append((task_wrapper, repeat_times, run_base))
+            for run_id_base in range(0, task.repeat_times, self.max_repeat_times):
+                repeat_times = min(self.max_repeat_times, task.repeat_times - run_id_base)
+                sub_tasks.append((task_wrapper, repeat_times, run_id_base))
             task_wrapper.sub_task_num = len(sub_tasks)
             self.pending_tasks[batch_id].extendleft(sub_tasks)
 
@@ -860,77 +828,3 @@ class Scheduler:
             or batch_id in self.pending_tasks
             or batch_id in self.running_tasks
         )
-
-    def get_key_state(self, key: str) -> Dict:
-        """Get the scheduler state.
-
-        Args:
-            key (`str`): The key of the state to get.
-
-        Returns:
-            `Dict`: A dictionary of runner ids to their state for the given key.
-        """
-        result = {}
-        for runner in self.runners.values():
-            runner_state = runner.state
-            if runner_state and key in runner_state:
-                result[runner.runner_id] = runner_state[key]
-        return result
-
-    def get_runner_state(self, runner_id: int) -> Dict:
-        """Get the scheduler state.
-
-        Args:
-            runner_id (`int`): The id of the runner.
-
-        Returns:
-            `Dict`: The state of the runner.
-        """
-        runner = self.runners.get(runner_id, None)
-        if runner:
-            return runner.state
-        else:
-            return {}
-
-    def get_all_state(self) -> Dict:
-        """Get all runners' state.
-
-        Returns:
-            `Dict`: The state of all runners.
-        """
-        result = {}
-        for runner in self.runners.values():
-            runner_state = runner.state
-            if runner_state:
-                result[runner.runner_id] = runner_state
-        return result
-
-    def print_all_state(self) -> None:
-        """Print all runners' state in a clear, aligned table format."""
-        all_keys = set()
-        for runner in self.runners.values():
-            runner_state = runner.state
-            if runner_state:
-                all_keys.update(runner_state.keys())
-        all_keys = sorted(all_keys)
-        # Prepare header
-        header = ["runner_id"] + all_keys  # type: ignore [operator]
-        # Prepare rows
-        rows = []
-        for runner in self.runners.values():
-            runner_state = runner.state or {}
-            row = [str(runner.runner_id)]
-            for key in all_keys:
-                value = runner_state.get(key, "-")
-                row.append(str(value))
-            rows.append(row)
-        # Calculate column widths
-        col_widths = [max(len(str(x)) for x in col) for col in zip(header, *rows)]
-        # Print header
-        header_line = " | ".join(str(h).ljust(w) for h, w in zip(header, col_widths))
-        self.logger.info(header_line)
-        self.logger.info("-+-".join("-" * w for w in col_widths))
-        # Print each row
-        for row in rows:
-            line = " | ".join(str(cell).ljust(w) for cell, w in zip(row, col_widths))
-            self.logger.info(line)

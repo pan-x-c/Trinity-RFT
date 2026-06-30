@@ -504,9 +504,7 @@ class ModelWrapper:
         self.enable_lora = config.enable_lora
         self.enable_history = config.enable_history
         self.status = RunningStatus.RUNNING
-        self.workflow_state: Dict = {}
         self.request_count = 0
-        self.state_lock = asyncio.Lock()
 
     async def prepare(self) -> None:
         """Prepare some necessary information for the model before inference."""
@@ -944,17 +942,6 @@ class ModelWrapper:
             raise ValueError("Recording delete requires an inference model actor.")
         await self.model.delete_experience_records.remote(prefix=prefix)
 
-    # Workflow state management methods
-    async def set_workflow_state(self, state: Dict) -> None:
-        """Set the state of workflow using the model."""
-        async with self.state_lock:
-            self.workflow_state.update(state)
-
-    async def clean_workflow_state(self) -> None:
-        """Clean the state of workflow using the model."""
-        async with self.state_lock:
-            self.workflow_state = {}
-
     async def shutdown(self) -> None:
         """Shutdown all underlying model actors cleanly."""
         try:
@@ -963,11 +950,6 @@ class ModelWrapper:
             self.logger.error(
                 f"Error during model {self.config.model_path}[{self.config.engine_id}:{self.config.node_rank}] shutdown: {e}"
             )
-
-    async def get_workflow_state(self) -> Dict:
-        """Get the state of workflow using the model."""
-        async with self.state_lock:
-            return self.workflow_state.copy()
 
     def clone_with_isolated_state(self) -> "ModelWrapper":
         """Clone the current ModelWrapper with isolated state."""

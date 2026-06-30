@@ -432,6 +432,9 @@ class WorkflowWithRecording(WorkflowBase):
     the recorded experience data with the reward and optional info.
     """
 
+    can_reset: bool = True
+    is_async: bool = True
+
     def __init__(
         self,
         *,
@@ -459,7 +462,7 @@ class WorkflowWithRecording(WorkflowBase):
         """Reset the workflow."""
         raise NotImplementedError
 
-    async def run(self) -> Metrics:
+    async def run_async(self) -> Metrics:
         """Run workflow asynchronously and return metrics for the completed run."""
         raise NotImplementedError
 
