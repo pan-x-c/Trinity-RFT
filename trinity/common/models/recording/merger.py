@@ -131,7 +131,7 @@ class _StreamHeads:
                 entry = self._heads_by_sample_id.get(sample_id)
                 if entry is None:
                     continue
-                if _is_strict_token_prefix(entry.exp.tokens, exp.tokens):
+                if _is_mergeable_turn_prefix(entry.exp, exp):
                     if best_entry is None or entry.sequence < best_entry.sequence:
                         best_entry = entry
             if best_entry is not None:
@@ -167,7 +167,7 @@ def _find_longest_prefix_experience(
             continue
         if not _same_sample_stream(candidate, exp):
             continue
-        if _is_strict_token_prefix(candidate.tokens, exp.tokens):
+        if _is_mergeable_turn_prefix(candidate, exp):
             best_candidate = candidate
             best_length = candidate_length
     return best_candidate
@@ -215,11 +215,17 @@ def _is_strict_token_prefix(prefix: torch.Tensor, tokens: torch.Tensor) -> bool:
     return bool(torch.equal(prefix.detach().cpu(), tokens[:prefix_len].detach().cpu()))
 
 
+def _is_mergeable_turn_prefix(prefix_exp: Experience, final_exp: Experience) -> bool:
+    prefix_len = len(prefix_exp.tokens)
+    if prefix_len > final_exp.prompt_length:
+        return False
+    return _is_strict_token_prefix(prefix_exp.tokens, final_exp.tokens)
+
+
 def _merge_prefix_experiences(prefix_exp: Experience, final_exp: Experience) -> Experience:
     prefix_len = len(prefix_exp.tokens)
     final_prompt_length = final_exp.prompt_length
-    if final_prompt_length < prefix_len:
-        final_prompt_length = prefix_len
+    assert final_prompt_length >= prefix_len
     gap_len = final_prompt_length - prefix_len
     final_response_len = len(final_exp.tokens) - final_prompt_length
 

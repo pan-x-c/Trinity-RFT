@@ -263,6 +263,37 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(merged.info["merged_eid_suffixes"], ["req-short", "req-long", "req-final"])
         self.assertEqual(merged.info["merged_turn_count"], 3)
 
+    async def test_same_prompt_independent_completions_do_not_merge(self):
+        store = MemoryStore()
+        recorder = Recorder(
+            store=store,
+            build_experiences=lambda *_args, **_kwargs: [],
+            enabled=True,
+        )
+        record_key = "0/task_a/1"
+        short_completion = make_turn(
+            request_id="req-short",
+            record_key=record_key,
+            tokens=[10, 11, 20, 21],
+            prompt_length=2,
+            logprobs=[-0.2, -0.3],
+        )
+        long_completion = make_turn(
+            request_id="req-long",
+            record_key=record_key,
+            tokens=[10, 11, 20, 21, 22, 23],
+            prompt_length=2,
+            logprobs=[-0.4, -0.5, -0.6, -0.7],
+        )
+
+        await recorder._safe_append(short_completion)
+        await recorder._safe_append(long_completion)
+
+        recorded = store.get(record_key)
+        self.assertEqual(len(recorded), 2)
+        self.assertEqual({exp.eid.suffix for exp in recorded}, {"req-short", "req-long"})
+        self.assertTrue(all("merged_turn_count" not in exp.info for exp in recorded))
+
     async def test_stale_merge_head_falls_back_to_append(self):
         store = MemoryStore()
         recorder = Recorder(
