@@ -55,13 +55,12 @@ class SGLangClient:
         self.logger = logger
 
     def _auth_header(self, api_key_override: Optional[str]) -> str:
-        # The record_key travels as the bearer so the server-side
-        # RecordingIdentityMiddleware stamps it into ``record_key_ctx``. Falls
-        # back to the client's api_key (which, on the Trinity Ray-direct path,
-        # equals the record_key injected by ModelWrapper).
+        # ``api_key_override`` is a per-request record_key when recording is on.
+        # Otherwise fall back to the configured API key for SGLang auth. The
+        # default ``EMPTY`` token is still a valid auth token for no-history
+        # servers; RecordingIdentityMiddleware separately ignores it as a
+        # record_key.
         token = api_key_override if api_key_override is not None else self.api_key
-        if token == "EMPTY":
-            token = None
         return f"Bearer {token}" if token else ""
 
     async def _server_call(
