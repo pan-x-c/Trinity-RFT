@@ -502,3 +502,8 @@ class WorkflowWithRecording(WorkflowBase):
             info=info,
             sample_ids=sample_ids,
         )
+
+    def set_single_run_context(self, run_id_base: int) -> None:
+        """Only a placeholder to align with the Workflow interface.
+        This workflow does not support repeat runs."""
+        pass
