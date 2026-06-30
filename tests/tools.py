@@ -22,10 +22,9 @@ from trinity.common.constants import (
     StorageType,
 )
 
-API_MODEL_PATH_ENV_VAR = "TRINITY_API_MODEL_PATH"
+LARGE_MODEL_PATH_ENV_VAR = "TRINITY_LARGE_MODEL_PATH"
 MOE_MODEL_PATH_ENV_VAR = "TRINITY_MOE_MODEL_PATH"
 VLM_MODEL_PATH_ENV_VAR = "TRINITY_VLM_MODEL_PATH"
-ALTERNATIVE_VLM_MODEL_PATH_ENV_VAR = "TRINITY_ALTERNATIVE_VLM_MODEL_PATH"
 SFT_DATASET_PATH_ENV_VAR = "TRINITY_SFT_DATASET_PATH"
 
 
@@ -203,11 +202,11 @@ def get_model_path() -> str:
     return path
 
 
-def get_api_model_path() -> str:
-    path = os.environ.get(API_MODEL_PATH_ENV_VAR)
+def get_large_model_path() -> str:
+    path = os.environ.get(LARGE_MODEL_PATH_ENV_VAR)
     if not path:
         raise EnvironmentError(
-            f"Please set `export {API_MODEL_PATH_ENV_VAR}=<your_api_model_checkpoint_dir>` before running this test."
+            f"Please set `export {LARGE_MODEL_PATH_ENV_VAR}=<your_model_dir>` before running this test."
         )
     return path
 
@@ -239,15 +238,6 @@ def get_vision_language_model_path() -> str:
     return path
 
 
-def get_alternative_vision_language_model_path() -> str:
-    path = os.environ.get(ALTERNATIVE_VLM_MODEL_PATH_ENV_VAR)
-    if not path:
-        raise EnvironmentError(
-            f"Please set `export {ALTERNATIVE_VLM_MODEL_PATH_ENV_VAR}=<your_model_dir>` before running this test."
-        )
-    return path
-
-
 def get_lora_config() -> LoRAConfig:
     return LoRAConfig(name="lora", lora_rank=16, lora_alpha=16)
 
@@ -266,6 +256,19 @@ def get_unittest_dataset_config(dataset_name: str = "countdown", split: str = "t
             ),
             default_workflow_type="math_workflow",
             default_reward_fn_type="countdown_reward",
+        )
+    elif dataset_name == "cpt_for_countdown":
+        # Countdown dataset for CPT with 17 samples
+        return ExperienceBufferConfig(
+            name=dataset_name,
+            path=os.path.join(os.path.dirname(__file__), "template", "data", "countdown"),
+            split="train",
+            storage_type=StorageType.FILE.value,
+            schema_type="cpt",
+            format=FormatConfig(
+                prompt_type=PromptType.PLAINTEXT,
+                prompt_key="question",
+            ),
         )
     elif dataset_name in {"eval_short", "eval_long"}:
         # Eval_short dataset with 2 samples, eval_long dataset with 8 samples

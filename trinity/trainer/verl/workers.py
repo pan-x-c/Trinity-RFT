@@ -22,7 +22,11 @@ import torch
 from omegaconf import DictConfig
 from verl.single_controller.base.decorator import Dispatch, register
 from verl.utils.memory_utils import aggressive_empty_cache
-from verl.workers.engine_workers import ActorRolloutRefWorker
+from verl.workers.engine_workers import (
+    ActorRolloutRefWorker,
+    TrainingWorker,
+    TrainingWorkerConfig,
+)
 
 from trinity.common.config import AlgorithmConfig
 from trinity.manager.synchronizer import Synchronizer
@@ -68,7 +72,8 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         - Flops counter registration for qwen3_5
         """
         from trinity.trainer.verl.monkey_patch import patch_verl_engine
-        from trinity.trainer.verl_legacy.monkey_patch import apply_monkey_patch
+
+        patch_verl_engine()
 
         # Patch veRL engine for LoRA + FSDP2 dtype alignment.
         # veRL's _build_lora_module does not align trainable param dtypes
@@ -84,28 +89,6 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
         self.role = self.role.replace("_rollout", "")
         super().init_model()
         self.role = original_role
-
-        # Apply Trinity-specific patches on top of what veRL already did
-        if self.actor is not None and hasattr(self.actor, "engine"):
-            patch_verl_engine(self.actor.engine)
-            model = getattr(self.actor.engine, "model", None)
-            if model is not None:
-                ulysses_sp_size = self.config.actor.get("ulysses_sequence_parallel_size", 1)
-                use_remove_padding = self.config.model.get("use_remove_padding", False)
-                use_fused_kernels = self.config.model.get("use_fused_kernels", False)
-                fused_kernel_options = self.config.model.get("fused_kernel_options", None)
-                fused_kernels_backend = (
-                    fused_kernel_options.get("impl_backend", None)
-                    if fused_kernel_options is not None
-                    else None
-                )
-                apply_monkey_patch(
-                    model=model,
-                    ulysses_sp_size=ulysses_sp_size,
-                    use_remove_padding=use_remove_padding,
-                    use_fused_kernels=use_fused_kernels,
-                    fused_kernels_backend=fused_kernels_backend,
-                )
 
         self._cache_state_dict_meta()
 
@@ -499,3 +482,11 @@ class TrinityActorRolloutRefWorker(ActorRolloutRefWorker):
             )
         else:
             raise ValueError(f"Unsupported strategy for upload_state_dict: {strategy}")
+
+
+class TrinityCriticWorker(TrainingWorker):
+    def __init__(self, config: TrainingWorkerConfig):
+        super().__init__(config)
+        from trinity.trainer.verl.monkey_patch import patch_verl_engine
+
+        patch_verl_engine()

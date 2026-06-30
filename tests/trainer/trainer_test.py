@@ -22,9 +22,8 @@ from tests.tools import (
     RayUnittestBase,
     RayUnittestBaseAsync,
     TensorBoardParser,
-    get_alternative_vision_language_model_path,
-    get_api_model_path,
     get_checkpoint_path,
+    get_large_model_path,
     get_lora_config,
     get_model_path,
     get_template_config,
@@ -74,6 +73,10 @@ class BaseTrainerCase(RayUnittestBase):
         self.config.synchronizer.sync_interval = 2
         self.config.synchronizer.sync_method = SyncMethod.NCCL
         self.config.explorer.eval_interval = 4
+
+    def tearDown(self):
+        # remove dir only when the test passed
+        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
 @parameterized_class(
@@ -188,10 +191,6 @@ class TestTrainerCountdown(BaseTrainerCase):
                     metric_steps = parser.metric_steps(metric_name)
                     self.assertEqual(metric_steps, [0, 4, 8])
 
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
-
 
 class TestStepAheadAsyncRL(BaseTrainerCase):
     def test_trainer(self):
@@ -240,18 +239,14 @@ class TestStepAheadAsyncRL(BaseTrainerCase):
         self.assertEqual(step_num, 4)
         self.assertTrue(os.path.exists(checkpoint_step_4))
 
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
-
 
 @parameterized_class(
-    ("strategy", "offloading", "engine_type", "entropy_loss_fn"),
+    ("strategy", "offloading", "engine_type", "entropy_loss_fn", "sp_size"),
     [
-        ("megatron", False, "vllm", "none"),
-        ("fsdp2", False, "vllm", "none"),
-        ("megatron", True, "sglang", "default"),
-        ("fsdp2", True, "sglang", "default"),
+        ("megatron", False, "vllm", "none", 1),
+        ("fsdp2", False, "vllm", "none", 1),
+        ("megatron", True, "sglang", "default", 1),
+        ("fsdp2", True, "sglang", "default", 2),
     ],
 )
 class TestTrainerGSM8K(BaseTrainerCase):
@@ -266,7 +261,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
         }
         self.config.algorithm.entropy_loss_fn = self.entropy_loss_fn
         if self.offloading:
-            self.config.model.model_path = get_api_model_path()
+            self.config.model.model_path = get_vision_language_model_path()
         # self.config.algorithm.repeat_times = 8  # TODO: used for real testing
         # self.config.buffer.batch_size = 96  # TODO: used for real testing
         # FOR MULTI-NODE TESTING, PLEASE MAKE SURE YOU HAVE 3 NODES
@@ -278,6 +273,7 @@ class TestTrainerGSM8K(BaseTrainerCase):
         self.config.buffer.total_epochs = 1
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config("gsm8k")
         self.config.trainer.trainer_strategy = self.strategy
+        self.config.trainer.ulysses_sequence_parallel_size = self.sp_size
         if self.strategy == "megatron":
             self.config.trainer.megatron.tensor_model_parallel_size = 2
         self.config.trainer.max_checkpoints_to_keep = 2
@@ -323,10 +319,6 @@ class TestTrainerGSM8K(BaseTrainerCase):
         # self.assertTrue(0.4 < rewards[1] < 0.55)
         # self.assertTrue(0.6 < rewards[2] < 0.7)
         # self.assertTrue(0.6 < rewards[3] < 0.7)
-
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
 @unittest.skip(
@@ -444,10 +436,6 @@ class TestTrainerSFTWarmupGSM8K(BaseTrainerCase):
         self.assertEqual(step_num, 4)
         self.assertGreater(len(os.listdir(os.path.join(checkpoint_dir, "actor"))), 0)
 
-    def tearDown(self):
-        # TODO: remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
-
 
 class TestTrainerDPO(BaseTrainerCase):
     def test_trainer(self):
@@ -471,9 +459,35 @@ class TestTrainerDPO(BaseTrainerCase):
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 4)
 
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
+
+class TestTrainerCPT(BaseTrainerCase):
+    def test_trainer(self):
+        """Test CPT."""
+        # test both mode
+        self.config.mode = "train"
+        self.config.algorithm.algorithm_type = "cpt"
+        self.config.algorithm.policy_loss_fn = "sft"
+        self.config.algorithm.policy_loss_fn_args = {}
+        self.config.algorithm.kl_loss_fn = "none"
+        self.config.algorithm.entropy_loss_fn = "none"
+        self.config.buffer.train_batch_size = 8
+        self.config.buffer.total_epochs = 2
+        self.config.buffer.trainer_input.experience_buffer = get_unittest_dataset_config(
+            "cpt_for_countdown"
+        )
+        self.config.model.model_path = get_large_model_path()
+        self.config.trainer.trainer_config["actor_rollout_ref"]["model"] = {
+            "use_fused_kernels": True,
+            "fused_kernel_options": {
+                "impl_backend": "torch",
+            },
+        }
+        self.config.check_and_update()
+        train(self.config)
+        parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
+        actor_metrics = parser.metric_list("actor")
+        self.assertGreater(len(actor_metrics), 0)
+        self.assertEqual(parser.metric_max_step(actor_metrics[0]), 4)
 
 
 class TestTrainerSFT(BaseTrainerCase):
@@ -492,16 +506,19 @@ class TestTrainerSFT(BaseTrainerCase):
         self.config.buffer.trainer_input.experience_buffer = get_unittest_dataset_config(
             "sft_for_gsm8k"
         )
+        self.config.model.model_path = get_large_model_path()
+        self.config.trainer.trainer_config["actor_rollout_ref"]["model"] = {
+            "use_fused_kernels": True,
+            "fused_kernel_options": {
+                "impl_backend": "triton",
+            },
+        }
         self.config.check_and_update()
         train(self.config)
         parser = TensorBoardParser(os.path.join(self.config.monitor.cache_dir, "tensorboard"))
         actor_metrics = parser.metric_list("actor")
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 4)
-
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
 class TestTrainerToolsSFT(BaseTrainerCase):
@@ -526,10 +543,6 @@ class TestTrainerToolsSFT(BaseTrainerCase):
         actor_metrics = parser.metric_list("actor")
         self.assertGreater(len(actor_metrics), 0)
         self.assertEqual(parser.metric_max_step(actor_metrics[0]), 4)
-
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
 def run_trainer(config: Config, stop_event=None) -> None:
@@ -1062,9 +1075,6 @@ class TestTrainerMIX(BaseTrainerCase):
         self.assertEqual(step_num, 4)
         self.assertGreater(len(os.listdir(os.path.join(checkpoint_dir, "actor"))), 0)
 
-    def tearDown(self):
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
-
 
 async def run_math_workflow(serve_url: str, task: dict):
     from trinity.common.rewards.math_reward import MathRewardFn
@@ -1253,7 +1263,7 @@ class TestMultiModalGRPO(BaseTrainerCase):
         self.config.buffer.explorer_input.taskset = get_unittest_dataset_config(
             "geometry"
         )  # Total 8 tasks
-        self.config.model.model_path = get_alternative_vision_language_model_path()
+        self.config.model.model_path = get_vision_language_model_path()
         self.config.algorithm.algorithm_type = "grpo"
         self.config.algorithm.advantage_fn = "grpo"
         self.config.algorithm.kl_loss_fn = "none"
@@ -1281,10 +1291,6 @@ class TestMultiModalGRPO(BaseTrainerCase):
         )
         self.assertGreater(len(os.listdir(os.path.join(checkpoint_step_2, "actor"))), 0)
         self.assertEqual(step_num, 2)
-
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
 class TestMultiModalSFT(BaseTrainerCase):
@@ -1320,10 +1326,6 @@ class TestMultiModalSFT(BaseTrainerCase):
         )
         self.assertGreater(len(os.listdir(os.path.join(checkpoint_step_2, "actor"))), 0)
         self.assertEqual(step_num, 2)
-
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
 class TestTrainerLoRA(BaseTrainerCase):
@@ -1393,9 +1395,6 @@ class TestTrainerLoRA(BaseTrainerCase):
                 metric_steps = parser.metric_steps(metric_name)
                 self.assertEqual(metric_steps, [0, 2])
 
-    def tearDown(self):
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
-
 
 class TestOverRollout(BaseTrainerCase):
     def test_trainer(self):
@@ -1446,10 +1445,6 @@ class TestOverRollout(BaseTrainerCase):
                 len(lines), 2 * 4 * 2
             )  # at least contain total_steps * repeat_times * batch_size * min_waited_tasks
 
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
-
 
 class TestTrainerPromptTruncation(BaseTrainerCase):
     def test_trainer(self):
@@ -1480,10 +1475,6 @@ class TestTrainerPromptTruncation(BaseTrainerCase):
         self.assertEqual(final_loss[0], 0.0)
         grad_norm = parser.metric_values("actor/grad_norm")
         self.assertEqual(grad_norm[0], 0.0)
-
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
 @unittest.skipIf("TINKER_API_KEY" not in os.environ, "TINKER_API_KEY is not set")
@@ -1552,10 +1543,6 @@ class TestTinkerTrainer(BaseTrainerCase):
                 * (1 + math.cos((50 - lr_warmup_steps) / (total_steps - lr_warmup_steps) * math.pi))
             ),
         )
-
-    def tearDown(self):
-        # remove dir only when the test passed
-        shutil.rmtree(self.config.checkpoint_job_dir, ignore_errors=True)
 
 
 class AgentScopeTunerTest(unittest.IsolatedAsyncioTestCase):
