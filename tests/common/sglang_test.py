@@ -105,6 +105,7 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         self.config.explorer.rollout_model.base_port = 13000
         self.config.algorithm.enable_router_replay = self.enable_return_routed_experts
         self.config.check_and_update()
+        self.config.explorer.rollout_model.enable_history = self.enable_history
         allocator = Allocator(self.config.explorer)
         rollout_models, _ = await allocator.create_all_models()
         self.model_wrapper = rollout_models[0]
@@ -125,6 +126,8 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
 
     def _assert_history_matches_responses(self, expected_count, prompt_contents, response_texts):
         if not self.enable_history:
+            with self.assertRaises(ValueError):
+                self.model_wrapper.extract_experience_from_history()
             return []
 
         exps = self.model_wrapper.extract_experience_from_history()

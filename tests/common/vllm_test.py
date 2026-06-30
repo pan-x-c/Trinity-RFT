@@ -164,6 +164,8 @@ class ModelWrapperTest(VLLMTestBase):
         self.config.algorithm.repeat_times = self.repeat_times
         self.config.explorer.rollout_model.enable_history = self.enable_history
         self.config.explorer.rollout_model.enable_openai_api = self.enable_return_routed_experts
+        requested_enable_history = self.config.explorer.rollout_model.enable_history
+        requested_enable_openai_api = self.config.explorer.rollout_model.enable_openai_api
         self.config.explorer.rollout_model.chat_template = CHAT_TEMPLATE
         self.config.explorer.rollout_model.extra_engine_args = {"max_num_seqs": 24}
         if self.enable_return_routed_experts:
@@ -171,6 +173,8 @@ class ModelWrapperTest(VLLMTestBase):
             self.config.explorer.rollout_model.extra_engine_args["gdn_prefill_backend"] = "triton"
         self.config.algorithm.enable_router_replay = self.enable_return_routed_experts
         self.config.check_and_update()
+        self.config.explorer.rollout_model.enable_history = requested_enable_history
+        self.config.explorer.rollout_model.enable_openai_api = requested_enable_openai_api
 
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
