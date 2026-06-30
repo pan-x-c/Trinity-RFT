@@ -506,8 +506,8 @@ class SGLangRolloutModel(BaseInferenceModel):
         raise NotImplementedError("SGLangRolloutModel does not support logprobs.")
         # NOTE: if implemented later, the auxiliary forward must avoid being
         # recorded. Unlike vLLM, ``skip_recording_ctx`` does NOT cross the HTTP
-        # hop to the server; instead omit ``record_key`` for that call so the
-        # server-side recorder skips it (record_key is None -> no record).
+        # hop to the server; instead omit ``key`` for that call so the
+        # server-side recorder skips it (key is None -> no record).
 
     async def convert_messages_to_experience(
         self,

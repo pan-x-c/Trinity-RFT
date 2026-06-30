@@ -386,16 +386,18 @@ class TestRecording(RayUnittestBaseAsync):
     per-task ``record_key`` (captured by ``RecordingIdentityMiddleware``),
     matching vLLM (which sets no api_key auth in recording mode).
 
-    ``enable_history`` forces ``enable_return_routed_experts`` in the
-    Allocator, so this test uses a MoE checkpoint (``get_moe_model_path``).
+    ``enable_router_replay`` (mirrored to ``enable_return_routed_experts`` by
+    ``check_and_update``) is on, so this test uses a MoE checkpoint
+    (``get_moe_model_path``) and asserts routed_experts shapes.
     """
 
     async def asyncSetUp(self):
         self.config = get_template_config()
         self.config.mode = "explore"
-        # enable_history forces enable_return_routed_experts -> needs a MoE
-        # model (otherwise routed_experts is absent and the shape asserts below
-        # would fail). Use a Qwen3-MoE checkpoint.
+        # enable_router_replay drives enable_return_routed_experts (see
+        # ``config_validator``) -> needs a MoE model (otherwise routed_experts
+        # is absent and the shape asserts below would fail). Use a Qwen3-MoE
+        # checkpoint.
         self.config.model.model_path = get_moe_model_path()
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config.model.model_path,
@@ -413,6 +415,11 @@ class TestRecording(RayUnittestBaseAsync):
         self.config.explorer.rollout_model.enable_openai_api = True
         self.config.explorer.rollout_model.enable_history = True
         self.config.explorer.rollout_model.enable_expert_parallel = True
+        # enable_router_replay is mirrored to enable_return_routed_experts by
+        # ``check_and_update`` (config_validator); it is NOT implied by
+        # enable_history. The routed-experts asserts below require it on, so
+        # the in-SGLang recorder captures routed_experts on every path.
+        self.config.algorithm.enable_router_replay = True
         # Tool-call parsing coverage (qwen3_coder matches the Qwen3.5 chat
         # template). SGLang enables tool calling via tool_call_parser (no
         # separate enable_auto_tool_choice flag); enable_auto_tool_choice is
@@ -472,7 +479,7 @@ class TestRecording(RayUnittestBaseAsync):
         self.assertGreater(len(exp.response_text), 0)
 
     def _assert_recorded_routed_experts(self, exp: Experience):
-        # enable_return_routed_experts is forced on by enable_history.
+        # enable_router_replay -> enable_return_routed_experts is on for this test.
         self.assertIsNotNone(exp.routed_experts)
         re = exp.routed_experts
         self.assertEqual(re.dtype, torch.uint8)
@@ -489,7 +496,7 @@ class TestRecording(RayUnittestBaseAsync):
         # ===== 1. Ray-direct generate (record_key via Authorization bearer) =====
         rk_gen = "0/t_gen/1"
         await self.model_wrapper.generate_async(
-            ["Hello, world!"], n=1, temperature=1.0, max_tokens=16, record_key=rk_gen
+            ["Hello, world!"], n=1, temperature=1.0, max_tokens=16, key=rk_gen
         )
         consumed = await self._consume(rk_gen, reward=0.5)
         self.assertEqual(len(consumed), 1)
@@ -502,7 +509,7 @@ class TestRecording(RayUnittestBaseAsync):
         # ===== 2. Ray-direct chat, n=2 (one record-key group, two samples) =====
         rk_chat = "0/t_chat/2"
         chat_exps = await self.model_wrapper.chat_async(
-            messages, n=2, temperature=1.0, max_tokens=16, record_key=rk_chat
+            messages, n=2, temperature=1.0, max_tokens=16, key=rk_chat
         )
         self.assertEqual(len(chat_exps), 2)
         consumed = await self._consume(rk_chat, reward=0.8)

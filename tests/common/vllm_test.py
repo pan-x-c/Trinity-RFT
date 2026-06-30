@@ -1937,7 +1937,7 @@ class TestRecording(VLLMTestBase):
         # ===== 1. Ray-direct generate (record_key via record_key_ctx) =====
         rk_gen = "0/t_gen/1"
         await self.model_wrapper.generate_async(
-            ["Hello, world!"], n=1, temperature=1.0, max_tokens=16, record_key=rk_gen
+            ["Hello, world!"], n=1, temperature=1.0, max_tokens=16, key=rk_gen
         )
         consumed = await self._consume(rk_gen, reward=0.5)
         self.assertEqual(len(consumed), 1)
@@ -1950,7 +1950,7 @@ class TestRecording(VLLMTestBase):
         # ===== 2. Ray-direct chat, n=2 (one record-key group, two samples) =====
         rk_chat = "0/t_chat/2"
         chat_exps = await self.model_wrapper.chat_async(
-            messages, n=2, temperature=1.0, max_tokens=16, record_key=rk_chat
+            messages, n=2, temperature=1.0, max_tokens=16, key=rk_chat
         )
         self.assertEqual(len(chat_exps), 2)
         consumed = await self._consume(rk_chat, reward=0.8)
@@ -1966,7 +1966,7 @@ class TestRecording(VLLMTestBase):
             self._assert_recorded_experience(exp, rk_chat)
             self._assert_recorded_routed_experts(exp)
 
-        # ===== 3. OpenAI regular (HTTP; record_key = Bearer api_key) =====
+        # ===== 3. OpenAI regular (HTTP; key = Bearer api_key) =====
         rk_oai = "0/t_oai/3"
         client = await self._openai_client(rk_oai)
         model_id = await self._get_model_id(client)
