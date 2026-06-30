@@ -53,7 +53,7 @@ class Task(dict):
     # automatically assigned ids
     batch_id: Union[int, str] = ""
     task_id: Union[int, str] = ""
-    run_id: Union[int, str] = ""
+    run_id: int = 0
 
     index: dict = field(default_factory=dict)
 
