@@ -80,6 +80,24 @@ class MemoryStoreTest(unittest.IsolatedAsyncioTestCase):
         remaining = store.get(record_key)
         self.assertEqual(remaining, [exp_b])
 
+    async def test_eval_batch_record_key_allows_slash_in_batch_id(self):
+        store = MemoryStore()
+        record_key = "0/eval_short/1/0"
+        exp = make_exp("req_eval", record_key)
+
+        batch, task, run = parse_record_key(record_key)
+        self.assertEqual(batch, "0/eval_short")
+        self.assertEqual(task, "1")
+        self.assertEqual(run, 0)
+
+        store.add(get_record_key(exp), [exp])
+
+        self.assertEqual(store.get(record_key), [exp])
+        self.assertEqual(store.get("0/eval_short"), [exp])
+        self.assertEqual(store.get("0/eval_short/1"), [exp])
+        self.assertEqual(store.remove("0/eval_short/1"), [exp])
+        self.assertEqual(store.keys(), [])
+
 
 def _find_request(store: MemoryStore, record_key: str, request_id: str) -> Experience | None:
     for exp in store.get(record_key):

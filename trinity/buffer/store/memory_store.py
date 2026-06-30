@@ -8,8 +8,12 @@ from trinity.common.experience import Experience
 
 
 def parse_record_key(key: str) -> tuple[str, str, int]:
-    """Parse a complete ``<batch_id>/<task_id>/<run_id>`` store key."""
-    parts = key.split("/")
+    """Parse a complete ``<batch_id>/<task_id>/<run_id>`` store key.
+
+    ``batch_id`` may itself contain ``/`` for eval batches, for example
+    ``0/eval_short/1/0`` means batch ``0/eval_short``, task ``1`` and run ``0``.
+    """
+    parts = key.rsplit("/", 2)
     if len(parts) != 3 or any(part == "" for part in parts):
         raise ValueError(
             f"Store key must be complete '<batch_id>/<task_id>/<run_id>', got '{key}'."
@@ -157,12 +161,18 @@ class MemoryStore(RecordStore):
             return list(self._records.keys())
         if key in self._records:
             return [key]
+        if key in self._batch_keys:
+            return list(self._batch_keys[key])
 
         parts = key.split("/")
         if len(parts) == 1 and parts[0] != "":
             return list(self._batch_keys.get(parts[0], ()))
         if len(parts) == 2 and parts[0] != "" and parts[1] != "":
             return list(self._task_keys.get((parts[0], parts[1]), ()))
+
+        batch, sep, task = key.rpartition("/")
+        if sep and batch and task:
+            return list(self._task_keys.get((batch, task), ()))
         return []
 
     def _drop_key(self, key: str) -> list[Experience]:
