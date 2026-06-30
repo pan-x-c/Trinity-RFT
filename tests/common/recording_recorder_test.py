@@ -158,6 +158,111 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
             )
         )
 
+    async def test_interleaved_branches_with_shared_sample_index_merge_independently(self):
+        store = MemoryStore()
+        recorder = Recorder(
+            store=store,
+            build_experiences=lambda *_args, **_kwargs: [],
+            enabled=True,
+        )
+        record_key = "0/task_a/1"
+        branch_a_first = make_turn(
+            request_id="req-a1",
+            record_key=record_key,
+            tokens=[10, 11, 20],
+            prompt_length=2,
+            logprobs=[-0.2],
+            sample_index=0,
+        )
+        branch_b_first = make_turn(
+            request_id="req-b1",
+            record_key=record_key,
+            tokens=[10, 12, 21],
+            prompt_length=2,
+            logprobs=[-0.3],
+            sample_index=0,
+        )
+        branch_a_final = make_turn(
+            request_id="req-a2",
+            record_key=record_key,
+            tokens=[10, 11, 20, 13, 30],
+            prompt_length=4,
+            logprobs=[-0.4],
+            sample_index=0,
+        )
+        branch_b_final = make_turn(
+            request_id="req-b2",
+            record_key=record_key,
+            tokens=[10, 12, 21, 14, 31],
+            prompt_length=4,
+            logprobs=[-0.5],
+            sample_index=0,
+        )
+
+        await recorder._safe_append(branch_a_first)
+        await recorder._safe_append(branch_b_first)
+        await recorder._safe_append(branch_a_final)
+        await recorder._safe_append(branch_b_final)
+
+        recorded = store.get(record_key)
+        self.assertEqual(len(recorded), 2)
+        self.assertEqual({exp.eid.suffix for exp in recorded}, {"req-a2", "req-b2"})
+        merged_by_suffix = {exp.eid.suffix: exp for exp in recorded}
+        self.assertEqual(
+            merged_by_suffix["req-a2"].info["merged_eid_suffixes"], ["req-a1", "req-a2"]
+        )
+        self.assertEqual(
+            merged_by_suffix["req-b2"].info["merged_eid_suffixes"], ["req-b1", "req-b2"]
+        )
+
+    async def test_multi_head_merge_uses_longest_matching_prefix(self):
+        store = MemoryStore()
+        recorder = Recorder(
+            store=store,
+            build_experiences=lambda *_args, **_kwargs: [],
+            enabled=True,
+        )
+        record_key = "0/task_a/1"
+        short_prefix = make_turn(
+            request_id="req-short",
+            record_key=record_key,
+            tokens=[10, 11, 20],
+            prompt_length=2,
+            logprobs=[-0.2],
+        )
+        long_prefix = make_turn(
+            request_id="req-long",
+            record_key=record_key,
+            tokens=[10, 11, 20, 12, 30],
+            prompt_length=4,
+            logprobs=[-0.3],
+        )
+        unrelated = make_turn(
+            request_id="req-other",
+            record_key=record_key,
+            tokens=[10, 13, 21],
+            prompt_length=2,
+            logprobs=[-0.4],
+        )
+        final = make_turn(
+            request_id="req-final",
+            record_key=record_key,
+            tokens=[10, 11, 20, 12, 30, 14, 40],
+            prompt_length=6,
+            logprobs=[-0.5],
+        )
+
+        await recorder._safe_append(short_prefix)
+        await recorder._safe_append(long_prefix)
+        await recorder._safe_append(unrelated)
+        await recorder._safe_append(final)
+
+        recorded = store.get(record_key)
+        self.assertEqual(len(recorded), 2)
+        merged = next(exp for exp in recorded if exp.eid.suffix == "req-final")
+        self.assertEqual(merged.info["merged_eid_suffixes"], ["req-short", "req-long", "req-final"])
+        self.assertEqual(merged.info["merged_turn_count"], 3)
+
     async def test_stale_merge_head_falls_back_to_append(self):
         store = MemoryStore()
         recorder = Recorder(

@@ -1,12 +1,15 @@
 """Prefix-based merging for recorded multi-turn experiences."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, Optional
 
 import torch
 
 from trinity.buffer.store import RecordStore, get_sample_id
 from trinity.common.experience import Experience
+
+MAX_HEADS_PER_STREAM = 128
 
 
 class PrefixExperienceMerger:
@@ -15,35 +18,27 @@ class PrefixExperienceMerger:
     Strategy:
       * Experiences are grouped by record key and a best-effort sample stream
         key (sample_index, then default).
-      * Each stream tracks one latest/longest head experience. A new experience
-        merges only when the head tokens are a strict prefix of the new tokens.
-      * If no head exists yet, the store is scanned once to find the longest
-        prefix-matching experience for that stream.
-
-    Limitation:
-      This assumes each record/sample stream is a single linear conversation
-      branch. If one task has concurrent writers sharing the same record/sample
-      stream (for example, multi-agent rollouts under one record key), the latest
-      head may belong to a different branch, so the prefix hit can be missed or
-      become ambiguous.
-
-    TODO(recording): support branching/concurrent histories by tracking multiple
-    heads per record/sample stream, keyed by a stable conversation/thread id or
-    by token-prefix fingerprints.
+      * Each stream tracks multiple latest/longest heads so interleaved
+        branches sharing one record/sample stream do not evict each other.
+      * A length index tries longer heads first; exact token prefix comparison
+        remains the source of truth.
+      * If no cached head exists yet, the store is scanned once to seed the
+        stream cache from previously appended experiences.
     """
 
     def __init__(self, store: RecordStore) -> None:
         self.store = store
-        self._heads: dict[str, dict[tuple[str, Any], Experience]] = {}
+        self._heads: dict[str, dict[tuple[str, Any], _StreamHeads]] = {}
 
     def try_merge(self, record_key: str, exp: Experience) -> bool:
         stream_key = _sample_stream_key(exp)
         heads = self._heads.setdefault(record_key, {})
-        candidate = heads.get(stream_key)
-        if candidate is None:
+        stream_heads = heads.setdefault(stream_key, _StreamHeads())
+        candidate = stream_heads.find_longest_prefix(exp)
+        if candidate is None and stream_heads.is_empty():
             candidate = _find_longest_prefix_experience(self.store.get(record_key), exp)
-        elif not _is_strict_token_prefix(candidate.tokens, exp.tokens):
-            return False
+            if candidate is not None:
+                stream_heads.remember(candidate)
         if candidate is None:
             return False
 
@@ -52,16 +47,112 @@ class PrefixExperienceMerger:
         try:
             self.store.replace(record_key, old_sample_id, merged)
         except KeyError:
-            heads.pop(stream_key, None)
+            stream_heads.discard_sample_id(old_sample_id)
             return False
-        heads[stream_key] = merged
+        stream_heads.discard_sample_id(old_sample_id)
+        stream_heads.remember(merged)
         return True
 
     def remember(self, record_key: str, exp: Experience) -> None:
-        self._heads.setdefault(record_key, {})[_sample_stream_key(exp)] = exp
+        heads = self._heads.setdefault(record_key, {})
+        heads.setdefault(_sample_stream_key(exp), _StreamHeads()).remember(exp)
 
     def forget_record(self, record_key: str) -> None:
         self._heads.pop(record_key, None)
+
+
+@dataclass
+class _HeadEntry:
+    exp: Experience
+    sequence: int
+    signature: tuple[int, ...]
+
+
+class _StreamHeads:
+    """Small in-memory index of possible heads for one record/sample stream."""
+
+    def __init__(self, max_heads: int = MAX_HEADS_PER_STREAM) -> None:
+        self.max_heads = max_heads
+        self._heads_by_sample_id: dict[str, _HeadEntry] = {}
+        self._sample_ids_by_length: dict[int, set[str]] = {}
+        self._sample_ids_by_fingerprint: dict[tuple[int, tuple[int, ...]], set[str]] = {}
+        self._lengths_desc: list[int] = []
+        self._sequence = 0
+
+    def is_empty(self) -> bool:
+        return not self._heads_by_sample_id
+
+    def remember(self, exp: Experience) -> None:
+        sample_id = get_sample_id(exp)
+        self.discard_sample_id(sample_id)
+        self._sequence += 1
+        length = len(exp.tokens)
+        signature = _prefix_signature(exp.tokens, length)
+        self._heads_by_sample_id[sample_id] = _HeadEntry(
+            exp=exp,
+            sequence=self._sequence,
+            signature=signature,
+        )
+        sample_ids = self._sample_ids_by_length.setdefault(length, set())
+        if not sample_ids:
+            self._insert_length(length)
+        sample_ids.add(sample_id)
+        self._sample_ids_by_fingerprint.setdefault((length, signature), set()).add(sample_id)
+        self._evict_excess_heads()
+
+    def discard_sample_id(self, sample_id: str) -> None:
+        entry = self._heads_by_sample_id.pop(sample_id, None)
+        if entry is None:
+            return
+        length = len(entry.exp.tokens)
+        fingerprint_key = (length, entry.signature)
+        fingerprint_sample_ids = self._sample_ids_by_fingerprint.get(fingerprint_key)
+        if fingerprint_sample_ids is not None:
+            fingerprint_sample_ids.discard(sample_id)
+            if not fingerprint_sample_ids:
+                self._sample_ids_by_fingerprint.pop(fingerprint_key, None)
+        sample_ids = self._sample_ids_by_length.get(length)
+        if sample_ids is None:
+            return
+        sample_ids.discard(sample_id)
+        if not sample_ids:
+            self._sample_ids_by_length.pop(length, None)
+            self._lengths_desc.remove(length)
+
+    def find_longest_prefix(self, exp: Experience) -> Optional[Experience]:
+        exp_length = len(exp.tokens)
+        for length in self._lengths_desc:
+            if length >= exp_length:
+                continue
+            signature = _prefix_signature(exp.tokens, length)
+            best_entry = None
+            sample_ids = self._sample_ids_by_fingerprint.get((length, signature), ())
+            for sample_id in sample_ids:
+                entry = self._heads_by_sample_id.get(sample_id)
+                if entry is None:
+                    continue
+                if _is_strict_token_prefix(entry.exp.tokens, exp.tokens):
+                    if best_entry is None or entry.sequence < best_entry.sequence:
+                        best_entry = entry
+            if best_entry is not None:
+                return best_entry.exp
+        return None
+
+    def _insert_length(self, length: int) -> None:
+        index = 0
+        while index < len(self._lengths_desc) and self._lengths_desc[index] > length:
+            index += 1
+        self._lengths_desc.insert(index, length)
+
+    def _evict_excess_heads(self) -> None:
+        while len(self._heads_by_sample_id) > self.max_heads:
+            shortest_length = self._lengths_desc[-1]
+            sample_ids = self._sample_ids_by_length[shortest_length]
+            oldest_sample_id = min(
+                sample_ids,
+                key=lambda sample_id: self._heads_by_sample_id[sample_id].sequence,
+            )
+            self.discard_sample_id(oldest_sample_id)
 
 
 def _find_longest_prefix_experience(
@@ -84,6 +175,26 @@ def _find_longest_prefix_experience(
 
 def _same_sample_stream(left: Experience, right: Experience) -> bool:
     return _sample_stream_key(left) == _sample_stream_key(right)
+
+
+def _prefix_signature(tokens: torch.Tensor, length: int) -> tuple[int, ...]:
+    """Return a cheap, collision-tolerant signature for ``tokens[:length]``.
+
+    This only narrows candidates. ``_is_strict_token_prefix`` still performs the
+    exact comparison before any merge.
+    """
+    if length <= 0:
+        return ()
+    positions = {
+        0,
+        length // 3,
+        (2 * length) // 3,
+        max(0, length - 4),
+        max(0, length - 3),
+        max(0, length - 2),
+        length - 1,
+    }
+    return tuple(int(tokens[position].item()) for position in sorted(positions))
 
 
 def _sample_stream_key(exp: Experience) -> tuple[str, Any]:
