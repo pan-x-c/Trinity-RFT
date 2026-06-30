@@ -12,7 +12,7 @@ import ray
 from ray.actor import ActorHandle
 
 from trinity.common.config import Config
-from trinity.common.workflows import Task
+from trinity.common.workflows import RepeatableWorkflow, Task
 from trinity.explorer.workflow_runner import Status, WorkflowRunner
 from trinity.utils.log import get_logger
 from trinity.utils.metrics import calculate_task_level_metrics
@@ -25,17 +25,24 @@ class TaskWrapper:
     """
 
     task: Task
-    batch_id: Union[int, str]
     sub_task_num: int = 1  # number of sub tasks splitted from this task
     # if max_repeat_times_per_runner is set, one task may be splitted into multiple sub tasks
     finished_sub_task_num: int = 0
     completed_runs: int = 0
     total_runs: int = 0  # total planned runs for the whole task
     metrics: List[Dict[str, float]] = field(default_factory=list)
-    successful_run_ids: List[int] = field(default_factory=list)
+    successful_run_ids: List[str] = field(default_factory=list)
     experience_payloads: List[bytes] = field(default_factory=list)
     first_error: Optional[str] = None
     emitted: bool = False
+
+    @property
+    def batch_id(self) -> Union[int, str]:
+        return self.task.batch_id
+
+    @property
+    def task_id(self) -> Union[int, str]:
+        return self.task.task_id
 
 
 @dataclass(frozen=True)
@@ -107,11 +114,11 @@ class RunnerWrapper:
     async def prepare(self):
         await self.runner.prepare.remote()
 
-    def _enable_history_recording(self) -> bool:
-        return bool(self.config.explorer.rollout_model.enable_history)
+    def _task_level_record_key(self, task: TaskWrapper) -> str:
+        return f"{task.batch_id}/{task.task_id}"
 
-    def _record_key(self, task: TaskWrapper, run_id: int) -> str:
-        return f"{task.batch_id}/{task.task.task_id}/{run_id}"
+    def _run_level_record_key(self, task: TaskWrapper, run_id: int) -> str:
+        return f"{task.batch_id}/{task.task_id}/{run_id}"
 
     async def _drain_records(self, prefix: str) -> bytes:
         try:
@@ -127,25 +134,26 @@ class RunnerWrapper:
             self.logger.error("records delete from rollout actor failed: %s", exc)
 
     async def _consume_finished_records(self, task: TaskWrapper, status: Status) -> List[bytes]:
-        if not self._enable_history_recording():
-            return []
         if not status.successful_run_ids:
             return []
 
+        if issubclass(task.task.workflow, RepeatableWorkflow):
+            prefix = self._task_level_record_key(task)
+            if task.task.is_eval:
+                await self._delete_records(prefix)
+                return []
+
+            payload = await self._drain_records(prefix)
+            return [payload] if payload else []
+
         if task.task.is_eval:
             await asyncio.gather(
-                *[
-                    self._delete_records(self._record_key(task, run_id))
-                    for run_id in status.successful_run_ids
-                ]
+                *[self._delete_records(run_id) for run_id in status.successful_run_ids]
             )
             return []
 
         payloads = await asyncio.gather(
-            *[
-                self._drain_records(self._record_key(task, run_id))
-                for run_id in status.successful_run_ids
-            ]
+            *[self._drain_records(run_id) for run_id in status.successful_run_ids]
         )
         return [payload for payload in payloads if payload]
 
@@ -153,7 +161,7 @@ class RunnerWrapper:
         self,
         task: TaskWrapper,
         repeat_times: int,
-        run_id_base: int,
+        run_base: int,
         timeout: float,
         collect_partial_runs: bool,
     ) -> Tuple[Status, List[bytes], int, float]:
@@ -187,9 +195,8 @@ class RunnerWrapper:
                 try:
                     run_task_ref = self.runner.run_task.remote(
                         task=task2run,
-                        batch_id=str(task.batch_id),
                         repeat_times=repeat_times,
-                        run_id_base=run_id_base,
+                        run_base=run_base,
                         collect_partial_runs=collect_partial_runs,
                     )
                     status = await asyncio.wait_for(
@@ -403,13 +410,13 @@ class Scheduler:
             task_queue = self.pending_tasks[batch_id]
 
             while task_queue and self.idle_runners:
-                task, repeat_times, run_id_base = task_queue.pop()
+                task, repeat_times, run_base = task_queue.pop()
                 runner_id = self.idle_runners.pop()
                 future = asyncio.create_task(
                     self.runners[runner_id].run_with_retry(
                         task,
                         repeat_times=repeat_times,
-                        run_id_base=run_id_base,
+                        run_base=run_base,
                         timeout=self.dynamic_timeout(),
                         collect_partial_runs=self.config.explorer.over_rollout.return_partial_tasks,
                     )
@@ -432,7 +439,7 @@ class Scheduler:
                 self.busy_runners.pop(runner_id, None)
                 self.idle_runners.add(runner_id)
         elif async_task.exception():
-            self.logger.error(f"Task {task.task.task_id} failed: {async_task.exception()}")
+            self.logger.error(f"Task {task.task_id} failed: {async_task.exception()}")
             self._schedule_runner_restart(runner_id)
         else:
             status, experience_payloads, runner_id, run_time = async_task.result()
@@ -487,7 +494,7 @@ class Scheduler:
         if task.emitted:
             return
         status = self._build_task_result(task)
-        task_id = task.task.task_id
+        task_id = task.task_id
         completed_result = CompletedTaskResult(
             batch_id=task.batch_id,
             task_id=task_id,
@@ -520,7 +527,7 @@ class Scheduler:
                 continue
             self._emit_task_result(task)
             self.logger.debug(
-                f"Task partially completed and emitted (batch_id {task.batch_id}, task_id {task.task.task_id})."
+                f"Task partially completed and emitted (batch_id {task.batch_id}, task_id {task.task_id})."
             )
 
     def _clear_timeout_tasks(self, batch_id: Union[int, str]) -> List[asyncio.Future]:
@@ -624,7 +631,6 @@ class Scheduler:
             assert task.repeat_times is not None, "Task repeat_times should not be None"
             task_wrapper = TaskWrapper(
                 task=replace(task, batch_id=batch_id, task_id=i),
-                batch_id=batch_id,
                 total_runs=task.repeat_times,
             )
             if self.max_repeat_times is None:
@@ -632,9 +638,9 @@ class Scheduler:
                 self.pending_tasks[batch_id].appendleft((task_wrapper, task.repeat_times, 0))
                 continue
             sub_tasks = []
-            for run_id_base in range(0, task.repeat_times, self.max_repeat_times):
-                repeat_times = min(self.max_repeat_times, task.repeat_times - run_id_base)
-                sub_tasks.append((task_wrapper, repeat_times, run_id_base))
+            for run_base in range(0, task.repeat_times, self.max_repeat_times):
+                repeat_times = min(self.max_repeat_times, task.repeat_times - run_base)
+                sub_tasks.append((task_wrapper, repeat_times, run_base))
             task_wrapper.sub_task_num = len(sub_tasks)
             self.pending_tasks[batch_id].extendleft(sub_tasks)
 

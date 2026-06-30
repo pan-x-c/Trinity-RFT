@@ -1,13 +1,6 @@
 # -*- coding: utf-8 -*-
 """Workflow module"""
-from trinity.common.workflows.workflow import (
-    Metrics,
-    RepeatableMultiTurnWorkflow,
-    RepeatableWorkflow,
-    Status,
-    Task,
-    Workflow,
-)
+from trinity.common.workflows.workflow import Metrics, Status, Task, Workflow
 from trinity.utils.registry import Registry
 
 WORKFLOWS: Registry = Registry(
@@ -66,8 +59,6 @@ __all__ = [
     "Task",
     "Status",
     "Metrics",
-    "RepeatableMultiTurnWorkflow",
-    "RepeatableWorkflow",
     "Workflow",
     "WORKFLOWS",
 ]

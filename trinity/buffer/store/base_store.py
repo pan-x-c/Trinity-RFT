@@ -1,7 +1,19 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import List
 
+from torch import Tensor
+
 from trinity.common.experience import Experience
+
+
+@dataclass
+class ExperienceUpdate:
+    """Fields that may be patched onto recorded experiences after generation."""
+
+    reward: float | None = None
+    info: dict | None = None
+    teacher_logprobs: Tensor | None = None
 
 
 class RecordStore(ABC):
@@ -24,10 +36,8 @@ class RecordStore(ABC):
         """Replace one experience under the given complete key."""
 
     @abstractmethod
-    def update(
-        self, key: str, reward: float, info: dict | None, sample_ids: List[str] | None
-    ) -> None:
-        """Update reward, EID fields from key, and optional info for selected experiences."""
+    def update(self, key: str, update: ExperienceUpdate, sample_ids: List[str] | None) -> None:
+        """Patch selected experiences and stamp EID fields from the complete key."""
 
     @abstractmethod
     def get(self, key: str) -> List[Experience]:

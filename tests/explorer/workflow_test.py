@@ -756,11 +756,11 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 workflow=PartialFailureWorkflow,
                 repeat_times=3,
                 raw_task={"fail_call_ids": [1]},
+                batch_id="test",
+                task_id=0,
             )
 
-            status, exps = await runner.run_task(
-                task, batch_id="test", repeat_times=3, run_id_base=0
-            )
+            status, exps = await runner.run_task(task, repeat_times=3, run_id_base=0)
             exps = deserialize_experiences(exps)
 
             self.assertFalse(status.ok)
@@ -805,6 +805,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 workflow=PartialFailureWorkflow,
                 repeat_times=3,
                 raw_task={"fail_call_ids": []},
+                batch_id="test",
             )
             await runner.prepare()
 
@@ -837,7 +838,6 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
 
             status, exps = await runner.run_task(
                 task,
-                batch_id="test",
                 repeat_times=3,
                 run_id_base=0,
                 collect_partial_runs=False,

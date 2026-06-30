@@ -3,7 +3,7 @@
 from collections import OrderedDict
 from typing import Iterable, List
 
-from trinity.buffer.store.base_store import RecordStore
+from trinity.buffer.store.base_store import ExperienceUpdate, RecordStore
 from trinity.common.experience import Experience
 
 
@@ -108,8 +108,7 @@ class MemoryStore(RecordStore):
     def update(
         self,
         key: str,
-        reward: float,
-        info: dict | None,
+        update: ExperienceUpdate,
         sample_ids: List[str] | None,
     ) -> None:
         batch, task, run = self._parse_complete_key(key)  # validate key format
@@ -124,11 +123,14 @@ class MemoryStore(RecordStore):
             exp.eid.batch = batch
             exp.eid.task = task
             exp.eid.run = run
-            exp.reward = reward
-            if info:
+            if update.reward is not None:
+                exp.reward = update.reward
+            if update.info:
                 if exp.info is None:
                     exp.info = {}
-                exp.info.update(info)
+                exp.info.update(update.info)
+            if update.teacher_logprobs is not None:
+                exp.teacher_logprobs = update.teacher_logprobs
 
     def get(self, key: str) -> List[Experience]:
         result: List[Experience] = []

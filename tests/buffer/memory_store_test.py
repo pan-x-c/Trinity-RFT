@@ -3,7 +3,7 @@ import uuid
 
 import torch
 
-from trinity.buffer.store import MemoryStore
+from trinity.buffer.store import ExperienceUpdate, MemoryStore
 from trinity.common.experience import EID, Experience
 
 
@@ -32,7 +32,11 @@ class MemoryStoreTest(unittest.TestCase):
         store.add(key, experiences)
         self.assertEqual(len(store), 3)
 
-        store.update(key, reward=1.0, info={"source": "reward_model"}, sample_ids=None)
+        store.update(
+            key,
+            update=ExperienceUpdate(reward=1.0, info={"source": "reward_model"}),
+            sample_ids=None,
+        )
         result = store.get(key)
         self.assertEqual(len(result), 3)
         for exp in result:
@@ -53,7 +57,12 @@ class MemoryStoreTest(unittest.TestCase):
         experiences = get_dummy_experience(2, request_id="req_b")
 
         store.add(key, experiences)
-        store.update(key, reward=2.0, info=None, sample_ids=["req_b:1"])
+        teacher_logprobs = torch.ones(3)
+        store.update(
+            key,
+            update=ExperienceUpdate(reward=2.0, teacher_logprobs=teacher_logprobs),
+            sample_ids=["req_b:1"],
+        )
 
         result = store.get(key)
         self.assertIsNone(result[0].reward)
@@ -61,6 +70,7 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(result[1].eid.batch, "0")
         self.assertEqual(result[1].eid.task, "task_a")
         self.assertEqual(result[1].eid.run, 1)
+        torch.testing.assert_close(result[1].teacher_logprobs, teacher_logprobs)
 
     def test_overwrite_replaces_existing_records(self):
         store = MemoryStore()
@@ -91,7 +101,7 @@ class MemoryStoreTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             store.overwrite("0/task_a", get_dummy_experience(1))
         with self.assertRaises(ValueError):
-            store.update("0/task_a", reward=1.0, info=None, sample_ids=None)
+            store.update("0/task_a", update=ExperienceUpdate(reward=1.0), sample_ids=None)
         with self.assertRaises(ValueError):
             store.add("0/task_a/not_int", get_dummy_experience(1))
 

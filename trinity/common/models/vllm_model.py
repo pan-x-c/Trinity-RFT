@@ -220,14 +220,14 @@ class vLLMRolloutModel(BaseInferenceModel):
         self,
         messages: List[Dict],
         lora_request=None,
-        record_key: Optional[str] = None,
+        key: Optional[str] = None,
         **kwargs,
     ) -> Sequence[Experience]:
         """Chat with the model with a list of messages in async.
 
         Args:
             messages (List[dict]): The input history messages.
-            record_key (Optional[str]): Recording identity for the in-vLLM
+            key (Optional[str]): Recording identity for the in-vLLM
                 recorder (the MemoryStore group key). Propagated to
                 ``generate`` via ``record_key_ctx`` so the recorder stamps it
                 into ``Experience.eid`` without an HTTP hop. None skips
@@ -257,22 +257,20 @@ class vLLMRolloutModel(BaseInferenceModel):
                 "prompt": prompt,
                 "multi_modal_data": multi_modal_data or {},
             }
-        return await self.generate(
-            prompt=prompt, lora_request=lora_request, record_key=record_key, **kwargs
-        )
+        return await self.generate(prompt=prompt, lora_request=lora_request, key=key, **kwargs)
 
     async def generate(
         self,
         prompt: Union[str, Dict],
         lora_request=None,
-        record_key: Optional[str] = None,
+        key: Optional[str] = None,
         **kwargs,
     ) -> Sequence[Experience]:
         """Generate a response from the provided prompt in async.
 
         Args:
             prompt (str): The input prompt.
-            record_key (Optional[str]): Recording identity propagated to the
+            key (Optional[str]): Recording identity propagated to the
                 in-vLLM recorder via ``record_key_ctx`` (see ``chat``).
             kwargs (dict): A dictionary of sampling parameters.
 
@@ -292,15 +290,15 @@ class vLLMRolloutModel(BaseInferenceModel):
                 # persist these dummies directly under the record_key — masked
                 # experiences must still be tracked for history extraction and
                 # the buffer/trainer (they are popped by record_key on consume).
-                if self.recorder is not None and record_key is not None:
-                    batch, task, run = parse_record_key(record_key)
+                if self.recorder is not None and key is not None:
+                    batch, task, run = parse_record_key(key)
                     for exp in returned_seq:
                         exp.eid.batch = batch
                         exp.eid.task = task
                         exp.eid.run = run
                         exp.info["rank"] = self.recorder.rank
                         exp.info["model_version"] = self.model_version
-                        self.recorder.store.add(record_key, [exp])
+                        self.recorder.store.add(key, [exp])
                 return returned_seq
             prompt = {
                 "prompt_token_ids": returned_seq
@@ -310,7 +308,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         # Propagate the recording identity to the engine-level recorder (same
         # async task, same process) so the recorded experience is grouped under
         # this record key in the MemoryStore.
-        record_key_token = record_key_ctx.set(record_key)
+        record_key_token = record_key_ctx.set(key)
         try:
             output = await self._generate_internal(
                 prompt=prompt, lora_request=lora_request, **kwargs

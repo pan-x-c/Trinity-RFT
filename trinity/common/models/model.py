@@ -14,6 +14,7 @@ from ray.actor import ActorHandle
 from torch import Tensor
 from transformers import AutoConfig
 
+from trinity.buffer.store import ExperienceUpdate
 from trinity.common.config import InferenceModelConfig
 from trinity.common.constants import RunningStatus, SyncMethod
 from trinity.common.experience import Experience
@@ -158,33 +159,45 @@ class InferenceModel(ABC):
 
     async def update_experience_reward(
         self,
-        record_key: str,
+        key: str,
         reward: float,
         info: Optional[dict] = None,
         sample_ids: Optional[List[str]] = None,
     ) -> None:
         """Update reward and optional info on recorded experiences."""
+        await self.update_experience_records(
+            key=key,
+            update=ExperienceUpdate(reward=reward, info=info),
+            sample_ids=sample_ids,
+        )
+
+    async def update_experience_records(
+        self,
+        key: str,
+        update: ExperienceUpdate,
+        sample_ids: Optional[List[str]] = None,
+    ) -> None:
+        """Patch recorded experiences with generation-time training signals."""
         recorder = getattr(self, "recorder", None)
         if recorder is None:
             raise ValueError("Recording is not enabled for this model.")
         await recorder.flush()
-        if not recorder.store.get(record_key):
+        if not recorder.store.get(key):
             return
         recorder.store.update(
-            key=record_key,
-            reward=reward,
-            info=info,
+            key=key,
+            update=update,
             sample_ids=sample_ids,
         )
 
-    async def overwrite_history_experiences(self, record_key: str, payload: bytes) -> None:
+    async def overwrite_history_experiences(self, key: str, payload: bytes) -> None:
         """Overwrite recorded experiences under one complete record key."""
         recorder = getattr(self, "recorder", None)
         if recorder is None:
             raise ValueError("Recording is not enabled for this model.")
         await recorder.flush()
-        recorder.store.overwrite(record_key, Experience.deserialize_many(payload))
-        recorder.forget_record(record_key)
+        recorder.store.overwrite(key, Experience.deserialize_many(payload))
+        recorder.forget_record(key)
 
     async def _drain_experience_records(self, prefix: str) -> List[Experience]:
         """Remove and return recorded experiences matching a key or prefix."""
@@ -490,7 +503,6 @@ class ModelWrapper:
         self.logger = get_logger(__name__)
         self.enable_lora = config.enable_lora
         self.enable_history = config.enable_history
-        self.recording_history_offsets: Dict[str, int] = {}
         self.status = RunningStatus.RUNNING
         self.workflow_state: Dict = {}
         self.request_count = 0
@@ -531,49 +543,47 @@ class ModelWrapper:
             f"API server at {self.api_address} not ready after {max_retries} attempts."
         )
 
-    def generate(self, prompts: List[str], **kwargs) -> List[Experience]:
+    def generate(
+        self, prompts: List[str], enable_recording: bool = False, **kwargs
+    ) -> List[Experience]:
         """Generate a list of experiences from a list of prompts."""
         lora_request = self.get_lora_request()
-        if self.config.enable_history and kwargs.get("record_key") is None:
-            kwargs["record_key"] = self._api_key
+        if self.config.enable_history and enable_recording:
+            kwargs["key"] = self._api_key
         results = ray.get(
             [self.model.generate.remote(prompt, lora_request, **kwargs) for prompt in prompts]
         )
         return [exp for exps in results for exp in exps]
 
-    async def generate_async(self, prompts: List[str], **kwargs) -> List[Experience]:
+    async def generate_async(
+        self, prompts: List[str], enable_recording: bool = False, **kwargs
+    ) -> List[Experience]:
         """Generate a list of experiences from a list of prompts in async."""
         lora_request = await self.get_lora_request_async()
-        if self.config.enable_history and kwargs.get("record_key") is None:
-            kwargs["record_key"] = self._api_key
+        if self.config.enable_history and enable_recording:
+            kwargs["key"] = self._api_key
         results = await asyncio.gather(
             *[self.model.generate.remote(prompt, lora_request, **kwargs) for prompt in prompts]
         )
         return [exp for exps in results for exp in exps]
 
     def chat(
-        self, messages: List[dict], record_key: Optional[str] = None, **kwargs
+        self, messages: List[dict], enable_recording: bool = False, **kwargs
     ) -> List[Experience]:
         """Generate a list of experiences from a list of messages."""
         lora_request = self.get_lora_request()
-        if self.config.enable_history and record_key is None:
-            record_key = self._api_key
-        return ray.get(
-            self.model.chat.remote(
-                messages, lora_request=lora_request, record_key=record_key, **kwargs
-            )
-        )
+        if self.config.enable_history and enable_recording:
+            kwargs["key"] = self._api_key
+        return ray.get(self.model.chat.remote(messages, lora_request=lora_request, **kwargs))
 
     async def chat_async(
-        self, messages: List[dict], record_key: Optional[str] = None, **kwargs
+        self, messages: List[dict], enable_recording: bool = False, **kwargs
     ) -> List[Experience]:
         """Generate a list of experiences from a list of messages in async."""
         lora_request = await self.get_lora_request_async()
-        if self.config.enable_history and record_key is None:
-            record_key = self._api_key
-        return await self.model.chat.remote(
-            messages, lora_request=lora_request, record_key=record_key, **kwargs
-        )
+        if self.config.enable_history and enable_recording:
+            kwargs["key"] = self._api_key
+        return await self.model.chat.remote(messages, lora_request=lora_request, **kwargs)
 
     def logprobs(self, tokens: List[int], temperature: Optional[float] = None) -> Tensor:
         """Calculate the logprobs of the given tokens."""
@@ -608,6 +618,13 @@ class ModelWrapper:
         return await self.model.convert_messages_to_experience.remote(
             messages, tools=tools, temperature=temperature
         )
+
+    @property
+    def base_url(self) -> str:
+        """Get the base URL of the API server."""
+        if not self.api_address:
+            raise ValueError("API address is not set. Cannot get base URL.")
+        return self.api_address
 
     @property
     def api_key(self) -> str:
@@ -829,16 +846,10 @@ class ModelWrapper:
         exps = ray.get(
             self.model.extract_experience_from_history.remote(
                 record_key=record_key,
-                clear_history=False,
+                clear_history=clear_history,
             )
         )
-        offset = self.recording_history_offsets.get(record_key, 0)
-        if offset > len(exps):
-            offset = 0
-        new_exps = exps[offset:]
-        if clear_history:
-            self.recording_history_offsets[record_key] = len(exps)
-        return new_exps
+        return exps
 
     async def update_experience_reward_async(
         self,
@@ -848,21 +859,64 @@ class ModelWrapper:
         sample_ids: Optional[List[str]] = None,
     ) -> None:
         """Update reward and optional info on recorded experiences."""
+        await self.update_experience_records_async(
+            record_key=record_key,
+            update=ExperienceUpdate(reward=reward, info=info),
+            sample_ids=sample_ids,
+        )
+
+    async def update_experience_records_async(
+        self,
+        record_key: str,
+        update: ExperienceUpdate,
+        sample_ids: Optional[List[str]] = None,
+    ) -> None:
+        """Patch recorded experiences with generation-time training signals."""
         if not self.enable_history:
             raise ValueError("History recording is not enabled.")
         if self.model is None:
             raise ValueError("Recording update requires an inference model actor.")
-        await self.model.update_experience_reward.remote(
+        await self.model.update_experience_records.remote(
             record_key=record_key,
-            reward=reward,
-            info=info,
+            update=update,
             sample_ids=sample_ids,
         )
 
-    async def overwrite_history_experiences_async(
+    def update_experience_reward(
         self,
         record_key: str,
-        experiences: List[Experience],
+        reward: float,
+        info: Optional[dict] = None,
+        sample_ids: Optional[List[str]] = None,
+    ) -> None:
+        """Update reward and optional info on recorded experiences."""
+        self.update_experience_records(
+            record_key=record_key,
+            update=ExperienceUpdate(reward=reward, info=info),
+            sample_ids=sample_ids,
+        )
+
+    def update_experience_records(
+        self,
+        record_key: str,
+        update: ExperienceUpdate,
+        sample_ids: Optional[List[str]] = None,
+    ) -> None:
+        """Patch recorded experiences with generation-time training signals."""
+        if not self.enable_history:
+            raise ValueError("History recording is not enabled.")
+        if self.model is None:
+            raise ValueError("Recording update requires an inference model actor.")
+        ray.get(
+            self.model.update_experience_records.remote(
+                record_key=record_key,
+                update=update,
+                sample_ids=sample_ids,
+            )
+        )
+
+    async def overwrite_history_experiences_async(
+        self, experiences: List[Experience], key: str
     ) -> None:
         """Overwrite recorded experiences under one complete record key."""
         if not self.enable_history:
@@ -870,7 +924,7 @@ class ModelWrapper:
         if self.model is None:
             raise ValueError("Recording overwrite requires an inference model actor.")
         await self.model.overwrite_history_experiences.remote(
-            record_key=record_key,
+            key=key,
             payload=Experience.serialize_many(experiences),
         )
 
@@ -900,8 +954,6 @@ class ModelWrapper:
         """Clean the state of workflow using the model."""
         async with self.state_lock:
             self.workflow_state = {}
-            # TODO: clear engine side experiences
-            self.recording_history_offsets.clear()
 
     async def shutdown(self) -> None:
         """Shutdown all underlying model actors cleanly."""
@@ -917,10 +969,9 @@ class ModelWrapper:
         async with self.state_lock:
             return self.workflow_state.copy()
 
-    def clone_with_isolated_history(self) -> "ModelWrapper":
-        """Clone the current ModelWrapper with isolated history."""
+    def clone_with_isolated_state(self) -> "ModelWrapper":
+        """Clone the current ModelWrapper with isolated state."""
         new_wrapper = copy.copy(self)
         new_wrapper.openai_async_client = None
         new_wrapper.openai_client = None
-        new_wrapper.recording_history_offsets = {}
         return new_wrapper

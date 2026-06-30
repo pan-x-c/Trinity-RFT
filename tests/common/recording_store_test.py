@@ -2,7 +2,12 @@ import unittest
 
 import torch
 
-from trinity.buffer.store import MemoryStore, get_record_key, parse_record_key
+from trinity.buffer.store import (
+    ExperienceUpdate,
+    MemoryStore,
+    get_record_key,
+    parse_record_key,
+)
 from trinity.common.experience import EID, Experience
 
 
@@ -29,7 +34,11 @@ class MemoryStoreTest(unittest.IsolatedAsyncioTestCase):
         exp = make_exp("req_a", record_key)
 
         store.add(get_record_key(exp), [exp])
-        store.update(record_key, reward=1.5, info={"source": "reward_model"}, sample_ids=None)
+        store.update(
+            record_key,
+            update=ExperienceUpdate(reward=1.5, info={"source": "reward_model"}),
+            sample_ids=None,
+        )
         updated = store.remove(record_key)
 
         self.assertEqual(len(updated), 1)

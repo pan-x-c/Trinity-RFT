@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from trinity.buffer.store import MemoryStore, parse_record_key
+from trinity.buffer.store import ExperienceUpdate, MemoryStore, parse_record_key
 from trinity.common.experience import EID, Experience
 from trinity.common.models.recording.recorder import Recorder
 
@@ -75,10 +75,10 @@ class RecorderPrefixMergeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(merged.info["merged_eid_suffixes"], ["req-1", "req-2"])
         self.assertEqual(merged.info["merged_sample_ids"], ["req-1", "req-2"])
 
-        store.update(record_key, reward=1.0, info=None, sample_ids=["req-2"])
+        store.update(record_key, update=ExperienceUpdate(reward=1.0), sample_ids=["req-2"])
         self.assertEqual(store.get(record_key)[0].reward, 1.0)
         with self.assertRaises(KeyError):
-            store.update(record_key, reward=2.0, info=None, sample_ids=["req-1"])
+            store.update(record_key, update=ExperienceUpdate(reward=2.0), sample_ids=["req-1"])
 
     async def test_non_prefix_experiences_do_not_merge(self):
         store = MemoryStore()

@@ -222,7 +222,7 @@ class SGLangClient:
         return success
 
     async def generate(
-        self, input_ids: List[int], record_key: Optional[str] = None, **kwargs
+        self, input_ids: List[int], key: Optional[str] = None, **kwargs
     ) -> Sequence[dict[str, Any]]:
         sampling_params = {
             "n": kwargs.get("n", 1),
@@ -251,7 +251,7 @@ class SGLangClient:
             "/generate",
             payload,
             timeout=kwargs.get("timeout", 300),
-            api_key_override=record_key,
+            api_key_override=key,
         )
         if isinstance(response, dict) and response.get("error"):
             raise RuntimeError(f"Failed to generate with SGLang: {response['error']}")
@@ -404,12 +404,12 @@ class SGLangRolloutModel(BaseInferenceModel):
         self,
         prompt: str,
         lora_request=None,
-        record_key: Optional[str] = None,
+        key: Optional[str] = None,
         **kwargs,
     ) -> Sequence[Experience]:
         """Generate a response from the provided prompt in async.
 
-        When ``record_key`` is set, it is sent as the Authorization bearer so the
+        When ``key`` is set, it is sent as the Authorization bearer so the
         server-side recorder groups this turn under that key (the api_key doubles
         as the record_key on the Trinity path). The returned experiences are the
         client-side copy; the recorded copy is written to the in-process store by
@@ -429,7 +429,7 @@ class SGLangRolloutModel(BaseInferenceModel):
         return_logprob = logprobs is not None and logprobs is not False
         responses = await self.api_client.generate(
             input_ids=prompt_token_ids,
-            record_key=record_key,
+            key=key,
             n=kwargs.get("n", 1),
             temperature=kwargs.get("temperature", self.config.temperature),
             top_p=kwargs.get("top_p", self.config.top_p),
@@ -489,10 +489,10 @@ class SGLangRolloutModel(BaseInferenceModel):
         self,
         messages: List[dict],
         lora_request=None,
-        record_key: Optional[str] = None,
+        key: Optional[str] = None,
         **kwargs,
     ) -> Sequence[Experience]:
-        # ``record_key`` is propagated to ``generate`` so the server-side recorder
+        # ``key`` is propagated to ``generate`` so the server-side recorder
         # groups this turn under the caller's key (sent as the Authorization
         # bearer, same as vLLM's RecordingIdentityMiddleware path).
         if self.tokenizer is None:
@@ -500,9 +500,7 @@ class SGLangRolloutModel(BaseInferenceModel):
 
         normalized_messages = self._normalize_chat_messages(messages)
         prompt = self.apply_chat_template(self.tokenizer, normalized_messages)
-        return await self.generate(
-            prompt=prompt, lora_request=lora_request, record_key=record_key, **kwargs
-        )
+        return await self.generate(prompt=prompt, lora_request=lora_request, key=key, **kwargs)
 
     async def logprobs(self, token_ids: List[int], **kwargs) -> torch.Tensor:
         raise NotImplementedError("SGLangRolloutModel does not support logprobs.")
