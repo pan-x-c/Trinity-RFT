@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from trinity.common.experience import Experience
 from trinity.common.models.model import ModelWrapper
-from trinity.common.workflows.workflow import RepeatableMultiTurnWorkflow, Task
+from trinity.common.workflows.workflow import MultiTurnWorkflow, Task
 
 SCIWORLD_SYSTEM_PROMPT = """
 You are an agent, your job is to do some scientific experiment in a virtual text-based environment.
@@ -55,10 +55,11 @@ def parse_action(response):
         return ""
 
 
-class SciWorldWorkflow(RepeatableMultiTurnWorkflow):
+class SciWorldWorkflow(MultiTurnWorkflow):
     """A workflow for sciworld task."""
 
     is_async: bool = True
+    can_repeat: bool = True
 
     def __init__(
         self,

@@ -29,21 +29,11 @@ from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 from trinity.common.experience import EID, Experience
 from trinity.common.models.allocator import Allocator
 from trinity.common.models.model import ModelWrapper
-from trinity.common.workflows import WORKFLOWS, RepeatableWorkflow, Workflow
+from trinity.common.workflows import WORKFLOWS, Workflow
 from trinity.common.workflows.customized_math_workflows import MathBoxedWorkflow
 from trinity.common.workflows.eval_workflow import MathEvalWorkflow
-from trinity.common.workflows.workflow import (
-    MathWorkflow,
-    RepeatableMultiTurnWorkflow,
-    Task,
-)
-from trinity.explorer.workflow_runner import WorkflowRunner
-
-
-def deserialize_experiences(exp_payload: bytes) -> list[Experience]:
-    if not exp_payload:
-        return []
-    return Experience.deserialize_many(exp_payload)
+from trinity.common.workflows.workflow import MathWorkflow, MultiTurnWorkflow, Task
+from trinity.explorer.workflow_runner import Status, WorkflowRunner
 
 
 def patch_runner_models(*wrappers):
@@ -67,7 +57,7 @@ class MockResponse:
     action_mask: Optional[Tensor] = None
 
 
-class DummyWorkflow(RepeatableWorkflow):
+class DummyWorkflow(Workflow):
     can_reset: bool = True
 
     def __init__(self, model, task: Task, auxiliary_models=None):
@@ -110,7 +100,7 @@ class DummyWorkflow(RepeatableWorkflow):
             raise ValueError("Invalid output format")
 
 
-class DummyAsyncWorkflow(RepeatableWorkflow):
+class DummyAsyncWorkflow(Workflow):
     can_reset: bool = True
     is_async: bool = True
 
@@ -155,7 +145,7 @@ class DummyAsyncWorkflow(RepeatableWorkflow):
             raise ValueError("Invalid output format")
 
 
-class DummyMultiTurnWorkflow(RepeatableMultiTurnWorkflow):
+class DummyMultiTurnWorkflow(MultiTurnWorkflow):
     def __init__(self, model, task: Task, auxiliary_models=None):
         super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
         self.contents = task.raw_task["contents"]  # type: ignore
@@ -171,7 +161,7 @@ class DummyMultiTurnWorkflow(RepeatableMultiTurnWorkflow):
         return experience_list
 
 
-class DummyAsyncMultiTurnWorkflow(RepeatableMultiTurnWorkflow):
+class DummyAsyncMultiTurnWorkflow(MultiTurnWorkflow):
     is_async: bool = True
 
     def __init__(self, model, task: Task, auxiliary_models=None):
@@ -707,14 +697,12 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 workflow_args={"output_format": "json"},
             )
 
-            status, exps = await runner.run_task(
-                task, batch_id="test", repeat_times=3, run_id_base=0
-            )
-            exps = deserialize_experiences(exps)
+            status = await runner.run_task(task, repeat_times=3, run_id_base=0)
 
             self.assertTrue(status.ok)
-            self.assertIsInstance(exps, list)
-            self.assertEqual(len(exps), 3)
+            self.assertEqual(status.completed_runs, 3)
+            self.assertEqual(status.total_runs, 3)
+            self.assertEqual(len(status.metrics), 3)
 
             task = Task(
                 workflow=DummyAsyncWorkflow,
@@ -723,13 +711,11 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 workflow_args={"output_format": "yaml"},
             )
 
-            status, exps = await runner.run_task(
-                task, batch_id="test", repeat_times=2, run_id_base=0
-            )
-            exps = deserialize_experiences(exps)
+            status = await runner.run_task(task, repeat_times=2, run_id_base=0)
             self.assertTrue(status.ok)
-            self.assertIsInstance(exps, list)
-            self.assertEqual(len(exps), 2)
+            self.assertEqual(status.completed_runs, 2)
+            self.assertEqual(status.total_runs, 2)
+            self.assertEqual(len(status.metrics), 2)
 
     @parameterized.expand(
         [
@@ -760,13 +746,11 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 task_id=0,
             )
 
-            status, exps = await runner.run_task(task, repeat_times=3, run_id_base=0)
-            exps = deserialize_experiences(exps)
+            status = await runner.run_task(task, repeat_times=3, run_id_base=0)
 
             self.assertFalse(status.ok)
             self.assertEqual(status.completed_runs, expected_success_runs)
             self.assertEqual(status.total_runs, 3)
-            self.assertEqual(len(exps), expected_success_runs)
 
             # One internal run fails with call_id=1, so runner-level metrics should
             # retain only the successful runs from this single subtask: call_id=0 and 2.
@@ -775,14 +759,11 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
                 sorted(metric["run_metrics"] for metric in status.metrics),
                 [0.0, 2.0],
             )
-
-            # Experiences returned from the runner should match the same successful
-            # run set, proving failed runs do not leak into partial-return outputs.
-            self.assertEqual(
-                sorted(exp.metrics["run_metrics"] for exp in exps if exp.metrics),
-                [0.0, 2.0],
+            assert status.message is not None
+            self.assertIn(
+                f"{expected_success_runs}/3 runs completed successfully",
+                status.message,
             )
-            self.assertIn(f"{expected_success_runs}/3 runs completed successfully", status.message)  # type: ignore[arg-type]
 
     @parameterized.expand(
         [
@@ -811,44 +792,50 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
 
             async def mock_execute_single_run(
                 workflow: Workflow,
-                task: Task,
-                run_index: int,
-                run_id_base: int,
+                model_wrapper: ModelWrapper,
             ):
+                run_index = int(workflow.task.run_id)
                 if run_index == 0:
                     await asyncio.sleep(0.01)
-                    exp = Experience(
-                        tokens=Tensor([0, 1, 2]),
-                        prompt_length=1,
-                        metrics={"run_metrics": 0.0},
+                    return Status(
+                        completed_runs=1,
+                        total_runs=1,
+                        metrics=[{"run_metrics": 0.0}],
+                        successful_ids=[workflow.task.api_key],
                     )
-                    return True, [exp], {"run_metrics": 0.0}, None
                 if run_index == 1:
                     await asyncio.sleep(0.02)
-                    return False, [], None, "planned failure"
+                    return Status(
+                        completed_runs=0,
+                        total_runs=1,
+                        metrics=[],
+                        message="planned failure",
+                    )
                 await asyncio.sleep(0.5)
-                exp = Experience(
-                    tokens=Tensor([0, 1, 2]),
-                    prompt_length=1,
-                    metrics={"run_metrics": 2.0},
+                return Status(
+                    completed_runs=1,
+                    total_runs=1,
+                    metrics=[{"run_metrics": 2.0}],
+                    successful_ids=[workflow.task.api_key],
                 )
-                return True, [exp], {"run_metrics": 2.0}, None
 
             runner._execute_single_run = AsyncMock(side_effect=mock_execute_single_run)
 
-            status, exps = await runner.run_task(
+            status = await runner.run_task(
                 task,
                 repeat_times=3,
                 run_id_base=0,
                 collect_partial_runs=False,
             )
-            exps = deserialize_experiences(exps)
 
             self.assertFalse(status.ok)
             self.assertEqual(status.completed_runs, 1)
             self.assertEqual(status.total_runs, 3)
-            self.assertEqual(len(exps), 1)
-            self.assertIn("1/3 runs completed successfully", status.message)  # type: ignore[arg-type]
+            assert status.message is not None
+            self.assertIn(
+                "1/3 runs completed successfully",
+                status.message,
+            )
 
     async def test_workflow_runner_get_state(self):
         config = get_template_config()
@@ -905,7 +892,7 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(
             *[
                 monitor_routine(),
-                runner.run_task(task, batch_id="test", repeat_times=3, run_id_base=0),
+                runner.run_task(task, repeat_times=3, run_id_base=0),
             ]
         )
 
@@ -938,20 +925,13 @@ class TestWorkflowRunner(unittest.IsolatedAsyncioTestCase):
             ),
         ]
 
-        status, exps = await runner.run_task(
-            tasks[0], batch_id="test", repeat_times=2, run_id_base=0
-        )  # test exception handling
-        exps = deserialize_experiences(exps)
+        status = await runner.run_task(tasks[0], repeat_times=2, run_id_base=0)
         self.assertEqual(status.ok, False)
-        self.assertEqual(len(exps), 0)
         exps = runner.model_wrapper.extract_experience_from_history(clear_history=False)
         self.assertEqual(len(exps), 1)
-        status, exps = await runner.run_task(
-            tasks[1], batch_id="test", repeat_times=2, run_id_base=0
-        )  # normal run
-        exps = deserialize_experiences(exps)
+        status = await runner.run_task(tasks[1], repeat_times=2, run_id_base=0)
         self.assertEqual(status.ok, True)
-        self.assertEqual(len(exps), 2)
+        self.assertEqual(status.completed_runs, 2)
         exps = runner.model_wrapper.extract_experience_from_history(clear_history=False)
         self.assertEqual(len(exps), 0)
         self.assertEqual(len(rollout_model), 1)
@@ -1068,43 +1048,30 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
         )
 
         # warmup
-        async_status, async_exps = await async_runner.run_task.remote(
-            task, batch_id="test", repeat_times=2, run_id_base=0
-        )
+        async_status = await async_runner.run_task.remote(task, repeat_times=2, run_id_base=0)
 
         st = time.time()
-        async_status, async_exps = await async_runner.run_task.remote(
-            task, batch_id="test", repeat_times=4, run_id_base=0
-        )
+        async_status = await async_runner.run_task.remote(task, repeat_times=4, run_id_base=0)
         async_runtime = time.time() - st
 
         # warmup
-        thread_status, thread_exps = await thread_runner.run_task.remote(
-            task, batch_id="test", repeat_times=1, run_id_base=0
-        )
+        thread_status = await thread_runner.run_task.remote(task, repeat_times=1, run_id_base=0)
 
         st = time.time()
-        thread_status, thread_exps = await thread_runner.run_task.remote(
-            task, batch_id="test", repeat_times=4, run_id_base=0
-        )
+        thread_status = await thread_runner.run_task.remote(task, repeat_times=4, run_id_base=0)
         thread_runtime = time.time() - st
         st = time.time()
-        sequential_status, sequential_exps = await sequential_runner.run_task.remote(
-            task, batch_id="test", repeat_times=4, run_id_base=0
+        sequential_status = await sequential_runner.run_task.remote(
+            task, repeat_times=4, run_id_base=0
         )
         sequential_runtime = time.time() - st
 
         self.assertTrue(async_status.ok)
         self.assertTrue(thread_status.ok)
         self.assertTrue(sequential_status.ok)
-
-        async_exps = deserialize_experiences(async_exps)
-        thread_exps = deserialize_experiences(thread_exps)
-        sequential_exps = deserialize_experiences(sequential_exps)
-
-        self.assertEqual(len(async_exps), 8)
-        self.assertEqual(len(thread_exps), 8)
-        self.assertEqual(len(sequential_exps), 8)
+        self.assertEqual(async_status.completed_runs, 4)
+        self.assertEqual(thread_status.completed_runs, 4)
+        self.assertEqual(sequential_status.completed_runs, 4)
 
         self.assertLessEqual(async_runtime * 2, sequential_runtime)
         self.assertLessEqual(thread_runtime * 2, sequential_runtime)

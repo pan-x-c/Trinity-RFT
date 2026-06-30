@@ -25,7 +25,7 @@ class Status:
     completed_runs: int
     total_runs: int
     metrics: List[Dict[str, float]]
-    successful_run_ids: List[str] = field(default_factory=list)
+    successful_ids: List[str] = field(default_factory=list)
     message: Optional[str] = None
 
     @property
@@ -101,13 +101,14 @@ class Task(dict):
         return self.raw_task  # type: ignore
 
 
-class BaseWorkflow:
+class WorkflowBase:
     """The base workflow interface."""
 
     def __init__(self, task: Task, model: ModelWrapper) -> None:
         self.task = task
         self.model = model
-        self.model.set_api_key(task.api_key)  # set the API key for the rollout model
+        if self.model is not None:
+            self.model.set_api_key(task.api_key)  # set the API key for the rollout model
         self.logger = get_logger(__name__)
 
     @abstractmethod
@@ -119,10 +120,11 @@ class BaseWorkflow:
         self.task.batch_id = task.batch_id
         self.task.task_id = task.task_id
         self.task.run_id = task.run_id
-        self.model.set_api_key(task.api_key)  # set the API key for the rollout model
+        if self.model is not None:
+            self.model.set_api_key(task.api_key)  # set the API key for the rollout model
 
 
-class Workflow(BaseWorkflow):
+class Workflow(WorkflowBase):
     """The base workflow class.
 
     A workflow is a runnable object which generates a list of experiences.
@@ -192,7 +194,7 @@ class Workflow(BaseWorkflow):
             completed_runs=self.__class__.can_repeat and self.repeat_times or 1,
             total_runs=self.__class__.can_repeat and self.repeat_times or 1,
             metrics=[exp.metrics for exp in exps if exp.metrics is not None],
-            successful_run_ids=[self.task.api_key],
+            successful_ids=[self.task.api_key],
         )
 
 
@@ -416,7 +418,7 @@ class AsyncMathWorkflow(AsyncSimpleWorkflow, MathWorkflow):
     pass
 
 
-class WorkflowWithRecording(BaseWorkflow):
+class WorkflowWithRecording(WorkflowBase):
     """A workflow that using the rollout model's built-in recording path to capture
     experience data.
 
@@ -441,7 +443,7 @@ class WorkflowWithRecording(BaseWorkflow):
         # Store ModelWrapper instances
         self.auxiliary_model_wrappers = auxiliary_models
         # Get OpenAI clients from ModelWrapper
-        self.auxiliary_models = [m.get_openai_async_client() for m in auxiliary_models]
+        self.auxiliary_models = [m.get_openai_async_client() for m in (auxiliary_models or [])]
 
     @property
     def base_url(self) -> str:
@@ -471,7 +473,7 @@ class WorkflowWithRecording(BaseWorkflow):
             completed_runs=1,
             total_runs=1,
             metrics=[result],
-            successful_run_ids=[self.task.api_key],
+            successful_ids=[self.task.api_key],
         )
 
     async def update_reward(
@@ -482,7 +484,7 @@ class WorkflowWithRecording(BaseWorkflow):
     ) -> None:
         """Update recorded experiences for one run with reward and optional info."""
         await self.model.update_experience_reward_async(
-            record_key=self.api_key,
+            key=self.api_key,
             reward=reward,
             info=info,
             sample_ids=sample_ids,

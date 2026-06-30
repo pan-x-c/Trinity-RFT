@@ -142,7 +142,7 @@ class InferenceModel(ABC):
         return "EMPTY"
 
     async def extract_experience_from_history(
-        self, record_key: str, clear_history: bool = True
+        self, key: str, clear_history: bool = True
     ) -> List[Experience]:
         """Extract recorded experiences by record key from the in-process store.
 
@@ -153,7 +153,7 @@ class InferenceModel(ABC):
         ``.store`` is a ``RecordStore``); this base implementation is shared.
         """
         return await self._collect_experiences(
-            record_key,
+            key,
             remove=clear_history,
         )
 
@@ -833,19 +833,19 @@ class ModelWrapper:
             self._model_path = await self.model.get_model_path.remote()
 
     def extract_experience_from_history(
-        self, clear_history: bool = True, record_key: Optional[str] = None
+        self, clear_history: bool = True, key: Optional[str] = None
     ) -> List[Experience]:
         """Extract experiences from the history."""
         if not self.enable_history:
             raise ValueError("History recording is not enabled.")
         if self.model is None:
             raise ValueError("Recording extraction requires an inference model actor.")
-        record_key = record_key or self._api_key
-        if record_key is None:
-            raise ValueError("record_key is required when recording is enabled.")
+        key = key or self._api_key
+        if key is None:
+            raise ValueError("key is required when recording is enabled.")
         exps = ray.get(
             self.model.extract_experience_from_history.remote(
-                record_key=record_key,
+                key=key,
                 clear_history=clear_history,
             )
         )
@@ -853,21 +853,21 @@ class ModelWrapper:
 
     async def update_experience_reward_async(
         self,
-        record_key: str,
+        key: str,
         reward: float,
         info: Optional[dict] = None,
         sample_ids: Optional[List[str]] = None,
     ) -> None:
         """Update reward and optional info on recorded experiences."""
         await self.update_experience_records_async(
-            record_key=record_key,
+            key=key,
             update=ExperienceUpdate(reward=reward, info=info),
             sample_ids=sample_ids,
         )
 
     async def update_experience_records_async(
         self,
-        record_key: str,
+        key: str,
         update: ExperienceUpdate,
         sample_ids: Optional[List[str]] = None,
     ) -> None:
@@ -877,28 +877,28 @@ class ModelWrapper:
         if self.model is None:
             raise ValueError("Recording update requires an inference model actor.")
         await self.model.update_experience_records.remote(
-            record_key=record_key,
+            key=key,
             update=update,
             sample_ids=sample_ids,
         )
 
     def update_experience_reward(
         self,
-        record_key: str,
+        key: str,
         reward: float,
         info: Optional[dict] = None,
         sample_ids: Optional[List[str]] = None,
     ) -> None:
         """Update reward and optional info on recorded experiences."""
         self.update_experience_records(
-            record_key=record_key,
+            key=key,
             update=ExperienceUpdate(reward=reward, info=info),
             sample_ids=sample_ids,
         )
 
     def update_experience_records(
         self,
-        record_key: str,
+        key: str,
         update: ExperienceUpdate,
         sample_ids: Optional[List[str]] = None,
     ) -> None:
@@ -909,7 +909,7 @@ class ModelWrapper:
             raise ValueError("Recording update requires an inference model actor.")
         ray.get(
             self.model.update_experience_records.remote(
-                record_key=record_key,
+                key=key,
                 update=update,
                 sample_ids=sample_ids,
             )

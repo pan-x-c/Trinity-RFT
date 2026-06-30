@@ -12,7 +12,7 @@ import ray
 from ray.actor import ActorHandle
 
 from trinity.common.config import Config
-from trinity.common.workflows import RepeatableWorkflow, Task
+from trinity.common.workflows import Task
 from trinity.explorer.workflow_runner import Status, WorkflowRunner
 from trinity.utils.log import get_logger
 from trinity.utils.metrics import calculate_task_level_metrics
@@ -31,7 +31,7 @@ class TaskWrapper:
     completed_runs: int = 0
     total_runs: int = 0  # total planned runs for the whole task
     metrics: List[Dict[str, float]] = field(default_factory=list)
-    successful_run_ids: List[str] = field(default_factory=list)
+    successful_ids: List[str] = field(default_factory=list)
     experience_payloads: List[bytes] = field(default_factory=list)
     first_error: Optional[str] = None
     emitted: bool = False
@@ -134,10 +134,10 @@ class RunnerWrapper:
             self.logger.error("records delete from rollout actor failed: %s", exc)
 
     async def _consume_finished_records(self, task: TaskWrapper, status: Status) -> List[bytes]:
-        if not status.successful_run_ids:
+        if not status.successful_ids:
             return []
 
-        if issubclass(task.task.workflow, RepeatableWorkflow):
+        if getattr(task.task.workflow, "can_repeat", False):
             prefix = self._task_level_record_key(task)
             if task.task.is_eval:
                 await self._delete_records(prefix)
@@ -148,12 +148,12 @@ class RunnerWrapper:
 
         if task.task.is_eval:
             await asyncio.gather(
-                *[self._delete_records(run_id) for run_id in status.successful_run_ids]
+                *[self._delete_records(run_id) for run_id in status.successful_ids]
             )
             return []
 
         payloads = await asyncio.gather(
-            *[self._drain_records(run_id) for run_id in status.successful_run_ids]
+            *[self._drain_records(run_id) for run_id in status.successful_ids]
         )
         return [payload for payload in payloads if payload]
 
@@ -467,7 +467,7 @@ class Scheduler:
         task.finished_sub_task_num += 1
         task.completed_runs += status.completed_runs
         task.metrics.extend(status.metrics)
-        task.successful_run_ids.extend(status.successful_run_ids)
+        task.successful_ids.extend(status.successful_ids)
         task.experience_payloads.extend(experience_payloads)
         if not status.ok and task.first_error is None:
             task.first_error = status.message
@@ -485,7 +485,7 @@ class Scheduler:
             completed_runs=task.completed_runs,
             total_runs=task.total_runs,
             metrics=[calculate_task_level_metrics(task.metrics, task.task.is_eval)],
-            successful_run_ids=sorted(task.successful_run_ids),
+            successful_ids=sorted(task.successful_ids),
             message=message,
         )
         return status

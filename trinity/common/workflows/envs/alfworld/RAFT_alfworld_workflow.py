@@ -13,10 +13,10 @@ from trinity.common.workflows.envs.alfworld.RAFT_utils import (
     process_messages_to_experience_async,
     validate_trajectory_format,
 )
-from trinity.common.workflows.workflow import RepeatableWorkflow, Task
+from trinity.common.workflows.workflow import Task, Workflow
 
 
-class RAFTAlfworldWorkflow(RepeatableWorkflow):
+class RAFTAlfworldWorkflow(Workflow):
     """
     RAFT workflow for alfworld using trajectory context.
 
@@ -26,6 +26,7 @@ class RAFTAlfworldWorkflow(RepeatableWorkflow):
     """
 
     can_reset: bool = True
+    can_repeat: bool = True
     is_async: bool = True
 
     def __init__(

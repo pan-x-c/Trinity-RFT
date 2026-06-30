@@ -125,11 +125,11 @@ class WorkflowRunner:
     def _build_status(
         self,
         total_runs: int,
+        completed_runs: int,
         metrics: List[Dict[str, float]],
-        successful_run_ids: List[str],
+        successful_ids: List[str],
         first_error: Optional[str] = None,
     ) -> Status:
-        completed_runs = len(successful_run_ids)
         if first_error is None:
             message = None
         elif completed_runs > 0:
@@ -144,7 +144,7 @@ class WorkflowRunner:
             completed_runs=completed_runs,
             total_runs=total_runs,
             metrics=list(metrics),
-            successful_run_ids=list(successful_run_ids),
+            successful_ids=list(successful_ids),
             message=message,
         )
 
@@ -154,21 +154,24 @@ class WorkflowRunner:
         results: List[Status],
     ) -> Status:
         run_metrics = []
-        successful_run_ids = []
+        successful_ids = []
+        completed_runs = 0
         first_error = None
 
         for status in results:
+            completed_runs += status.completed_runs
             if status.ok:
                 run_metrics.extend(status.metrics)
-                successful_run_ids.extend(status.successful_run_ids)
+                successful_ids.extend(status.successful_ids)
                 continue
             if first_error is None:
                 first_error = status.message
 
         return self._build_status(
             total_runs=total_runs,
+            completed_runs=completed_runs,
             metrics=run_metrics,
-            successful_run_ids=successful_run_ids,
+            successful_ids=successful_ids,
             first_error=first_error,
         )
 
@@ -287,11 +290,11 @@ class WorkflowRunner:
                 metric["time/run_execution"] = et - st
             # repeatable workflow shares the same run_id, so we can only return
             # the run_id of the first run
-            successful_run_ids = [task.api_key]
             return self._build_status(
                 total_runs=repeat_times,
+                completed_runs=status.completed_runs,
                 metrics=run_metrics,
-                successful_run_ids=successful_run_ids,
+                successful_ids=status.successful_ids or [task.api_key],
                 first_error=status.message,
             )
         else:
