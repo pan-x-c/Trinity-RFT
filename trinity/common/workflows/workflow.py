@@ -468,7 +468,7 @@ class WorkflowWithRecording(WorkflowBase):
 
     async def execute(self) -> Status:
         """Execute the workflow and normalize the user return value to Status."""
-        result = await self.run()
+        result = await self.run_async()
         return self._to_status(result)
 
     def _to_status(self, result: Metrics) -> Status:

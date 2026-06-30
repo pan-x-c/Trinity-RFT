@@ -24,6 +24,7 @@ from tests.tools import (
     get_template_config,
     get_unittest_dataset_config,
 )
+from trinity.buffer.store import get_record_key
 from trinity.common.constants import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 from trinity.common.experience import EID, Experience
 from trinity.common.models.allocator import Allocator
@@ -31,7 +32,13 @@ from trinity.common.models.model import ModelWrapper
 from trinity.common.workflows import WORKFLOWS, Workflow
 from trinity.common.workflows.customized_math_workflows import MathBoxedWorkflow
 from trinity.common.workflows.eval_workflow import MathEvalWorkflow
-from trinity.common.workflows.workflow import MathWorkflow, MultiTurnWorkflow, Task
+from trinity.common.workflows.workflow import (
+    MathWorkflow,
+    Metrics,
+    MultiTurnWorkflow,
+    Task,
+    WorkflowWithRecording,
+)
 from trinity.explorer.workflow_runner import Status, WorkflowRunner
 
 
@@ -894,6 +901,42 @@ class ConcurrentTestWorkflow(Workflow):
         return history_exps
 
 
+class ConcurrentRecordingWorkflow(WorkflowWithRecording):
+    def __init__(self, model: ModelWrapper, task: Task, auxiliary_models=None):
+        super().__init__(task=task, model=model, auxiliary_models=auxiliary_models)
+        self.client = openai.AsyncOpenAI(base_url=f"{self.base_url}/v1", api_key=self.api_key)
+        self.model_name = self.model.model_name
+
+    def reset(self, task: Task):
+        self.task = task
+        self.model.set_api_key(task.api_key)
+        self.client.api_key = task.api_key
+
+    async def _chat(self, messages):
+        return await self.client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            temperature=0.0,
+            max_tokens=16,
+        )
+
+    async def run_async(self) -> Metrics:
+        prefix_messages = [{"role": "user", "content": "Reply with the word alpha only."}]
+        first = await self._chat(prefix_messages)
+        first_text = first.choices[0].message.content or ""
+
+        merged_messages = [
+            *prefix_messages,
+            {"role": "assistant", "content": first_text},
+            {"role": "user", "content": "Now reply with the word beta only."},
+        ]
+        await self._chat(merged_messages)
+
+        await self._chat([{"role": "user", "content": "This is an unrelated single-turn branch."}])
+        await self.update_reward(0.75, info={"source": "workflow_with_recording"})
+        return {"recording_workflow/updated_reward": 1.0}
+
+
 class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
     def setUp(self) -> None:
         config = get_template_config()
@@ -1011,6 +1054,37 @@ class TestConcurrentWorkflowRunner(RayUnittestBaseAsync):
 
         self.assertLessEqual(async_runtime * 2, sequential_runtime)
         self.assertLessEqual(thread_runtime * 2, sequential_runtime)
+
+        recording_task = Task(
+            workflow=ConcurrentRecordingWorkflow,
+            repeat_times=1,
+            raw_task={},
+            batch_id="concurrent_recording",
+            task_id=0,
+        )
+        recording_status = await sequential_runner.run_task.remote(
+            recording_task, repeat_times=1, run_id_base=0
+        )
+        self.assertTrue(recording_status.ok)
+        self.assertEqual(recording_status.completed_runs, 1)
+        self.assertEqual(recording_status.successful_ids, ["concurrent_recording/0/0"])
+        self.assertEqual(recording_status.metrics[0]["recording_workflow/updated_reward"], 1.0)
+
+        recording_exps = rollout_model[0].extract_experience_from_history(
+            key="concurrent_recording/0/0"
+        )
+        self.assertEqual(len(recording_exps), 2)
+        for exp in recording_exps:
+            self.assertEqual(get_record_key(exp), "concurrent_recording/0/0")
+            self.assertEqual(exp.reward, 0.75)
+            self.assertEqual(exp.info["source"], "workflow_with_recording")
+
+        merged_exps = [exp for exp in recording_exps if "merged_turn_count" in (exp.info or {})]
+        branch_exps = [exp for exp in recording_exps if "merged_turn_count" not in (exp.info or {})]
+        self.assertEqual(len(merged_exps), 1)
+        self.assertEqual(len(branch_exps), 1)
+        self.assertEqual(merged_exps[0].info["merged_turn_count"], 2)
+        self.assertEqual(len(merged_exps[0].info["merged_eid_suffixes"]), 2)
 
         # check log files
         sequential_log_path = os.path.join(self.config.log.save_dir, "explorer_runner_0.log")
