@@ -204,7 +204,12 @@ class DummyAsyncWorkflow(Workflow):
             for step in range(self.step_num):
                 run_level_exps.append(
                     Experience(
-                        eid=EID(run=i + self.run_id_base, step=step),
+                        eid=EID(
+                            batch=self.task.batch_id,
+                            task=self.task.task_id,
+                            run=i + self.run_id_base,
+                            step=step,
+                        ),
                         tokens=torch.zeros(5),
                         prompt_length=2,
                         prompt_text="success",
@@ -277,6 +282,7 @@ class DummyModel(InferenceModel):
         from trinity.common.config import InferenceModelConfig
 
         super().__init__(InferenceModelConfig(model_path="dummy_model"))
+        self._history_payloads: Dict[str, bytes] = {}
 
     def sync_model_weights(self, model_version, sync_method, timeout):
         return True
@@ -302,6 +308,38 @@ class DummyModel(InferenceModel):
 
     def get_api_server_url(self) -> Optional[str]:
         return None
+
+    async def overwrite_history_experiences(self, key: str, payload: bytes) -> None:
+        self._history_payloads[key] = payload
+
+    async def drain_experience_records_bytes(self, prefix: str) -> bytes:
+        keys = self._matching_history_keys(prefix)
+        exps = []
+        for key in keys:
+            exps.extend(Experience.deserialize_many(self._history_payloads.pop(key)))
+        return Experience.serialize_many(exps)
+
+    async def delete_experience_records(self, prefix: str) -> None:
+        for key in self._matching_history_keys(prefix):
+            self._history_payloads.pop(key, None)
+
+    async def extract_experience_from_history(
+        self, key: str, clear_history: bool = True
+    ) -> List[Experience]:
+        payload = self._history_payloads.get(key)
+        if payload is None:
+            return []
+        if clear_history:
+            self._history_payloads.pop(key, None)
+        return Experience.deserialize_many(payload)
+
+    def _matching_history_keys(self, prefix: str) -> List[str]:
+        if prefix == "":
+            return list(self._history_payloads)
+        if prefix in self._history_payloads:
+            return [prefix]
+        prefix_with_sep = f"{prefix}/"
+        return [key for key in self._history_payloads if key.startswith(prefix_with_sep)]
 
     async def chat(self, messages: List[Dict], lora_request=None, **kwargs) -> Sequence[Experience]:
         prompt_length = sum(len(msg["content"]) for msg in messages)
@@ -409,6 +447,9 @@ def _assign_test_namespace(config) -> None:
 
 
 def _configure_dummy_models(config) -> None:
+    config.explorer.rollout_model.engine_type = "tinker"
+    config.explorer.rollout_model.enable_openai_api = False
+    config.explorer.rollout_model.enable_history = True
     for auxiliary_config in config.explorer.auxiliary_models:
         auxiliary_config.enable_openai_api = True
 
