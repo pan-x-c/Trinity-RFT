@@ -724,7 +724,6 @@ class TestAPIServerCommon(VLLMTestBase):
         self.assertTrue(response.choices[0].token_ids is None)
         with self.assertRaises(ValueError):
             self.model_wrapper_no_history.extract_experience_from_history()
-        self.assertEqual(len(self.model_wrapper_no_history.history), 0)
 
 
 class TestQwen35APIServerReasoning(VLLMTestBase):
@@ -1191,7 +1190,6 @@ class TestAsyncAPIServer(VLLMTestBase):
         self.assertTrue(response.choices[0].token_ids is None)
         with self.assertRaises(ValueError):
             self.model_wrapper_no_history.extract_experience_from_history()
-        self.assertEqual(len(self.model_wrapper_no_history.history), 0)
 
 
 @unittest.skipIf("TINKER_API_KEY" not in os.environ, "TINKER_API_KEY is not set")

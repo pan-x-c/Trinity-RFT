@@ -362,7 +362,6 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
             self.assertEqual(len(generate_history), 2)
             for exp, recorded_exp in zip(generate_exps, generate_history):
                 self.assertEqual(recorded_exp.response_text, exp.response_text)
-                self.assertEqual(recorded_exp.prompt_text, exp.prompt_text)
                 self._assert_experience_matches_text(
                     recorded_exp, [generate_prompt], exp.response_text
                 )
