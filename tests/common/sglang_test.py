@@ -125,7 +125,6 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
 
     def _assert_history_matches_responses(self, expected_count, prompt_contents, response_texts):
         if not self.enable_history:
-            self.assertEqual(len(self.model_wrapper.history), 0)
             return []
 
         exps = self.model_wrapper.extract_experience_from_history()
@@ -229,12 +228,16 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         prompt_contents = [message["content"] for message in messages]
 
         openai_client = self.model_wrapper.get_openai_async_client()
+        routed_experts_body = (
+            {"return_routed_experts": True} if self.enable_return_routed_experts else None
+        )
         response = await openai_client.chat.completions.create(
             model=openai_client.model_path,
             messages=messages,
             n=1,
             temperature=0.7,
             max_tokens=32,
+            **({"extra_body": routed_experts_body} if routed_experts_body else {}),
         )
 
         self.assertEqual(len(response.choices), 1)
@@ -250,6 +253,7 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
             tool_choice="none",
             temperature=0.7,
             max_tokens=32,
+            **({"extra_body": routed_experts_body} if routed_experts_body else {}),
         )
 
         self.assertEqual(len(tool_response.choices), 1)
@@ -327,7 +331,8 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
                         self.expected_routed_experts_topk,
                     )
         else:
-            self.assertEqual(len(self.model_wrapper.history), 0)
+            with self.assertRaises(ValueError):
+                self.model_wrapper.extract_experience_from_history()
 
         generate_prompt = "Write one short sentence about Boston."
         generate_exps = await self.model_wrapper.generate_async(
@@ -369,7 +374,8 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
                         self.expected_routed_experts_topk,
                     )
         else:
-            self.assertEqual(len(self.model_wrapper.history), 0)
+            with self.assertRaises(ValueError):
+                self.model_wrapper.extract_experience_from_history()
 
 
 class TestRecording(RayUnittestBaseAsync):
