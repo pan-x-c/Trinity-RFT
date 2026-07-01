@@ -29,6 +29,7 @@ from trinity.common.models.recording.context import (
     get_recording_request_from_context,
 )
 from trinity.common.models.recording.recorder import (
+    MODEL_VERSION_ATTR,
     TRINITY_RECORD_STORE_ATTR,
     TRINITY_RECORDER_ATTR,
     Recorder,
@@ -288,6 +289,9 @@ def patch_engine_for_recording(
             sampling_params.logprobs = (
                 max(cur, _RECORDER_LOGPROB_WIDTH) if cur is not None else _RECORDER_LOGPROB_WIDTH
             )
+        model_version_start = (
+            getattr(engine_client, MODEL_VERSION_ATTR, None) if recorder.enabled else None
+        )
         is_delta_output = _is_delta_output(sampling_params)
 
         last = None
@@ -321,6 +325,7 @@ def patch_engine_for_recording(
                 recorder.schedule_record(
                     record_output,
                     record_key,
+                    model_version_start=model_version_start,
                     multi_modal_inputs=multi_modal_inputs,
                 )
 

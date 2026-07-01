@@ -49,6 +49,15 @@ def _sample_suffix(request_id: str, sample_index: int, num_samples: int) -> str:
     return f"{request_id}:{sample_index}"
 
 
+def _model_version_drift(start: Optional[Any], end: Optional[Any]) -> int:
+    if start is None or end is None:
+        return 0
+    try:
+        return int(end) - int(start)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _extract_routed_experts(
     routed_experts_value: Any,
     total_tokens: int,
@@ -73,6 +82,7 @@ def build_sglang_experience(
     *,
     timestamp: str,
     model_version: Optional[Any] = None,
+    model_version_start: Optional[Any] = None,
     include_routed_experts: bool = True,
     routed_experts_layout: Optional[Tuple[int, int]] = None,
 ) -> List[Experience]:
@@ -93,6 +103,9 @@ def build_sglang_experience(
         timestamp: UTC ISO-8601 string (caller-stamped to keep this pure).
         model_version: Checkpoint version fallback; overridden by
             ``meta_info.weight_version`` when present.
+        model_version_start: Checkpoint version captured when this generation
+            entered the rollout engine. Used to compute
+            ``info["model_version_drift"]``.
         include_routed_experts: Whether routed experts should be copied.
         routed_experts_layout: ``(num_layers, topk)`` for decoding base64-str
             routed experts (from ``BaseInferenceModel._get_routed_experts_layout``).
@@ -160,6 +173,10 @@ def build_sglang_experience(
             "sample_index": sample_index,
             "timestamp": timestamp,
             "model_version": resolved_model_version,
+            "model_version_drift": _model_version_drift(
+                model_version_start,
+                resolved_model_version,
+            ),
         }
 
         experiences.append(

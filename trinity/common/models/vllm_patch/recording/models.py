@@ -88,6 +88,15 @@ def _sample_suffix(request_id: str, sample_index: int, num_samples: int) -> str:
     return f"{request_id}:{sample_index}"
 
 
+def _model_version_drift(start: Optional[Any], end: Optional[Any]) -> int:
+    if start is None or end is None:
+        return 0
+    try:
+        return int(end) - int(start)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _extract_routed_experts(
     output: Any,
     completion: Any,
@@ -121,6 +130,7 @@ def build_experience(
     *,
     timestamp: str,
     model_version: Optional[int] = None,
+    model_version_start: Optional[Any] = None,
     multi_modal_inputs: Optional[dict] = None,
     prompt_text: Optional[str] = None,
     include_routed_experts: bool = True,
@@ -140,6 +150,9 @@ def build_experience(
         timestamp: UTC ISO-8601 string (caller-stamped to keep this pure).
         model_version: Checkpoint version the serving policy was at; stamped
             into ``info`` for RL attribution (read in-actor by the recorder).
+        model_version_start: Checkpoint version captured when this generation
+            entered the rollout engine. Used to compute
+            ``info["model_version_drift"]``.
         multi_modal_inputs: Optional training-time multimodal tensors aligned
             with the prompt tokens. Response token type ids are appended per
             completion before storing on the ``Experience``.
@@ -196,6 +209,7 @@ def build_experience(
             "sample_index": sample_index,
             "timestamp": timestamp,
             "model_version": model_version,
+            "model_version_drift": _model_version_drift(model_version_start, model_version),
         }
 
         experiences.append(

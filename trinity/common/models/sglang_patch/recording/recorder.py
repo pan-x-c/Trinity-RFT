@@ -33,6 +33,7 @@ from trinity.common.models.recording.context import (
     get_recording_record_key_from_context,
 )
 from trinity.common.models.recording.recorder import (
+    MODEL_VERSION_ATTR,
     TRINITY_RECORD_STORE_ATTR,
     TRINITY_RECORDER_ATTR,
     Recorder,
@@ -267,6 +268,9 @@ def patch_tokenizer_manager_for_recording(
 
         state: dict = {}
         order: list = []
+        model_version_start = (
+            getattr(tokenizer_manager, MODEL_VERSION_ATTR, None) if recorder.enabled else None
+        )
         # ``current`` is the original *bound* method captured pre-wrap, so it
         # still resolves ``self`` correctly. Yields each ret unchanged.
         async for out in current(*args, **kwargs):
@@ -281,6 +285,7 @@ def patch_tokenizer_manager_for_recording(
                     recorder.schedule_record(
                         reconstructed,
                         record_key,
+                        model_version_start=model_version_start,
                         include_routed_experts=True,
                         routed_experts_layout=routed_experts_layout,
                     )
