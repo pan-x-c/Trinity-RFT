@@ -159,6 +159,11 @@ class CoordinatorHarness(RolloutCoordinator):
 
         self.scheduler = self._test_scheduler
 
+    def _init_rollout_actors(self):
+        """Skip Ray actor resolution in unit tests."""
+
+        self._rollout_actors = {}
+
     async def _discard_recorded_experiences(self, prefix: str) -> None:
         """Record cleanup requests without resolving real rollout actors."""
 

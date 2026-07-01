@@ -64,19 +64,19 @@ class RolloutCoordinator:
         self.pending_batches: Dict[BatchId, BatchState] = {}
         self.running = False
         self.detailed_stats = getattr(getattr(config, "monitor", None), "detailed_stats", False)
-        # Lazily-resolved map of rollout engine_id -> rollout actor handle, for
-        # recording residual cleanup.
+        # Prepared map of rollout engine_id -> rollout actor handle, for
+        # scheduler construction and recording residual cleanup.
         self._rollout_actors: Dict[int, ActorHandle] = {}
 
-    def _resolve_rollout_actors(self) -> Dict[int, ActorHandle]:
+    def _init_rollout_actors(self) -> None:
         """Resolve each rollout engine's actor handle via named Ray actors.
 
         Mirrors ``Allocator.get_actor_name`` + ``ray.get_actor``: rollout model
         actors are named ``f"{explorer.name}_rollout_model_{engine_id}_0"``
-        (node_id 0 holds the recording store). Cached after first resolution.
+        (node_id 0 holds the recording store).
         """
         if self._rollout_actors:
-            return self._rollout_actors
+            return
         rollout_cfg = self.config.explorer.rollout_model
         name = self.config.explorer.name
         namespace = rollout_cfg.ray_namespace
@@ -92,12 +92,13 @@ class RolloutCoordinator:
                     % (actor_name, namespace)
                 ) from exc
         self._rollout_actors = actors
-        return actors
 
     async def prepare(self) -> None:
         """Initialize the owned pipeline and scheduler."""
         if self.running:
             return
+        if not self._rollout_actors and getattr(self.config, "mode", None) != "serve":
+            self._init_rollout_actors()
         if self.experience_pipeline is None:
             await self._init_experience_pipeline()
         if self.scheduler is None:
@@ -116,18 +117,18 @@ class RolloutCoordinator:
 
     async def _init_experience_pipeline(self):
         """Create the experience pipeline owned by this coordinator actor."""
-        if self.config.mode == "bench":
+        if getattr(self.config, "mode", None) == "bench":
             return None
         self.experience_pipeline = ExperiencePipeline(self.config)
         await self.experience_pipeline.prepare()
 
     async def _init_scheduler(self):
         """Create the scheduler owned by this coordinator."""
-        if self.config.mode == "serve":
+        if getattr(self.config, "mode", None) == "serve":
             return
         self.scheduler = Scheduler(
             self.config,
-            rollout_actors=self._resolve_rollout_actors(),
+            rollout_actors=self._rollout_actors,
         )
         await self.scheduler.start()
 
@@ -319,9 +320,11 @@ class RolloutCoordinator:
 
     async def _discard_recorded_experiences(self, prefix: str) -> None:
         """Delete recorded experiences matching a prefix from all rollout ranks."""
-        actors = self._resolve_rollout_actors()
         results = await asyncio.gather(
-            *[actor.delete_experience_records.remote(prefix=prefix) for actor in actors.values()],
+            *[
+                actor.delete_experience_records.remote(prefix=prefix)
+                for actor in self._rollout_actors.values()
+            ],
             return_exceptions=True,
         )
         for result in results:
