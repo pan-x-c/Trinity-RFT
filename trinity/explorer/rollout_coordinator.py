@@ -223,7 +223,7 @@ class RolloutCoordinator:
             return
 
         self.logger.warning("Abort batch %s: %s", batch_id, reason)
-        await scheduler.abort_batch(
+        await scheduler.cleanup_batch(
             batch_id,
             return_partial_tasks=keep_partial_results,
             restart_runners=True,
@@ -349,7 +349,7 @@ class RolloutCoordinator:
     async def _cleanup_train_batch_runtime(self, batch_state: BatchState) -> None:
         """Drop unfinished train work after a non-complete finalize result."""
         scheduler = self._require_scheduler()
-        await scheduler.abort_batch(
+        await scheduler.cleanup_batch(
             batch_state.batch_id,
             return_partial_tasks=False,
             restart_runners=True,

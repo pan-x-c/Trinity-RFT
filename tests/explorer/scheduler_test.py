@@ -659,7 +659,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         _, exps = await collect_results(scheduler, batch_id=1, min_num=1, timeout=1)
         self.assertEqual(len(exps), 0)
 
-        # test _cleanup_batch_and_restart_runners: part I, no clear
+        # test cleanup_batch and runner restart: part I, no clear
         tasks = generate_tasks(3, timeout_num=1, timeout_seconds=3)
         scheduler.schedule(tasks, batch_id=2)
         statuses, exps = await collect_results(
@@ -672,7 +672,7 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(statuses), 1)
         self.assertEqual(len(exps), 1)
-        #  test _cleanup_batch_and_restart_runners: part II, clear
+        # test cleanup_batch and runner restart: part II, clear
         tasks = generate_tasks(3, timeout_num=1, timeout_seconds=3)
         scheduler.schedule(tasks, batch_id=3)
         statuses, exps = await collect_results(scheduler, batch_id=3, timeout=2)

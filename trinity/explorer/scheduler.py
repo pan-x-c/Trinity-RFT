@@ -628,7 +628,7 @@ class Scheduler:
             avg_time_per_task * self.config.explorer.dynamic_timeout.ratio,
         )
 
-    async def _cleanup_batch(
+    async def cleanup_batch(
         self,
         batch_id: Union[int, str],
         return_partial_tasks: bool = False,
@@ -695,7 +695,7 @@ class Scheduler:
                     >= self.config.explorer.over_rollout.wait_after_min
                 ):
                     if clear_timeout_tasks:
-                        await self._cleanup_batch(
+                        await self.cleanup_batch(
                             batch_id,
                             return_partial_tasks=return_partial_tasks,
                             restart_runners=False,
@@ -757,7 +757,7 @@ class Scheduler:
                 f"Timed out waiting for tasks at batch {batch_id} to complete after {timeout} seconds"
             )
             if clear_timeout_tasks:
-                await self._cleanup_batch(
+                await self.cleanup_batch(
                     batch_id,
                     return_partial_tasks=return_partial_tasks,
                     restart_runners=True,
@@ -808,19 +808,6 @@ class Scheduler:
             return_partial_tasks=return_partial_tasks,
         )
         return statuses
-
-    async def abort_batch(
-        self,
-        batch_id: Union[int, str],
-        return_partial_tasks: bool = False,
-        restart_runners: bool = True,
-    ) -> None:
-        """Abort one batch and cleanup unfinished scheduler state."""
-        await self._cleanup_batch(
-            batch_id,
-            return_partial_tasks=return_partial_tasks,
-            restart_runners=restart_runners,
-        )
 
     def has_step(self, batch_id: Union[int, str]) -> bool:
         return (

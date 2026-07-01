@@ -46,7 +46,7 @@ class FakeScheduler:
         self.stopped = False
         self.schedule_calls = []
         self.scheduled_task_counts = {}
-        self.abort_calls = []
+        self.cleanup_calls = []
         self.batch_results = {}
         self.get_statuses_calls = []
 
@@ -99,10 +99,10 @@ class FakeScheduler:
         _ = min_num, timeout, clear_timeout_tasks, return_partial_tasks
         return self.batch_results.pop(batch_id, ([], []))
 
-    async def abort_batch(self, batch_id, return_partial_tasks=False, restart_runners=True):
-        """Record one scheduler abort request."""
+    async def cleanup_batch(self, batch_id, return_partial_tasks=False, restart_runners=True):
+        """Record one scheduler cleanup request."""
 
-        self.abort_calls.append(
+        self.cleanup_calls.append(
             {
                 "batch_id": batch_id,
                 "return_partial_tasks": return_partial_tasks,
@@ -230,7 +230,7 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["finished_task_count"], 1)
         self.assertEqual(self.pipeline.process_chunk_calls[-1], [b"payload-0"])
-        self.assertEqual(self.scheduler.abort_calls[-1]["batch_id"], 2)
+        self.assertEqual(self.scheduler.cleanup_calls[-1]["batch_id"], 2)
         self.assertIn("2", self.coordinator.discard_recorded_prefixes)
         self.assertNotIn(2, self.coordinator.pending_batches)
 
@@ -326,7 +326,7 @@ class TestRolloutCoordinator(unittest.IsolatedAsyncioTestCase):
 
         await self.coordinator.abort_batch(4, reason="shutdown")
 
-        self.assertEqual(self.scheduler.abort_calls[0]["batch_id"], 4)
+        self.assertEqual(self.scheduler.cleanup_calls[0]["batch_id"], 4)
         self.assertEqual(self.coordinator.discard_recorded_prefixes[-1], "4")
         self.assertNotIn(4, self.coordinator.pending_batches)
 
