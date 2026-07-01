@@ -334,6 +334,7 @@ class vLLMRolloutModel(BaseInferenceModel):
             record_key=None,
             timestamp="",
             multi_modal_inputs=multi_modal_inputs,
+            model_version=self.model_version,
             prompt_text=self.tokenizer.decode(output.prompt_token_ids),
             include_routed_experts=self.config.enable_return_routed_experts,
             include_prompt_routed_experts=True,

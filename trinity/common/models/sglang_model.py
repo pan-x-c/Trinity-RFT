@@ -482,6 +482,9 @@ class SGLangRolloutModel(BaseInferenceModel):
                     prompt_text=prompt_text,
                     response_text=response_text,
                     routed_experts=routed_experts,
+                    info={
+                        "model_version": self.model_version,
+                    },
                 )
             )
         return experiences
