@@ -751,9 +751,11 @@ class TestAPIServerCommon(VLLMTestBase):
             messages=messages,
             logprobs=False,
         )
+        self.assertIsNone(response.choices[0].logprobs)
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 1)
-        self.assertTrue(len(exps[0].logprobs) == 0)
+        self.assertTrue(len(exps[0].logprobs) > 0)
+        self.assertTrue(exps[0].prompt_length + len(exps[0].logprobs) == len(exps[0].tokens))
         response = self.model_wrapper_no_history.get_openai_client().chat.completions.create(
             model=model_id, messages=messages, n=2
         )
@@ -1219,9 +1221,11 @@ class TestAsyncAPIServer(VLLMTestBase):
             messages=messages,
             logprobs=False,
         )
+        self.assertIsNone(response.choices[0].logprobs)
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 1)
-        self.assertTrue(len(exps[0].logprobs) == 0)
+        self.assertTrue(len(exps[0].logprobs) > 0)
+        self.assertTrue(exps[0].prompt_length + len(exps[0].logprobs) == len(exps[0].tokens))
         response = (
             await self.model_wrapper_no_history.get_openai_async_client().chat.completions.create(
                 model=model_id, messages=messages, n=2
