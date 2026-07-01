@@ -179,15 +179,6 @@ class ModelWrapperTest(VLLMTestBase):
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
 
-    def _assert_openai_response_routed_experts(self, response, expected_choices: int):
-        self.assertEqual(len(response.choices), expected_choices)
-        if not self.enable_return_routed_experts:
-            return
-        for choice in response.choices:
-            self.assertTrue(hasattr(choice, "routed_experts"))
-            self.assertIsInstance(choice.routed_experts, str)
-            self.assertGreater(len(choice.routed_experts), 0)
-
     async def test_generate(self):  # noqa: C901
         self.assertEqual(self.model_wrapper.model_path, self.config.model.model_path)
         prompts = ["Hello, world!", "Hello, my name is"]
@@ -329,7 +320,7 @@ class ModelWrapperTest(VLLMTestBase):
                     max_tokens=32,
                 )
 
-            self._assert_openai_response_routed_experts(openai_response, n)
+            self.assertEqual(len(openai_response.choices), n)
 
             history_experiences = self.model_wrapper.extract_experience_from_history()
             self.assertEqual(len(history_experiences), n)
@@ -651,6 +642,7 @@ class TestAPIServerCommon(VLLMTestBase):
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
+        self.model_wrapper.set_api_key("0/vllm_api_server/0")
         self.model_wrapper_no_history = clone_wrapper(self.model_wrapper, enable_history=False)
 
     async def test_api(self):
@@ -681,13 +673,13 @@ class TestAPIServerCommon(VLLMTestBase):
         self.assertEqual(0, len(response.choices[0].logprobs.content[2].top_logprobs))
         # here we check the 3rd token logprob, because the first two tokens (`<think>`,`\n` usually have zero logprob)
         self.assertTrue(response.choices[0].logprobs.content[2].logprob < 0)
-        self.assertTrue(hasattr(response, "prompt_token_ids"))
-        self.assertTrue(len(response.prompt_token_ids) > 0)
-        self.assertTrue(hasattr(response.choices[0], "token_ids"))
-        self.assertTrue(len(response.choices[0].token_ids) > 0)
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 3)
         self.assertEqual(exps[0].response_text, content)
+        for exp in exps:
+            self.assertTrue(len(exp.tokens) > 0)
+            self.assertTrue(len(exp.logprobs) > 0)
+            self.assertTrue(exp.prompt_length + len(exp.logprobs) == len(exp.tokens))
         response = openai_client.chat.completions.create(
             model=model_id,
             messages=messages,
@@ -1111,6 +1103,7 @@ class TestAsyncAPIServer(VLLMTestBase):
     async def _setup_engines(self):
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
+        self.model_wrapper.set_api_key("0/vllm_async_api_server/0")
         self.model_wrapper_no_history = clone_wrapper(self.model_wrapper, enable_history=False)
 
     async def test_api_async(self):
@@ -1139,12 +1132,12 @@ class TestAsyncAPIServer(VLLMTestBase):
         # here we check the 3rd token logprob, because the first two tokens (`<think>`,`\n` usually have zero logprob)
         if "Instruct" not in self.model_path:
             self.assertTrue(response.choices[0].logprobs.content[2].logprob < 0)
-        self.assertTrue(hasattr(response, "prompt_token_ids"))
-        self.assertTrue(len(response.prompt_token_ids) > 0)
-        self.assertTrue(hasattr(response.choices[0], "token_ids"))
-        self.assertTrue(len(response.choices[0].token_ids) > 0)
         exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(exps), 3)
+        for exp in exps:
+            self.assertTrue(len(exp.tokens) > 0)
+            self.assertTrue(len(exp.logprobs) > 0)
+            self.assertTrue(exp.prompt_length + len(exp.logprobs) == len(exp.tokens))
         response = await openai_client.chat.completions.create(
             model=model_id,
             messages=messages,

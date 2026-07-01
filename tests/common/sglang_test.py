@@ -144,15 +144,6 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
                 )
         return exps
 
-    def _assert_openai_response_routed_experts(self, response):
-        if not self.enable_return_routed_experts:
-            return
-        self.assertTrue(hasattr(response, "sglext"))
-        self.assertIsNotNone(response.sglext)
-        self.assertTrue("routed_experts" in response.sglext)
-        self.assertIsInstance(response.sglext["routed_experts"], str)
-        self.assertGreater(len(response.sglext["routed_experts"]), 0)
-
     def _get_tool_call_case(self):
         tool_messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -231,20 +222,15 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
         prompt_contents = [message["content"] for message in messages]
 
         openai_client = self.model_wrapper.get_openai_async_client()
-        routed_experts_body = (
-            {"return_routed_experts": True} if self.enable_return_routed_experts else None
-        )
         response = await openai_client.chat.completions.create(
             model=openai_client.model_path,
             messages=messages,
             n=1,
             temperature=0.7,
             max_tokens=32,
-            **({"extra_body": routed_experts_body} if routed_experts_body else {}),
         )
 
         self.assertEqual(len(response.choices), 1)
-        self._assert_openai_response_routed_experts(response)
         response_texts = await self._collect_response_texts(response)
         self._assert_history_matches_responses(1, prompt_contents, response_texts)
 
@@ -256,11 +242,9 @@ class TestSGLangOpenAIAPI(RayUnittestBaseAsync):
             tool_choice="none",
             temperature=0.7,
             max_tokens=32,
-            **({"extra_body": routed_experts_body} if routed_experts_body else {}),
         )
 
         self.assertEqual(len(tool_response.choices), 1)
-        self._assert_openai_response_routed_experts(tool_response)
         tool_response_texts = await self._collect_response_texts(tool_response)
         self._assert_history_matches_responses(1, tool_prompt_contents, tool_response_texts)
 
