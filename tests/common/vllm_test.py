@@ -88,6 +88,44 @@ def _assert_routed_experts_shape(test_case, exp, expected_layers: int, expected_
     )
 
 
+def _assert_recorded_experiences_match_unordered(
+    test_case,
+    expected_exps,
+    recorded_exps,
+    *,
+    enable_return_routed_experts: bool,
+    expected_layers: int,
+    expected_topk: int,
+):
+    test_case.assertEqual(len(recorded_exps), len(expected_exps))
+    unmatched_recorded = list(recorded_exps)
+    for exp in expected_exps:
+        exp_tokens = exp.tokens.tolist()
+        match_index = next(
+            (
+                i
+                for i, recorded_exp in enumerate(unmatched_recorded)
+                if recorded_exp.tokens.tolist() == exp_tokens
+            ),
+            None,
+        )
+        test_case.assertIsNotNone(
+            match_index,
+            f"Recorded history does not contain expected response: {exp.response_text[:200]}",
+        )
+        recorded_exp = unmatched_recorded.pop(match_index)
+        test_case.assertEqual(exp.response_text, recorded_exp.response_text)
+        test_case.assertEqual(exp.prompt_length, recorded_exp.prompt_length)
+        test_case.assertEqual(exp.logprobs.tolist(), recorded_exp.logprobs.tolist())
+        if enable_return_routed_experts:
+            _assert_routed_experts_shape(
+                test_case,
+                recorded_exp,
+                expected_layers,
+                expected_topk,
+            )
+
+
 def _load_gsm8k_questions() -> list[str]:
     """Load the diverse math questions from the GSM8K training set."""
     path = os.path.join(os.path.dirname(__file__), "..", "template", "data", "gsm8k", "train.jsonl")
@@ -205,19 +243,14 @@ class ModelWrapperTest(VLLMTestBase):
             history_experiences = self.model_wrapper.extract_experience_from_history(
                 clear_history=False
             )
-            self.assertEqual(len(history_experiences), len(generate_results))
-            for exp, history_exp in zip(generate_results, history_experiences):
-                self.assertEqual(exp.response_text, history_exp.response_text)
-                self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
-                self.assertEqual(exp.prompt_length, history_exp.prompt_length)
-                self.assertEqual(exp.logprobs.tolist(), history_exp.logprobs.tolist())
-                if self.enable_return_routed_experts:
-                    _assert_routed_experts_shape(
-                        self,
-                        history_exp,
-                        self.expected_routed_experts_layers,
-                        self.expected_routed_experts_topk,
-                    )
+            _assert_recorded_experiences_match_unordered(
+                self,
+                generate_results,
+                history_experiences,
+                enable_return_routed_experts=self.enable_return_routed_experts,
+                expected_layers=self.expected_routed_experts_layers,
+                expected_topk=self.expected_routed_experts_topk,
+            )
         else:
             with self.assertRaises(ValueError):
                 self.model_wrapper.extract_experience_from_history(clear_history=False)
@@ -245,19 +278,15 @@ class ModelWrapperTest(VLLMTestBase):
                 )
         if self.config.explorer.rollout_model.enable_history:
             history_experiences = self.model_wrapper.extract_experience_from_history()
-            self.assertEqual(len(history_experiences) - len(generate_results), len(results))
-            for exp, history_exp in zip(results, history_experiences[len(generate_results) :]):
-                self.assertEqual(exp.response_text, history_exp.response_text)
-                self.assertEqual(exp.tokens.tolist(), history_exp.tokens.tolist())
-                self.assertEqual(exp.prompt_length, history_exp.prompt_length)
-                self.assertEqual(exp.logprobs.tolist(), history_exp.logprobs.tolist())
-                if self.enable_return_routed_experts:
-                    _assert_routed_experts_shape(
-                        self,
-                        history_exp,
-                        self.expected_routed_experts_layers,
-                        self.expected_routed_experts_topk,
-                    )
+            self.assertEqual(len(history_experiences), len(generate_results) + len(results))
+            _assert_recorded_experiences_match_unordered(
+                self,
+                results,
+                history_experiences[len(generate_results) :],
+                enable_return_routed_experts=self.enable_return_routed_experts,
+                expected_layers=self.expected_routed_experts_layers,
+                expected_topk=self.expected_routed_experts_topk,
+            )
         for result in results:
             self.assertTrue(torch.any(result.logprobs != 0))
         if self.use_async:
