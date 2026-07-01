@@ -16,7 +16,11 @@ from trinity.common.constants import SyncMethod
 from trinity.common.experience import Experience
 from trinity.common.models.mm_utils import vLLMMultiModalRender
 from trinity.common.models.model import BaseInferenceModel
-from trinity.common.models.recording.context import record_key_ctx, skip_recording_ctx
+from trinity.common.models.recording.context import (
+    RecordingContext,
+    recording_ctx,
+    skip_recording_ctx,
+)
 from trinity.common.models.vllm_patch import get_vllm_version
 from trinity.common.models.vllm_patch.recording.models import build_experience
 
@@ -229,7 +233,7 @@ class vLLMRolloutModel(BaseInferenceModel):
             messages (List[dict]): The input history messages.
             key (Optional[str]): Recording identity for the in-vLLM
                 recorder (the MemoryStore group key). Propagated to
-                ``generate`` via ``record_key_ctx`` so the recorder stamps it
+                ``generate`` via ``recording_ctx`` so the recorder stamps it
                 into ``Experience.eid`` without an HTTP hop. None skips
                 recording.
             kwargs (dict): A dictionary of sampling parameters.
@@ -271,7 +275,7 @@ class vLLMRolloutModel(BaseInferenceModel):
         Args:
             prompt (str): The input prompt.
             key (Optional[str]): Recording identity propagated to the
-                in-vLLM recorder via ``record_key_ctx`` (see ``chat``).
+                in-vLLM recorder via ``recording_ctx`` (see ``chat``).
             kwargs (dict): A dictionary of sampling parameters.
 
         Returns:
@@ -308,13 +312,13 @@ class vLLMRolloutModel(BaseInferenceModel):
         # Propagate the recording identity to the engine-level recorder (same
         # async task, same process) so the recorded experience is grouped under
         # this record key in the MemoryStore.
-        record_key_token = record_key_ctx.set(key)
+        record_key_token = recording_ctx.set(RecordingContext(record_key=key))
         try:
             output = await self._generate_internal(
                 prompt=prompt, lora_request=lora_request, **kwargs
             )
         finally:
-            record_key_ctx.reset(record_key_token)
+            recording_ctx.reset(record_key_token)
         if is_mm_prompt:
             if self.mm_render is None:
                 self.mm_render = vLLMMultiModalRender(

@@ -29,7 +29,7 @@ import logging
 from typing import Any, List, Optional, Tuple
 
 from trinity.buffer.store import MemoryStore, RecordStore
-from trinity.common.models.recording.context import record_key_ctx
+from trinity.common.models.recording.context import get_recording_record_key_from_context
 from trinity.common.models.recording.recorder import (
     TRINITY_RECORD_STORE_ATTR,
     TRINITY_RECORDER_ATTR,
@@ -273,7 +273,7 @@ def patch_tokenizer_manager_for_recording(
             # Trigger on the finished yield (not on generator exhaustion): the
             # non-stream /generate consumer pulls only once via __anext__().
             if recorder.enabled and _is_finished(out):
-                record_key = record_key_ctx.get()
+                record_key = get_recording_record_key_from_context()
                 if record_key is not None and state:
                     reconstructed = _build_ret(state, order)
                     recorder.schedule_record(

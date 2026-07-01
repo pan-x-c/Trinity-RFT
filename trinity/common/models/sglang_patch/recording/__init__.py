@@ -8,9 +8,11 @@ core symbols shared with the vLLM recording path
 
 from trinity.buffer.store import MemoryStore, RecordStore  # noqa: F401
 from trinity.common.models.recording.context import (  # noqa: F401
+    RecordingContext,
     RecordingIdentityMiddleware,
     get_recording_record_key,
-    record_key_ctx,
+    get_recording_record_key_from_context,
+    recording_ctx,
     skip_recording_ctx,
 )
 from trinity.common.models.recording.recorder import Recorder  # noqa: F401
@@ -29,12 +31,14 @@ __all__ = [
     "MemoryStore",
     "RecordStore",
     "Recorder",
+    "RecordingContext",
     "RecordingIdentityMiddleware",
     "build_sglang_experience",
     "create_sglang_recorder",
     "get_recording_record_key",
+    "get_recording_record_key_from_context",
     "patch_tokenizer_manager_for_recording",
-    "record_key_ctx",
+    "recording_ctx",
     "setup_sglang_recording",
     "skip_recording_ctx",
 ]

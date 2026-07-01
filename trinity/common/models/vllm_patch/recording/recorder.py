@@ -24,7 +24,10 @@ from types import SimpleNamespace
 from typing import Optional
 
 from trinity.buffer.store import MemoryStore, RecordStore
-from trinity.common.models.recording.context import record_key_ctx
+from trinity.common.models.recording.context import (
+    get_recording_record_key_from_context,
+    get_recording_request_from_context,
+)
 from trinity.common.models.recording.recorder import (
     TRINITY_RECORD_STORE_ATTR,
     TRINITY_RECORDER_ATTR,
@@ -85,24 +88,30 @@ def _get_prompt_arg(args, kwargs):
 
 
 def _build_multi_modal_inputs(engine_client, prompt, output, logger: logging.Logger):
-    if not isinstance(prompt, dict):
-        return None
-    multi_modal_data = prompt.get("multi_modal_data")
-    if not multi_modal_data:
-        return None
     mm_render = getattr(engine_client, TRINITY_MM_RENDER_ATTR, None)
     if mm_render is None:
         logger.warning(
-            "Recording saw a multimodal vLLM prompt but no %s is attached to engine_client; "
+            "Recording saw a possible multimodal vLLM prompt but no %s is attached to engine_client; "
             "recorded Experience will not include multi_modal_inputs.",
             TRINITY_MM_RENDER_ATTR,
         )
         return None
     try:
-        return mm_render.build_mm_input_for_training(
-            input_ids=output.prompt_token_ids,
-            multi_modal_data=multi_modal_data,
-        )
+        if isinstance(prompt, dict):
+            multi_modal_data = prompt.get("multi_modal_data")
+            if multi_modal_data:
+                return mm_render.build_mm_input_for_training(
+                    input_ids=output.prompt_token_ids,
+                    multi_modal_data=multi_modal_data,
+                )
+        request_info = get_recording_request_from_context()
+        if request_info and request_info.get("messages") is not None:
+            return mm_render.build_mm_input_for_training(
+                input_ids=output.prompt_token_ids,
+                messages=request_info["messages"],
+                tools=request_info.get("tools"),
+            )
+        return None
     except Exception:
         logger.exception("Failed to build multi_modal_inputs for recorded vLLM Experience")
         return None
@@ -300,7 +309,7 @@ def patch_engine_for_recording(
             # RecordingIdentityMiddleware on the HTTP path, or by VLLMModel.chat
             # on the Ray-direct path). A missing key means the caller did not
             # opt into grouping this turn, so skip recording entirely.
-            record_key = record_key_ctx.get()
+            record_key = get_recording_record_key_from_context()
             if record_key is not None:
                 record_output = _build_record_output(accumulated, last)
                 multi_modal_inputs = _build_multi_modal_inputs(

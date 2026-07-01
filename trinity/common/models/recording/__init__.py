@@ -2,10 +2,13 @@
 
 from trinity.buffer.store import MemoryStore, RecordStore
 from trinity.common.models.recording.context import (
+    RecordingContext,
     RecordingIdentityMiddleware,
     extract_bearer_token,
     get_recording_record_key,
-    record_key_ctx,
+    get_recording_record_key_from_context,
+    get_recording_request_from_context,
+    recording_ctx,
     skip_recording_ctx,
 )
 from trinity.common.models.recording.recorder import (
@@ -21,6 +24,7 @@ from trinity.common.models.recording.server import (
 __all__ = [
     "MemoryStore",
     "Recorder",
+    "RecordingContext",
     "RecordingIdentityMiddleware",
     "RecordStore",
     "TRINITY_RECORD_STORE_ATTR",
@@ -28,7 +32,9 @@ __all__ = [
     "add_recording_middleware",
     "extract_bearer_token",
     "get_recording_record_key",
+    "get_recording_record_key_from_context",
+    "get_recording_request_from_context",
     "mount_recording_api",
-    "record_key_ctx",
+    "recording_ctx",
     "skip_recording_ctx",
 ]

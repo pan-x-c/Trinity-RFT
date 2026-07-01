@@ -1870,7 +1870,7 @@ class TestRecording(VLLMTestBase):
 
     Paths covered (all async):
       * Ray-direct ``generate`` / ``chat`` — record_key propagated via
-        ``record_key_ctx`` (set inside the actor by ``VLLMModel``).
+        ``recording_ctx`` (set inside the actor by ``VLLMModel``).
       * OpenAI HTTP regular / streaming / tool-call — record_key propagated
         via the ``Authorization: Bearer <api_key>`` header, captured by
         ``RecordingIdentityMiddleware``.
@@ -1983,7 +1983,7 @@ class TestRecording(VLLMTestBase):
         ]
         no_think = {"chat_template_kwargs": {"enable_thinking": False}}
 
-        # ===== 1. Ray-direct generate (record_key via record_key_ctx) =====
+        # ===== 1. Ray-direct generate (record_key via recording_ctx) =====
         rk_gen = "0/t_gen/1"
         await self.model_wrapper.generate_async(
             ["Hello, world!"], n=1, temperature=1.0, max_tokens=16, key=rk_gen
