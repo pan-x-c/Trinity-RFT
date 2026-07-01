@@ -90,7 +90,7 @@ class WorkflowRunner:
         if (
             self.workflow_instance is None
             or not self.workflow_instance.__class__ == task.workflow
-            or not getattr(self.workflow_instance.__class__, "can_reset", True)
+            or not getattr(self.workflow_instance.__class__, "can_reset", False)
         ):
             # Pass ModelWrapper directly; Workflow.__init__ will get OpenAI clients automatically
             self.workflow_instance = task.to_workflow(

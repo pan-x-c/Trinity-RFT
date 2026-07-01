@@ -277,9 +277,9 @@ class SGLangRolloutModel(BaseInferenceModel):
         super().__init__(config)
         if config.cuda_visible_devices:
             os.environ["CUDA_VISIBLE_DEVICES"] = config.cuda_visible_devices
-        if not self.config.enable_openai_api:
-            self.logger.warning("SGLangRolloutModel requires OpenAI API to be enabled.")
-            self.config.enable_openai_api = True
+        # The OpenAI API server is always enabled (forced by ``ConfigValidator``);
+        # ``enable_openai_api`` is a deprecated no-op kept only for backward
+        # compatibility.
         os.environ["SGLANG_GRPC_PORT"] = "12345"  # a dummy port not actually used
         os.environ["SGLANG_ENABLE_GRPC"] = "0"
         self.api_server_host: Optional[str] = None

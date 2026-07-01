@@ -522,7 +522,12 @@ class ModelWrapper:
 
     async def prepare(self) -> None:
         """Prepare some necessary information for the model before inference."""
-        if not self.config.enable_openai_api:
+        # The OpenAI API server is always enabled for vLLM/SGLang models; only the
+        # Tinker and external backends skip the HTTP probe — Tinker has no real
+        # API server (its OpenAI client is a Ray-remote shim), and external's
+        # address comes from the environment. This short-circuit is intentionally
+        # based on engine type, not on the deprecated ``enable_openai_api`` flag.
+        if self.config.engine_type in {"tinker", "external"}:
             return
         if self.api_address is None:
             if self.model is None:
@@ -636,7 +641,7 @@ class ModelWrapper:
         """Get the base URL of the API server."""
         if not self.api_address:
             raise ValueError("API address is not set. Cannot get base URL.")
-        return self.api_address
+        return f"{self.api_address}/v1"
 
     @property
     def api_key(self) -> str:
@@ -705,11 +710,6 @@ class ModelWrapper:
             openai.OpenAI: The openai client. And `model_path` is added to the client which refers to the model path.
         """
         import openai
-
-        if not self.config.enable_openai_api:
-            raise ValueError(
-                "OpenAI API is not enabled for this model. OpenAI client is unavailable."
-            )
 
         if self.openai_client is not None:
             setattr(self.openai_client, "model_path", self.config.model_path)

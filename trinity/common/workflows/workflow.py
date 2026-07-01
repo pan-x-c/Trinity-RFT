@@ -442,7 +442,7 @@ class WorkflowWithRecording(WorkflowBase):
     the recorded experience data with the reward and optional info.
     """
 
-    can_reset: bool = True
+    can_reset: bool = False
     is_async: bool = True
 
     def __init__(
@@ -454,9 +454,7 @@ class WorkflowWithRecording(WorkflowBase):
     ):
         super().__init__(task=task, model=model)
         # Store ModelWrapper instances
-        self.auxiliary_model_wrappers = auxiliary_models
-        # Get OpenAI clients from ModelWrapper
-        self.auxiliary_models = [m.get_openai_async_client() for m in (auxiliary_models or [])]
+        self.auxiliary_models = auxiliary_models
 
     @property
     def base_url(self) -> str:
@@ -468,9 +466,10 @@ class WorkflowWithRecording(WorkflowBase):
         """API_KEY of the OpenAI API of the rollout model."""
         return self.task.api_key
 
-    def reset(self, task: Task):
-        """Reset the workflow."""
-        raise NotImplementedError
+    @property
+    def model_name(self) -> str:
+        """Model name of the rollout model."""
+        return self.model.model_name
 
     async def run_async(self) -> Metrics:
         """Run workflow asynchronously and return metrics for the completed run."""

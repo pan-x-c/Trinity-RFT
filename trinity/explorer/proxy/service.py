@@ -117,7 +117,8 @@ class ExplorerService:
         self.running_model_ids.rotate(-1)
         if model.api_address is None:
             raise ValueError(
-                "Model does not have a valid API address, please set `enable_openai_api` to `True`."
+                "Model does not have a valid API address; the OpenAI API server "
+                "should have been started automatically during model preparation."
             )
         return model.api_address, self.model_version_map[model_id]
 

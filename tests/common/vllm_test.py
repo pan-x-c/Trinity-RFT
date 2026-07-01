@@ -330,10 +330,10 @@ class ModelWrapperTest(VLLMTestBase):
         )
         self.assertTrue(exp.logprobs.shape[0] == exp.tokens.shape[0] - prompt_length)
         self.assertTrue(torch.equal(result_dict["input_ids"][0], exp.tokens))
-        if self.model_wrapper.config.enable_openai_api:
-            self.assertIsNotNone(self.model_wrapper.get_openai_client())
-        else:
-            self.assertRaises(ValueError, self.model_wrapper.get_openai_client)
+        # The OpenAI API server is now always enabled for the rollout model
+        # (``enable_openai_api`` is a deprecated no-op), so the client is always
+        # available regardless of the requested value.
+        self.assertIsNotNone(self.model_wrapper.get_openai_client())
 
         if self.enable_return_routed_experts:
             openai_messages = [

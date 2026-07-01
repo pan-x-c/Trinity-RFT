@@ -695,10 +695,6 @@ class vLLMRolloutModel(BaseInferenceModel):
         Returns:
             success (bool): Whether the API server is started successfully.
         """
-        if not self.config.enable_openai_api:
-            self.logger.info("OpenAI API server is not enabled. Skipping...")
-            return False  # Not enabled
-
         if self.api_server_host is not None and self.api_server_port is not None:
             self.logger.info("OpenAI API server is already running. Skipping...")
             return True  # already running
