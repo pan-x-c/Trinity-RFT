@@ -1600,6 +1600,7 @@ class TestAPIServerToolCall(VLLMTestBase):
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
+        self.model_wrapper.set_api_key("tool_call/0/0")
         self.model_wrapper_no_history = clone_wrapper(self.model_wrapper, enable_history=False)
 
     async def test_api_tool_calls(self):
