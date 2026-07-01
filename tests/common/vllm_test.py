@@ -178,6 +178,7 @@ class ModelWrapperTest(VLLMTestBase):
 
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
+        self.model_wrapper.set_api_key("model_wrapper/0/0")
 
     async def test_generate(self):  # noqa: C901
         self.assertEqual(self.model_wrapper.model_path, self.config.model.model_path)
@@ -185,10 +186,12 @@ class ModelWrapperTest(VLLMTestBase):
         n = self.config.algorithm.repeat_times
         if self.use_async:
             generate_results = await self.model_wrapper.generate_async(
-                prompts, n=n, temperature=1.0
+                prompts, n=n, temperature=1.0, enable_recording=True,
             )
         else:
-            generate_results = self.model_wrapper.generate(prompts, n=n, temperature=1.0)
+            generate_results = self.model_wrapper.generate(
+                prompts, n=n, temperature=1.0, enable_recording=True,
+            )
         self.assertEqual(len(generate_results), len(prompts) * n)
         if self.enable_return_routed_experts:
             for exp in generate_results:
@@ -228,9 +231,9 @@ class ModelWrapperTest(VLLMTestBase):
             {"role": "user", "content": "OK, thanks!"},
         ]
         if self.use_async:
-            results = await self.model_wrapper.chat_async(messages, n=n, temperature=1.0)
+            results = await self.model_wrapper.chat_async(messages, n=n, temperature=1.0, enable_recording=True)
         else:
-            results = self.model_wrapper.chat(messages, n=n, temperature=1.0)
+            results = self.model_wrapper.chat(messages, n=n, temperature=1.0, enable_recording=True)
         self.assertEqual(len(results), n)
         if self.enable_return_routed_experts:
             for exp in results:
@@ -1499,11 +1502,13 @@ class TestConcurrentSyncWeights(VLLMTestBase):
 
                     self.assertTrue(
                         logprobs_similar,
-                        f"Logprobs for interrupted request {idx + 1} are not consistent "
-                        f"after weight sync (mean_diff={mean_diff:.6f}, max_diff={max_diff:.6f}, "
-                        f"num_mismatched={len(mismatch_indices) if not logprobs_similar else 0})"
-                        if not logprobs_similar
-                        else "",
+                        (
+                            f"Logprobs for interrupted request {idx + 1} are not consistent "
+                            f"after weight sync (mean_diff={mean_diff:.6f}, max_diff={max_diff:.6f}, "
+                            f"num_mismatched={len(mismatch_indices) if not logprobs_similar else 0})"
+                            if not logprobs_similar
+                            else ""
+                        ),
                     )
                 else:
                     print("  [WARNING] No matching experience found in history")
