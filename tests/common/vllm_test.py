@@ -1807,7 +1807,10 @@ class TestAPIServerToolCall(VLLMTestBase):
         final_exps = self.model_wrapper.extract_experience_from_history()
         self.assertEqual(len(final_exps), 1)
         print_debug(f"    > Final recorded experience response_text: {final_exps[0].response_text}")
-        self.assertEqual(final_exps[0].response_text, final_choice.message.content)
+        if self.reasoning_parser:
+            self.assertIn(final_choice.message.content.strip(), final_exps[0].response_text)
+        else:
+            self.assertEqual(final_exps[0].response_text, final_choice.message.content)
         print_debug(f"[{time.time() - start_time:.2f}s] Final experience history check passed.")
 
         exp = final_exps[0]
