@@ -113,7 +113,7 @@ def _assert_recorded_experiences_match_unordered(
             match_index,
             f"Recorded history does not contain expected response: {exp.response_text[:200]}",
         )
-        recorded_exp = unmatched_recorded.pop(match_index)
+        recorded_exp = unmatched_recorded.pop(match_index)  # type: ignore [arg-type]
         test_case.assertEqual(exp.response_text, recorded_exp.response_text)
         test_case.assertEqual(exp.prompt_length, recorded_exp.prompt_length)
         test_case.assertEqual(exp.logprobs.tolist(), recorded_exp.logprobs.tolist())
@@ -224,11 +224,17 @@ class ModelWrapperTest(VLLMTestBase):
         n = self.config.algorithm.repeat_times
         if self.use_async:
             generate_results = await self.model_wrapper.generate_async(
-                prompts, n=n, temperature=1.0, enable_recording=True,
+                prompts,
+                n=n,
+                temperature=1.0,
+                enable_recording=True,
             )
         else:
             generate_results = self.model_wrapper.generate(
-                prompts, n=n, temperature=1.0, enable_recording=True,
+                prompts,
+                n=n,
+                temperature=1.0,
+                enable_recording=True,
             )
         self.assertEqual(len(generate_results), len(prompts) * n)
         if self.enable_return_routed_experts:
@@ -264,7 +270,9 @@ class ModelWrapperTest(VLLMTestBase):
             {"role": "user", "content": "OK, thanks!"},
         ]
         if self.use_async:
-            results = await self.model_wrapper.chat_async(messages, n=n, temperature=1.0, enable_recording=True)
+            results = await self.model_wrapper.chat_async(
+                messages, n=n, temperature=1.0, enable_recording=True
+            )
         else:
             results = self.model_wrapper.chat(messages, n=n, temperature=1.0, enable_recording=True)
         self.assertEqual(len(results), n)
@@ -322,7 +330,7 @@ class ModelWrapperTest(VLLMTestBase):
         )
         self.assertTrue(exp.logprobs.shape[0] == exp.tokens.shape[0] - prompt_length)
         self.assertTrue(torch.equal(result_dict["input_ids"][0], exp.tokens))
-        if self.enable_return_routed_experts:
+        if self.model_wrapper.config.enable_openai_api:
             self.assertIsNotNone(self.model_wrapper.get_openai_client())
         else:
             self.assertRaises(ValueError, self.model_wrapper.get_openai_client)
@@ -455,6 +463,7 @@ class TestModelLen(VLLMTestBase):
 
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
+        self.model_wrapper.set_api_key("model_len/0/0")
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model.model_path)
 
     async def test_model_len(self):
@@ -489,7 +498,7 @@ class TestModelLen(VLLMTestBase):
                 self.assertLessEqual(len(exp.tokens), self.config.model.max_model_len)
 
         # For vllm engine, max_prompt_tokens and max_response_tokens work
-        response = self.model_wrapper.chat(messages)
+        response = self.model_wrapper.chat(messages, enable_recording=True)
         self.assertEqual(len(response), 1)
         if self.max_prompt_tokens == 5:
             self.assertEqual(response[0].truncate_status, "prompt_truncated")
@@ -526,7 +535,7 @@ class TestModelLen(VLLMTestBase):
             ][0].tolist()
             self.assertGreater(len(prompt_token_ids), self.config.model.max_prompt_tokens)
 
-            responses = self.model_wrapper.generate([prompt], n=2)
+            responses = self.model_wrapper.generate([prompt], n=2, enable_recording=True)
             self.assertEqual(len(responses), 2)
 
             for response in responses:
@@ -555,6 +564,7 @@ class TestModelLenWithoutPromptTruncation(VLLMTestBase):
 
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
+        self.model_wrapper.set_api_key("model_len_no_truncation/0/0")
 
     async def test_model_len(self):
         messages = [
@@ -562,7 +572,7 @@ class TestModelLenWithoutPromptTruncation(VLLMTestBase):
         ]
 
         # For vllm engine, max_prompt_tokens and max_response_tokens work
-        response = self.model_wrapper.chat(messages)
+        response = self.model_wrapper.chat(messages, enable_recording=True)
         self.assertEqual(len(response), 1)
         self.assertLessEqual(
             len(response[0].tokens) - response[0].prompt_length,
@@ -771,6 +781,7 @@ class TestQwen35APIServerReasoning(VLLMTestBase):
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
+        self.model_wrapper.set_api_key("qwen35_reasoning/0/0")
 
     async def test_reasoning_content(self):
         openai_client = self.model_wrapper.get_openai_client()
@@ -848,6 +859,7 @@ class TestQwen35APIServerMultiModal(VLLMTestBase):
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
+        self.model_wrapper.set_api_key("qwen35_mm/0/0")
 
     async def test_multi_modal_content(self):
         openai_client = self.model_wrapper.get_openai_client()
@@ -942,6 +954,7 @@ class TestLogprobs(VLLMTestBase):
         self.config.check_and_update()
         self.engines, self.auxiliary_engines = await create_test_models(self.config)
         self.model_wrapper = self.engines[0]
+        self.model_wrapper.set_api_key("logprobs/0/0")
 
     async def test_logprobs_api(self):
         messages = [
