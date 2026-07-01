@@ -180,7 +180,6 @@ class ExperiencePipeline:
             exps.extend(Experience.deserialize_many(exp_bytes))
         return await self.process_experiences(exps)
 
-
     async def process_experiences(self, exps: list[Experience]) -> Dict:
         """Process already-assembled experiences (objects, not serialized bytes).
 

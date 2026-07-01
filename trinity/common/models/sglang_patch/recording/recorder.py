@@ -29,7 +29,9 @@ import logging
 from typing import Any, List, Optional, Tuple
 
 from trinity.buffer.store import MemoryStore, RecordStore
-from trinity.common.models.recording.context import get_recording_record_key_from_context
+from trinity.common.models.recording.context import (
+    get_recording_record_key_from_context,
+)
 from trinity.common.models.recording.recorder import (
     TRINITY_RECORD_STORE_ATTR,
     TRINITY_RECORDER_ATTR,

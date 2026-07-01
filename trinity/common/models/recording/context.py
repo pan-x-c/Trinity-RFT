@@ -9,6 +9,7 @@ try:
 except ModuleNotFoundError:
     BaseHTTPMiddleware = object  # type: ignore
 
+
 @dataclass(frozen=True)
 class RecordingContext:
     """Per-request recording metadata propagated to engine-boundary recorders."""
@@ -80,9 +81,7 @@ class RecordingIdentityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Any, call_next):
         record_key = get_recording_record_key(request)
         request_info = await self._get_recording_request(request, record_key)
-        token = recording_ctx.set(
-            RecordingContext(record_key=record_key, request=request_info)
-        )
+        token = recording_ctx.set(RecordingContext(record_key=record_key, request=request_info))
         try:
             return await call_next(request)
         finally:
