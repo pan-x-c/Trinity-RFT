@@ -30,7 +30,7 @@ Field mapping (captured ``RequestOutput`` fields -> ``Experience``):
   model_version    -> info["model_version"]  (which checkpoint policy served the
                     turn; read in-actor by the recorder's provider)
 
-Plus bookkeeping (sample_index / rank / timestamp / endpoint / model_version)
+Plus bookkeeping (sample_index / timestamp / model_version)
 stashed in ``Experience.info`` so it round-trips
 with the experience through serialize/deserialize.
 """
@@ -119,13 +119,10 @@ def build_experience(
     output: Any,
     record_key: Optional[str],
     *,
-    rank: int,
     timestamp: str,
-    endpoint: str = "unknown",
     model_version: Optional[int] = None,
     multi_modal_inputs: Optional[dict] = None,
     prompt_text: Optional[str] = None,
-    include_recording_info: bool = True,
     include_routed_experts: bool = True,
     include_prompt_routed_experts: bool = False,
 ) -> List[Experience]:
@@ -133,16 +130,14 @@ def build_experience(
 
     One experience per completion (``output.outputs``), so ``n > 1`` sampling
     is captured in full. Each experience carries ``record_key`` in
-    ``eid.batch/task/run`` and shares ``eid.suffix = request_id``;
+    ``eid.batch/task/run`` when provided and shares ``eid.suffix = request_id``;
     ``info["sample_index"]`` distinguishes samples within the group.
 
     Args:
         output: A ``RequestOutput`` with ``finished == True``.
         record_key: The recording identity (API key / Ray-injected record key);
             stored in ``eid.batch/task/run`` and used as the MemoryStore group key.
-        rank: Data-parallel serving rank.
         timestamp: UTC ISO-8601 string (caller-stamped to keep this pure).
-        endpoint: Which OpenAI endpoint served the turn (best-effort).
         model_version: Checkpoint version the serving policy was at; stamped
             into ``info`` for RL attribution (read in-actor by the recorder).
         multi_modal_inputs: Optional training-time multimodal tensors aligned
@@ -151,9 +146,6 @@ def build_experience(
         prompt_text: Optional prompt text override. Direct model calls can pass
             tokenizer-decoded prompt text when ``RequestOutput.prompt`` is not
             suitable for training records.
-        include_recording_info: Whether to attach recording metadata and
-            ``EID(suffix=request_id)``. Direct generate return values can turn
-            this off to preserve normal Experience construction semantics.
         include_routed_experts: Whether routed experts should be copied.
         include_prompt_routed_experts: Whether to prepend prompt routed experts
             to completion routed experts. Direct generate uses this to match
@@ -165,7 +157,7 @@ def build_experience(
     """
     request_id = output.request_id
     # eid.suffix = request_id for traceability; batch/task/run are assigned
-    # from record_key when recording metadata is requested.
+    # from record_key when this Experience is destined for the recording store.
 
     prompt_token_ids = list(output.prompt_token_ids or [])
     if not prompt_token_ids:
@@ -194,22 +186,17 @@ def build_experience(
             include_prompt_routed_experts=include_prompt_routed_experts,
         )
 
-        info = None
-        eid = None
-        if include_recording_info:
-            suffix = _sample_suffix(request_id, sample_index, len(completions))
-            if record_key is None:
-                eid = EID(suffix=suffix)
-            else:
-                batch, task, run = parse_record_key(record_key)
-                eid = EID(batch=batch, task=task, run=run, suffix=suffix)
-            info = {
-                "sample_index": sample_index,
-                "rank": rank,
-                "timestamp": timestamp,
-                "endpoint": endpoint,
-                "model_version": model_version,
-            }
+        suffix = _sample_suffix(request_id, sample_index, len(completions))
+        if record_key is None:
+            eid = EID(suffix=suffix)
+        else:
+            batch, task, run = parse_record_key(record_key)
+            eid = EID(batch=batch, task=task, run=run, suffix=suffix)
+        info = {
+            "sample_index": sample_index,
+            "timestamp": timestamp,
+            "model_version": model_version,
+        }
 
         experiences.append(
             Experience(

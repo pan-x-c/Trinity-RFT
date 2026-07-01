@@ -21,7 +21,6 @@ def _build_tinker_experiences(
     experiences: Sequence[Experience],
     record_key: str,
     *,
-    rank: int,
     timestamp: str,
     model_version: Optional[int] = None,
     request_id: str,
@@ -34,7 +33,6 @@ def _build_tinker_experiences(
         exp.eid.suffix = f"{request_id}:{index}"
         if exp.info is None:
             exp.info = {}
-        exp.info["rank"] = rank
         exp.info["timestamp"] = timestamp
         if model_version is not None:
             exp.info["model_version"] = model_version

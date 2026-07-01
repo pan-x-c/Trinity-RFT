@@ -300,7 +300,6 @@ class vLLMRolloutModel(BaseInferenceModel):
                         exp.eid.batch = batch
                         exp.eid.task = task
                         exp.eid.run = run
-                        exp.info["rank"] = self.recorder.rank
                         exp.info["model_version"] = self.model_version
                         self.recorder.store.add(key, [exp])
                 return returned_seq
@@ -333,11 +332,9 @@ class vLLMRolloutModel(BaseInferenceModel):
         return build_experience(
             output,
             record_key=None,
-            rank=0,
             timestamp="",
             multi_modal_inputs=multi_modal_inputs,
             prompt_text=self.tokenizer.decode(output.prompt_token_ids),
-            include_recording_info=False,
             include_routed_experts=self.config.enable_return_routed_experts,
             include_prompt_routed_experts=True,
         )
@@ -695,10 +692,6 @@ class vLLMRolloutModel(BaseInferenceModel):
         Returns:
             success (bool): Whether the API server is started successfully.
         """
-        if not self.config.enable_openai_api:
-            self.logger.info("OpenAI API server is not enabled. Skipping...")
-            return False  # Not enabled
-
         if self.api_server_host is not None and self.api_server_port is not None:
             self.logger.info("OpenAI API server is already running. Skipping...")
             return True  # already running

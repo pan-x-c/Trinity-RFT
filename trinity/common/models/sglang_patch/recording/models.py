@@ -71,7 +71,6 @@ def build_sglang_experience(
     ret: Any,
     record_key: Optional[str],
     *,
-    rank: int,
     timestamp: str,
     model_version: Optional[Any] = None,
     include_routed_experts: bool = True,
@@ -91,7 +90,6 @@ def build_sglang_experience(
             ``prompt_token_ids`` list.
         record_key: The recording identity (Authorization bearer / record key);
             the MemoryStore group key.
-        rank: Data-parallel serving rank.
         timestamp: UTC ISO-8601 string (caller-stamped to keep this pure).
         model_version: Checkpoint version fallback; overridden by
             ``meta_info.weight_version`` when present.
@@ -160,9 +158,7 @@ def build_sglang_experience(
             eid = EID(batch=batch, task=task, run=run, suffix=suffix)
         info = {
             "sample_index": sample_index,
-            "rank": rank,
             "timestamp": timestamp,
-            "endpoint": "sglang",
             "model_version": resolved_model_version,
         }
 

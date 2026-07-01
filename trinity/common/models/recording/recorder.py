@@ -81,7 +81,6 @@ class Recorder:
         exps = self._build_experiences(
             output,
             record_key,
-            rank=self.rank,
             timestamp=timestamp,
             model_version=model_version,
             **builder_kwargs,

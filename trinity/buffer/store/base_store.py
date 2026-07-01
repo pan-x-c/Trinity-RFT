@@ -50,3 +50,18 @@ class RecordStore(ABC):
     @abstractmethod
     def keys(self) -> list[str]:
         """Return complete keys currently stored in insertion order."""
+
+    @abstractmethod
+    def block_prefix(self, prefix: str) -> None:
+        """Mark a batch prefix as blocked.
+
+        Once a prefix is blocked, ``add`` and ``overwrite`` for any complete
+        key whose batch segment matches the prefix are silently dropped.
+        ``get`` and ``remove`` are unaffected. This is used to reject writes
+        that race in after a batch has been aborted/finalized and its records
+        deleted, so they cannot reappear as orphans.
+        """
+
+    @abstractmethod
+    def is_prefix_blocked(self, prefix: str) -> bool:
+        """Return whether the given batch prefix is blocked."""

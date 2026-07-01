@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Configs for RFT."""
+
 from __future__ import annotations
 
 import os
@@ -567,25 +568,26 @@ class InferenceModelConfig:
     # For Qwen3
     enable_thinking: Optional[bool] = None
 
-    # For experience recording. When enabled on vLLM rollout models, the engine
-    # wraps ``engine_client.generate`` and writes each finished turn as a
-    # Trinity ``Experience`` to the in-process ``MemoryStore``, keyed by the
-    # recording identity (``record_key``). This is the single switch for the
-    # recording flow — when on, the explorer also consumes from the store: the
-    # Workflow updates rewards by ``record_key`` and the Scheduler drains
-    # completed task experiences through rollout model actor methods. When off
-    # (default), recording APIs are disabled. When True, the Allocator forces
-    # ``enable_openai_api`` for engine-side request capture.
-    # VLLMModel mirrors the recording config onto the engine instance for the
-    # recorder to read. The capture width (top-k logprobs) reuses ``logprobs``
-    # below (default 1). Requires ``enable_openai_api=True`` (the recording
-    # runner is the API server). Routed-experts capture is opt-in via
-    # ``enable_router_replay`` (mirrored to ``enable_return_routed_experts`` in
-    # ``config_validator``); it is not implied by ``enable_history``, so dense
-    # models can record history too.
+    # [Deprecated, not user-settable] Controls engine-side experience recording.
+    # When enabled, the engine wraps ``engine_client.generate`` / the API server
+    # middleware and writes each finished turn as a Trinity ``Experience`` to the
+    # in-process ``MemoryStore``, keyed by the recording identity (``record_key``).
+    # The ``ConfigValidator`` forces this to ``True`` for the rollout model of
+    # every engine type (the ``Workflow.execute`` overwrite path and the Scheduler
+    # drain both rely on experiences being captured) and to ``False`` for
+    # auxiliary models (which must never record). Any user-supplied value is
+    # overridden. The capture width (top-k logprobs) reuses ``logprobs`` below
+    # (default 1). Routed-experts capture is opt-in via ``enable_router_replay``
+    # (mirrored to ``enable_return_routed_experts`` in ``config_validator``); it is
+    # not implied by ``enable_history``, so dense models can record history too.
     enable_history: bool = False
 
-    # For OpenAI API
+    # [Deprecated, not user-settable] Whether to start the OpenAI API server for
+    # this model. The API server is now always enabled: it hosts the recording
+    # runner (vLLM/SGLang) and backs the OpenAI client used by workflows.
+    # ``ConfigValidator`` forces this to ``True`` for both the rollout model and
+    # auxiliary models regardless of any user-supplied value. The field is kept
+    # only for backward compatibility with existing YAML configs.
     enable_openai_api: bool = False
     enable_log_requests: bool = False  # whether to enable request logging in vLLM API server
     base_port: Optional[int] = None

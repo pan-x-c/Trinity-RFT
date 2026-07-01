@@ -461,7 +461,6 @@ class TestRecording(RayUnittestBaseAsync):
     def _assert_recorded_experience(self, exp: Experience, record_key: str):
         self.assertEqual(get_record_key(exp), record_key)
         self.assertTrue(exp.eid.suffix)
-        self.assertEqual(exp.info.get("rank"), 0)
         # SGLang stamps meta_info.weight_version ("default" until a weight sync);
         # unlike vLLM it is a server-tracked string, not the model_version int.
         self.assertIsNotNone(exp.info.get("model_version"))

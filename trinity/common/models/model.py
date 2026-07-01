@@ -231,6 +231,20 @@ class InferenceModel(ABC):
         """Remove recorded experiences matching a key or prefix."""
         await self._drain_experience_records(prefix)
 
+    async def block_experience_records(self, prefix: str) -> None:
+        """Block future writes for the given batch prefix on this rollout rank.
+
+        Sets the block flag before flushing the recorder so that any in-flight
+        experiences still queued in the recorder are dropped by ``MemoryStore``
+        rather than written back as orphans. ``prefix`` is the batch segment
+        of the store key (``str(batch_id)``).
+        """
+        recorder = getattr(self, "recorder", None)
+        if recorder is None:
+            return
+        recorder.store.block_prefix(prefix)
+        await recorder.flush()
+
     def get_model_config(self) -> InferenceModelConfig:
         """Get the model configuration."""
         return self.config
@@ -508,7 +522,12 @@ class ModelWrapper:
 
     async def prepare(self) -> None:
         """Prepare some necessary information for the model before inference."""
-        if not self.config.enable_openai_api:
+        # The OpenAI API server is always enabled for vLLM/SGLang models; only the
+        # Tinker and external backends skip the HTTP probe — Tinker has no real
+        # API server (its OpenAI client is a Ray-remote shim), and external's
+        # address comes from the environment. This short-circuit is intentionally
+        # based on engine type, not on the deprecated ``enable_openai_api`` flag.
+        if self.config.engine_type in {"tinker", "external"}:
             return
         if self.api_address is None:
             if self.model is None:
@@ -622,7 +641,7 @@ class ModelWrapper:
         """Get the base URL of the API server."""
         if not self.api_address:
             raise ValueError("API address is not set. Cannot get base URL.")
-        return self.api_address
+        return f"{self.api_address}/v1"
 
     @property
     def api_key(self) -> str:
@@ -691,11 +710,6 @@ class ModelWrapper:
             openai.OpenAI: The openai client. And `model_path` is added to the client which refers to the model path.
         """
         import openai
-
-        if not self.config.enable_openai_api:
-            raise ValueError(
-                "OpenAI API is not enabled for this model. OpenAI client is unavailable."
-            )
 
         if self.openai_client is not None:
             setattr(self.openai_client, "model_path", self.config.model_path)
@@ -941,6 +955,14 @@ class ModelWrapper:
         if self.model is None:
             raise ValueError("Recording delete requires an inference model actor.")
         await self.model.delete_experience_records.remote(prefix=prefix)
+
+    async def block_experience_records_async(self, prefix: str) -> None:
+        """Block future writes for the given batch prefix on the rollout actor."""
+        if not self.enable_history:
+            raise ValueError("History recording is not enabled.")
+        if self.model is None:
+            raise ValueError("Recording block requires an inference model actor.")
+        await self.model.block_experience_records.remote(prefix=prefix)
 
     async def shutdown(self) -> None:
         """Shutdown all underlying model actors cleanly."""

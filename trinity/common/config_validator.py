@@ -705,21 +705,26 @@ class ExplorerConfigValidator(ConfigValidator):
         if config.mode == "serve":
             # in 'serve' mode, we always enable openai api for rollout model
             config.explorer.rollout_model.enable_openai_api = True
-        if config.explorer.rollout_model.engine_type.startswith("vllm") or (
-            config.explorer.rollout_model.engine_type == "sglang"
-        ):
-            # enable_history is the single switch for engine-side recording and is
-            # mandatory for the rollout model: the Workflow.execute overwrite path
-            # and the Scheduler drain both rely on experiences being captured into
-            # the in-process store keyed by the recording identity.
-            if not config.explorer.rollout_model.enable_history:
-                config.explorer.rollout_model.enable_history = True
-                self.logger.warning(
-                    "`explorer.rollout_model.enable_history` is required for the rollout "
-                    "model's recording flow; force-set to True."
-                )
-            # enable_history implies the OpenAI API server (the recording runner).
-            config.explorer.rollout_model.enable_openai_api = True
+        # ``enable_history`` is the single switch for engine-side recording and is
+        # mandatory for the rollout model of every engine type: the
+        # ``Workflow.execute`` overwrite path and the Scheduler drain both rely on
+        # experiences being captured into the in-process store keyed by the
+        # recording identity. vLLM/SGLang host the recorder in the API server;
+        # Tinker builds its own in-process recorder; external models are
+        # bench-only and never run the recording path, but the flag is set for
+        # consistency. This field is not user-settable; any user value is
+        # overridden here. Auxiliary models are forced to ``False`` below.
+        if not config.explorer.rollout_model.enable_history:
+            config.explorer.rollout_model.enable_history = True
+            self.logger.warning(
+                "`explorer.rollout_model.enable_history` is required for the rollout "
+                "model's recording flow; force-set to True."
+            )
+        # The OpenAI API server is always enabled for the rollout model: it hosts
+        # the recording runner (vLLM/SGLang) and backs the OpenAI client used by
+        # workflows. ``enable_openai_api`` is a deprecated no-op kept only for
+        # backward compatibility; it is forced on here regardless of user setting.
+        config.explorer.rollout_model.enable_openai_api = True
         self._validate_inference_parallel_config(config.explorer.rollout_model, "rollout_model")
         # auxiliary models
         for aux_model in config.explorer.auxiliary_models:

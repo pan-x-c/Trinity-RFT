@@ -1,10 +1,13 @@
 """In-memory implementation of the experience store interface."""
 
+import logging
 from collections import OrderedDict
 from typing import Iterable, List
 
 from trinity.buffer.store.base_store import ExperienceUpdate, RecordStore
 from trinity.common.experience import Experience
+
+_logger = logging.getLogger(__name__)
 
 
 def parse_record_key(key: str) -> tuple[str, str, int]:
@@ -56,12 +59,24 @@ class MemoryStore(RecordStore):
         self._batch_keys: dict[str, OrderedDict[str, None]] = {}
         self._task_keys: dict[tuple[str, str], OrderedDict[str, None]] = {}
         self._sample_to_key: dict[str, str] = {}
+        # batch prefixes whose writes should be silently dropped (aborted/
+        # finalized batches); see ``block_prefix``. Only grows since batch_id
+        # is never reused.
+        self._blocked_batches: set[str] = set()
 
     def __len__(self) -> int:
         return sum(len(exps) for exps in self._records.values())
 
     def add(self, key: str, exps: List[Experience]) -> None:
         batch, task, _ = self._parse_complete_key(key)  # validate key format
+        if batch in self._blocked_batches:
+            _logger.debug(
+                "Dropping write to blocked batch '%s' (key=%s, %d exps).",
+                batch,
+                key,
+                len(exps),
+            )
+            return
         if not exps:
             return
 
@@ -150,6 +165,14 @@ class MemoryStore(RecordStore):
 
     def keys(self) -> list[str]:
         return list(self._records.keys())
+
+    def block_prefix(self, prefix: str) -> None:
+        """Mark a batch prefix as blocked; future ``add``/``overwrite`` are dropped."""
+        self._blocked_batches.add(prefix)
+
+    def is_prefix_blocked(self, prefix: str) -> bool:
+        """Return whether the given batch prefix is blocked."""
+        return prefix in self._blocked_batches
 
     @staticmethod
     def _parse_complete_key(key: str) -> tuple[str, str, int]:
