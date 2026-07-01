@@ -318,15 +318,26 @@ class RolloutCoordinator:
             return self._finish_batch(batch_state, pipeline_metrics=pipeline_metrics)
 
     async def _discard_recorded_experiences(self, prefix: str) -> None:
-        """Delete recorded experiences matching a prefix from all rollout ranks."""
+        """Block future writes and delete recorded experiences for a prefix.
+
+        Blocking happens before deleting across all rollout ranks so that any
+        in-flight write that lands after the delete is dropped by the store
+        instead of reappearing as an orphan. The block flag persists on each
+        rollout actor (batch_id is never reused), so the prefix stays
+        unwritable for the lifetime of the process.
+        """
         actors = self._resolve_rollout_actors()
-        results = await asyncio.gather(
+        block_results = await asyncio.gather(
+            *[actor.block_experience_records.remote(prefix=prefix) for actor in actors.values()],
+            return_exceptions=True,
+        )
+        delete_results = await asyncio.gather(
             *[actor.delete_experience_records.remote(prefix=prefix) for actor in actors.values()],
             return_exceptions=True,
         )
-        for result in results:
+        for result in [*block_results, *delete_results]:
             if isinstance(result, Exception):
-                self.logger.error("records delete from rollout actor failed: %s", result)
+                self.logger.error("records cleanup on rollout actor failed: %s", result)
 
     def _finish_batch(
         self,

@@ -231,6 +231,20 @@ class InferenceModel(ABC):
         """Remove recorded experiences matching a key or prefix."""
         await self._drain_experience_records(prefix)
 
+    async def block_experience_records(self, prefix: str) -> None:
+        """Block future writes for the given batch prefix on this rollout rank.
+
+        Sets the block flag before flushing the recorder so that any in-flight
+        experiences still queued in the recorder are dropped by ``MemoryStore``
+        rather than written back as orphans. ``prefix`` is the batch segment
+        of the store key (``str(batch_id)``).
+        """
+        recorder = getattr(self, "recorder", None)
+        if recorder is None:
+            return
+        recorder.store.block_prefix(prefix)
+        await recorder.flush()
+
     def get_model_config(self) -> InferenceModelConfig:
         """Get the model configuration."""
         return self.config
@@ -941,6 +955,14 @@ class ModelWrapper:
         if self.model is None:
             raise ValueError("Recording delete requires an inference model actor.")
         await self.model.delete_experience_records.remote(prefix=prefix)
+
+    async def block_experience_records_async(self, prefix: str) -> None:
+        """Block future writes for the given batch prefix on the rollout actor."""
+        if not self.enable_history:
+            raise ValueError("History recording is not enabled.")
+        if self.model is None:
+            raise ValueError("Recording block requires an inference model actor.")
+        await self.model.block_experience_records.remote(prefix=prefix)
 
     async def shutdown(self) -> None:
         """Shutdown all underlying model actors cleanly."""

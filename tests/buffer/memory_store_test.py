@@ -112,6 +112,45 @@ class MemoryStoreTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             store.add("0/task_a/1", exp)
 
+    def test_blocked_prefix_drops_add_and_overwrite(self):
+        store = MemoryStore()
+        key = "0/task_a/0"
+        store.add(key, get_dummy_experience(1, request_id="pre"))
+        self.assertFalse(store.is_prefix_blocked("0"))
+
+        # Real flow: block the batch, then delete its existing records.
+        store.block_prefix("0")
+        self.assertTrue(store.is_prefix_blocked("0"))
+        store.remove(key)
+        self.assertEqual(store.get(key), [])
+
+        # A late add on a fresh key under the blocked batch is dropped.
+        store.add("0/task_a/1", get_dummy_experience(2, request_id="post"))
+        self.assertEqual(store.get("0/task_a/1"), [])
+        self.assertNotIn("0/task_a/1", store.keys())
+
+        # A late overwrite is also dropped: _drop_key is a no-op (records were
+        # already deleted) and add is blocked, so nothing reappears.
+        store.overwrite(key, get_dummy_experience(1, request_id="overwrite"))
+        self.assertEqual(store.get(key), [])
+        self.assertNotIn(key, store.keys())
+
+    def test_blocked_prefix_does_not_affect_other_batches(self):
+        store = MemoryStore()
+        store.block_prefix("0")
+        store.add("1/task_a/0", get_dummy_experience(1, request_id="other"))
+        self.assertEqual(len(store.get("1/task_a/0")), 1)
+
+    def test_blocked_prefix_keeps_get_and_remove_working(self):
+        store = MemoryStore()
+        key = "0/task_a/0"
+        store.add(key, get_dummy_experience(2, request_id="keep"))
+        store.block_prefix("0")
+        # Reads and removes still work on already-stored records.
+        self.assertEqual(len(store.get(key)), 2)
+        self.assertEqual(len(store.remove(key)), 2)
+        self.assertEqual(store.get(key), [])
+
 
 if __name__ == "__main__":
     unittest.main()
