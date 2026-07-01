@@ -99,6 +99,8 @@ class WorkflowRunner:
             )
         else:
             self.workflow_instance.reset(task)
+        self.workflow_instance.task = task
+        self.workflow_instance.model.set_api_key(task.api_key)
         self.workflow_instance.set_single_run_context(task.run_id)
         return self.workflow_instance
 

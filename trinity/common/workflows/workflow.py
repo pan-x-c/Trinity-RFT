@@ -107,8 +107,7 @@ class WorkflowBase:
     def __init__(self, task: Task, model: ModelWrapper) -> None:
         self.task = task
         self.model = model
-        if self.model is not None:
-            self.model.set_api_key(task.api_key)  # set the API key for the rollout model
+        self.model.set_api_key(task.api_key)  # set the API key for the rollout model
         self.logger = get_logger(__name__)
 
     @abstractmethod
@@ -117,11 +116,8 @@ class WorkflowBase:
 
     def reset(self, task: Task):
         """Reset the workflow with a new task."""
-        self.task.batch_id = task.batch_id
-        self.task.task_id = task.task_id
-        self.task.run_id = task.run_id
-        if self.model is not None:
-            self.model.set_api_key(task.api_key)  # set the API key for the rollout model
+        self.task = task
+        self.model.set_api_key(task.api_key)  # set the API key for the rollout model
 
 
 class Workflow(WorkflowBase):
