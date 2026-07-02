@@ -426,13 +426,13 @@ class WorkflowTest(unittest.TestCase):
             workflow_args={"output_format": "yaml"},
         )
         workflow = json_task.to_workflow(model)
-        if workflow.asynchronous:
+        if workflow.is_async:
             answer = asyncio.run(workflow.run_async())
         else:
             answer = workflow.run()
         self.assertEqual(answer[0].response_text, '{"a": 1}')
         workflow.reset(yaml_task)
-        if workflow.asynchronous:
+        if workflow.is_async:
             answer = asyncio.run(workflow.run_async())
         else:
             answer = workflow.run()
@@ -450,7 +450,7 @@ class WorkflowTest(unittest.TestCase):
         workflow = task.to_workflow(model)
         workflow.set_repeat_times(2, run_id_base=0)
         self.assertEqual(workflow.repeat_times, 2)
-        if workflow.asynchronous:
+        if workflow.is_async:
             answer = asyncio.run(workflow.run_async())
         else:
             answer = workflow.run()
@@ -490,7 +490,7 @@ class MultiTurnWorkflowTest(unittest.IsolatedAsyncioTestCase):
         )
         workflow = task.to_workflow(self.model_wrapper)
         workflow.set_repeat_times(2, run_id_base=0)
-        if workflow.asynchronous:
+        if workflow.is_async:
             answer = await workflow.run_async()
         else:
             answer = workflow.run()

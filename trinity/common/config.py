@@ -588,7 +588,7 @@ class InferenceModelConfig:
     # ``ConfigValidator`` forces this to ``True`` for both the rollout model and
     # auxiliary models regardless of any user-supplied value. The field is kept
     # only for backward compatibility with existing YAML configs.
-    enable_openai_api: bool = False
+    enable_openai_api: bool = True
     enable_log_requests: bool = False  # whether to enable request logging in vLLM API server
     base_port: Optional[int] = None
     api_key: str = "EMPTY"

@@ -147,18 +147,12 @@ class Workflow(WorkflowBase):
         # Get OpenAI clients from ModelWrapper (async or sync based on workflow type)
         self.auxiliary_models: Optional[Union[List[openai.OpenAI], List[openai.AsyncOpenAI]]] = None
         if auxiliary_models:
-            if self.__class__.is_async:
+            if self.is_async:
                 self.auxiliary_models = [m.get_openai_async_client() for m in auxiliary_models]
             else:
                 self.auxiliary_models = [m.get_openai_client() for m in auxiliary_models]
         self.run_id_base = 0
         self.repeat_times = 1
-
-    @property
-    def asynchronous(self):
-        """Deprecated, use cls.is_async instead.
-        Whether the workflow runs in async mode."""
-        return self.__class__.is_async
 
     def set_repeat_times(self, repeat_times: int, run_id_base: int) -> None:
         """
@@ -189,7 +183,7 @@ class Workflow(WorkflowBase):
         raise NotImplementedError
 
     async def execute(self) -> Status:
-        if self.asynchronous:
+        if self.is_async:
             exps = await self.run_async()
         else:
             exps = self.run()
@@ -197,8 +191,8 @@ class Workflow(WorkflowBase):
             experiences=exps, key=self.task.api_key
         )
         return Status(
-            completed_runs=self.__class__.can_repeat and self.repeat_times or 1,
-            total_runs=self.__class__.can_repeat and self.repeat_times or 1,
+            completed_runs=self.can_repeat and self.repeat_times or 1,
+            total_runs=self.can_repeat and self.repeat_times or 1,
             metrics=[exp.metrics for exp in exps if exp.metrics is not None],
             successful_ids=[self.task.api_key],
         )
@@ -309,8 +303,7 @@ class BaseSimpleWorkflow(Workflow):
             raise ValueError("`reward_fn` must be a subclass of `RewardFn`")
 
     def set_repeat_times(self, repeat_times, run_id_base):
-        self.repeat_times = repeat_times
-        self.run_id_base = run_id_base
+        super().set_repeat_times(repeat_times, run_id_base)
         self.task.rollout_args.n = repeat_times
 
     @property
